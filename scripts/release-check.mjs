@@ -54,6 +54,7 @@ const textChecks = [
   [".github/workflows/ci.yml", "npm run qa:pages"],
   [".github/workflows/pages.yml", "actions/deploy-pages@v4"],
   [".github/workflows/pages.yml", "actions/upload-pages-artifact@v4"],
+  [".github/workflows/pages.yml", "enablement: true"],
   [".github/workflows/pages.yml", "npm run qa:pages"],
   [".github/workflows/pages.yml", "VITE_BASE_PATH"],
   ["README.md", "Current Features"],

@@ -121,10 +121,9 @@ git commit --amend --reset-author
 GitHub Pages can host the built `dist/` folder through the included `Deploy GitHub Pages` workflow.
 
 1. Push the project to GitHub on the `main` branch.
-2. Open repository Settings.
-3. Go to Pages.
-4. Set Source to `GitHub Actions`.
-5. Run the `Deploy GitHub Pages` workflow or push to `main`.
+2. Let the `Deploy GitHub Pages` workflow run.
+3. If Pages is not enabled automatically, open repository Settings, go to Pages, and set Source to `GitHub Actions`.
+4. Run the `Deploy GitHub Pages` workflow again.
 
 The workflow automatically calculates the Vite base path:
 
