@@ -1,0 +1,57 @@
+{
+  "name": "PocketDesk OS",
+  "short_name": "PocketDesk",
+  "description": "A browser-based desktop OS prototype with windows, files, notes, paint, web, and small utilities.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "background_color": "#0d2237",
+  "theme_color": "#102a43",
+  "orientation": "any",
+  "categories": ["productivity", "utilities"],
+  "screenshots": [
+    {
+      "src": "brand/pocketdesk-social.png",
+      "sizes": "1200x630",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "PocketDesk OS desktop with app windows and taskbar"
+    }
+  ],
+  "icons": [
+    {
+      "src": "brand/pocketdesk-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "brand/pocketdesk-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "brand/pocketdesk-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Open PocketDesk",
+      "short_name": "Desktop",
+      "description": "Launch the PocketDesk desktop shell.",
+      "url": ".",
+      "icons": [
+        {
+          "src": "brand/pocketdesk-icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}

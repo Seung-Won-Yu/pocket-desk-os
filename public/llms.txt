@@ -1,0 +1,14 @@
+# PocketDesk OS
+
+PocketDesk OS is a browser-based desktop OS prototype. It recreates a familiar desktop workspace inside a web page with windows, files, notes, paint, calculator, minesweeper, browser utilities, installable web apps, wallpapers, PWA support, and deployment-ready static hosting.
+
+## Primary Entry
+
+- [PocketDesk OS](./): Launch the browser desktop shell.
+
+## Public Metadata
+
+- [Web app manifest](./manifest.webmanifest): PWA name, icons, screenshots, shortcuts, and categories.
+- [Service worker](./sw.js): Static shell caching for the browser app.
+- [Brand mark](./brand/pocketdesk-mark.svg): PocketDesk OS brand icon.
+- [Social preview](./brand/pocketdesk-social.png): 1200x630 desktop preview image.

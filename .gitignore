@@ -1,0 +1,9 @@
+node_modules/
+dist/
+tsconfig.tsbuildinfo
+.DS_Store
+.env
+.env.*
+.playwright-cli/
+playwright-report/
+test-results/
