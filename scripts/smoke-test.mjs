@@ -4,6 +4,7 @@ import { chromium } from "playwright";
 
 const host = "127.0.0.1";
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+const smokeTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 180000);
 
 function assert(condition, message) {
   if (!condition) {
@@ -38,13 +39,26 @@ async function waitForServer(url) {
 }
 
 async function launchBrowser() {
-  const channel = process.env.PW_CHANNEL ?? "chrome";
-  try {
-    return await chromium.launch({ channel, headless: true });
-  } catch (error) {
-    if (process.env.PW_CHANNEL) throw error;
-    return chromium.launch({ headless: true });
+  const channel = process.env.PW_CHANNEL || (process.env.CI ? "" : "chrome");
+  if (channel) {
+    try {
+      return await chromium.launch({ channel, headless: true });
+    } catch (error) {
+      if (process.env.PW_CHANNEL) throw error;
+    }
   }
+  return chromium.launch({ headless: true });
+}
+
+function withTimeout(promise, timeoutMs, label) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
 }
 
 async function runSmoke(baseUrl) {
@@ -53,6 +67,9 @@ async function runSmoke(baseUrl) {
     serviceWorkers: "block",
     viewport: { width: 1280, height: 820 },
   });
+  page.setDefaultNavigationTimeout(15000);
+  page.setDefaultTimeout(15000);
+
   const consoleErrors = [];
   page.on("console", (message) => {
     if (message.type() === "error") {
@@ -260,7 +277,7 @@ preview.stderr.on("data", (chunk) => process.stderr.write(chunk));
 
 try {
   await waitForServer(baseUrl);
-  await runSmoke(baseUrl);
+  await withTimeout(runSmoke(baseUrl), smokeTimeoutMs, "PocketDesk smoke test");
 } finally {
   preview.kill();
 }
