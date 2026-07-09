@@ -3342,6 +3342,11 @@ function WindowFrame({
     window.addEventListener("pointerup", onPointerUp);
   };
 
+  const handleTitlebarDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest(".window-controls")) return;
+    onToggleMaximize();
+  };
+
   return (
     <article
       aria-label={app.title}
@@ -3351,7 +3356,12 @@ function WindowFrame({
       onPointerDown={onFocus}
       style={frameStyle}
     >
-      <div className="window-titlebar" onContextMenu={onOpenSystemMenu} onPointerDown={startMove}>
+      <div
+        className="window-titlebar"
+        onContextMenu={onOpenSystemMenu}
+        onDoubleClick={handleTitlebarDoubleClick}
+        onPointerDown={startMove}
+      >
         <div className="window-title">
           <AppIconTile accent={app.accent} icon={app.icon} size="tiny" />
           <span>{app.title}</span>
