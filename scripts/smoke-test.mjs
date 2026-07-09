@@ -80,7 +80,6 @@ async function runSmoke(baseUrl) {
   try {
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     await page.evaluate(() => {
-      localStorage.removeItem("pocket-desk-installed-packages-v1");
       localStorage.removeItem("pocket-desk-taskbar-pinned-v1");
       localStorage.removeItem("pocket-desk-windows-v1");
     });
@@ -121,46 +120,39 @@ async function runSmoke(baseUrl) {
     await page.getByRole("button", { name: "시작 메뉴" }).click();
     await startMenu.waitFor({ state: "visible" });
 
-    await startMenu.locator(".start-pinned-grid").getByRole("button", { name: /Setup Center/ }).click();
-    const setup = page.locator('article[aria-label="Setup Center"]');
-    await setup.waitFor({ state: "visible" });
-    await setup.getByRole("button", { name: "설치" }).first().click();
-    await page.waitForFunction(() =>
-      localStorage.getItem("pocket-desk-installed-packages-v1")?.includes("python"),
-    );
-    await setup.getByRole("button", { name: "실행" }).first().click();
-
-    const python = page.locator('article[aria-label="Python Lab"]');
-    await python.waitFor({ state: "visible" });
-    await python.getByRole("button", { name: "Run" }).click();
-    const pythonOutput = await python.locator('[aria-label="Python 실행 결과"]').innerText();
-    assert(pythonOutput.includes("Hello, PocketDesk"), "Python Lab did not print greeting");
-    assert(pythonOutput.includes("14"), "Python Lab did not print arithmetic result");
+    await startMenu.locator(".start-pinned-grid").getByRole("button", { name: /내 PC/ }).click();
+    const thisPc = page.locator('article[aria-label="내 PC"]');
+    await thisPc.waitFor({ state: "visible" });
+    const thisPcText = await thisPc.innerText();
+    assert(thisPcText.includes("Devices and drives"), "This PC did not show drive section");
+    assert(thisPcText.includes("Local Disk (C:)"), "This PC did not show local disk");
+    await thisPc.getByRole("button", { name: "Desktop", exact: true }).click();
+    await page.locator('article[aria-label="File Explorer"]').waitFor({ state: "visible" });
 
     await page.keyboard.press("Control+Alt+R");
     const runDialog = page.locator(".run-dialog");
     await runDialog.waitFor({ state: "visible" });
     await runDialog.getByLabel("Open").fill("calc");
     await runDialog.getByRole("button", { name: "OK" }).click();
-    await page.locator('article[aria-label="Calc"]').waitFor({ state: "visible" });
+    await page.locator('article[aria-label="Calculator"]').waitFor({ state: "visible" });
 
-    await page.locator(".taskbar-app", { hasText: "Files" }).click();
-    const files = page.locator('article[aria-label="Files"]');
+    await page.locator(".taskbar-app", { hasText: "File Explorer" }).click();
+    const files = page.locator('article[aria-label="File Explorer"]');
     await files.waitFor({ state: "visible" });
     await files.locator(".file-list button", { hasText: "web-surf.url" }).click();
     const filePreviewText = await files.locator(".file-preview").innerText();
-    assert(filePreviewText.includes("Open with Web Surf"), "Files app did not show URL association");
+    assert(filePreviewText.includes("Open with Internet"), "File Explorer did not show URL association");
     await files.getByRole("button", { name: "열기" }).click();
-    await page.locator('article[aria-label="Web Surf"]').waitFor({ state: "visible" });
+    await page.locator('article[aria-label="Internet"]').waitFor({ state: "visible" });
     await page.waitForFunction(() => {
-      const browser = document.querySelector('article[aria-label="Web Surf"]');
+      const browser = document.querySelector('article[aria-label="Internet"]');
       const input = browser?.querySelector('input[aria-label="웹 주소 또는 검색어"]');
       return input instanceof HTMLInputElement && input.value.includes("https://example.com");
     });
-    await page.locator(".taskbar-app", { hasText: "Web Surf" }).hover();
+    await page.locator(".taskbar-app", { hasText: "Internet" }).hover();
     const taskbarPreview = page.locator(".taskbar-preview-card");
     await taskbarPreview.waitFor({ state: "visible" });
-    assert((await taskbarPreview.innerText()).includes("Web Surf"), "Taskbar preview did not show Web Surf");
+    assert((await taskbarPreview.innerText()).includes("Internet"), "Taskbar preview did not show Internet");
     await page.getByRole("button", { name: "시스템 트레이 열기" }).click();
     const quickSettings = page.locator(".quick-settings-panel");
     await quickSettings.waitFor({ state: "visible" });
@@ -173,7 +165,7 @@ async function runSmoke(baseUrl) {
     assert((await quickSettings.innerText()).includes("최근 알림 없음"), "Notification center did not clear alerts");
     await quickSettings.getByRole("button", { name: "Settings", exact: true }).click();
     await page.locator('article[aria-label="Settings"]').waitFor({ state: "visible" });
-    await page.locator(".taskbar-app", { hasText: "Files" }).click();
+    await page.locator(".taskbar-app", { hasText: "File Explorer" }).click();
     const fileToTrash = files.locator(".file-list button").first();
     const trashedFileName = await fileToTrash.locator("span").innerText();
     await fileToTrash.click();
@@ -190,7 +182,7 @@ async function runSmoke(baseUrl) {
     await page.waitForTimeout(180);
     assert(!(await recycle.innerText()).includes(trashedFileName), "Recycle Bin still shows restored file");
 
-    await page.locator(".taskbar-app", { hasText: "Files" }).click();
+    await page.locator(".taskbar-app", { hasText: "File Explorer" }).click();
     await files.locator(".file-list button", { hasText: trashedFileName }).click();
     await files.getByRole("button", { name: "삭제" }).click();
     await page.locator(".taskbar-app", { hasText: "Recycle Bin" }).click();
@@ -201,23 +193,23 @@ async function runSmoke(baseUrl) {
     const initialTaskbar = await page
       .locator(".taskbar-app")
       .evaluateAll((items) => items.map((item) => item.textContent?.trim().replace(/\s+/g, " ")));
-    assert(initialTaskbar.some((text) => text?.includes("Files")), "Files pinned taskbar app missing");
+    assert(initialTaskbar.some((text) => text?.includes("File Explorer")), "File Explorer pinned taskbar app missing");
     await page
-      .locator(".taskbar-app", { hasText: "Files" })
+      .locator(".taskbar-app", { hasText: "File Explorer" })
       .dispatchEvent("contextmenu", { bubbles: true, cancelable: true });
     await page.waitForTimeout(180);
     const pinnedAfterUnpin = await page.evaluate(() => localStorage.getItem("pocket-desk-taskbar-pinned-v1"));
     assert(pinnedAfterUnpin && !pinnedAfterUnpin.includes("files"), "Taskbar unpin did not persist");
 
-    const frame = page.locator('article[aria-label="Web Surf"]');
+    await page.locator(".taskbar-app", { hasText: "Internet" }).click();
+    const frame = page.locator('article[aria-label="Internet"]');
     const titlebar = frame.locator(".window-titlebar");
     const box = await titlebar.boundingBox();
-    assert(box, "Web Surf titlebar missing");
+    assert(box, "Internet titlebar missing");
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
-    await page.mouse.move(1, box.y + box.height / 2, { steps: 8 });
-    await page.waitForTimeout(100);
-    assert((await page.locator(".snap-preview").count()) > 0, "Snap preview did not appear");
+    await page.mouse.move(0, box.y + box.height / 2, { steps: 12 });
+    await page.locator(".snap-preview").waitFor({ state: "visible", timeout: 1000 });
     await page.mouse.up();
     await page.waitForTimeout(220);
     const snapped = await frame.boundingBox();

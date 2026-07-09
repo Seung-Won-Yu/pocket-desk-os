@@ -4,7 +4,6 @@ import {
   Bomb,
   Calculator,
   Check,
-  Code2,
   Download,
   Eraser,
   ExternalLink,
@@ -19,7 +18,6 @@ import {
   Maximize2,
   Minus,
   Monitor,
-  PackageOpen,
   Paintbrush,
   Palette,
   Pencil,
@@ -45,16 +43,14 @@ import {
 import { ChangeEvent, FormEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type AppId =
+  | "thispc"
   | "browser"
   | "minesweeper"
   | "calculator"
   | "paint"
   | "notepad"
   | "files"
-  | "setup"
   | "recycle"
-  | "python"
-  | "code"
   | "settings"
   | "about";
 
@@ -241,24 +237,10 @@ type MinesDifficulty = {
   mines: number;
   rows: number;
 };
-type InstallableAppId = "python" | "code";
-type InstallablePackage = {
-  appId: InstallableAppId;
-  detail: string;
-  downloadName: string;
-  officialUrl: string;
-  sizeLabel: string;
-  summary: string;
-  title: string;
-};
 type RunCommandResolution =
   | {
       appId: AppId;
       kind: "app";
-    }
-  | {
-      appId: InstallableAppId;
-      kind: "missing-package";
     }
   | {
       kind: "browser";
@@ -268,13 +250,6 @@ type RunCommandResolution =
       kind: "unknown";
       value: string;
     };
-type CodeStudioFile = {
-  content: string;
-  id: string;
-  language: string;
-  name: string;
-};
-
 type AppContentProps = {
   activeCanvasId: string;
   activeCanvasOpenKey: number;
@@ -289,8 +264,6 @@ type AppContentProps = {
   emptyRecycleBin: () => void;
   exportVfsZip: () => void;
   importVfsZip: (file: File) => Promise<void>;
-  installPackage: (appId: InstallableAppId) => void;
-  installedPackages: InstallableAppId[];
   openApp: (appId: AppId) => void;
   openVfsEntry: (item: DesktopItem) => void;
   permanentlyDeleteVfsEntry: (itemId: string) => void;
@@ -306,7 +279,6 @@ type AppContentProps = {
   setTheme: (theme: ThemeName) => void;
   soundEnabled: boolean;
   theme: ThemeName;
-  uninstallPackage: (appId: InstallableAppId) => void;
   wallpaper: WallpaperName;
 };
 
@@ -317,7 +289,6 @@ type AppDefinition = {
   icon: LucideIcon;
   accent: string;
   defaultSize: { width: number; height: number };
-  installable?: boolean;
   component: (props: AppContentProps) => JSX.Element;
 };
 
@@ -346,8 +317,6 @@ const BROWSER_HISTORY_KEY = "pocket-desk-browser-history-v1";
 const BROWSER_SEARCH_ENGINE_KEY = "pocket-desk-browser-search-engine-v1";
 const MINES_BEST_RECORDS_KEY = "pocket-desk-mines-best-records-v1";
 const SOUND_ENABLED_KEY = "pocket-desk-sound-enabled-v1";
-const INSTALLED_PACKAGES_KEY = "pocket-desk-installed-packages-v1";
-const CODE_STUDIO_FILES_KEY = "pocket-desk-code-studio-files-v1";
 const TASKBAR_PINNED_APPS_KEY = "pocket-desk-taskbar-pinned-v1";
 const SNAP_EDGE_SIZE = 24;
 const SNAP_GUTTER = 10;
@@ -475,71 +444,55 @@ function getWallpaperPreviewStyle(wallpaper: WallpaperName): React.CSSProperties
   };
 }
 
-const installablePackages: InstallablePackage[] = [
-  {
-    appId: "python",
-    detail: "브라우저 샌드박스에서 돌아가는 가벼운 Python 콘솔입니다.",
-    downloadName: "python-lab-web.pkg",
-    officialUrl: "https://www.python.org/downloads/",
-    sizeLabel: "18 MB",
-    summary: "Python 문법으로 짧은 스크립트를 실행",
-    title: "Python Lab",
-  },
-  {
-    appId: "code",
-    detail: "파일 탭, 편집기, 실행 패널을 갖춘 VS Code 감성의 웹 에디터입니다.",
-    downloadName: "code-studio-web.pkg",
-    officialUrl: "https://code.visualstudio.com/Download",
-    sizeLabel: "24 MB",
-    summary: "코드 파일을 편집하고 Python 샘플 실행",
-    title: "Code Studio",
-  },
-];
-
 const appSearchKeywords: Record<AppId, string[]> = {
-  browser: ["internet", "web", "surf", "인터넷", "웹", "브라우저", "검색", "google", "url"],
+  thispc: ["this pc", "my computer", "computer", "pc", "내 pc", "내컴퓨터", "컴퓨터", "드라이브", "disk"],
+  browser: ["internet", "web", "edge", "인터넷", "웹", "브라우저", "검색", "google", "url"],
   minesweeper: ["mine", "field", "mines", "지뢰", "지뢰찾기", "게임", "폭탄"],
   calculator: ["calc", "calculator", "계산", "계산기", "수학", "사칙연산"],
   paint: ["paint", "sketch", "draw", "그림", "그림판", "스케치", "드로잉", "캔버스"],
   notepad: ["note", "notes", "memo", "txt", "메모", "메모장", "문서", "글쓰기"],
   files: ["file", "files", "folder", "explorer", "파일", "폴더", "탐색기", "desktop"],
-  setup: ["setup", "install", "installer", "download", "store", "설치", "다운로드", "스토어", "패키지"],
   recycle: ["recycle", "trash", "bin", "deleted", "휴지통", "삭제", "복원", "비우기"],
-  python: ["python", "py", "terminal", "console", "파이썬", "터미널", "콘솔", "코딩"],
-  code: ["code", "editor", "vscode", "vs code", "visual studio", "코드", "에디터", "개발"],
   settings: ["setting", "settings", "control", "theme", "wallpaper", "설정", "테마", "배경"],
   about: ["about", "info", "help", "정보", "도움말", "pocketdesk"],
 };
 
 const runCommandAliases: Partial<Record<AppId, string[]>> = {
   about: ["winver"],
+  thispc: ["computer", "this pc", "my computer", "내 pc", "내컴퓨터"],
   browser: ["edge", "iexplore", "msedge", "chrome", "www"],
   calculator: ["calc.exe"],
-  code: ["code.exe", "vscode", "vscode.exe"],
   files: ["explorer", "explorer.exe"],
   notepad: ["notepad.exe"],
   paint: ["mspaint", "mspaint.exe"],
-  python: ["py", "python.exe", "py.exe"],
   recycle: ["recycle bin", "trash", "bin"],
   settings: ["control", "control.exe", "control panel"],
-  setup: ["appwiz.cpl", "store"],
 };
 
 const runCommandSuggestions = [
-  { command: "calc", label: "calc" },
-  { command: "mspaint", label: "mspaint" },
+  { command: "computer", label: "computer" },
   { command: "explorer", label: "explorer" },
+  { command: "calc", label: "calc" },
+  { command: "notepad", label: "notepad" },
+  { command: "mspaint", label: "mspaint" },
   { command: "recycle", label: "recycle" },
-  { command: "python", label: "python" },
-  { command: "code", label: "code" },
   { command: "https://example.com", label: "url" },
 ];
 
 const appCatalog: AppDefinition[] = [
   {
+    id: "thispc",
+    title: "내 PC",
+    subtitle: "드라이브와 기본 폴더",
+    icon: Monitor,
+    accent: "#8fc9ff",
+    defaultSize: { width: 780, height: 560 },
+    component: ThisPcApp,
+  },
+  {
     id: "browser",
-    title: "Web Surf",
-    subtitle: "주소창과 iframe 기반 미니 브라우저",
+    title: "Internet",
+    subtitle: "웹 검색 및 주소 열기",
     icon: Globe2,
     accent: "#43b0f1",
     defaultSize: { width: 860, height: 560 },
@@ -547,7 +500,7 @@ const appCatalog: AppDefinition[] = [
   },
   {
     id: "minesweeper",
-    title: "Minefield",
+    title: "Minesweeper",
     subtitle: "난이도별 지뢰찾기",
     icon: Bomb,
     accent: "#f6b44b",
@@ -556,7 +509,7 @@ const appCatalog: AppDefinition[] = [
   },
   {
     id: "calculator",
-    title: "Calc",
+    title: "Calculator",
     subtitle: "키보드와 공학 모드 계산기",
     icon: Calculator,
     accent: "#7bc96f",
@@ -565,7 +518,7 @@ const appCatalog: AppDefinition[] = [
   },
   {
     id: "paint",
-    title: "Sketch Pad",
+    title: "Paint",
     subtitle: "캔버스 그림판",
     icon: Paintbrush,
     accent: "#ef6f6c",
@@ -574,7 +527,7 @@ const appCatalog: AppDefinition[] = [
   },
   {
     id: "notepad",
-    title: "Notes",
+    title: "Notepad",
     subtitle: "로컬 저장 메모장",
     icon: FileText,
     accent: "#f2d16b",
@@ -583,21 +536,12 @@ const appCatalog: AppDefinition[] = [
   },
   {
     id: "files",
-    title: "Files",
+    title: "File Explorer",
     subtitle: "가상 파일 탐색기",
     icon: Folder,
     accent: "#62c1a0",
     defaultSize: { width: 720, height: 520 },
     component: FilesApp,
-  },
-  {
-    id: "setup",
-    title: "Setup Center",
-    subtitle: "웹 OS용 패키지 설치",
-    icon: PackageOpen,
-    accent: "#78d6ff",
-    defaultSize: { width: 760, height: 540 },
-    component: SetupCenterApp,
   },
   {
     id: "recycle",
@@ -607,26 +551,6 @@ const appCatalog: AppDefinition[] = [
     accent: "#9bb7c9",
     defaultSize: { width: 720, height: 520 },
     component: RecycleBinApp,
-  },
-  {
-    id: "python",
-    title: "Python Lab",
-    subtitle: "브라우저 Python 콘솔",
-    icon: SquareTerminal,
-    accent: "#ffd166",
-    defaultSize: { width: 760, height: 540 },
-    installable: true,
-    component: PythonLabApp,
-  },
-  {
-    id: "code",
-    title: "Code Studio",
-    subtitle: "가벼운 웹 코드 에디터",
-    icon: Code2,
-    accent: "#68a7ff",
-    defaultSize: { width: 900, height: 600 },
-    installable: true,
-    component: CodeStudioApp,
   },
   {
     id: "settings",
@@ -639,7 +563,7 @@ const appCatalog: AppDefinition[] = [
   },
   {
     id: "about",
-    title: "About",
+    title: "About Windows",
     subtitle: "프로토타입 정보",
     icon: Info,
     accent: "#86d9e8",
@@ -650,17 +574,16 @@ const appCatalog: AppDefinition[] = [
 
 const appsById = new Map(appCatalog.map((app) => [app.id, app]));
 const desktopAppIds: AppId[] = [
-  "browser",
-  "minesweeper",
-  "calculator",
-  "paint",
-  "notepad",
-  "files",
-  "setup",
+  "thispc",
   "recycle",
+  "files",
+  "notepad",
+  "paint",
+  "calculator",
+  "browser",
 ];
 const desktopApps = desktopAppIds.map((appId) => getApp(appId));
-const defaultPinnedAppIds: AppId[] = ["browser", "files", "setup"];
+const defaultPinnedAppIds: AppId[] = ["browser", "files", "settings"];
 
 function getApp(appId: AppId) {
   const app = appsById.get(appId);
@@ -668,28 +591,6 @@ function getApp(appId: AppId) {
     throw new Error(`Unknown app: ${appId}`);
   }
   return app;
-}
-
-function getAvailableApps(installedPackages: InstallableAppId[]) {
-  return appCatalog.filter((app) => !app.installable || installedPackages.includes(app.id as InstallableAppId));
-}
-
-function getInstallablePackage(appId: InstallableAppId) {
-  return installablePackages.find((item) => item.appId === appId) ?? installablePackages[0];
-}
-
-function isInstallableAppId(value: unknown): value is InstallableAppId {
-  return value === "python" || value === "code";
-}
-
-function loadInstalledPackages(): InstallableAppId[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(INSTALLED_PACKAGES_KEY) ?? "[]");
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isInstallableAppId).filter((value, index, values) => values.indexOf(value) === index);
-  } catch {
-    return [];
-  }
 }
 
 function isAppId(value: unknown): value is AppId {
@@ -733,9 +634,6 @@ export default function App() {
   const [activeCanvasOpenKey, setActiveCanvasOpenKey] = useState(0);
   const [activeNoteId, setActiveNoteId] = useState(VFS_PRIMARY_NOTE_ID);
   const [altTabWindowId, setAltTabWindowId] = useState<string | null>(null);
-  const [installedPackages, setInstalledPackages] = useState<InstallableAppId[]>(() =>
-    loadInstalledPackages(),
-  );
   const [pinnedAppIds, setPinnedAppIds] = useState<AppId[]>(() => loadPinnedTaskbarApps());
   const [snapPreview, setSnapPreview] = useState<SnapPreviewState | null>(null);
   const [notificationHistory, setNotificationHistory] = useState<ToastMessage[]>([]);
@@ -785,10 +683,6 @@ export default function App() {
     soundEnabledRef.current = soundEnabled;
     localStorage.setItem(SOUND_ENABLED_KEY, soundEnabled ? "on" : "off");
   }, [soundEnabled]);
-
-  useEffect(() => {
-    localStorage.setItem(INSTALLED_PACKAGES_KEY, JSON.stringify(installedPackages));
-  }, [installedPackages]);
 
   useEffect(() => {
     localStorage.setItem(TASKBAR_PINNED_APPS_KEY, JSON.stringify(pinnedAppIds));
@@ -990,37 +884,6 @@ export default function App() {
     setQuery("");
   };
 
-  const installPackage = (appId: InstallableAppId) => {
-    const targetPackage = getInstallablePackage(appId);
-    const storedPackages = loadInstalledPackages();
-    if (storedPackages.includes(appId)) return;
-
-    const nextPackages = [...storedPackages, appId];
-    localStorage.setItem(INSTALLED_PACKAGES_KEY, JSON.stringify(nextPackages));
-    setInstalledPackages(nextPackages);
-    playSound("success");
-    notify({
-      detail: `${targetPackage.downloadName} 설치가 완료되어 시작 메뉴에 추가되었습니다.`,
-      title: `${targetPackage.title} 설치됨`,
-      tone: "success",
-    });
-  };
-
-  const uninstallPackage = (appId: InstallableAppId) => {
-    const targetPackage = getInstallablePackage(appId);
-    const nextPackages = loadInstalledPackages().filter((item) => item !== appId);
-    localStorage.setItem(INSTALLED_PACKAGES_KEY, JSON.stringify(nextPackages));
-    setInstalledPackages(nextPackages);
-    setPinnedAppIds((current) => current.filter((item) => item !== appId));
-    setWindows((current) => current.filter((item) => item.appId !== appId));
-    playSound("close");
-    notify({
-      detail: "앱 데이터는 브라우저 로컬 저장소에 남아 있습니다.",
-      title: `${targetPackage.title} 제거됨`,
-      tone: "success",
-    });
-  };
-
   const togglePinnedApp = (appId: AppId) => {
     const app = getApp(appId);
     const wasPinned = pinnedAppIds.includes(appId);
@@ -1099,7 +962,7 @@ export default function App() {
     ]);
     setDesktopMenu(null);
     notify({
-      detail: kind === "folder" ? "Files 앱의 Desktop 목록에도 추가됩니다." : "Notes에서 열어 작성할 수 있습니다.",
+      detail: kind === "folder" ? "File Explorer의 Desktop 목록에도 추가됩니다." : "Notepad에서 열어 작성할 수 있습니다.",
       title: `${name} 생성됨`,
       tone: "success",
     });
@@ -1147,7 +1010,7 @@ export default function App() {
     setActiveCanvasId(id);
     setActiveCanvasOpenKey((current) => current + 1);
     notify({
-      detail: "Files 앱에서 다시 열어 편집할 수 있습니다.",
+      detail: "File Explorer에서 다시 열어 편집할 수 있습니다.",
       title: `${name} 저장됨`,
       tone: "success",
     });
@@ -1451,7 +1314,7 @@ export default function App() {
     updateWindow(id, getWindowSnapPatch(zone));
   };
 
-  const availableApps = useMemo(() => getAvailableApps(installedPackages), [installedPackages]);
+  const availableApps = appCatalog;
   const startSearchResults = useMemo(
     () => buildStartSearchResults(query, activeDesktopItems, availableApps),
     [activeDesktopItems, availableApps, query],
@@ -1534,7 +1397,7 @@ export default function App() {
   };
 
   const executeRunCommand = (command: string) => {
-    const resolution = resolveRunCommand(command, availableApps);
+    const resolution = resolveRunCommand(command);
 
     if (resolution.kind === "unknown") {
       playSound("close");
@@ -1547,22 +1410,12 @@ export default function App() {
 
     setRunOpen(false);
 
-    if (resolution.kind === "missing-package") {
-      const targetPackage = getInstallablePackage(resolution.appId);
-      openApp("setup");
-      notify({
-        detail: `${targetPackage.downloadName} 설치 후 시작 메뉴와 Run에서 실행할 수 있습니다.`,
-        title: `${targetPackage.title} 설치 필요`,
-      });
-      return;
-    }
-
     if (resolution.kind === "browser") {
       setBrowserLaunchRequest({ id: crypto.randomUUID(), value: resolution.value });
       openApp("browser");
       notify({
         detail: resolution.value,
-        title: "Web Surf에서 열기",
+        title: "Internet에서 열기",
         tone: "success",
       });
       return;
@@ -1770,8 +1623,6 @@ export default function App() {
                 deleteVfsEntry={deleteVfsEntry}
                 emptyRecycleBin={emptyRecycleBin}
                 exportVfsZip={exportVfsZip}
-                installPackage={installPackage}
-                installedPackages={installedPackages}
                 importVfsZip={importVfsZip}
                 openApp={openApp}
                 openVfsEntry={openVfsEntry}
@@ -1788,7 +1639,6 @@ export default function App() {
                 setWallpaper={changeWallpaper}
                 soundEnabled={soundEnabled}
                 theme={theme}
-                uninstallPackage={uninstallPackage}
                 wallpaper={wallpaper}
               />
             </WindowFrame>
@@ -1906,7 +1756,7 @@ export default function App() {
 }
 
 function createDefaultWindows(): WindowInstance[] {
-  return [makeWindow("browser", 190, 44, 11), makeWindow("minesweeper", 930, 82, 12)];
+  return [];
 }
 
 function makeWindow(appId: AppId, x: number, y: number, z: number): WindowInstance {
@@ -2546,8 +2396,8 @@ function getVfsEntryDetail(item: DesktopItem) {
   }
   if (item.kind === "canvas") {
     return item.content
-      ? "저장된 PNG 그림입니다. Sketch Pad에서 다시 열 수 있습니다."
-      : "Sketch Pad에서 새 그림을 그릴 수 있습니다.";
+      ? "저장된 PNG 그림입니다. Paint에서 다시 열 수 있습니다."
+      : "Paint에서 새 그림을 그릴 수 있습니다.";
   }
   if (item.kind === "game") {
     return `${association.appTitle}로 실행되는 게임 파일입니다.`;
@@ -2656,15 +2506,14 @@ function buildStartSearchResults(
 
 function getStartPinnedApps(apps: AppDefinition[]) {
   const priority: AppId[] = [
-    "browser",
+    "thispc",
     "files",
     "recycle",
-    "setup",
-    "python",
-    "code",
     "notepad",
     "paint",
     "calculator",
+    "browser",
+    "minesweeper",
     "settings",
   ];
   const appMap = new Map(apps.map((app) => [app.id, app]));
@@ -2679,22 +2528,18 @@ function getStartPinnedApps(apps: AppDefinition[]) {
   ];
 }
 
-function resolveRunCommand(command: string, availableApps: AppDefinition[]): RunCommandResolution {
+function resolveRunCommand(command: string): RunCommandResolution {
   const trimmed = command.trim();
   if (!trimmed) {
     return { kind: "unknown", value: "" };
   }
 
   const normalizedCommand = normalizeRunCommand(trimmed);
-  const availableAppIds = new Set(availableApps.map((app) => app.id));
   const matchedApp = appCatalog.find((app) =>
     getRunCommandCandidates(app).some((candidate) => normalizeRunCommand(candidate) === normalizedCommand),
   );
 
   if (matchedApp) {
-    if (matchedApp.installable && !availableAppIds.has(matchedApp.id)) {
-      return { appId: matchedApp.id as InstallableAppId, kind: "missing-package" };
-    }
     return { appId: matchedApp.id, kind: "app" };
   }
 
@@ -4309,7 +4154,7 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
   const clearHistory = () => {
     setHistory([]);
     notify({
-      detail: "Web Surf 방문 기록을 비웠습니다.",
+      detail: "Internet 방문 기록을 비웠습니다.",
       title: "방문 기록 삭제됨",
       tone: "success",
     });
@@ -4367,7 +4212,7 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
           onLoad={() => setNotice("로드 완료. iframe 차단 사이트는 빈 화면으로 보일 수 있습니다.")}
           sandbox="allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-scripts"
           src={url}
-          title="Web Surf browser"
+          title="Internet browser"
         />
       ) : (
         <BrowserHome
@@ -4405,7 +4250,7 @@ function BrowserHome({
     <div className="browser-home">
       <section className="browser-home-search">
         <Globe2 aria-hidden="true" size={30} />
-        <h2>Web Surf</h2>
+        <h2>Internet</h2>
         <p>{searchEngine}로 검색하거나 주소를 입력하세요.</p>
         <div className="browser-quick-links" aria-label="빠른 링크">
           {quickLinks.map((link) => (
@@ -5412,12 +5257,144 @@ function getPocketDeskSoundSteps(effect: SoundEffectName): SoundStep[] {
   return effects[effect];
 }
 
+function ThisPcApp({
+  desktopItems,
+  openApp,
+  trashedItems,
+}: AppContentProps) {
+  const folderCount = desktopItems.filter((item) => item.kind === "folder").length;
+  const documentCount = desktopItems.filter((item) => item.kind === "note").length;
+  const imageCount = desktopItems.filter((item) => item.kind === "canvas").length;
+  const totalItems = desktopItems.length;
+
+  const folders = [
+    {
+      detail: `${desktopItems.filter((item) => item.showOnDesktop).length}개 항목`,
+      icon: Monitor,
+      label: "Desktop",
+      open: () => openApp("files"),
+    },
+    {
+      detail: `${documentCount}개 문서`,
+      icon: FileText,
+      label: "Documents",
+      open: () => openApp("files"),
+    },
+    {
+      detail: `${imageCount}개 이미지`,
+      icon: Paintbrush,
+      label: "Pictures",
+      open: () => openApp("files"),
+    },
+    {
+      detail: "브라우저 다운로드 위치",
+      icon: Download,
+      label: "Downloads",
+      open: () => openApp("files"),
+    },
+  ];
+  const drives = [
+    { free: "38.4 GB free of 64.0 GB", icon: Monitor, label: "Local Disk (C:)", usage: 40 },
+    {
+      free: `${totalItems} files indexed`,
+      icon: Folder,
+      label: "PocketDesk (D:)",
+      usage: clamp(totalItems * 8, 14, 82),
+    },
+  ];
+
+  return (
+    <div className="this-pc-app app-fill">
+      <aside className="this-pc-sidebar">
+        <strong>Quick access</strong>
+        <button onClick={() => openApp("files")} type="button">
+          <Folder aria-hidden="true" size={16} />
+          Desktop
+        </button>
+        <button onClick={() => openApp("recycle")} type="button">
+          <Trash2 aria-hidden="true" size={16} />
+          Recycle Bin
+        </button>
+        <button onClick={() => openApp("settings")} type="button">
+          <Settings aria-hidden="true" size={16} />
+          Settings
+        </button>
+      </aside>
+      <section className="this-pc-main">
+        <div className="file-address this-pc-address">
+          <House aria-hidden="true" size={15} />
+          <span>Home</span>
+          <span aria-hidden="true">›</span>
+          <strong>내 PC</strong>
+        </div>
+        <section className="this-pc-section">
+          <h2>Folders</h2>
+          <div className="this-pc-folder-grid">
+            {folders.map((folder) => {
+              const FolderIcon = folder.icon;
+              return (
+                <button key={folder.label} onClick={folder.open} type="button">
+                  <FolderIcon aria-hidden="true" size={24} />
+                  <span>
+                    <strong>{folder.label}</strong>
+                    <small>{folder.detail}</small>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+        <section className="this-pc-section">
+          <h2>Devices and drives</h2>
+          <div className="this-pc-drive-list">
+            {drives.map((drive) => {
+              const DriveIcon = drive.icon;
+              return (
+                <button key={drive.label} onClick={() => openApp("files")} type="button">
+                  <DriveIcon aria-hidden="true" size={26} />
+                  <span>
+                    <strong>{drive.label}</strong>
+                    <span className="drive-meter" aria-hidden="true">
+                      <span style={{ width: `${drive.usage}%` }} />
+                    </span>
+                    <small>{drive.free}</small>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+        <section className="this-pc-section this-pc-system">
+          <h2>System</h2>
+          <div>
+            <span>
+              <strong>Device name</strong>
+              <small>PocketDesk-PC</small>
+            </span>
+            <span>
+              <strong>Items</strong>
+              <small>
+                {totalItems} active · {trashedItems.length} in Recycle Bin
+              </small>
+            </span>
+            <span>
+              <strong>Folders</strong>
+              <small>{folderCount} indexed folders</small>
+            </span>
+          </div>
+        </section>
+      </section>
+    </div>
+  );
+}
+
 function FilesApp({
   deleteVfsEntry,
   desktopItems,
   exportVfsZip,
   importVfsZip,
   notify,
+  openApp,
   openVfsEntry,
   renameVfsEntry,
 }: AppContentProps) {
@@ -5505,6 +5482,10 @@ function FilesApp({
   return (
     <div className="files-app app-fill">
       <aside>
+        <button onClick={() => openApp("thispc")} type="button">
+          <Monitor aria-hidden="true" size={16} />
+          내 PC
+        </button>
         <button className="is-selected" type="button">
           <Folder aria-hidden="true" size={16} />
           Desktop
@@ -5750,7 +5731,7 @@ function RecycleBinApp({
             <div className="recycle-empty">
               <Trash2 aria-hidden="true" size={30} />
               <strong>휴지통이 비어 있습니다</strong>
-              <small>Files에서 삭제한 항목은 여기서 복원하거나 영구 삭제할 수 있습니다.</small>
+              <small>File Explorer에서 삭제한 항목은 여기서 복원하거나 영구 삭제할 수 있습니다.</small>
             </div>
           )}
         </div>
@@ -5806,432 +5787,6 @@ function RecycleBinApp({
       </section>
     </div>
   );
-}
-
-function SetupCenterApp({
-  installPackage,
-  installedPackages,
-  openApp,
-  uninstallPackage,
-}: AppContentProps) {
-  const [installingAppId, setInstallingAppId] = useState<InstallableAppId | null>(null);
-  const [progress, setProgress] = useState(0);
-
-  useEffect(() => {
-    if (!installingAppId) return;
-
-    setProgress(8);
-    const timer = window.setInterval(() => {
-      setProgress((current) => {
-        const nextProgress = Math.min(current + 14, 100);
-        if (nextProgress >= 100) {
-          window.clearInterval(timer);
-          window.setTimeout(() => {
-            installPackage(installingAppId);
-            setInstallingAppId(null);
-            setProgress(0);
-          }, 180);
-        }
-        return nextProgress;
-      });
-    }, 120);
-
-    return () => window.clearInterval(timer);
-  }, [installPackage, installingAppId]);
-
-  return (
-    <div className="setup-app app-fill">
-      <div className="setup-hero">
-        <AppIconTile accent="#78d6ff" icon={PackageOpen} size="large" />
-        <div>
-          <h2>Setup Center</h2>
-          <p>웹 패키지를 내려받아 PocketDesk 시작 메뉴에 설치합니다.</p>
-        </div>
-      </div>
-      <div className="setup-package-list">
-        {installablePackages.map((item) => {
-          const app = getApp(item.appId);
-          const installed = installedPackages.includes(item.appId);
-          const installing = installingAppId === item.appId;
-          return (
-            <section className="setup-package" key={item.appId}>
-              <AppIconTile accent={app.accent} icon={app.icon} size="large" />
-              <div className="setup-package-main">
-                <div className="setup-package-title">
-                  <div>
-                    <h3>{item.title}</h3>
-                    <small>{item.summary}</small>
-                  </div>
-                  <span>{installed ? "Installed" : item.sizeLabel}</span>
-                </div>
-                <p>{item.detail}</p>
-                <div className="setup-package-meta">
-                  <span>{item.downloadName}</span>
-                  <a href={item.officialUrl} rel="noreferrer" target="_blank">
-                    <ExternalLink aria-hidden="true" size={14} />
-                    공식 페이지
-                  </a>
-                </div>
-                {installing && (
-                  <div className="setup-progress" role="progressbar" aria-valuemax={100} aria-valuemin={0} aria-valuenow={progress}>
-                    <span style={{ width: `${progress}%` }} />
-                  </div>
-                )}
-              </div>
-              <div className="setup-package-actions">
-                {installed ? (
-                  <>
-                    <button onClick={() => openApp(item.appId)} type="button">
-                      <Play aria-hidden="true" size={15} />
-                      실행
-                    </button>
-                    <button onClick={() => uninstallPackage(item.appId)} type="button">
-                      <Trash2 aria-hidden="true" size={15} />
-                      제거
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    aria-busy={installing}
-                    disabled={installingAppId !== null}
-                    onClick={() => setInstallingAppId(item.appId)}
-                    type="button"
-                  >
-                    <Download aria-hidden="true" size={15} />
-                    {installing ? "설치 중" : "설치"}
-                  </button>
-                )}
-              </div>
-            </section>
-          );
-        })}
-      </div>
-      <p className="setup-footnote">
-        Windows용 설치 파일은 새 탭에서 받을 수 있지만, PocketDesk 안에서는 웹 앱 패키지만 실행됩니다.
-      </p>
-    </div>
-  );
-}
-
-const defaultPythonCode = `name = "PocketDesk"
-print("Hello, " + name)
-print(2 + 3 * 4)`;
-
-function PythonLabApp({ notify }: AppContentProps) {
-  const [code, setCode] = useState(defaultPythonCode);
-  const [output, setOutput] = useState("Python Lab ready");
-  const samples = [
-    { label: "Hello", code: defaultPythonCode },
-    { label: "Math", code: "x = 12\nprint(x * 8)\nprint(144 / 3)" },
-    { label: "Text", code: 'first = "web"\nsecond = "os"\nprint(first + " " + second)' },
-  ];
-
-  const run = () => {
-    const result = runTinyPython(code);
-    setOutput(result.output);
-    notify({
-      detail: result.ok ? "Python Lab 콘솔에 결과를 출력했습니다." : "지원하지 않는 구문이 있습니다.",
-      title: result.ok ? "스크립트 실행 완료" : "스크립트 실행 실패",
-      tone: result.ok ? "success" : "info",
-    });
-  };
-
-  return (
-    <div className="python-lab app-fill">
-      <div className="app-toolbar">
-        <span className="tool-title">
-          <SquareTerminal aria-hidden="true" size={16} />
-          Python Lab
-        </span>
-        <div className="sample-actions">
-          {samples.map((sample) => (
-            <button key={sample.label} onClick={() => setCode(sample.code)} type="button">
-              {sample.label}
-            </button>
-          ))}
-        </div>
-        <button onClick={run} type="button">
-          <Play aria-hidden="true" size={16} />
-          Run
-        </button>
-      </div>
-      <div className="python-workspace">
-        <textarea
-          aria-label="Python 코드"
-          onChange={(event) => setCode(event.target.value)}
-          spellCheck={false}
-          value={code}
-        />
-        <pre aria-label="Python 실행 결과">{output}</pre>
-      </div>
-    </div>
-  );
-}
-
-function CodeStudioApp({ notify }: AppContentProps) {
-  const [files, setFiles] = useState<CodeStudioFile[]>(() => loadCodeStudioFiles());
-  const [activeFileId, setActiveFileId] = useState(files[0]?.id ?? "main.py");
-  const [terminal, setTerminal] = useState("Code Studio ready");
-  const activeFile = files.find((file) => file.id === activeFileId) ?? files[0];
-
-  useEffect(() => {
-    localStorage.setItem(CODE_STUDIO_FILES_KEY, JSON.stringify(files));
-  }, [files]);
-
-  const updateActiveFile = (content: string) => {
-    setFiles((current) =>
-      current.map((file) => (file.id === activeFile?.id ? { ...file, content } : file)),
-    );
-  };
-
-  const runActiveFile = () => {
-    if (!activeFile) return;
-
-    if (activeFile.language === "python") {
-      const result = runTinyPython(activeFile.content);
-      setTerminal(result.output);
-      notify({
-        detail: `${activeFile.name} 실행 결과를 터미널에 출력했습니다.`,
-        title: result.ok ? "Code Studio 실행 완료" : "Code Studio 실행 실패",
-        tone: result.ok ? "success" : "info",
-      });
-      return;
-    }
-
-    if (activeFile.language === "html") {
-      setTerminal("HTML Preview updated");
-      notify({
-        detail: `${activeFile.name} 미리보기를 갱신했습니다.`,
-        title: "미리보기 갱신",
-        tone: "success",
-      });
-      return;
-    }
-
-    setTerminal(`${activeFile.name} saved`);
-  };
-
-  return (
-    <div className="code-studio app-fill">
-      <aside className="code-sidebar">
-        <div className="code-sidebar-title">
-          <Code2 aria-hidden="true" size={16} />
-          Explorer
-        </div>
-        {files.map((file) => (
-          <button
-            className={file.id === activeFile?.id ? "is-selected" : ""}
-            key={file.id}
-            onClick={() => setActiveFileId(file.id)}
-            type="button"
-          >
-            <FileText aria-hidden="true" size={15} />
-            {file.name}
-          </button>
-        ))}
-      </aside>
-      <section className="code-main">
-        <div className="code-tabs">
-          {files.map((file) => (
-            <button
-              className={file.id === activeFile?.id ? "is-selected" : ""}
-              key={file.id}
-              onClick={() => setActiveFileId(file.id)}
-              type="button"
-            >
-              {file.name}
-            </button>
-          ))}
-          <button className="code-run" onClick={runActiveFile} type="button">
-            <Play aria-hidden="true" size={15} />
-            Run
-          </button>
-        </div>
-        <div className="code-editor-layout">
-          <textarea
-            aria-label="코드 편집기"
-            onChange={(event) => updateActiveFile(event.target.value)}
-            spellCheck={false}
-            value={activeFile?.content ?? ""}
-          />
-          <div className="code-preview">
-            <strong>{activeFile?.language === "html" ? "Preview" : "Terminal"}</strong>
-            {activeFile?.language === "html" ? (
-              <iframe srcDoc={activeFile.content} title="HTML preview" />
-            ) : (
-              <pre>{terminal}</pre>
-            )}
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-type PocketPythonValue = number | string;
-
-function runTinyPython(code: string): { ok: boolean; output: string } {
-  const variables: Record<string, PocketPythonValue> = {};
-  const output: string[] = [];
-  const lines = code.replace(/\r\n/g, "\n").split("\n");
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index].trim();
-    if (!line || line.startsWith("#")) continue;
-
-    try {
-      const assignment = /^([A-Za-z_]\w*)\s*=\s*(.+)$/.exec(line);
-      if (assignment) {
-        variables[assignment[1]] = evaluatePocketPythonExpression(assignment[2], variables);
-        continue;
-      }
-
-      const printCall = /^print\((.*)\)$/.exec(line);
-      if (printCall) {
-        output.push(String(evaluatePocketPythonExpression(printCall[1], variables)));
-        continue;
-      }
-
-      output.push(String(evaluatePocketPythonExpression(line, variables)));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "실행할 수 없습니다.";
-      return { ok: false, output: `Line ${index + 1}: ${message}` };
-    }
-  }
-
-  return { ok: true, output: output.join("\n") || "(no output)" };
-}
-
-function evaluatePocketPythonExpression(
-  expression: string,
-  variables: Record<string, PocketPythonValue>,
-): PocketPythonValue {
-  const parts = splitPythonConcatExpression(expression);
-  if (parts.length > 1) {
-    const values = parts.map((part) => evaluatePocketPythonAtom(part, variables));
-    if (values.some((value) => typeof value === "string")) {
-      return values.map(String).join("");
-    }
-    return (values as number[]).reduce((total, value) => total + value, 0);
-  }
-
-  return evaluatePocketPythonAtom(expression, variables);
-}
-
-function evaluatePocketPythonAtom(
-  expression: string,
-  variables: Record<string, PocketPythonValue>,
-): PocketPythonValue {
-  const trimmed = expression.trim();
-  const quoted =
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"));
-
-  if (quoted) {
-    return trimmed
-      .slice(1, -1)
-      .replace(/\\n/g, "\n")
-      .replace(/\\"/g, '"')
-      .replace(/\\'/g, "'");
-  }
-
-  if (/^[A-Za-z_]\w*$/.test(trimmed)) {
-    if (trimmed in variables) return variables[trimmed];
-    throw new Error(`${trimmed} 변수가 없습니다.`);
-  }
-
-  const substituted = trimmed.replace(/[A-Za-z_]\w*/g, (token) => {
-    const value = variables[token];
-    if (typeof value === "number") return String(value);
-    throw new Error(`${token} 숫자 변수가 없습니다.`);
-  });
-
-  if (/^-?\d+(?:\.\d+)?(?:\s*[+\-*/]\s*-?\d+(?:\.\d+)?)*$/.test(substituted)) {
-    const result = evaluateExpression(substituted);
-    if (!Number.isFinite(result)) throw new Error("숫자식을 계산할 수 없습니다.");
-    return result;
-  }
-
-  throw new Error("지원하지 않는 Python 구문입니다.");
-}
-
-function splitPythonConcatExpression(expression: string) {
-  const parts: string[] = [];
-  let current = "";
-  let quote: '"' | "'" | null = null;
-
-  for (let index = 0; index < expression.length; index += 1) {
-    const char = expression[index];
-    const previous = expression[index - 1];
-    if ((char === '"' || char === "'") && previous !== "\\") {
-      quote = quote === char ? null : quote ?? char;
-      current += char;
-      continue;
-    }
-
-    if (char === "+" && !quote) {
-      parts.push(current);
-      current = "";
-      continue;
-    }
-
-    current += char;
-  }
-
-  parts.push(current);
-  return parts.map((part) => part.trim()).filter(Boolean);
-}
-
-const defaultCodeStudioFiles: CodeStudioFile[] = [
-  {
-    content: defaultPythonCode,
-    id: "main.py",
-    language: "python",
-    name: "main.py",
-  },
-  {
-    content: `<!doctype html>
-<html>
-  <body>
-    <h1>PocketDesk</h1>
-    <p>Hello from Code Studio.</p>
-  </body>
-</html>`,
-    id: "index.html",
-    language: "html",
-    name: "index.html",
-  },
-  {
-    content: "# Notes\n\n- Python Lab은 PocketDesk 안에서 실행됩니다.\n- HTML은 오른쪽 미리보기로 확인합니다.",
-    id: "notes.md",
-    language: "markdown",
-    name: "notes.md",
-  },
-];
-
-function loadCodeStudioFiles(): CodeStudioFile[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(CODE_STUDIO_FILES_KEY) ?? "[]");
-    if (!Array.isArray(parsed)) return defaultCodeStudioFiles;
-    const normalized = parsed
-      .map(normalizeCodeStudioFile)
-      .filter((file): file is CodeStudioFile => Boolean(file));
-    return normalized.length > 0 ? normalized : defaultCodeStudioFiles;
-  } catch {
-    return defaultCodeStudioFiles;
-  }
-}
-
-function normalizeCodeStudioFile(item: unknown): CodeStudioFile | null {
-  if (!item || typeof item !== "object") return null;
-  const value = item as Partial<CodeStudioFile>;
-  if (typeof value.id !== "string" || typeof value.name !== "string") return null;
-  return {
-    content: typeof value.content === "string" ? value.content : "",
-    id: value.id.slice(0, 40),
-    language: typeof value.language === "string" ? value.language.slice(0, 24) : "text",
-    name: value.name.slice(0, 48),
-  };
 }
 
 function SettingsApp({

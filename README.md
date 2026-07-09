@@ -3,7 +3,7 @@
 [![CI](https://github.com/Seung-Won-Yu/pocket-desk-os/actions/workflows/ci.yml/badge.svg)](https://github.com/Seung-Won-Yu/pocket-desk-os/actions/workflows/ci.yml)
 [![Deploy GitHub Pages](https://github.com/Seung-Won-Yu/pocket-desk-os/actions/workflows/pages.yml/badge.svg)](https://github.com/Seung-Won-Yu/pocket-desk-os/actions/workflows/pages.yml)
 
-브라우저 안에서 Windows 감성의 데스크톱을 실행하는 React/Vite 기반 웹 OS 프로토타입입니다. 창 관리자, 시작 메뉴, 작업표시줄, 파일 시스템, 메모장, 그림판, 계산기, 지뢰찾기, 웹 브라우저, 설치형 웹 앱 흐름까지 한 화면 안에서 동작합니다.
+브라우저 안에서 Windows 감성의 데스크톱을 실행하는 React/Vite 기반 웹 OS 프로토타입입니다. 창 관리자, 시작 메뉴, 작업표시줄, 내 PC, 파일 탐색기, 휴지통, 메모장, 그림판, 계산기, 지뢰찾기, 웹 브라우저가 한 화면 안에서 동작합니다.
 
 ![PocketDesk OS preview](./public/brand/pocketdesk-social.png)
 
@@ -62,18 +62,16 @@ npm run qa:smoke
 
 | 앱 | 역할 |
 | --- | --- |
-| Web Surf | 검색, 북마크, 히스토리를 갖춘 브라우저 앱 |
-| Minefield | 난이도, 타이머, 기록 저장이 있는 지뢰찾기 |
-| Calc | 표준/공학 모드와 키보드 입력을 지원하는 계산기 |
-| Sketch Pad | 브러시, 도형, 팔레트, PNG 저장을 지원하는 그림판 |
-| Notes | 여러 노트, 자동 저장, Markdown 미리보기를 지원하는 메모장 |
-| Files | IndexedDB 기반 가상 파일 탐색기 |
+| 내 PC | 드라이브, 기본 폴더, 시스템 상태 허브 |
+| Internet | 검색, 북마크, 히스토리를 갖춘 브라우저 앱 |
+| Minesweeper | 난이도, 타이머, 기록 저장이 있는 지뢰찾기 |
+| Calculator | 표준/공학 모드와 키보드 입력을 지원하는 계산기 |
+| Paint | 브러시, 도형, 팔레트, PNG 저장을 지원하는 그림판 |
+| Notepad | 여러 노트, 자동 저장, Markdown 미리보기를 지원하는 메모장 |
+| File Explorer | IndexedDB 기반 가상 파일 탐색기 |
 | Recycle Bin | 삭제된 파일 복원, 영구 삭제, 비우기 |
-| Setup Center | PocketDesk 내부 웹 앱 설치 흐름과 Python/VS Code 공식 다운로드 링크 |
-| Python Lab | 브라우저 안에서 실행되는 간단한 Python 스타일 콘솔 |
-| Code Studio | 파일 탐색기, 탭, 에디터, 터미널, HTML 미리보기 |
 | Settings | 테마, 배경화면, 창 배치, 사운드 설정 |
-| About | 프로젝트 정보와 빠른 이동 |
+| About Windows | 프로젝트 정보와 빠른 이동 |
 
 ## 주요 기능 (Current Features)
 
@@ -82,12 +80,12 @@ npm run qa:smoke
 - 창 위치, 크기, z-index, 최소화/최대화 상태 저장
 - 바탕화면 아이콘 위치 저장과 우클릭 메뉴
 - 시작 메뉴 Pinned, All apps, Recent, 검색, 앱 alias
-- Run dialog: `calc`, `mspaint`, URL/검색어 Web Surf 전달
+- Run dialog: `computer`, `explorer`, `calc`, `notepad`, `mspaint`, URL/검색어 Internet 전달
 - 창 스냅, titlebar 시스템 메뉴, Alt+Tab, Esc, Ctrl+S 단축키
 - 작업표시줄 핀/언핀, hover/focus 미리보기
 - Quick settings, 볼륨, 사운드 토글, 알림 센터, Clear all
 - IndexedDB 기반 가상 파일 시스템
-- 파일 연결: `.txt`/`.md` Notes, `.png`/`.canvas` Sketch Pad, `.url` Web Surf, `.game` Minefield
+- 파일 연결: `.txt`/`.md` Notepad, `.png`/`.canvas` Paint, `.url` Internet, `.game` Minesweeper
 - Recycle Bin 복원/비우기 흐름
 - ZIP 백업 export/import
 - Windows 감성의 자체 제작 배경화면 8종
@@ -153,8 +151,8 @@ npm run social:preview
 - [x] 지뢰찾기 난이도, 타이머, 최고 기록
 - [x] 계산기 키보드 입력과 공학 모드
 - [x] 메모장 탭, 자동 저장, Markdown preview
-- [x] Setup Center 설치 흐름
-- [x] Python Lab, Code Studio 설치형 앱
+- [x] 내 PC 드라이브/기본 폴더 허브
+- [x] 실제 동작하지 않는 설치형 앱 흐름 제거
 
 ### 4. Product Polish
 
@@ -179,8 +177,6 @@ npm run social:preview
 - `pocket-desk-desktop-items-v1` (legacy migration source)
 - `pocket-desk-note`
 - `pocket-desk-mines-best-records-v1`
-- `pocket-desk-installed-packages-v1`
-- `pocket-desk-code-studio-files-v1`
 - `pocket-desk-taskbar-pinned-v1`
 
 ## IndexedDB Stores
