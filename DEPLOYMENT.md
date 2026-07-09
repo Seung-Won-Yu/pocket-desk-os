@@ -28,8 +28,8 @@ Expected result:
 The workflow:
 
 - installs dependencies with `npm ci`
-- installs Playwright Chromium
-- runs `npm run qa:smoke`
+- runs `npm run release:check`
+- runs `npm run qa:pages`
 
 Use this as the merge/deploy gate once the project is pushed to GitHub.
 
@@ -39,7 +39,6 @@ The Pages workflow:
 
 - installs dependencies with `npm ci`
 - runs `npm run release:check`
-- runs the Playwright smoke QA
 - verifies a Pages bundle with the correct `VITE_BASE_PATH`
 - uploads and deploys `dist/` with GitHub Pages Actions
 

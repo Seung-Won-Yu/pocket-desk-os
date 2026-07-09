@@ -17,11 +17,14 @@ Run these before pushing:
 
 ```bash
 npm run release:check
+npm run qa:pages
 npm run build
 npm run qa:smoke
 ```
 
 `npm run release:check` verifies repository files needed for GitHub deployment, hosting config, PWA assets, CI, and docs.
+
+`npm run qa:pages` builds with the GitHub Pages base path and verifies public `dist/` metadata files.
 
 `npm run qa:smoke` builds the app, starts a local production preview server, and checks core flows in Playwright:
 

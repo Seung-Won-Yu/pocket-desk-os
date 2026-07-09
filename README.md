@@ -7,7 +7,7 @@ Browser-based desktop OS prototype built with React and Vite.
 - [Deployment](./DEPLOYMENT.md): GitHub repository setup and static hosting steps.
 - [Contributing](./CONTRIBUTING.md): local setup, quality gates, and development notes.
 - [Changelog](./CHANGELOG.md): user-facing feature and release history.
-- CI: `.github/workflows/ci.yml` runs the Playwright smoke QA on pushes to `main` and pull requests.
+- CI: `.github/workflows/ci.yml` runs release readiness and GitHub Pages build checks on pushes to `main` and pull requests.
 - Deploy: `.github/workflows/pages.yml` can publish `dist/` to GitHub Pages from `main`.
 
 ## Run
@@ -39,7 +39,7 @@ npm run qa:smoke
 
 `qa:smoke` builds the app, starts a local Vite preview server, and runs a Playwright smoke test for the Start menu, power menu, Setup Center, Python Lab, Run dialog, file associations, Recycle Bin, taskbar previews, system tray panel, notification center, window system menu, taskbar pinning, window snapping, and mobile overflow.
 
-The same smoke QA runs in GitHub Actions through `.github/workflows/ci.yml`.
+Run the full Playwright smoke QA locally before release changes that touch app behavior.
 
 ## Deploy
 

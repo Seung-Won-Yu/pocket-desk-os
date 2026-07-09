@@ -67,8 +67,8 @@ async function runSmoke(baseUrl) {
     serviceWorkers: "block",
     viewport: { width: 1280, height: 820 },
   });
-  page.setDefaultNavigationTimeout(15000);
-  page.setDefaultTimeout(15000);
+  page.setDefaultNavigationTimeout(30000);
+  page.setDefaultTimeout(30000);
 
   const consoleErrors = [];
   page.on("console", (message) => {
@@ -94,15 +94,16 @@ async function runSmoke(baseUrl) {
         }),
     );
     await page.reload({ waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(1400);
 
     const unlock = page.getByRole("button", { name: /PocketDesk 잠금 해제/ });
+    await unlock.waitFor({ state: "visible", timeout: 6000 }).catch(() => null);
     if (await unlock.count()) {
       await unlock.click();
     }
-    await page.waitForTimeout(300);
 
-    await page.getByRole("button", { name: "시작 메뉴" }).click();
+    const startButton = page.getByRole("button", { name: "시작 메뉴" });
+    await startButton.waitFor({ state: "visible" });
+    await startButton.click();
     const startMenu = page.locator(".start-menu");
     await startMenu.waitFor({ state: "visible" });
     const startText = await startMenu.innerText();

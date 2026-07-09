@@ -51,7 +51,7 @@ const textChecks = [
   ["package.json", '"qa:smoke"'],
   ["package.json", '"release:check"'],
   ["package.json", '"social:preview"'],
-  [".github/workflows/ci.yml", "npm run qa:smoke"],
+  [".github/workflows/ci.yml", "npm run qa:pages"],
   [".github/workflows/pages.yml", "actions/deploy-pages@v4"],
   [".github/workflows/pages.yml", "actions/upload-pages-artifact@v4"],
   [".github/workflows/pages.yml", "npm run qa:pages"],

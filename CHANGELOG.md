@@ -37,7 +37,7 @@ Initial deploy-ready web desktop prototype.
 - Vercel and Netlify static hosting configuration.
 - GitHub Pages deployment workflow with automatic Pages base path handling.
 - Release readiness check command for GitHub/deploy-critical files and docs.
-- GitHub Actions CI workflow and Playwright smoke QA command.
+- GitHub Actions CI workflow, GitHub Pages build check, and Playwright smoke QA command.
 
 ### Notes
 
