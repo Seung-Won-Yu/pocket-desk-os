@@ -29,12 +29,15 @@ npm run build
 
 ```bash
 npm run release:check
+npm run qa:pages
 npm run qa:smoke
 ```
 
 `release:check` verifies the GitHub/deploy-critical files, PWA assets, hosting config, CI workflow, and docs are present.
 
-Builds the app, starts a local Vite preview server, and runs a Playwright smoke test for the Start menu, power menu, Setup Center, Python Lab, Run dialog, file associations, Recycle Bin, taskbar previews, system tray panel, notification center, window system menu, taskbar pinning, window snapping, and mobile overflow.
+`qa:pages` builds with the GitHub Pages base path and verifies the `dist/` asset URLs plus public metadata files.
+
+`qa:smoke` builds the app, starts a local Vite preview server, and runs a Playwright smoke test for the Start menu, power menu, Setup Center, Python Lab, Run dialog, file associations, Recycle Bin, taskbar previews, system tray panel, notification center, window system menu, taskbar pinning, window snapping, and mobile overflow.
 
 The same smoke QA runs in GitHub Actions through `.github/workflows/ci.yml`.
 
@@ -153,6 +156,7 @@ Regenerates the 1200x630 social/PWA screenshot from the built PocketDesk app.
 - [x] GitHub deployment checklist
 - [x] Public sharing metadata and social preview image
 - [x] Release readiness check command
+- [x] GitHub Pages base-path build check
 - [x] Playwright smoke QA command
 - [x] GitHub Actions CI workflow
 - [x] Changelog and contribution guide

@@ -21,6 +21,7 @@ const requiredFiles = [
   "public/manifest.webmanifest",
   "public/robots.txt",
   "public/sw.js",
+  "scripts/check-pages-build.mjs",
   "scripts/generate-pwa-icons.mjs",
   "scripts/generate-social-preview.mjs",
   "scripts/smoke-test.mjs",
@@ -46,12 +47,14 @@ const requiredWallpapers = [
 
 const textChecks = [
   ["package.json", '"build": "tsc -b && vite build"'],
+  ["package.json", '"qa:pages"'],
   ["package.json", '"qa:smoke"'],
   ["package.json", '"release:check"'],
   ["package.json", '"social:preview"'],
   [".github/workflows/ci.yml", "npm run qa:smoke"],
   [".github/workflows/pages.yml", "actions/deploy-pages@v4"],
   [".github/workflows/pages.yml", "actions/upload-pages-artifact@v4"],
+  [".github/workflows/pages.yml", "npm run qa:pages"],
   [".github/workflows/pages.yml", "VITE_BASE_PATH"],
   ["README.md", "Current Features"],
   ["README.md", "Development Roadmap"],

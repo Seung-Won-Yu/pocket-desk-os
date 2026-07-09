@@ -7,6 +7,7 @@ This project is a static React/Vite app. Build output is written to `dist/` and 
 ```bash
 npm install
 npm run release:check
+npm run qa:pages
 npm run build
 npm run qa:smoke
 ```
@@ -15,6 +16,7 @@ Expected result:
 
 - TypeScript build passes.
 - Release readiness check passes.
+- GitHub Pages base-path build check passes.
 - Vite creates `dist/`.
 - Playwright smoke QA passes.
 - `dist/manifest.webmanifest`, `dist/sw.js`, `dist/.nojekyll`, `dist/robots.txt`, `dist/llms.txt`, wallpapers, brand icons, and the social preview image are present.
@@ -38,7 +40,7 @@ The Pages workflow:
 - installs dependencies with `npm ci`
 - runs `npm run release:check`
 - runs the Playwright smoke QA
-- builds a Pages bundle with the correct `VITE_BASE_PATH`
+- verifies a Pages bundle with the correct `VITE_BASE_PATH`
 - uploads and deploys `dist/` with GitHub Pages Actions
 
 `npm run release:check` is a local pre-push guard for required repository files, PWA assets, hosting config, CI workflow, and docs. It does not replace `npm run qa:smoke`.
@@ -140,6 +142,7 @@ VITE_BASE_PATH=/your-repo/ npm run build
 
 - [ ] `npm run build` passes locally.
 - [ ] `npm run release:check` passes locally.
+- [ ] `npm run qa:pages` passes locally.
 - [ ] `npm run qa:smoke` passes locally.
 - [ ] GitHub Actions CI is green on `main`.
 - [ ] `CHANGELOG.md` reflects the release.

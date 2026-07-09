@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "icons": "node scripts/generate-pwa-icons.mjs",
     "preview": "vite preview --host 127.0.0.1",
+    "qa:pages": "node scripts/check-pages-build.mjs",
     "qa:smoke": "npm run build && node scripts/smoke-test.mjs",
     "release:check": "node scripts/release-check.mjs",
     "social:preview": "npm run build && node scripts/generate-social-preview.mjs"

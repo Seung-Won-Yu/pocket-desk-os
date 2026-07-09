@@ -52,10 +52,10 @@ jobs:
             echo "path=/$repo/" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build GitHub Pages bundle
+      - name: Verify GitHub Pages bundle
         env:
           VITE_BASE_PATH: ${{ steps.pages-base.outputs.path }}
-        run: npm run build
+        run: npm run qa:pages
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
