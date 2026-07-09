@@ -56,6 +56,15 @@ git remote add origin https://github.com/<your-name>/<your-repo>.git
 git push -u origin main
 ```
 
+If GitHub CLI is available and authenticated:
+
+```bash
+gh auth status
+gh repo create pocket-desk-os --public --source=. --remote=origin --push
+```
+
+Use `--private` instead of `--public` if the repository should stay private.
+
 If the repository already exists:
 
 ```bash
@@ -74,6 +83,14 @@ Do not commit:
 - test reports
 
 These are already covered by `.gitignore`.
+
+If the first commit used the wrong local author identity, set the repository author before pushing and amend:
+
+```bash
+git config user.name "<your GitHub name>"
+git config user.email "<your GitHub email>"
+git commit --amend --reset-author
+```
 
 ## Vercel
 
