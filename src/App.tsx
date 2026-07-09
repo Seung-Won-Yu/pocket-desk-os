@@ -177,6 +177,13 @@ type SnapZone = "left" | "right" | "top";
 type SnapPreviewState = {
   zone: SnapZone;
 };
+type DesktopSelectionState = {
+  currentX: number;
+  currentY: number;
+  pointerId: number;
+  startX: number;
+  startY: number;
+};
 type BrowserBookmark = {
   createdAt: number;
   id: string;
@@ -718,6 +725,8 @@ export default function App() {
   const [startOpen, setStartOpen] = useState(false);
   const [runOpen, setRunOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [desktopSelection, setDesktopSelection] = useState<DesktopSelectionState | null>(null);
+  const [selectedDesktopIds, setSelectedDesktopIds] = useState<string[]>([]);
   const [shellPhase, setShellPhase] = useState<ShellPhase>("booting");
   const [browserLaunchRequest, setBrowserLaunchRequest] = useState<BrowserLaunchRequest | null>(null);
   const [activeCanvasId, setActiveCanvasId] = useState(VFS_PRIMARY_CANVAS_ID);
@@ -1460,6 +1469,62 @@ export default function App() {
     ? windows.find((item) => item.id === windowMenu.windowId)
     : null;
 
+  const beginDesktopPointerAction = (event: React.PointerEvent<HTMLElement>) => {
+    setStartOpen(false);
+    setRunOpen(false);
+    setDesktopMenu(null);
+    setWindowMenu(null);
+
+    if (shellPhase !== "unlocked" || event.button !== 0) return;
+
+    const target = event.target as HTMLElement;
+    if (
+      target.closest(
+        ".desktop-icon, .desktop-context-menu, .window-system-menu, .window-frame, .start-menu, .taskbar, .shell-gate",
+      )
+    ) {
+      return;
+    }
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const nextSelection = {
+      currentX: event.clientX,
+      currentY: event.clientY,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+    setSelectedDesktopIds([]);
+    setDesktopSelection(nextSelection);
+  };
+
+  const updateDesktopSelection = (event: React.PointerEvent<HTMLElement>) => {
+    setDesktopSelection((current) => {
+      if (!current || current.pointerId !== event.pointerId) return current;
+
+      const nextSelection = {
+        ...current,
+        currentX: event.clientX,
+        currentY: event.clientY,
+      };
+      setSelectedDesktopIds(getDesktopSelectionIds(nextSelection, iconLayout, activeDesktopItems));
+      return nextSelection;
+    });
+  };
+
+  const finishDesktopSelection = (event: React.PointerEvent<HTMLElement>) => {
+    setDesktopSelection((current) => {
+      if (!current || current.pointerId !== event.pointerId) return current;
+      if (event.currentTarget.hasPointerCapture(current.pointerId)) {
+        event.currentTarget.releasePointerCapture(current.pointerId);
+      }
+      if (!isDesktopSelectionVisible(current)) {
+        setSelectedDesktopIds([]);
+      }
+      return null;
+    });
+  };
+
   const openRunDialog = () => {
     playSound("toggle");
     setStartOpen(false);
@@ -1637,12 +1702,10 @@ export default function App() {
     <main
       className={`desktop theme-${theme} wallpaper-${wallpaper}`}
       onContextMenu={showDesktopContextMenu}
-      onPointerDown={() => {
-        setStartOpen(false);
-        setRunOpen(false);
-        setDesktopMenu(null);
-        setWindowMenu(null);
-      }}
+      onPointerCancel={finishDesktopSelection}
+      onPointerDown={beginDesktopPointerAction}
+      onPointerMove={updateDesktopSelection}
+      onPointerUp={finishDesktopSelection}
       style={getWallpaperStyle(wallpaper)}
     >
       <section className="desktop-icons" aria-label="바탕화면 바로가기">
@@ -1653,6 +1716,7 @@ export default function App() {
             onMove={(position) => moveDesktopIcon(app.id, position)}
             onOpen={() => openApp(app.id)}
             position={iconLayout[app.id] ?? createDefaultIconLayout()[app.id]!}
+            selected={selectedDesktopIds.includes(`app:${app.id}`)}
           />
         ))}
         {activeDesktopItems.filter((item) => item.showOnDesktop).map((item) => (
@@ -1661,9 +1725,18 @@ export default function App() {
             key={item.id}
             onMove={(position) => moveDesktopItem(item.id, position)}
             onOpen={() => openDesktopItem(item)}
+            selected={selectedDesktopIds.includes(`item:${item.id}`)}
           />
         ))}
       </section>
+
+      {desktopSelection && isDesktopSelectionVisible(desktopSelection) && (
+        <div
+          aria-hidden="true"
+          className="desktop-selection"
+          style={getDesktopSelectionStyle(desktopSelection)}
+        />
+      )}
 
       <section className="window-layer" aria-label="열린 창">
         {windows.map((item) => {
@@ -2769,16 +2842,98 @@ function clampWindowSystemMenuPosition(x: number, y: number): IconPosition {
   };
 }
 
+function getDesktopSelectionBounds(selection: DesktopSelectionState) {
+  const left = Math.min(selection.startX, selection.currentX);
+  const top = Math.min(selection.startY, selection.currentY);
+  const right = Math.max(selection.startX, selection.currentX);
+  const bottom = Math.max(selection.startY, selection.currentY);
+  return {
+    bottom,
+    height: bottom - top,
+    left,
+    right,
+    top,
+    width: right - left,
+  };
+}
+
+function getDesktopSelectionStyle(selection: DesktopSelectionState): React.CSSProperties {
+  const bounds = getDesktopSelectionBounds(selection);
+  return {
+    height: bounds.height,
+    left: bounds.left,
+    top: bounds.top,
+    width: bounds.width,
+  };
+}
+
+function isDesktopSelectionVisible(selection: DesktopSelectionState) {
+  const bounds = getDesktopSelectionBounds(selection);
+  return bounds.width > 5 || bounds.height > 5;
+}
+
+function getDesktopSelectionIds(
+  selection: DesktopSelectionState,
+  iconLayout: DesktopIconLayout,
+  desktopItems: DesktopItem[],
+) {
+  if (!isDesktopSelectionVisible(selection)) return [];
+
+  const selectionBounds = getDesktopSelectionBounds(selection);
+  const fallbackLayout = createDefaultIconLayout();
+  const selectedIds: string[] = [];
+
+  desktopApps.forEach((app) => {
+    const position = iconLayout[app.id] ?? fallbackLayout[app.id];
+    if (position && rectsIntersect(selectionBounds, getDesktopIconBounds(position))) {
+      selectedIds.push(`app:${app.id}`);
+    }
+  });
+
+  desktopItems
+    .filter((item) => item.showOnDesktop)
+    .forEach((item) => {
+      if (rectsIntersect(selectionBounds, getDesktopIconBounds(item))) {
+        selectedIds.push(`item:${item.id}`);
+      }
+    });
+
+  return selectedIds;
+}
+
+function getDesktopIconBounds(position: IconPosition) {
+  return {
+    bottom: position.y + DESKTOP_ICON_HEIGHT,
+    left: position.x,
+    right: position.x + DESKTOP_ICON_WIDTH,
+    top: position.y,
+  };
+}
+
+function rectsIntersect(
+  first: { bottom: number; left: number; right: number; top: number },
+  second: { bottom: number; left: number; right: number; top: number },
+) {
+  return (
+    first.left <= second.right &&
+    first.right >= second.left &&
+    first.top <= second.bottom &&
+    first.bottom >= second.top
+  );
+}
+
 function DesktopIcon({
   app,
   onMove,
   onOpen,
   position,
+  selected,
 }: {
   app: AppDefinition;
   onMove: (position: IconPosition) => void;
   onOpen: () => void;
   position: IconPosition;
+  selected: boolean;
 }) {
   const Icon = app.icon;
   return (
@@ -2788,6 +2943,7 @@ function DesktopIcon({
       onMove={onMove}
       onOpen={onOpen}
       position={position}
+      selected={selected}
       title={app.title}
     />
   );
@@ -2797,10 +2953,12 @@ function DesktopItemIcon({
   item,
   onMove,
   onOpen,
+  selected,
 }: {
   item: DesktopItem;
   onMove: (position: IconPosition) => void;
   onOpen: () => void;
+  selected: boolean;
 }) {
   const association = getVfsEntryAssociation(item);
   return (
@@ -2810,6 +2968,7 @@ function DesktopItemIcon({
       onMove={onMove}
       onOpen={onOpen}
       position={item}
+      selected={selected}
       title={item.name}
       tone="file"
     />
@@ -2848,6 +3007,7 @@ function DesktopIconButton({
   onMove,
   onOpen,
   position,
+  selected,
   title,
   tone = "app",
 }: {
@@ -2856,6 +3016,7 @@ function DesktopIconButton({
   onMove: (position: IconPosition) => void;
   onOpen: () => void;
   position: IconPosition;
+  selected: boolean;
   title: string;
   tone?: "app" | "file";
 }) {
@@ -2915,7 +3076,7 @@ function DesktopIconButton({
 
   return (
     <button
-      className="desktop-icon"
+      className={`desktop-icon ${selected ? "is-selected" : ""}`}
       onClick={handleClick}
       onContextMenu={(event) => event.preventDefault()}
       onPointerCancel={endDrag}
@@ -3802,40 +3963,7 @@ function StartMenu({
       <div className="start-menu-header">
         <div>
           <p>PocketDesk OS</p>
-          <strong>작은 앱 런처</strong>
-        </div>
-        <div className="start-header-actions">
-          <button aria-label="Run 열기" onClick={onOpenRun} title="Run" type="button">
-            <SquareTerminal aria-hidden="true" size={18} />
-          </button>
-          <div className="power-menu-wrap">
-            <button
-              aria-expanded={powerMenuOpen}
-              aria-haspopup="menu"
-              aria-label="전원 옵션"
-              onClick={() => setPowerMenuOpen((value) => !value)}
-              title="전원"
-              type="button"
-            >
-              <Power aria-hidden="true" size={18} />
-            </button>
-            {powerMenuOpen && (
-              <div className="power-menu" role="menu">
-                <button onClick={() => runPowerAction(onLock)} role="menuitem" type="button">
-                  <Power aria-hidden="true" size={15} />
-                  Lock
-                </button>
-                <button onClick={() => runPowerAction(onRestart)} role="menuitem" type="button">
-                  <RotateCcw aria-hidden="true" size={15} />
-                  Restart
-                </button>
-                <button onClick={() => runPowerAction(onShutdown)} role="menuitem" type="button">
-                  <Power aria-hidden="true" size={15} />
-                  Shut down
-                </button>
-              </div>
-            )}
-          </div>
+          <strong>Start</strong>
         </div>
       </div>
       <label className="start-search">
@@ -3951,6 +4079,48 @@ function StartMenu({
           </div>
         </div>
       )}
+      <div className="start-menu-footer">
+        <button className="start-account" type="button">
+          <Monitor aria-hidden="true" size={18} />
+          <span>
+            <strong>Seung-Won</strong>
+            <small>로컬 계정</small>
+          </span>
+        </button>
+        <div className="start-footer-actions">
+          <button aria-label="Run 열기" onClick={onOpenRun} title="Run" type="button">
+            <SquareTerminal aria-hidden="true" size={18} />
+          </button>
+          <div className="power-menu-wrap">
+            <button
+              aria-expanded={powerMenuOpen}
+              aria-haspopup="menu"
+              aria-label="전원 옵션"
+              onClick={() => setPowerMenuOpen((value) => !value)}
+              title="전원"
+              type="button"
+            >
+              <Power aria-hidden="true" size={18} />
+            </button>
+            {powerMenuOpen && (
+              <div className="power-menu" role="menu">
+                <button onClick={() => runPowerAction(onLock)} role="menuitem" type="button">
+                  <Power aria-hidden="true" size={15} />
+                  Lock
+                </button>
+                <button onClick={() => runPowerAction(onRestart)} role="menuitem" type="button">
+                  <RotateCcw aria-hidden="true" size={15} />
+                  Restart
+                </button>
+                <button onClick={() => runPowerAction(onShutdown)} role="menuitem" type="button">
+                  <Power aria-hidden="true" size={15} />
+                  Shut down
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </aside>
   );
 }
@@ -4052,8 +4222,9 @@ function Clock() {
   }, []);
 
   return (
-    <time dateTime={now.toISOString()}>
-      {now.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+    <time className="tray-clock" dateTime={now.toISOString()}>
+      <span>{now.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
+      <span>{now.toLocaleDateString("ko-KR", { day: "2-digit", month: "2-digit" })}</span>
     </time>
   );
 }
@@ -5269,14 +5440,26 @@ function FilesApp({
     [desktopItems],
   );
   const [selected, setSelected] = useState(0);
-  const selectedFile = files[Math.min(selected, files.length - 1)];
+  const [fileQuery, setFileQuery] = useState("");
+  const filteredFiles = useMemo(() => {
+    const normalizedQuery = normalizeSearchText(fileQuery);
+    if (!normalizedQuery) return files;
+    return files.filter((file) =>
+      [file.name, file.type, file.detail, file.association.appTitle]
+        .map(normalizeSearchText)
+        .some((field) => field.includes(normalizedQuery)),
+    );
+  }, [fileQuery, files]);
+  const selectedFile = filteredFiles[Math.min(selected, filteredFiles.length - 1)];
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState(selectedFile?.name ?? "");
   const [importing, setImporting] = useState(false);
 
   useEffect(() => {
-    setSelected((current) => (files.length === 0 ? 0 : clamp(current, 0, files.length - 1)));
-  }, [files.length]);
+    setSelected((current) =>
+      filteredFiles.length === 0 ? 0 : clamp(current, 0, filteredFiles.length - 1),
+    );
+  }, [filteredFiles.length]);
 
   useEffect(() => {
     setDraftName(selectedFile?.name ?? "");
@@ -5294,7 +5477,9 @@ function FilesApp({
     if (!selectedFile) return;
     deleteVfsEntry(selectedFile.id);
     setRenaming(false);
-    setSelected((current) => (files.length <= 1 ? 0 : clamp(current, 0, files.length - 2)));
+    setSelected((current) =>
+      filteredFiles.length <= 1 ? 0 : clamp(current, 0, filteredFiles.length - 2),
+    );
   };
 
   const importSelectedZip = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -5351,9 +5536,55 @@ function FilesApp({
           />
         </div>
       </aside>
-      <section>
+      <section className="file-main-pane">
+        <div className="file-explorer-top">
+          <div className="file-command-strip">
+            <button
+              disabled={!selectedFile}
+              onClick={() => selectedFile && openVfsEntry(selectedFile.item)}
+              type="button"
+            >
+              <ExternalLink aria-hidden="true" size={15} />
+              Open
+            </button>
+            <button
+              disabled={!selectedFile}
+              onClick={() => selectedFile && setRenaming(true)}
+              type="button"
+            >
+              <Pencil aria-hidden="true" size={15} />
+              Rename
+            </button>
+            <button
+              className="file-danger"
+              disabled={!selectedFile}
+              onClick={deleteSelectedFile}
+              type="button"
+            >
+              <Trash2 aria-hidden="true" size={15} />
+              Delete
+            </button>
+          </div>
+          <div className="file-address-row">
+            <div className="file-address">
+              <House aria-hidden="true" size={15} />
+              <span>Home</span>
+              <span aria-hidden="true">›</span>
+              <strong>Desktop</strong>
+            </div>
+            <label className="file-search">
+              <Search aria-hidden="true" size={15} />
+              <input
+                aria-label="파일 검색"
+                onChange={(event) => setFileQuery(event.target.value)}
+                placeholder="Search Desktop"
+                value={fileQuery}
+              />
+            </label>
+          </div>
+        </div>
         <div className="file-list" role="list">
-          {files.map((file, index) => {
+          {filteredFiles.map((file, index) => {
             const FileIcon = file.icon;
             return (
               <button
@@ -5369,6 +5600,13 @@ function FilesApp({
               </button>
             );
           })}
+          {filteredFiles.length === 0 && (
+            <div className="file-empty-state">
+              <Search aria-hidden="true" size={24} />
+              <strong>검색 결과 없음</strong>
+              <small>다른 이름, 확장자, 앱 이름으로 검색해보세요.</small>
+            </div>
+          )}
         </div>
         <div className="file-preview">
           {selectedFile ? (
@@ -6015,70 +6253,110 @@ function SettingsApp({
 
   return (
     <div className="settings-app">
-      <h2>테마</h2>
-      <p>브랜드 자산을 베끼지 않고, 데스크톱 메타포만 빌린 자체 스타일입니다.</p>
-      <div className="theme-options">
-        {themes.map((option) => (
-          <button
-            className={theme === option.id ? "is-selected" : ""}
-            key={option.id}
-            onClick={() => setTheme(option.id)}
-            type="button"
-          >
-            <span className={`theme-swatch theme-swatch-${option.id}`} />
-            <strong>{option.label}</strong>
-            <small>{option.detail}</small>
-          </button>
-        ))}
-      </div>
-      <h2>배경화면</h2>
-      <p>Windows 감성의 풍경과 리본감을 자체 제작한 월페이퍼입니다.</p>
-      <div className="wallpaper-options">
-        {wallpaperGallery.map((option) => (
-          <button
-            className={wallpaper === option.id ? "is-selected" : ""}
-            key={option.id}
-            onClick={() => setWallpaper(option.id)}
-            type="button"
-          >
-            <span className="wallpaper-preview" style={getWallpaperPreviewStyle(option.id)} />
-            <strong>{option.label}</strong>
-            <small>{option.detail}</small>
-          </button>
-        ))}
-      </div>
-      <h2>창 배치</h2>
-      <p>열린 앱, 위치, 크기는 자동 저장됩니다. 필요하면 기본 배치로 되돌릴 수 있습니다.</p>
-      <button className="settings-action" onClick={resetWindowLayout} type="button">
-        <RotateCcw aria-hidden="true" size={16} />
-        창 배치 초기화
-      </button>
-      <button className="settings-action" onClick={resetDesktopIconLayout} type="button">
-        <RotateCcw aria-hidden="true" size={16} />
-        아이콘 배치 초기화
-      </button>
-      <h2>사운드</h2>
-      <p>창 열기, 닫기, 저장 같은 순간에 아주 짧은 시스템 효과음을 재생합니다.</p>
-      <label className="settings-toggle">
-        <input
-          checked={soundEnabled}
-          onChange={(event) => {
-            const enabled = event.target.checked;
-            if (!enabled) {
-              playSound("toggle");
-            }
-            setSoundEnabled(enabled);
-            if (enabled) {
-              window.setTimeout(() => playSound("success"), 0);
-            }
-          }}
-          type="checkbox"
-        />
-        <span>
-          <strong>시스템 사운드</strong>
-          <small>{soundEnabled ? "켜짐" : "꺼짐"}</small>
-        </span>
-      </label>
+      <aside className="settings-sidebar">
+        <div className="settings-profile">
+          <Monitor aria-hidden="true" size={24} />
+          <span>
+            <strong>PocketDesk</strong>
+            <small>Local device</small>
+          </span>
+        </div>
+        <button className="is-selected" type="button">
+          <Palette aria-hidden="true" size={16} />
+          Personalization
+        </button>
+        <button type="button">
+          <Monitor aria-hidden="true" size={16} />
+          System
+        </button>
+        <button type="button">
+          <Volume2 aria-hidden="true" size={16} />
+          Sound
+        </button>
+      </aside>
+      <section className="settings-content">
+        <header className="settings-hero">
+          <div>
+            <p>Settings</p>
+            <h2>Personalization</h2>
+          </div>
+          <span className="settings-device-pill">PocketDesk OS</span>
+        </header>
+        <section className="settings-section">
+          <h3>테마</h3>
+          <p>브랜드 자산을 베끼지 않고, 데스크톱 메타포만 빌린 자체 스타일입니다.</p>
+          <div className="theme-options">
+            {themes.map((option) => (
+              <button
+                className={theme === option.id ? "is-selected" : ""}
+                key={option.id}
+                onClick={() => setTheme(option.id)}
+                type="button"
+              >
+                <span className={`theme-swatch theme-swatch-${option.id}`} />
+                <strong>{option.label}</strong>
+                <small>{option.detail}</small>
+              </button>
+            ))}
+          </div>
+        </section>
+        <section className="settings-section">
+          <h3>배경화면</h3>
+          <p>Windows 감성의 풍경과 리본감을 자체 제작한 월페이퍼입니다.</p>
+          <div className="wallpaper-options">
+            {wallpaperGallery.map((option) => (
+              <button
+                className={wallpaper === option.id ? "is-selected" : ""}
+                key={option.id}
+                onClick={() => setWallpaper(option.id)}
+                type="button"
+              >
+                <span className="wallpaper-preview" style={getWallpaperPreviewStyle(option.id)} />
+                <strong>{option.label}</strong>
+                <small>{option.detail}</small>
+              </button>
+            ))}
+          </div>
+        </section>
+        <section className="settings-section">
+          <h3>창과 바탕화면</h3>
+          <p>열린 앱, 위치, 크기는 자동 저장됩니다. 필요하면 기본 배치로 되돌릴 수 있습니다.</p>
+          <div className="settings-action-row">
+            <button className="settings-action" onClick={resetWindowLayout} type="button">
+              <RotateCcw aria-hidden="true" size={16} />
+              창 배치 초기화
+            </button>
+            <button className="settings-action" onClick={resetDesktopIconLayout} type="button">
+              <RotateCcw aria-hidden="true" size={16} />
+              아이콘 배치 초기화
+            </button>
+          </div>
+        </section>
+        <section className="settings-section">
+          <h3>사운드</h3>
+          <p>창 열기, 닫기, 저장 같은 순간에 아주 짧은 시스템 효과음을 재생합니다.</p>
+          <label className="settings-toggle">
+            <input
+              checked={soundEnabled}
+              onChange={(event) => {
+                const enabled = event.target.checked;
+                if (!enabled) {
+                  playSound("toggle");
+                }
+                setSoundEnabled(enabled);
+                if (enabled) {
+                  window.setTimeout(() => playSound("success"), 0);
+                }
+              }}
+              type="checkbox"
+            />
+            <span>
+              <strong>시스템 사운드</strong>
+              <small>{soundEnabled ? "켜짐" : "꺼짐"}</small>
+            </span>
+          </label>
+        </section>
+      </section>
     </div>
   );
 }
