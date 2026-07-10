@@ -3512,6 +3512,13 @@ button {
 }
 
 @media (max-width: 740px) {
+  .desktop-context-submenu,
+  .desktop-context-menu.opens-left .desktop-context-submenu {
+    left: 0;
+    right: auto;
+    top: calc(100% + 3px);
+  }
+
   .desktop-icon {
     padding: 6px 4px;
   }
@@ -3628,17 +3635,45 @@ button {
 
   .files-app {
     grid-template-columns: 1fr;
+    grid-template-rows: 70px minmax(0, 1fr);
   }
 
   .files-app aside {
+    align-items: center;
     border-bottom: 1px solid var(--line);
     border-right: 0;
     flex-direction: row;
     overflow-x: auto;
+    padding: 8px 10px;
+  }
+
+  .files-app aside > button {
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 
   .file-address-row {
     grid-template-columns: 1fr;
+  }
+
+  .file-command-strip {
+    gap: 4px;
+  }
+
+  .file-command-strip .file-command-action {
+    display: grid;
+    min-height: 32px;
+    padding: 0;
+    place-items: center;
+    width: 32px;
+  }
+
+  .file-command-action > span {
+    display: none;
+  }
+
+  .file-view-control {
+    margin-left: 0;
   }
 
   .file-backup-actions {

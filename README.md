@@ -68,7 +68,7 @@ npm run qa:smoke
 | 계산기 | 일반/공학 모드와 키보드 입력 |
 | 그림판 | 브러시, 도형, 팔레트, PNG 저장 |
 | 메모장 | 여러 노트, 자동 저장, Markdown 미리보기 |
-| 파일 탐색기 | IndexedDB 기반 파일과 종류별 폴더 보기 |
+| 파일 탐색기 | IndexedDB 기반 파일, 정렬, 보기 전환, 다중 선택 |
 | 휴지통 | 삭제 항목 복원, 영구 삭제 확인, 비우기 |
 | 설정 | 개인 설정, 창 배치, 시스템 소리 |
 
@@ -78,13 +78,15 @@ npm run qa:smoke
 - 드래그/리사이즈 가능한 창, 스냅 레이아웃, 오류 복구 화면
 - 부팅 화면, 잠금 화면, 재시작/종료/전원 켜기 시뮬레이션
 - 창 위치, 크기, z-index, 최소화/최대화 상태 저장
-- 바탕화면 아이콘 위치 저장과 우클릭 메뉴
+- 바탕화면 아이콘 위치 저장, 크기 변경, 이름/유형/수정일 정렬, 그리드 맞춤
 - 시작 메뉴 고정됨, 모든 앱, 추천, 검색, 앱 별칭
 - 실행 창: `computer`, `explorer`, `calc`, `notepad`, `mspaint`, URL/검색어 전달
 - 창 스냅, titlebar 시스템 메뉴, Alt+Tab, Esc, Ctrl+S 단축키
 - 작업 표시줄 context menu 핀/언핀, hover/focus 미리보기
 - 실제 온라인 상태, 시스템 소리 토글, 알림 센터
 - IndexedDB 기반 가상 파일 시스템
+- 파일 탐색기 자세히/목록/큰 아이콘 보기, 오름차순/내림차순 정렬
+- 파일 탐색기 `Ctrl+A`, `F2`, `Enter`, `Delete`, 방향키 다중 선택/조작
 - 파일 연결: `.txt`/`.md` 메모장, `.png`/`.canvas` 그림판, `.url` 웹 브라우저, `.game` 지뢰찾기
 - 휴지통 복원/영구 삭제 확인/비우기 흐름
 - ZIP 백업 export/import
@@ -121,6 +123,7 @@ npm run social:preview
 - [x] 창 위치/크기/열린 앱 상태 저장
 - [x] 데스크톱 아이콘 드래그 위치 저장
 - [x] 바탕화면 우클릭 메뉴
+- [x] 바탕화면 아이콘 보기, 정렬, 그리드 맞춤
 - [x] 시작 메뉴 검색
 - [x] 알림 토스트와 알림 센터
 - [x] 부팅/잠금 화면
@@ -140,6 +143,7 @@ npm run social:preview
 - [x] 여러 노트 파일
 - [x] 그림판 캔버스 저장
 - [x] 파일 열기, 이름 변경, 삭제
+- [x] 파일 정렬, 보기 전환, 키보드 다중 선택
 - [x] 파일 확장자 연결
 - [x] 휴지통 복원/비우기
 - [x] ZIP export/import
@@ -173,7 +177,13 @@ npm run social:preview
 - `pocket-desk-theme`
 - `pocket-desk-wallpaper-v2`
 - `pocket-desk-windows-v1`
-- `pocket-desk-icons-v1`
+- `pocket-desk-icons-v2`
+- `pocket-desk-icon-view-v1`
+- `pocket-desk-icon-sort-v1`
+- `pocket-desk-icon-grid-v1`
+- `pocket-desk-explorer-sort-v1`
+- `pocket-desk-explorer-sort-direction-v1`
+- `pocket-desk-explorer-view-v1`
 - `pocket-desk-desktop-items-v1` (legacy migration source)
 - `pocket-desk-note`
 - `pocket-desk-mines-best-records-v1`

@@ -320,7 +320,7 @@ const VFS_PRIMARY_NOTE_ID = "vfs-notes";
 const VFS_PRIMARY_CANVAS_ID = "vfs-sketch";
 const WALLPAPER_KEY = "pocket-desk-wallpaper-v2";
 const WINDOW_STATE_KEY = "pocket-desk-windows-v1";
-const DESKTOP_ICON_LAYOUT_KEY = "pocket-desk-icons-v1";
+const DESKTOP_ICON_LAYOUT_KEY = "pocket-desk-icons-v2";
 const DESKTOP_ICON_VIEW_KEY = "pocket-desk-icon-view-v1";
 const DESKTOP_ICON_SORT_KEY = "pocket-desk-icon-sort-v1";
 const DESKTOP_ICON_GRID_KEY = "pocket-desk-icon-grid-v1";
@@ -2725,9 +2725,7 @@ function rankSearchCandidate(
 
 function createDefaultIconLayout(): DesktopIconLayout {
   return desktopApps.reduce<DesktopIconLayout>((layout, app, index) => {
-    const column = index % 2;
-    const row = Math.floor(index / 2);
-    layout[app.id] = clampIconPosition(18 + column * 104, 18 + row * 110);
+    layout[app.id] = clampIconPosition(18, 18 + index * 110);
     return layout;
   }, {});
 }
@@ -5801,6 +5799,7 @@ function FilesApp({
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const selectionAnchorRef = useRef<string | null>(null);
+  const sortControlRef = useRef<HTMLDivElement | null>(null);
   const [location, setLocation] = useState<"desktop" | "documents" | "games" | "pictures">(
     "desktop",
   );
@@ -5901,6 +5900,26 @@ function FilesApp({
   }, [viewMode]);
 
   useEffect(() => {
+    if (!sortOpen) return;
+
+    const closeOnOutsidePointer = (event: Event) => {
+      if (event.target instanceof Node && !sortControlRef.current?.contains(event.target)) {
+        setSortOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSortOpen(false);
+    };
+
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [sortOpen]);
+
+  useEffect(() => {
     setDraftName(selectedFile?.name ?? "");
     setRenaming(false);
   }, [selectedFile?.id, selectedFile?.name]);
@@ -5954,10 +5973,14 @@ function FilesApp({
         setSelectedIds(visibleFiles.slice(start, end + 1).map((file) => file.id));
       }
     } else if (event.ctrlKey || event.metaKey) {
-      setSelectedIds((current) =>
-        current.includes(fileId) ? current.filter((id) => id !== fileId) : [...current, fileId],
-      );
+      const next = selectedIds.includes(fileId)
+        ? selectedIds.filter((id) => id !== fileId)
+        : [...selectedIds, fileId];
+      setSelectedIds(next);
+      setActiveFileId(next.includes(fileId) ? fileId : (next[next.length - 1] ?? null));
       selectionAnchorRef.current = fileId;
+      setRenaming(false);
+      return;
     } else {
       setSelectedIds([fileId]);
       selectionAnchorRef.current = fileId;
@@ -6094,40 +6117,47 @@ function FilesApp({
         <div className="file-explorer-top">
           <div className="file-command-strip">
             <button
+              aria-label="열기"
+              className="file-command-action"
               disabled={!selectedFile}
               onClick={() => selectedFile && openVfsEntry(selectedFile.item)}
               type="button"
             >
               <ExternalLink aria-hidden="true" size={15} />
-              열기
+              <span>열기</span>
             </button>
             <button
+              aria-label="이름 바꾸기"
+              className="file-command-action"
               disabled={!selectedFile || selectedIds.length > 1}
               onClick={() => selectedFile && setRenaming(true)}
               type="button"
             >
               <Pencil aria-hidden="true" size={15} />
-              이름 바꾸기
+              <span>이름 바꾸기</span>
             </button>
             <button
-              className="file-danger"
+              aria-label="삭제"
+              className="file-command-action file-danger"
               disabled={!selectedFile}
               onClick={deleteSelectedFiles}
               type="button"
             >
               <Trash2 aria-hidden="true" size={15} />
-              삭제
+              <span>삭제</span>
             </button>
             <span aria-hidden="true" className="file-command-separator" />
-            <div className="file-sort-control">
+            <div className="file-sort-control" ref={sortControlRef}>
               <button
+                aria-label="정렬"
                 aria-expanded={sortOpen}
                 aria-haspopup="menu"
+                className="file-command-action"
                 onClick={() => setSortOpen((current) => !current)}
                 type="button"
               >
                 <ArrowUpDown aria-hidden="true" size={15} />
-                정렬
+                <span>정렬</span>
               </button>
               {sortOpen && (
                 <div aria-label="파일 정렬" className="file-sort-menu" role="menu">

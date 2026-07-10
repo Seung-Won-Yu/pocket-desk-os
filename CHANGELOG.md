@@ -29,6 +29,8 @@ Initial deploy-ready web desktop prototype.
 - Recycle Bin with restore and confirmation before permanent deletion.
 - Settings with functional personalization, system, and sound sections.
 - Desktop selection regression protection and a shell recovery screen.
+- Windows-style desktop icon sizes, name/type/date sorting, refresh, and grid alignment.
+- File Explorer sorting, details/list/icon views, multi-selection, and keyboard operations.
 - Original generated wallpaper set and custom PocketDesk brand icons.
 - PWA manifest, service worker, and install icons.
 - Public sharing metadata, `robots.txt`, `llms.txt`, and generated social preview image.

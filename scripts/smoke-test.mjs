@@ -62,6 +62,7 @@ function withTimeout(promise, timeoutMs, label) {
 }
 
 async function runSmoke(baseUrl) {
+  const multiSelectModifier = process.platform === "darwin" ? "Meta" : "Control";
   const browser = await launchBrowser();
   const page = await browser.newPage({
     serviceWorkers: "block",
@@ -108,6 +109,14 @@ async function runSmoke(baseUrl) {
     await page.waitForTimeout(100);
     assert((await page.locator(".desktop").count()) === 1, "Desktop selection drag crashed the shell");
     assert((await page.locator(".desktop-icon").count()) === 2, "Desktop should only show core system icons");
+    const defaultIconBoxes = await page.locator(".desktop-icon").evaluateAll((icons) =>
+      icons.map((icon) => {
+        const box = icon.getBoundingClientRect();
+        return { left: box.left, top: box.top };
+      }),
+    );
+    assert(defaultIconBoxes[0].left === defaultIconBoxes[1].left, "Desktop system icons are not vertically aligned");
+    assert(defaultIconBoxes[0].top < defaultIconBoxes[1].top, "Desktop system icon order is wrong");
 
     await page.locator(".desktop").dispatchEvent("contextmenu", {
       bubbles: true,
@@ -196,6 +205,10 @@ async function runSmoke(baseUrl) {
     await files.locator(".file-list button").first().click();
     await page.keyboard.press("Control+a");
     assert((await files.locator(".file-list button.is-selected").count()) === 4, "Explorer Ctrl+A did not select all files");
+    await files.locator(".file-list button").first().click({ modifiers: [multiSelectModifier] });
+    const ctrlClickSelectionCount = await files.locator(".file-list button.is-selected").count();
+    assert(ctrlClickSelectionCount === 3, `Explorer Ctrl+click did not toggle selection: ${ctrlClickSelectionCount}`);
+    assert(!(await files.locator(".file-preview h3").innerText()).includes("web-surf.url"), "Explorer kept a deselected file active");
     await files.locator(".file-list button", { hasText: "web-surf.url" }).click();
     await page.keyboard.press("F2");
     await files.getByLabel("파일 이름").waitFor({ state: "visible" });
@@ -205,6 +218,9 @@ async function runSmoke(baseUrl) {
     const arrowSelectedName = await files.locator(".file-list button.is-selected span").innerText();
     assert(arrowSelectedName === "sketch.canvas", `Explorer arrow navigation did not move selection: ${arrowSelectedName}`);
     await files.getByRole("button", { name: "자세히 보기" }).click();
+    await files.getByRole("button", { name: "정렬" }).click();
+    await files.locator(".file-address").click();
+    await explorerSortMenu.waitFor({ state: "hidden" });
 
     await page.keyboard.press("Control+Alt+R");
     const runDialog = page.locator(".run-dialog");
@@ -331,6 +347,8 @@ async function runSmoke(baseUrl) {
 
     await page.setViewportSize({ width: 390, height: 780 });
     await page.waitForTimeout(250);
+    const mobileExplorerSidebar = await files.locator("aside").boundingBox();
+    assert(mobileExplorerSidebar && mobileExplorerSidebar.height >= 54, "Mobile Explorer navigation collapsed");
     const visibleWindowBoxes = await page.locator(".window-frame:visible").evaluateAll((frames) =>
       frames.map((frame) => {
         const box = frame.getBoundingClientRect();
