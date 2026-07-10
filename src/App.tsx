@@ -4,6 +4,8 @@ import {
   Bomb,
   Calculator,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Download,
   Eraser,
   ExternalLink,
@@ -36,6 +38,7 @@ import {
   Trash2,
   Undo2,
   Upload,
+  UserRound,
   Volume2,
   Wifi,
   X,
@@ -292,7 +295,7 @@ type AppDefinition = {
   component: (props: AppContentProps) => JSX.Element;
 };
 
-const APP_BAR_HEIGHT = 56;
+const APP_BAR_HEIGHT = 48;
 const DESKTOP_ICON_WIDTH = 86;
 const DESKTOP_ICON_HEIGHT = 94;
 const CONTEXT_MENU_WIDTH = 220;
@@ -691,6 +694,16 @@ export default function App() {
   useEffect(() => {
     persistWindowState(windows);
   }, [windows]);
+
+  useEffect(() => {
+    const fitWindowsToViewport = () => {
+      setWindows((current) => current.map(fitWindowToViewport));
+    };
+
+    fitWindowsToViewport();
+    window.addEventListener("resize", fitWindowsToViewport);
+    return () => window.removeEventListener("resize", fitWindowsToViewport);
+  }, []);
 
   useEffect(() => {
     persistDesktopIconLayout(iconLayout);
@@ -1704,7 +1717,6 @@ export default function App() {
           }}
           onLock={lockDesktop}
           onOpenApp={openApp}
-          onOpenRun={openRunDialog}
           onRestart={restartDesktop}
           onShutdown={shutdownDesktop}
           onPointerDown={(event) => event.stopPropagation()}
@@ -1757,6 +1769,26 @@ export default function App() {
 
 function createDefaultWindows(): WindowInstance[] {
   return [];
+}
+
+function fitWindowToViewport(item: WindowInstance): WindowInstance {
+  if (item.maximized) return item;
+
+  const minWidth = window.innerWidth <= 740 ? 288 : 320;
+  const width = clamp(item.width, minWidth, Math.max(minWidth, window.innerWidth - 16));
+  const height = clamp(
+    item.height,
+    240,
+    Math.max(240, window.innerHeight - APP_BAR_HEIGHT - 16),
+  );
+  const x = clamp(item.x, 8, Math.max(8, window.innerWidth - width - 8));
+  const y = clamp(item.y, 8, Math.max(8, window.innerHeight - APP_BAR_HEIGHT - height - 8));
+
+  if (width === item.width && height === item.height && x === item.x && y === item.y) {
+    return item;
+  }
+
+  return { ...item, height, width, x, y };
 }
 
 function makeWindow(appId: AppId, x: number, y: number, z: number): WindowInstance {
@@ -3066,6 +3098,17 @@ function BrandMark({ className = "" }: { className?: string }) {
   );
 }
 
+function StartGlyph() {
+  return (
+    <span aria-hidden="true" className="start-glyph">
+      <span />
+      <span />
+      <span />
+      <span />
+    </span>
+  );
+}
+
 function ToastStack({
   onDismiss,
   toasts,
@@ -3269,6 +3312,8 @@ function WindowFrame({
   onToggleMaximize: () => void;
   onUpdate: (patch: Partial<WindowInstance>) => void;
 }) {
+  const [snapFlyoutOpen, setSnapFlyoutOpen] = useState(false);
+
   if (instance.minimized) {
     return null;
   }
@@ -3353,6 +3398,12 @@ function WindowFrame({
     onToggleMaximize();
   };
 
+  const applySnapLayout = (zone: SnapZone) => {
+    onFocus();
+    onUpdate(getWindowSnapPatch(zone));
+    setSnapFlyoutOpen(false);
+  };
+
   return (
     <article
       aria-label={app.title}
@@ -3376,18 +3427,78 @@ function WindowFrame({
           <button aria-label={`${app.title} 최소화`} onClick={onMinimize} title="최소화" type="button">
             <Minus aria-hidden="true" size={14} />
           </button>
-          <button
-            aria-label={`${app.title} 최대화`}
-            onClick={onToggleMaximize}
-            title="최대화"
-            type="button"
+          <div
+            className="maximize-control"
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setSnapFlyoutOpen(false);
+              }
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setSnapFlyoutOpen(false);
+                event.currentTarget.querySelector<HTMLButtonElement>(":scope > button")?.focus();
+              }
+            }}
+            onMouseEnter={() => !instance.maximized && setSnapFlyoutOpen(true)}
+            onMouseLeave={() => setSnapFlyoutOpen(false)}
           >
-            {instance.maximized ? (
-              <Square aria-hidden="true" size={12} />
-            ) : (
-              <Maximize2 aria-hidden="true" size={13} />
+            <button
+              aria-expanded={snapFlyoutOpen}
+              aria-haspopup="menu"
+              aria-label={`${app.title} 최대화`}
+              onClick={onToggleMaximize}
+              onFocus={() => !instance.maximized && setSnapFlyoutOpen(true)}
+              title="최대화"
+              type="button"
+            >
+              {instance.maximized ? (
+                <Square aria-hidden="true" size={12} />
+              ) : (
+                <Maximize2 aria-hidden="true" size={13} />
+              )}
+            </button>
+            {snapFlyoutOpen && !instance.maximized && (
+              <div aria-label="스냅 레이아웃" className="snap-layout-flyout" role="menu">
+                <button
+                  aria-label="왼쪽 절반에 맞춤"
+                  onClick={() => applySnapLayout("left")}
+                  role="menuitem"
+                  title="왼쪽 절반"
+                  type="button"
+                >
+                  <span className="snap-layout-thumb snap-left" aria-hidden="true">
+                    <span />
+                    <span />
+                  </span>
+                </button>
+                <button
+                  aria-label="오른쪽 절반에 맞춤"
+                  onClick={() => applySnapLayout("right")}
+                  role="menuitem"
+                  title="오른쪽 절반"
+                  type="button"
+                >
+                  <span className="snap-layout-thumb snap-right" aria-hidden="true">
+                    <span />
+                    <span />
+                  </span>
+                </button>
+                <button
+                  aria-label="화면에 최대화"
+                  onClick={() => applySnapLayout("top")}
+                  role="menuitem"
+                  title="최대화"
+                  type="button"
+                >
+                  <span className="snap-layout-thumb snap-top" aria-hidden="true">
+                    <span />
+                    <span />
+                  </span>
+                </button>
+              </div>
             )}
-          </button>
+          </div>
           <button aria-label={`${app.title} 닫기`} onClick={onClose} title="닫기" type="button">
             <X aria-hidden="true" size={15} />
           </button>
@@ -3496,57 +3607,58 @@ function Taskbar({
 
   return (
     <footer className="taskbar" ref={taskbarRef}>
-      <button
-        aria-expanded={startOpen}
-        aria-label="시작 메뉴"
-        className="start-button"
-        onPointerDown={onOpenStart}
-        type="button"
-      >
-        <BrandMark className="brand-mark-inline" />
-        <span>PocketDesk</span>
-      </button>
-      <div className="taskbar-windows" aria-label="열린 앱">
-        {taskbarApps.map(({ app, window: windowItem }) => {
-          const isPinned = pinnedAppIds.includes(app.id);
-          return (
-            <div
-              className="taskbar-slot"
-              key={windowItem?.id ?? `pinned-${app.id}`}
-              onBlur={hidePreview}
-              onFocusCapture={(event) => showPreview(event.currentTarget, app, windowItem)}
-              onMouseEnter={(event) => showPreview(event.currentTarget, app, windowItem)}
-              onMouseLeave={hidePreview}
-            >
-              <button
-                className={`taskbar-app ${activeWindowId === windowItem?.id ? "is-current" : ""} ${
-                  windowItem?.minimized ? "is-minimized" : ""
-                } ${isPinned ? "is-pinned" : ""} ${windowItem ? "is-open" : ""}`}
-                onClick={() => {
-                  if (windowItem) {
-                    onToggleWindow(windowItem.id);
-                  } else {
-                    onOpenApp(app.id);
-                  }
-                }}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  onTogglePinnedApp(app.id);
-                }}
-                title={`${app.title} · 우클릭으로 ${isPinned ? "고정 해제" : "작업표시줄에 고정"}`}
-                type="button"
+      <div className="taskbar-center">
+        <button
+          aria-expanded={startOpen}
+          aria-label="시작 메뉴"
+          className="start-button"
+          onPointerDown={onOpenStart}
+          type="button"
+        >
+          <StartGlyph />
+        </button>
+        <div className="taskbar-windows" aria-label="열린 앱">
+          {taskbarApps.map(({ app, window: windowItem }) => {
+            const isPinned = pinnedAppIds.includes(app.id);
+            return (
+              <div
+                className="taskbar-slot"
+                key={windowItem?.id ?? `pinned-${app.id}`}
+                onBlur={hidePreview}
+                onFocusCapture={(event) => showPreview(event.currentTarget, app, windowItem)}
+                onMouseEnter={(event) => showPreview(event.currentTarget, app, windowItem)}
+                onMouseLeave={hidePreview}
               >
-                <AppIconTile accent={app.accent} icon={app.icon} size="small" />
-                <span>{app.title}</span>
-                {isPinned ? (
-                  <Pin aria-hidden="true" className="taskbar-pin-icon" size={11} />
-                ) : (
-                  <PinOff aria-hidden="true" className="taskbar-pin-icon" size={11} />
-                )}
-              </button>
-            </div>
-          );
-        })}
+                <button
+                  className={`taskbar-app ${activeWindowId === windowItem?.id ? "is-current" : ""} ${
+                    windowItem?.minimized ? "is-minimized" : ""
+                  } ${isPinned ? "is-pinned" : ""} ${windowItem ? "is-open" : ""}`}
+                  onClick={() => {
+                    if (windowItem) {
+                      onToggleWindow(windowItem.id);
+                    } else {
+                      onOpenApp(app.id);
+                    }
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    onTogglePinnedApp(app.id);
+                  }}
+                  title={`${app.title} · 우클릭으로 ${isPinned ? "고정 해제" : "작업표시줄에 고정"}`}
+                  type="button"
+                >
+                  <AppIconTile accent={app.accent} icon={app.icon} size="small" />
+                  <span>{app.title}</span>
+                  {isPinned ? (
+                    <Pin aria-hidden="true" className="taskbar-pin-icon" size={11} />
+                  ) : (
+                    <PinOff aria-hidden="true" className="taskbar-pin-icon" size={11} />
+                  )}
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
       {preview && <TaskbarPreview {...preview} />}
       <div className="system-tray-wrap" ref={trayRef}>
@@ -3747,7 +3859,6 @@ function StartMenu({
   onClose,
   onLock,
   onOpenApp,
-  onOpenRun,
   onRestart,
   onShutdown,
   onPointerDown,
@@ -3762,7 +3873,6 @@ function StartMenu({
   onClose: () => void;
   onLock: () => void;
   onOpenApp: (appId: AppId) => void;
-  onOpenRun: () => void;
   onRestart: () => void;
   onShutdown: () => void;
   onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
@@ -3775,6 +3885,7 @@ function StartMenu({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [powerMenuOpen, setPowerMenuOpen] = useState(false);
+  const [allAppsOpen, setAllAppsOpen] = useState(false);
   const hasQuery = query.trim().length > 0;
   const pinnedApps = getStartPinnedApps(apps);
   const allApps = [...apps].sort((a, b) => a.title.localeCompare(b.title));
@@ -3805,12 +3916,6 @@ function StartMenu({
 
   return (
     <aside className="start-menu" onPointerDown={onPointerDown}>
-      <div className="start-menu-header">
-        <div>
-          <p>PocketDesk OS</p>
-          <strong>Start</strong>
-        </div>
-      </div>
       <label className="start-search">
         <Search aria-hidden="true" size={17} />
         <input
@@ -3828,8 +3933,16 @@ function StartMenu({
         )}
       </label>
       <div className="start-section-title">
-        <strong>{hasQuery ? "검색 결과" : "Pinned"}</strong>
-        <small>{hasQuery ? `${results.length}개` : `${pinnedApps.length}개`}</small>
+        <strong>{hasQuery ? "검색 결과" : allAppsOpen ? "All apps" : "Pinned"}</strong>
+        {hasQuery ? (
+          <small>{results.length}개</small>
+        ) : (
+          <button className="start-all-apps-toggle" onClick={() => setAllAppsOpen((value) => !value)} type="button">
+            {allAppsOpen ? <ChevronLeft aria-hidden="true" size={14} /> : null}
+            {allAppsOpen ? "Back" : "All apps"}
+            {!allAppsOpen ? <ChevronRight aria-hidden="true" size={14} /> : null}
+          </button>
+        )}
       </div>
       {hasQuery ? (
         results.length > 0 ? (
@@ -3861,20 +3974,8 @@ function StartMenu({
         )
       ) : (
         <div className="start-dashboard">
-          <div className="start-pinned-grid" aria-label="고정된 앱">
-            {pinnedApps.map((app) => (
-              <button key={app.id} onClick={() => onOpenApp(app.id)} type="button">
-                <AppIconTile accent={app.accent} icon={app.icon} size="medium" />
-                <strong>{app.title}</strong>
-              </button>
-            ))}
-          </div>
-          <div className="start-lower-grid">
-            <section className="start-all-apps">
-              <div className="start-section-title start-subsection-title">
-                <strong>All apps</strong>
-                <small>{allApps.length}개</small>
-              </div>
+          {allAppsOpen ? (
+            <section className="start-all-apps start-all-apps-panel">
               <div className="start-app-list">
                 {allApps.map((app) => (
                   <button key={app.id} onClick={() => onOpenApp(app.id)} type="button">
@@ -3887,55 +3988,65 @@ function StartMenu({
                 ))}
               </div>
             </section>
-            <section className="start-recent">
-              <div className="start-section-title start-subsection-title">
-                <strong>Recent</strong>
-                <small>{recentItems.length}개</small>
+          ) : (
+            <>
+              <div className="start-pinned-grid" aria-label="고정된 앱">
+                {pinnedApps.map((app) => (
+                  <button key={app.id} onClick={() => onOpenApp(app.id)} type="button">
+                    <AppIconTile accent={app.accent} icon={app.icon} size="medium" />
+                    <strong>{app.title}</strong>
+                  </button>
+                ))}
               </div>
-              {recentItems.length > 0 ? (
-                <div className="start-recent-list">
-                  {recentItems.map((item) => {
-                    const association = getVfsEntryAssociation(item);
-                    return (
-                      <button key={item.id} onClick={() => onRecentItemOpen(item)} type="button">
-                        <AppIconTile
-                          accent={association.accent}
-                          icon={association.icon}
-                          size="small"
-                          tone="file"
-                        />
-                        <span>
-                          <strong>{item.name}</strong>
-                          <small>
-                            {association.typeLabel} · {association.appTitle}
-                          </small>
-                        </span>
-                      </button>
-                    );
-                  })}
+              <section className="start-recommended">
+                <div className="start-section-title start-subsection-title">
+                  <strong>Recommended</strong>
+                  <small>{recentItems.length}개</small>
                 </div>
-              ) : (
-                <div className="start-empty-compact">
-                  <FileText aria-hidden="true" size={19} />
-                  <span>최근 파일 없음</span>
-                </div>
-              )}
-            </section>
-          </div>
+                {recentItems.length > 0 ? (
+                  <div className="start-recommended-list">
+                    {recentItems.map((item) => {
+                      const association = getVfsEntryAssociation(item);
+                      return (
+                        <button key={item.id} onClick={() => onRecentItemOpen(item)} type="button">
+                          <AppIconTile
+                            accent={association.accent}
+                            icon={association.icon}
+                            size="small"
+                            tone="file"
+                          />
+                          <span>
+                            <strong>{item.name}</strong>
+                            <small>
+                              {association.typeLabel} · {association.appTitle}
+                            </small>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="start-empty-compact">
+                    <FileText aria-hidden="true" size={19} />
+                    <span>추천 항목 없음</span>
+                  </div>
+                )}
+              </section>
+            </>
+          )}
         </div>
       )}
       <div className="start-menu-footer">
         <button className="start-account" type="button">
-          <Monitor aria-hidden="true" size={18} />
+          <span className="start-account-avatar">
+            <UserRound aria-hidden="true" size={17} />
+          </span>
           <span>
             <strong>Seung-Won</strong>
             <small>로컬 계정</small>
           </span>
         </button>
         <div className="start-footer-actions">
-          <button aria-label="Run 열기" onClick={onOpenRun} title="Run" type="button">
-            <SquareTerminal aria-hidden="true" size={18} />
-          </button>
           <div className="power-menu-wrap">
             <button
               aria-expanded={powerMenuOpen}

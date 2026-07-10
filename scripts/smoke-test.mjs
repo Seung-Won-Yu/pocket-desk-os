@@ -108,7 +108,7 @@ async function runSmoke(baseUrl) {
     const startText = await startMenu.innerText();
     assert(startText.includes("Pinned"), "Start menu Pinned section missing");
     assert(startText.includes("All apps"), "Start menu All apps section missing");
-    assert(startText.includes("Recent"), "Start menu Recent section missing");
+    assert(startText.includes("Recommended"), "Start menu Recommended section missing");
     assert(await page.locator(".start-pinned-grid button").count() >= 6, "Pinned app grid is too sparse");
     await startMenu.getByRole("button", { name: "전원 옵션" }).click();
     await startMenu.getByRole("menuitem", { name: "Restart" }).click();
@@ -204,6 +204,12 @@ async function runSmoke(baseUrl) {
     await page.locator(".taskbar-app", { hasText: "Internet" }).click();
     const frame = page.locator('article[aria-label="Internet"]');
     const titlebar = frame.locator(".window-titlebar");
+    await frame.getByRole("button", { name: "Internet 최대화" }).hover();
+    const snapLayoutMenu = frame.getByRole("menu", { name: "스냅 레이아웃" });
+    await snapLayoutMenu.waitFor({ state: "visible" });
+    assert((await snapLayoutMenu.getByRole("menuitem").count()) === 3, "Snap layout choices missing");
+    await page.mouse.move(8, 8);
+    await snapLayoutMenu.waitFor({ state: "hidden" });
     const box = await titlebar.boundingBox();
     assert(box, "Internet titlebar missing");
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -242,6 +248,17 @@ async function runSmoke(baseUrl) {
 
     await page.setViewportSize({ width: 390, height: 780 });
     await page.waitForTimeout(250);
+    const visibleWindowBoxes = await page.locator(".window-frame:visible").evaluateAll((frames) =>
+      frames.map((frame) => {
+        const box = frame.getBoundingClientRect();
+        return { left: box.left, right: box.right };
+      }),
+    );
+    assert(
+      visibleWindowBoxes.every((box) => box.left >= 0 && box.right <= 390),
+      "Mobile window escaped viewport bounds",
+    );
+    assert(await page.locator(".start-glyph").isVisible(), "Mobile Start glyph is hidden");
     const hasHorizontalOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth > window.innerWidth + 2,
     );
