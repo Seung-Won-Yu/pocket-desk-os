@@ -1,4 +1,5 @@
 import {
+  ArrowUpDown,
   Bell,
   Bomb,
   Calculator,
@@ -16,6 +17,7 @@ import {
   History,
   House,
   LayoutGrid,
+  List,
   LucideIcon,
   Maximize2,
   Minus,
@@ -94,6 +96,9 @@ type IconPosition = {
 type DesktopIconLayout = Partial<Record<AppId, IconPosition>>;
 type DesktopSortKey = "name" | "type" | "modified";
 type DesktopViewMode = "small" | "medium" | "large";
+type FileSortDirection = "asc" | "desc";
+type FileSortKey = "name" | "type" | "modified";
+type FileViewMode = "details" | "list" | "icons";
 type PersistedIconPosition = {
   x?: unknown;
   y?: unknown;
@@ -319,6 +324,9 @@ const DESKTOP_ICON_LAYOUT_KEY = "pocket-desk-icons-v1";
 const DESKTOP_ICON_VIEW_KEY = "pocket-desk-icon-view-v1";
 const DESKTOP_ICON_SORT_KEY = "pocket-desk-icon-sort-v1";
 const DESKTOP_ICON_GRID_KEY = "pocket-desk-icon-grid-v1";
+const FILE_EXPLORER_SORT_KEY = "pocket-desk-explorer-sort-v1";
+const FILE_EXPLORER_SORT_DIRECTION_KEY = "pocket-desk-explorer-sort-direction-v1";
+const FILE_EXPLORER_VIEW_KEY = "pocket-desk-explorer-view-v1";
 const DESKTOP_ITEMS_KEY = "pocket-desk-desktop-items-v1";
 const BROWSER_BOOKMARKS_KEY = "pocket-desk-browser-bookmarks-v1";
 const BROWSER_HISTORY_KEY = "pocket-desk-browser-history-v1";
@@ -5789,10 +5797,25 @@ function FilesApp({
   openVfsEntry,
   renameVfsEntry,
 }: AppContentProps) {
+  const fileListRef = useRef<HTMLDivElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const selectionAnchorRef = useRef<string | null>(null);
   const [location, setLocation] = useState<"desktop" | "documents" | "games" | "pictures">(
     "desktop",
   );
+  const [sortKey, setSortKey] = useState<FileSortKey>(() => {
+    const stored = localStorage.getItem(FILE_EXPLORER_SORT_KEY);
+    return stored === "type" || stored === "modified" ? stored : "name";
+  });
+  const [sortDirection, setSortDirection] = useState<FileSortDirection>(() =>
+    localStorage.getItem(FILE_EXPLORER_SORT_DIRECTION_KEY) === "desc" ? "desc" : "asc",
+  );
+  const [viewMode, setViewMode] = useState<FileViewMode>(() => {
+    const stored = localStorage.getItem(FILE_EXPLORER_VIEW_KEY);
+    return stored === "list" || stored === "icons" ? stored : "details";
+  });
+  const [sortOpen, setSortOpen] = useState(false);
   const locationLabel = {
     desktop: "바탕 화면",
     documents: "문서",
@@ -5818,11 +5841,13 @@ function FilesApp({
           name: item.name,
           modified: formatDesktopItemTime(item.updatedAt),
           type: association.typeLabel,
+          updatedAt: item.updatedAt,
         };
       }),
     [locationItems],
   );
-  const [selected, setSelected] = useState(0);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [fileQuery, setFileQuery] = useState("");
   const filteredFiles = useMemo(() => {
     const normalizedQuery = normalizeSearchText(fileQuery);
@@ -5833,36 +5858,155 @@ function FilesApp({
         .some((field) => field.includes(normalizedQuery)),
     );
   }, [fileQuery, files]);
-  const selectedFile = filteredFiles[Math.min(selected, filteredFiles.length - 1)];
+  const visibleFiles = useMemo(() => {
+    const direction = sortDirection === "asc" ? 1 : -1;
+    return [...filteredFiles].sort((first, second) => {
+      let order = 0;
+      if (sortKey === "modified") order = first.updatedAt - second.updatedAt;
+      if (sortKey === "type") {
+        order = first.type.localeCompare(second.type, "ko", { numeric: true, sensitivity: "base" });
+      }
+      if (sortKey === "name" || order === 0) {
+        order = first.name.localeCompare(second.name, "ko", { numeric: true, sensitivity: "base" });
+      }
+      return order * direction;
+    });
+  }, [filteredFiles, sortDirection, sortKey]);
+  const selectedFile =
+    visibleFiles.find((file) => file.id === activeFileId) ??
+    visibleFiles.find((file) => selectedIds.includes(file.id)) ??
+    visibleFiles[0];
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState(selectedFile?.name ?? "");
   const [importing, setImporting] = useState(false);
 
   useEffect(() => {
-    setSelected((current) =>
-      filteredFiles.length === 0 ? 0 : clamp(current, 0, filteredFiles.length - 1),
+    const visibleIds = new Set(visibleFiles.map((file) => file.id));
+    setSelectedIds((current) => current.filter((id) => visibleIds.has(id)));
+    setActiveFileId((current) =>
+      current && visibleIds.has(current) ? current : (visibleFiles[0]?.id ?? null),
     );
-  }, [filteredFiles.length]);
+  }, [visibleFiles]);
+
+  useEffect(() => {
+    localStorage.setItem(FILE_EXPLORER_SORT_KEY, sortKey);
+  }, [sortKey]);
+
+  useEffect(() => {
+    localStorage.setItem(FILE_EXPLORER_SORT_DIRECTION_KEY, sortDirection);
+  }, [sortDirection]);
+
+  useEffect(() => {
+    localStorage.setItem(FILE_EXPLORER_VIEW_KEY, viewMode);
+  }, [viewMode]);
 
   useEffect(() => {
     setDraftName(selectedFile?.name ?? "");
     setRenaming(false);
   }, [selectedFile?.id, selectedFile?.name]);
 
+  useEffect(() => {
+    if (renaming) renameInputRef.current?.select();
+  }, [renaming]);
+
+  const focusFileList = () => {
+    fileListRef.current?.focus();
+    window.requestAnimationFrame(() => fileListRef.current?.focus());
+  };
+
   const submitRename = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selectedFile) return;
     renameVfsEntry(selectedFile.id, draftName);
     setRenaming(false);
+    focusFileList();
   };
 
-  const deleteSelectedFile = () => {
-    if (!selectedFile) return;
-    deleteVfsEntry(selectedFile.id);
+  const deleteSelectedFiles = () => {
+    const ids = selectedIds.length > 0 ? selectedIds : selectedFile ? [selectedFile.id] : [];
+    if (ids.length === 0) return;
+    ids.forEach(deleteVfsEntry);
     setRenaming(false);
-    setSelected((current) =>
-      filteredFiles.length <= 1 ? 0 : clamp(current, 0, filteredFiles.length - 2),
+    setSelectedIds([]);
+    setActiveFileId(null);
+    selectionAnchorRef.current = null;
+  };
+
+  const changeLocation = (nextLocation: typeof location) => {
+    setLocation(nextLocation);
+    setSelectedIds([]);
+    setActiveFileId(null);
+    setRenaming(false);
+    setSortOpen(false);
+    selectionAnchorRef.current = null;
+  };
+
+  const selectFile = (
+    fileId: string,
+    index: number,
+    event: React.MouseEvent<HTMLButtonElement>,
+  ) => {
+    if (event.shiftKey && selectionAnchorRef.current) {
+      const anchorIndex = visibleFiles.findIndex((file) => file.id === selectionAnchorRef.current);
+      if (anchorIndex >= 0) {
+        const start = Math.min(anchorIndex, index);
+        const end = Math.max(anchorIndex, index);
+        setSelectedIds(visibleFiles.slice(start, end + 1).map((file) => file.id));
+      }
+    } else if (event.ctrlKey || event.metaKey) {
+      setSelectedIds((current) =>
+        current.includes(fileId) ? current.filter((id) => id !== fileId) : [...current, fileId],
+      );
+      selectionAnchorRef.current = fileId;
+    } else {
+      setSelectedIds([fileId]);
+      selectionAnchorRef.current = fileId;
+    }
+    setActiveFileId(fileId);
+    setRenaming(false);
+  };
+
+  const handleFileListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.ctrlKey || event.metaKey) {
+      if (event.key.toLowerCase() !== "a") return;
+      event.preventDefault();
+      const ids = visibleFiles.map((file) => file.id);
+      setSelectedIds(ids);
+      setActiveFileId(ids[0] ?? null);
+      selectionAnchorRef.current = ids[0] ?? null;
+      return;
+    }
+
+    if (event.key === "F2" && selectedFile && selectedIds.length <= 1) {
+      event.preventDefault();
+      setSelectedIds([selectedFile.id]);
+      setActiveFileId(selectedFile.id);
+      setRenaming(true);
+      return;
+    }
+    if (event.key === "Delete") {
+      event.preventDefault();
+      deleteSelectedFiles();
+      return;
+    }
+    if (event.key === "Enter" && selectedFile) {
+      event.preventDefault();
+      openVfsEntry(selectedFile.item);
+      return;
+    }
+    if (!["ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(event.key)) return;
+
+    event.preventDefault();
+    const currentIndex = Math.max(
+      0,
+      visibleFiles.findIndex((file) => file.id === activeFileId),
     );
+    const offset = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
+    const nextFile = visibleFiles[clamp(currentIndex + offset, 0, visibleFiles.length - 1)];
+    if (!nextFile) return;
+    setActiveFileId(nextFile.id);
+    setSelectedIds([nextFile.id]);
+    selectionAnchorRef.current = nextFile.id;
   };
 
   const importSelectedZip = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -5872,7 +6016,8 @@ function FilesApp({
     setImporting(true);
     try {
       await importVfsZip(file);
-      setSelected(0);
+      setSelectedIds([]);
+      setActiveFileId(null);
     } catch (error) {
       notify({
         detail: error instanceof Error ? error.message : "ZIP 파일을 읽을 수 없습니다.",
@@ -5894,10 +6039,7 @@ function FilesApp({
         </button>
         <button
           className={location === "desktop" ? "is-selected" : ""}
-          onClick={() => {
-            setLocation("desktop");
-            setSelected(0);
-          }}
+          onClick={() => changeLocation("desktop")}
           type="button"
         >
           <Folder aria-hidden="true" size={16} />
@@ -5905,30 +6047,21 @@ function FilesApp({
         </button>
         <button
           className={location === "documents" ? "is-selected" : ""}
-          onClick={() => {
-            setLocation("documents");
-            setSelected(0);
-          }}
+          onClick={() => changeLocation("documents")}
           type="button"
         >
           문서
         </button>
         <button
           className={location === "pictures" ? "is-selected" : ""}
-          onClick={() => {
-            setLocation("pictures");
-            setSelected(0);
-          }}
+          onClick={() => changeLocation("pictures")}
           type="button"
         >
           사진
         </button>
         <button
           className={location === "games" ? "is-selected" : ""}
-          onClick={() => {
-            setLocation("games");
-            setSelected(0);
-          }}
+          onClick={() => changeLocation("games")}
           type="button"
         >
           게임
@@ -5969,7 +6102,7 @@ function FilesApp({
               열기
             </button>
             <button
-              disabled={!selectedFile}
+              disabled={!selectedFile || selectedIds.length > 1}
               onClick={() => selectedFile && setRenaming(true)}
               type="button"
             >
@@ -5979,12 +6112,99 @@ function FilesApp({
             <button
               className="file-danger"
               disabled={!selectedFile}
-              onClick={deleteSelectedFile}
+              onClick={deleteSelectedFiles}
               type="button"
             >
               <Trash2 aria-hidden="true" size={15} />
               삭제
             </button>
+            <span aria-hidden="true" className="file-command-separator" />
+            <div className="file-sort-control">
+              <button
+                aria-expanded={sortOpen}
+                aria-haspopup="menu"
+                onClick={() => setSortOpen((current) => !current)}
+                type="button"
+              >
+                <ArrowUpDown aria-hidden="true" size={15} />
+                정렬
+              </button>
+              {sortOpen && (
+                <div aria-label="파일 정렬" className="file-sort-menu" role="menu">
+                  {(
+                    [
+                      ["name", "이름"],
+                      ["type", "항목 유형"],
+                      ["modified", "수정한 날짜"],
+                    ] as Array<[FileSortKey, string]>
+                  ).map(([nextSortKey, label]) => (
+                    <button
+                      aria-checked={sortKey === nextSortKey}
+                      key={nextSortKey}
+                      onClick={() => {
+                        setSortKey(nextSortKey);
+                        setSortOpen(false);
+                      }}
+                      role="menuitemradio"
+                      type="button"
+                    >
+                      {sortKey === nextSortKey ? <Check aria-hidden="true" size={15} /> : <span />}
+                      {label}
+                    </button>
+                  ))}
+                  <span aria-hidden="true" className="menu-separator" />
+                  {(
+                    [
+                      ["asc", "오름차순"],
+                      ["desc", "내림차순"],
+                    ] as Array<[FileSortDirection, string]>
+                  ).map(([direction, label]) => (
+                    <button
+                      aria-checked={sortDirection === direction}
+                      key={direction}
+                      onClick={() => {
+                        setSortDirection(direction);
+                        setSortOpen(false);
+                      }}
+                      role="menuitemradio"
+                      type="button"
+                    >
+                      {sortDirection === direction ? <Check aria-hidden="true" size={15} /> : <span />}
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div aria-label="보기 방식" className="file-view-control" role="group">
+              <button
+                aria-label="자세히 보기"
+                aria-pressed={viewMode === "details"}
+                onClick={() => setViewMode("details")}
+                title="자세히 보기"
+                type="button"
+              >
+                <List aria-hidden="true" size={16} />
+              </button>
+              <button
+                aria-label="목록 보기"
+                aria-pressed={viewMode === "list"}
+                onClick={() => setViewMode("list")}
+                title="목록 보기"
+                type="button"
+              >
+                <LayoutGrid aria-hidden="true" size={16} />
+              </button>
+              <button
+                aria-label="큰 아이콘 보기"
+                aria-pressed={viewMode === "icons"}
+                onClick={() => setViewMode("icons")}
+                title="큰 아이콘 보기"
+                type="button"
+              >
+                <Grid2X2 aria-hidden="true" size={16} />
+              </button>
+            </div>
           </div>
           <div className="file-address-row">
             <div className="file-address">
@@ -6004,14 +6224,25 @@ function FilesApp({
             </label>
           </div>
         </div>
-        <div className="file-list" role="list">
-          {filteredFiles.map((file, index) => {
+        <div
+          aria-label={`${locationLabel} 파일`}
+          aria-multiselectable="true"
+          className={`file-list file-view-${viewMode}`}
+          onKeyDown={handleFileListKeyDown}
+          ref={fileListRef}
+          role="listbox"
+          tabIndex={0}
+        >
+          {visibleFiles.map((file, index) => {
             const FileIcon = file.icon;
             return (
               <button
-                className={selected === index ? "is-selected" : ""}
+                aria-selected={selectedIds.includes(file.id)}
+                className={selectedIds.includes(file.id) ? "is-selected" : ""}
                 key={file.id}
-                onClick={() => setSelected(index)}
+                onClick={(event) => selectFile(file.id, index, event)}
+                onDoubleClick={() => openVfsEntry(file.item)}
+                role="option"
                 type="button"
               >
                 <FileIcon aria-hidden="true" size={18} />
@@ -6021,7 +6252,7 @@ function FilesApp({
               </button>
             );
           })}
-          {filteredFiles.length === 0 && (
+          {visibleFiles.length === 0 && (
             <div className="file-empty-state">
               <Search aria-hidden="true" size={24} />
               <strong>검색 결과 없음</strong>
@@ -6061,6 +6292,14 @@ function FilesApp({
                   <input
                     aria-label="파일 이름"
                     onChange={(event) => setDraftName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Escape") return;
+                      event.preventDefault();
+                      setDraftName(selectedFile.name);
+                      setRenaming(false);
+                      focusFileList();
+                    }}
+                    ref={renameInputRef}
                     value={draftName}
                   />
                   <button type="submit">
@@ -6071,6 +6310,7 @@ function FilesApp({
                     onClick={() => {
                       setDraftName(selectedFile.name);
                       setRenaming(false);
+                      focusFileList();
                     }}
                     type="button"
                   >
@@ -6088,7 +6328,7 @@ function FilesApp({
                     <Pencil aria-hidden="true" size={15} />
                     이름 변경
                   </button>
-                  <button className="file-danger" onClick={deleteSelectedFile} type="button">
+                  <button className="file-danger" onClick={deleteSelectedFiles} type="button">
                     <Trash2 aria-hidden="true" size={15} />
                     삭제
                   </button>

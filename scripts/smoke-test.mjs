@@ -182,6 +182,30 @@ async function runSmoke(baseUrl) {
     assert((await files.locator(".file-list").innerText()).includes("notes.txt"), "Documents view did not filter notes");
     await files.getByRole("button", { name: "바탕 화면", exact: true }).click();
 
+    await files.getByRole("button", { name: "정렬" }).click();
+    const explorerSortMenu = files.getByRole("menu", { name: "파일 정렬" });
+    await explorerSortMenu.waitFor({ state: "visible" });
+    await explorerSortMenu.getByRole("menuitemradio", { name: "이름" }).click();
+    await files.getByRole("button", { name: "정렬" }).click();
+    await explorerSortMenu.getByRole("menuitemradio", { name: "내림차순" }).click();
+    const descendingNames = await files.locator(".file-list button > span").allInnerTexts();
+    assert(descendingNames[0] === "web-surf.url", "Explorer descending name sort is wrong");
+
+    await files.getByRole("button", { name: "큰 아이콘 보기" }).click();
+    assert(await files.locator(".file-list").evaluate((node) => node.classList.contains("file-view-icons")), "Explorer icon view did not apply");
+    await files.locator(".file-list button").first().click();
+    await page.keyboard.press("Control+a");
+    assert((await files.locator(".file-list button.is-selected").count()) === 4, "Explorer Ctrl+A did not select all files");
+    await files.locator(".file-list button", { hasText: "web-surf.url" }).click();
+    await page.keyboard.press("F2");
+    await files.getByLabel("파일 이름").waitFor({ state: "visible" });
+    await page.keyboard.press("Escape");
+    await files.getByLabel("파일 이름").waitFor({ state: "hidden" });
+    await page.keyboard.press("ArrowDown");
+    const arrowSelectedName = await files.locator(".file-list button.is-selected span").innerText();
+    assert(arrowSelectedName === "sketch.canvas", `Explorer arrow navigation did not move selection: ${arrowSelectedName}`);
+    await files.getByRole("button", { name: "자세히 보기" }).click();
+
     await page.keyboard.press("Control+Alt+R");
     const runDialog = page.locator(".run-dialog");
     await runDialog.waitFor({ state: "visible" });
@@ -194,7 +218,7 @@ async function runSmoke(baseUrl) {
     await files.locator(".file-list button", { hasText: "web-surf.url" }).click();
     const filePreviewText = await files.locator(".file-preview").innerText();
     assert(filePreviewText.includes("연결 프로그램: 웹 브라우저"), "File Explorer did not show URL association");
-    await files.locator(".file-preview").getByRole("button", { name: "열기" }).click();
+    await page.keyboard.press("Enter");
     await page.locator('article[aria-label="웹 브라우저"]').waitFor({ state: "visible" });
     await page.waitForFunction(() => {
       const browser = document.querySelector('article[aria-label="웹 브라우저"]');
@@ -228,7 +252,7 @@ async function runSmoke(baseUrl) {
     const fileToTrash = files.locator(".file-list button").first();
     const trashedFileName = await fileToTrash.locator("span").innerText();
     await fileToTrash.click();
-    await files.locator(".file-preview").getByRole("button", { name: "삭제" }).click();
+    await page.keyboard.press("Delete");
 
     await page.keyboard.press("Control+Alt+R");
     await runDialog.waitFor({ state: "visible" });

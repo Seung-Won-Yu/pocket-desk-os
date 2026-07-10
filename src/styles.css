@@ -2837,8 +2837,7 @@ button {
   display: flex;
   gap: 7px;
   min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
+  overflow: visible;
 }
 
 .file-command-strip::-webkit-scrollbar {
@@ -2858,6 +2857,83 @@ button {
 .file-command-strip button:disabled {
   cursor: default;
   opacity: 0.42;
+}
+
+.file-command-separator {
+  align-self: stretch;
+  background: var(--line);
+  flex: 0 0 1px;
+  margin: 2px 1px;
+}
+
+.file-sort-control {
+  flex: 0 0 auto;
+  position: relative;
+}
+
+.file-sort-menu {
+  backdrop-filter: blur(22px) saturate(1.4);
+  background: var(--mica-strong);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  left: 0;
+  padding: 6px;
+  position: absolute;
+  top: calc(100% + 5px);
+  width: 190px;
+  z-index: 8;
+}
+
+.file-sort-menu button {
+  background: transparent;
+  border-color: transparent;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.file-sort-menu button:hover,
+.file-sort-menu button:focus-visible {
+  background: var(--control-hover);
+  outline: none;
+}
+
+.file-sort-menu button > svg:first-child,
+.file-sort-menu button > span:first-child {
+  flex: 0 0 15px;
+  width: 15px;
+}
+
+.file-view-control {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 7px;
+  display: flex;
+  margin-left: auto;
+  overflow: hidden;
+}
+
+.file-command-strip .file-view-control button {
+  border: 0;
+  border-radius: 0;
+  display: grid;
+  min-height: 30px;
+  padding: 0;
+  place-items: center;
+  width: 32px;
+}
+
+.file-command-strip .file-view-control button + button {
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.file-view-control button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--active) 28%, rgba(255, 255, 255, 0.1));
+  color: #fff;
 }
 
 .file-address-row {
@@ -2986,6 +3062,11 @@ button {
   padding: 12px;
 }
 
+.file-list:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--active) 65%, white) inset;
+  outline: none;
+}
+
 .file-list button {
   align-items: center;
   display: grid;
@@ -2997,12 +3078,74 @@ button {
   width: 100%;
 }
 
+.file-list button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .file-list button + button {
   margin-top: 6px;
 }
 
 .file-list small {
   color: var(--muted);
+}
+
+.file-list.file-view-list {
+  align-content: start;
+  display: grid;
+  gap: 4px 8px;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+}
+
+.file-list.file-view-list button {
+  grid-template-columns: 24px minmax(0, 1fr);
+  min-height: 38px;
+}
+
+.file-list.file-view-list button + button,
+.file-list.file-view-icons button + button {
+  margin-top: 0;
+}
+
+.file-list.file-view-list small,
+.file-list.file-view-icons small {
+  display: none;
+}
+
+.file-list.file-view-icons {
+  align-content: start;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+}
+
+.file-list.file-view-icons button {
+  align-content: center;
+  grid-template-columns: 1fr;
+  grid-template-rows: 42px auto;
+  justify-items: center;
+  min-height: 108px;
+  padding: 10px 7px;
+  text-align: center;
+}
+
+.file-list.file-view-icons button > svg {
+  height: 34px;
+  width: 34px;
+}
+
+.file-list.file-view-icons button > span {
+  display: -webkit-box;
+  line-height: 1.25;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .file-empty-state {
