@@ -1,6 +1,6 @@
 # PocketDesk OS
 
-PocketDesk OS is a browser-based desktop OS prototype. It recreates a familiar desktop workspace inside a web page with windows, files, notes, paint, calculator, minesweeper, browser utilities, installable web apps, wallpapers, PWA support, and deployment-ready static hosting.
+PocketDesk OS is a Windows 11-inspired browser desktop. It provides persistent windows, files, notes, paint, calculator, minesweeper, reliable external web browsing, wallpapers, PWA support, and deployment-ready static hosting.
 
 ## Primary Entry
 

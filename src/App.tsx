@@ -1,5 +1,4 @@
 import {
-  Battery,
   Bell,
   Bomb,
   Calculator,
@@ -15,7 +14,6 @@ import {
   Globe2,
   History,
   House,
-  Info,
   LucideIcon,
   Maximize2,
   Minus,
@@ -54,8 +52,7 @@ type AppId =
   | "notepad"
   | "files"
   | "recycle"
-  | "settings"
-  | "about";
+  | "settings";
 
 type ThemeName = "lagoon" | "meadow" | "ember";
 type WallpaperName =
@@ -97,7 +94,7 @@ type PersistedIconPosition = {
   y?: unknown;
 };
 type VfsEntryKind = "folder" | "note" | "canvas" | "shortcut" | "game";
-type CreatableDesktopItemKind = "folder" | "note";
+type CreatableDesktopItemKind = "note";
 type DesktopItem = {
   appId?: AppId;
   content?: string;
@@ -311,7 +308,7 @@ const VFS_BACKUP_FILE_NAME = "pocket-desk-vfs.json";
 const VFS_ROOT_ID = "desktop";
 const VFS_PRIMARY_NOTE_ID = "vfs-notes";
 const VFS_PRIMARY_CANVAS_ID = "vfs-sketch";
-const WALLPAPER_KEY = "pocket-desk-wallpaper";
+const WALLPAPER_KEY = "pocket-desk-wallpaper-v2";
 const WINDOW_STATE_KEY = "pocket-desk-windows-v1";
 const DESKTOP_ICON_LAYOUT_KEY = "pocket-desk-icons-v1";
 const DESKTOP_ITEMS_KEY = "pocket-desk-desktop-items-v1";
@@ -320,7 +317,7 @@ const BROWSER_HISTORY_KEY = "pocket-desk-browser-history-v1";
 const BROWSER_SEARCH_ENGINE_KEY = "pocket-desk-browser-search-engine-v1";
 const MINES_BEST_RECORDS_KEY = "pocket-desk-mines-best-records-v1";
 const SOUND_ENABLED_KEY = "pocket-desk-sound-enabled-v1";
-const TASKBAR_PINNED_APPS_KEY = "pocket-desk-taskbar-pinned-v1";
+const TASKBAR_PINNED_APPS_KEY = "pocket-desk-taskbar-pinned-v2";
 const SNAP_EDGE_SIZE = 24;
 const SNAP_GUTTER = 10;
 
@@ -457,11 +454,9 @@ const appSearchKeywords: Record<AppId, string[]> = {
   files: ["file", "files", "folder", "explorer", "파일", "폴더", "탐색기", "desktop"],
   recycle: ["recycle", "trash", "bin", "deleted", "휴지통", "삭제", "복원", "비우기"],
   settings: ["setting", "settings", "control", "theme", "wallpaper", "설정", "테마", "배경"],
-  about: ["about", "info", "help", "정보", "도움말", "pocketdesk"],
 };
 
 const runCommandAliases: Partial<Record<AppId, string[]>> = {
-  about: ["winver"],
   thispc: ["computer", "this pc", "my computer", "내 pc", "내컴퓨터"],
   browser: ["edge", "iexplore", "msedge", "chrome", "www"],
   calculator: ["calc.exe"],
@@ -494,7 +489,7 @@ const appCatalog: AppDefinition[] = [
   },
   {
     id: "browser",
-    title: "Internet",
+    title: "웹 브라우저",
     subtitle: "웹 검색 및 주소 열기",
     icon: Globe2,
     accent: "#43b0f1",
@@ -503,7 +498,7 @@ const appCatalog: AppDefinition[] = [
   },
   {
     id: "minesweeper",
-    title: "Minesweeper",
+    title: "지뢰찾기",
     subtitle: "난이도별 지뢰찾기",
     icon: Bomb,
     accent: "#f6b44b",
@@ -512,7 +507,7 @@ const appCatalog: AppDefinition[] = [
   },
   {
     id: "calculator",
-    title: "Calculator",
+    title: "계산기",
     subtitle: "키보드와 공학 모드 계산기",
     icon: Calculator,
     accent: "#7bc96f",
@@ -521,7 +516,7 @@ const appCatalog: AppDefinition[] = [
   },
   {
     id: "paint",
-    title: "Paint",
+    title: "그림판",
     subtitle: "캔버스 그림판",
     icon: Paintbrush,
     accent: "#ef6f6c",
@@ -530,7 +525,7 @@ const appCatalog: AppDefinition[] = [
   },
   {
     id: "notepad",
-    title: "Notepad",
+    title: "메모장",
     subtitle: "로컬 저장 메모장",
     icon: FileText,
     accent: "#f2d16b",
@@ -539,7 +534,7 @@ const appCatalog: AppDefinition[] = [
   },
   {
     id: "files",
-    title: "File Explorer",
+    title: "파일 탐색기",
     subtitle: "가상 파일 탐색기",
     icon: Folder,
     accent: "#62c1a0",
@@ -548,7 +543,7 @@ const appCatalog: AppDefinition[] = [
   },
   {
     id: "recycle",
-    title: "Recycle Bin",
+    title: "휴지통",
     subtitle: "삭제 항목 복원과 영구 비우기",
     icon: Trash2,
     accent: "#9bb7c9",
@@ -557,36 +552,19 @@ const appCatalog: AppDefinition[] = [
   },
   {
     id: "settings",
-    title: "Settings",
+    title: "설정",
     subtitle: "테마와 배경",
     icon: Settings,
     accent: "#b99cff",
     defaultSize: { width: 620, height: 610 },
     component: SettingsApp,
   },
-  {
-    id: "about",
-    title: "About Windows",
-    subtitle: "프로토타입 정보",
-    icon: Info,
-    accent: "#86d9e8",
-    defaultSize: { width: 520, height: 420 },
-    component: AboutApp,
-  },
 ];
 
 const appsById = new Map(appCatalog.map((app) => [app.id, app]));
-const desktopAppIds: AppId[] = [
-  "thispc",
-  "recycle",
-  "files",
-  "notepad",
-  "paint",
-  "calculator",
-  "browser",
-];
+const desktopAppIds: AppId[] = ["thispc", "recycle"];
 const desktopApps = desktopAppIds.map((appId) => getApp(appId));
-const defaultPinnedAppIds: AppId[] = ["browser", "files", "settings"];
+const defaultPinnedAppIds: AppId[] = ["browser", "files"];
 
 function getApp(appId: AppId) {
   const app = appsById.get(appId);
@@ -605,7 +583,7 @@ function loadPinnedTaskbarApps(): AppId[] {
     const parsed = JSON.parse(localStorage.getItem(TASKBAR_PINNED_APPS_KEY) ?? "null");
     if (!Array.isArray(parsed)) return defaultPinnedAppIds;
     const normalized = parsed.filter(isAppId).filter((value, index, values) => values.indexOf(value) === index);
-    return normalized.length > 0 ? normalized : defaultPinnedAppIds;
+    return normalized;
   } catch {
     return defaultPinnedAppIds;
   }
@@ -616,7 +594,7 @@ export default function App() {
     return (localStorage.getItem("pocket-desk-theme") as ThemeName | null) ?? "lagoon";
   });
   const [wallpaper, setWallpaper] = useState<WallpaperName>(() => {
-    return (localStorage.getItem(WALLPAPER_KEY) as WallpaperName | null) ?? "meadow";
+    return (localStorage.getItem(WALLPAPER_KEY) as WallpaperName | null) ?? "ribbon";
   });
   const [soundEnabled, setSoundEnabled] = useState(() => {
     return localStorage.getItem(SOUND_ENABLED_KEY) !== "off";
@@ -643,6 +621,7 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [windows, setWindows] = useState<WindowInstance[]>(() => loadWindowState());
   const altTabTimerRef = useRef<number | null>(null);
+  const desktopSelectionRef = useRef<DesktopSelectionState | null>(null);
   const soundEnabledRef = useRef(soundEnabled);
   const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -956,13 +935,13 @@ export default function App() {
       y: 24,
     };
     const position = clampIconPosition(origin.originX - 18, origin.originY - 10);
-    const name = getUniqueDesktopItemName(activeDesktopItems, kind);
+    const name = getUniqueDesktopItemName(activeDesktopItems);
     const now = Date.now();
 
     setDesktopItems((current) => [
       ...current,
       {
-        content: kind === "note" ? "" : undefined,
+        content: "",
         createdAt: now,
         id: `${kind}-${crypto.randomUUID()}`,
         kind,
@@ -975,7 +954,7 @@ export default function App() {
     ]);
     setDesktopMenu(null);
     notify({
-      detail: kind === "folder" ? "File Explorer의 Desktop 목록에도 추가됩니다." : "Notepad에서 열어 작성할 수 있습니다.",
+      detail: "메모장에서 열어 작성할 수 있습니다.",
       title: `${name} 생성됨`,
       tone: "success",
     });
@@ -1023,7 +1002,7 @@ export default function App() {
     setActiveCanvasId(id);
     setActiveCanvasOpenKey((current) => current + 1);
     notify({
-      detail: "File Explorer에서 다시 열어 편집할 수 있습니다.",
+      detail: "파일 탐색기에서 다시 열어 편집할 수 있습니다.",
       title: `${name} 저장됨`,
       tone: "success",
     });
@@ -1082,7 +1061,7 @@ export default function App() {
     }
 
     notify({
-      detail: "Recycle Bin에서 복원하거나 영구 삭제할 수 있습니다.",
+      detail: "휴지통에서 복원하거나 영구 삭제할 수 있습니다.",
       title: `${target.name} 휴지통으로 이동`,
       tone: "success",
     });
@@ -1132,7 +1111,7 @@ export default function App() {
     if (trashedItems.length === 0) {
       notify({
         detail: "삭제된 항목이 없습니다.",
-        title: "Recycle Bin이 비어 있음",
+        title: "휴지통이 비어 있음",
       });
       return;
     }
@@ -1142,7 +1121,7 @@ export default function App() {
     setDesktopItems((current) => current.filter((item) => !item.trashed));
     notify({
       detail: `${deletedCount}개 항목을 IndexedDB 파일 시스템에서 완전히 제거했습니다.`,
-      title: "Recycle Bin 비움",
+      title: "휴지통 비움",
       tone: "success",
     });
   };
@@ -1266,23 +1245,6 @@ export default function App() {
     updateWindow(id, { maximized: false, minimized: false });
   };
 
-  const moveWindowToCenter = (id: string) => {
-    const target = windows.find((item) => item.id === id);
-    if (!target) return;
-
-    const width = clamp(target.width, 320, Math.max(320, window.innerWidth - 28));
-    const height = clamp(target.height, 240, Math.max(240, window.innerHeight - APP_BAR_HEIGHT - 28));
-    playSound("toggle");
-    updateWindow(id, {
-      height,
-      maximized: false,
-      minimized: false,
-      width,
-      x: Math.max(8, Math.round((window.innerWidth - width) / 2)),
-      y: Math.max(8, Math.round((window.innerHeight - APP_BAR_HEIGHT - height) / 2)),
-    });
-  };
-
   const closeWindow = (id: string) => {
     playSound("close");
     setWindowMenu(null);
@@ -1371,21 +1333,22 @@ export default function App() {
       startY: event.clientY,
     };
     setSelectedDesktopIds([]);
+    desktopSelectionRef.current = nextSelection;
     setDesktopSelection(nextSelection);
   };
 
   const updateDesktopSelection = (event: React.PointerEvent<HTMLElement>) => {
-    setDesktopSelection((current) => {
-      if (!current || current.pointerId !== event.pointerId) return current;
+    const current = desktopSelectionRef.current;
+    if (!current || current.pointerId !== event.pointerId) return;
 
-      const nextSelection = {
-        ...current,
-        currentX: event.clientX,
-        currentY: event.clientY,
-      };
-      setSelectedDesktopIds(getDesktopSelectionIds(nextSelection, iconLayout, activeDesktopItems));
-      return nextSelection;
-    });
+    const nextSelection = {
+      ...current,
+      currentX: event.clientX,
+      currentY: event.clientY,
+    };
+    desktopSelectionRef.current = nextSelection;
+    setDesktopSelection(nextSelection);
+    setSelectedDesktopIds(getDesktopSelectionIds(nextSelection, iconLayout, activeDesktopItems));
   };
 
   const finishDesktopSelection = (event: React.PointerEvent<HTMLElement>) => {
@@ -1394,13 +1357,11 @@ export default function App() {
       surface.releasePointerCapture(event.pointerId);
     }
 
-    setDesktopSelection((current) => {
-      if (!current || current.pointerId !== event.pointerId) return current;
-      if (!isDesktopSelectionVisible(current)) {
-        setSelectedDesktopIds([]);
-      }
-      return null;
-    });
+    const current = desktopSelectionRef.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    if (!isDesktopSelectionVisible(current)) setSelectedDesktopIds([]);
+    desktopSelectionRef.current = null;
+    setDesktopSelection(null);
   };
 
   const openRunDialog = () => {
@@ -1430,7 +1391,7 @@ export default function App() {
       openApp("browser");
       notify({
         detail: resolution.value,
-        title: "Internet에서 열기",
+        title: "웹 브라우저에서 열기",
         tone: "success",
       });
       return;
@@ -1678,10 +1639,6 @@ export default function App() {
             }
           }}
           onMinimize={() => minimizeWindow(windowMenuInstance.id)}
-          onMoveToCenter={() => {
-            moveWindowToCenter(windowMenuInstance.id);
-            setWindowMenu(null);
-          }}
           onRestore={() => {
             restoreWindow(windowMenuInstance.id);
             setWindowMenu(null);
@@ -1744,7 +1701,6 @@ export default function App() {
             setDesktopMenu(null);
             openApp("settings");
           }}
-          onCreateFolder={() => createDesktopItem("folder")}
           onCreateNote={() => createDesktopItem("note")}
           x={desktopMenu.x}
           y={desktopMenu.y}
@@ -1896,8 +1852,12 @@ async function loadDesktopItemsFromVfs(): Promise<DesktopItem[]> {
   const database = await openVfsDatabase();
   const entries = await readAllVfsEntries(database);
   if (entries.length > 0) {
+    const migratedEntries = entries.filter((entry) => entry.id !== "vfs-pictures");
+    if (migratedEntries.length !== entries.length) {
+      await writeAllVfsEntries(database, migratedEntries);
+    }
     database.close();
-    return entries;
+    return migratedEntries;
   }
 
   const seededEntries = [...createDefaultVfsEntries(), ...loadLegacyDesktopItems()];
@@ -2167,17 +2127,6 @@ function createDefaultVfsEntries(): DesktopItem[] {
       y: 0,
     },
     {
-      createdAt: now - 4000,
-      id: "vfs-pictures",
-      kind: "folder",
-      name: "Pictures",
-      parentId: VFS_ROOT_ID,
-      showOnDesktop: false,
-      updatedAt: now - 4000,
-      x: 0,
-      y: 0,
-    },
-    {
       createdAt: now - 3000,
       id: VFS_PRIMARY_CANVAS_ID,
       kind: "canvas",
@@ -2267,7 +2216,7 @@ function normalizePersistedDesktopItem(
     name:
       typeof item.name === "string" && item.name.trim()
         ? item.name.trim().slice(0, 48)
-        : getDefaultDesktopItemName(item.kind === "folder" ? "folder" : "note"),
+        : getDefaultVfsEntryName(item.kind),
     parentId: typeof item.parentId === "string" ? item.parentId : VFS_ROOT_ID,
     restoreShowOnDesktop:
       typeof item.restoreShowOnDesktop === "boolean" ? item.restoreShowOnDesktop : showOnDesktop,
@@ -2279,25 +2228,29 @@ function normalizePersistedDesktopItem(
   };
 }
 
-function getDefaultDesktopItemName(kind: CreatableDesktopItemKind) {
-  return kind === "folder" ? "새 폴더" : "새 메모.txt";
-}
-
-function getUniqueDesktopItemName(items: DesktopItem[], kind: CreatableDesktopItemKind) {
-  const baseName = getDefaultDesktopItemName(kind);
+function getUniqueDesktopItemName(items: DesktopItem[]) {
+  const baseName = "새 메모.txt";
   const existingNames = new Set(items.map((item) => item.name));
   if (!existingNames.has(baseName)) {
     return baseName;
   }
 
   for (let index = 2; index < 100; index += 1) {
-    const name = kind === "folder" ? `새 폴더 ${index}` : `새 메모 ${index}.txt`;
+    const name = `새 메모 ${index}.txt`;
     if (!existingNames.has(name)) {
       return name;
     }
   }
 
-  return `${kind === "folder" ? "새 폴더" : "새 메모"} ${Date.now()}`;
+  return `새 메모 ${Date.now()}.txt`;
+}
+
+function getDefaultVfsEntryName(kind: VfsEntryKind) {
+  if (kind === "canvas") return "새 그림.canvas";
+  if (kind === "folder") return "가져온 폴더";
+  if (kind === "game") return "게임.game";
+  if (kind === "shortcut") return "바로 가기.url";
+  return "새 메모.txt";
 }
 
 function getUniqueCanvasItemName(items: DesktopItem[]) {
@@ -2421,17 +2374,15 @@ function getVfsEntryKindDefaultApp(item: DesktopItem): AppId {
 function getVfsEntryDetail(item: DesktopItem) {
   const association = getVfsEntryAssociation(item);
   if (item.kind === "folder") {
-    return item.showOnDesktop
-      ? "바탕화면 우클릭 메뉴에서 만든 IndexedDB 폴더입니다."
-      : "IndexedDB 파일 시스템에 저장된 기본 폴더입니다.";
+    return "가져온 ZIP에 포함된 폴더 항목입니다.";
   }
   if (item.kind === "note") {
     return item.content?.trim() || "저장된 메모 내용이 없습니다.";
   }
   if (item.kind === "canvas") {
     return item.content
-      ? "저장된 PNG 그림입니다. Paint에서 다시 열 수 있습니다."
-      : "Paint에서 새 그림을 그릴 수 있습니다.";
+      ? "저장된 PNG 그림입니다. 그림판에서 다시 열 수 있습니다."
+      : "그림판에서 새 그림을 그릴 수 있습니다.";
   }
   if (item.kind === "game") {
     return `${association.appTitle}로 실행되는 게임 파일입니다.`;
@@ -2464,6 +2415,14 @@ function formatNotificationTime(createdAt: number) {
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return `${minutes}분 전`;
   return new Date(createdAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatStorageSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** unitIndex;
+  return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
 }
 
 function buildStartSearchResults(
@@ -2974,13 +2933,11 @@ function DesktopIconButton({
 
 function DesktopContextMenu({
   onChangeWallpaper,
-  onCreateFolder,
   onCreateNote,
   x,
   y,
 }: {
   onChangeWallpaper: () => void;
-  onCreateFolder: () => void;
   onCreateNote: () => void;
   x: number;
   y: number;
@@ -2999,11 +2956,7 @@ function DesktopContextMenu({
       role="menu"
       style={{ left: x, top: y }}
     >
-      <button onClick={onCreateFolder} ref={firstItemRef} role="menuitem" type="button">
-        <Folder aria-hidden="true" size={16} />
-        새 폴더
-      </button>
-      <button onClick={onCreateNote} role="menuitem" type="button">
+      <button onClick={onCreateNote} ref={firstItemRef} role="menuitem" type="button">
         <FileText aria-hidden="true" size={16} />
         새 메모
       </button>
@@ -3023,7 +2976,6 @@ function WindowSystemMenu({
   onDismiss,
   onMaximize,
   onMinimize,
-  onMoveToCenter,
   onRestore,
   x,
   y,
@@ -3034,7 +2986,6 @@ function WindowSystemMenu({
   onDismiss: () => void;
   onMaximize: () => void;
   onMinimize: () => void;
-  onMoveToCenter: () => void;
   onRestore: () => void;
   x: number;
   y: number;
@@ -3064,26 +3015,22 @@ function WindowSystemMenu({
         <AppIconTile accent={app.accent} icon={app.icon} size="tiny" />
         <strong>{app.title}</strong>
       </div>
-      <button onClick={onRestore} ref={firstItemRef} role="menuitem" type="button">
+      <button disabled={!instance.maximized} onClick={onRestore} ref={firstItemRef} role="menuitem" type="button">
         <Square aria-hidden="true" size={15} />
-        Restore
-      </button>
-      <button onClick={onMoveToCenter} role="menuitem" type="button">
-        <Monitor aria-hidden="true" size={15} />
-        Move to center
+        복원
       </button>
       <button onClick={onMinimize} role="menuitem" type="button">
         <Minus aria-hidden="true" size={15} />
-        Minimize
+        최소화
       </button>
       <button onClick={onMaximize} role="menuitem" type="button">
         <Maximize2 aria-hidden="true" size={15} />
-        {instance.maximized ? "Restore down" : "Maximize"}
+        {instance.maximized ? "이전 크기로" : "최대화"}
       </button>
       <span aria-hidden="true" className="menu-separator" />
       <button className="is-danger" onClick={onClose} role="menuitem" type="button">
         <X aria-hidden="true" size={15} />
-        Close
+        닫기
       </button>
     </div>
   );
@@ -3554,8 +3501,9 @@ function Taskbar({
     left: number;
     window?: WindowInstance;
   } | null>(null);
+  const [taskbarMenu, setTaskbarMenu] = useState<{ appId: AppId; left: number } | null>(null);
+  const taskbarMenuButtonRef = useRef<HTMLButtonElement>(null);
   const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
-  const [volume, setVolume] = useState(72);
   const availableAppIds = new Set(availableApps.map((app) => app.id));
   const pinnedApps = pinnedAppIds
     .filter((appId) => availableAppIds.has(appId))
@@ -3607,6 +3555,22 @@ function Taskbar({
     };
   }, [quickSettingsOpen]);
 
+  useEffect(() => {
+    if (!taskbarMenu) return;
+    const frameId = window.requestAnimationFrame(() => taskbarMenuButtonRef.current?.focus());
+    const closeMenu = () => setTaskbarMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
+    window.addEventListener("pointerdown", closeMenu);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("pointerdown", closeMenu);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [taskbarMenu]);
+
   return (
     <footer className="taskbar" ref={taskbarRef}>
       <div className="taskbar-center">
@@ -3644,7 +3608,8 @@ function Taskbar({
                   }}
                   onContextMenu={(event) => {
                     event.preventDefault();
-                    onTogglePinnedApp(app.id);
+                    setPreview(null);
+                    setTaskbarMenu({ appId: app.id, left: event.clientX });
                   }}
                   title={`${app.title} · 우클릭으로 ${isPinned ? "고정 해제" : "작업표시줄에 고정"}`}
                   type="button"
@@ -3663,6 +3628,33 @@ function Taskbar({
         </div>
       </div>
       {preview && <TaskbarPreview {...preview} />}
+      {taskbarMenu && (
+        <div
+          className="taskbar-context-menu"
+          onPointerDown={(event) => event.stopPropagation()}
+          role="menu"
+          style={{ left: clamp(taskbarMenu.left, 112, window.innerWidth - 112) }}
+        >
+          <button
+            onClick={() => {
+              onTogglePinnedApp(taskbarMenu.appId);
+              setTaskbarMenu(null);
+            }}
+            ref={taskbarMenuButtonRef}
+            role="menuitem"
+            type="button"
+          >
+            {pinnedAppIds.includes(taskbarMenu.appId) ? (
+              <PinOff aria-hidden="true" size={15} />
+            ) : (
+              <Pin aria-hidden="true" size={15} />
+            )}
+            {pinnedAppIds.includes(taskbarMenu.appId)
+              ? "작업 표시줄에서 제거"
+              : "작업 표시줄에 고정"}
+          </button>
+        </div>
+      )}
       <div className="system-tray-wrap" ref={trayRef}>
         <button
           aria-expanded={quickSettingsOpen}
@@ -3673,7 +3665,6 @@ function Taskbar({
         >
           <Wifi aria-hidden="true" size={16} />
           <Volume2 aria-hidden="true" size={16} />
-          <Battery aria-hidden="true" size={17} />
           <Clock />
         </button>
         {quickSettingsOpen && (
@@ -3686,9 +3677,7 @@ function Taskbar({
               onOpenApp("settings");
             }}
             onSetSoundEnabled={onSetSoundEnabled}
-            setVolume={setVolume}
             soundEnabled={soundEnabled}
-            volume={volume}
           />
         )}
       </div>
@@ -3702,40 +3691,48 @@ function QuickSettingsPanel({
   onClose,
   onOpenSettings,
   onSetSoundEnabled,
-  setVolume,
   soundEnabled,
-  volume,
 }: {
   notifications: ToastMessage[];
   onClearNotifications: () => void;
   onClose: () => void;
   onOpenSettings: () => void;
   onSetSoundEnabled: (enabled: boolean) => void;
-  setVolume: (volume: number) => void;
   soundEnabled: boolean;
-  volume: number;
 }) {
+  const [online, setOnline] = useState(() => navigator.onLine);
+
+  useEffect(() => {
+    const updateOnlineStatus = () => setOnline(navigator.onLine);
+    window.addEventListener("online", updateOnlineStatus);
+    window.addEventListener("offline", updateOnlineStatus);
+    return () => {
+      window.removeEventListener("online", updateOnlineStatus);
+      window.removeEventListener("offline", updateOnlineStatus);
+    };
+  }, []);
+
   return (
     <section
-      aria-label="Quick settings"
+      aria-label="빠른 설정"
       className="quick-settings-panel"
       onPointerDown={(event) => event.stopPropagation()}
     >
       <div className="quick-settings-header">
         <div>
-          <strong>Quick settings</strong>
+          <strong>빠른 설정</strong>
           <small>PocketDesk 상태</small>
         </div>
-        <button aria-label="Quick settings 닫기" onClick={onClose} type="button">
+        <button aria-label="빠른 설정 닫기" onClick={onClose} type="button">
           <X aria-hidden="true" size={15} />
         </button>
       </div>
       <div className="quick-toggle-grid">
-        <button aria-pressed="true" className="is-enabled" type="button">
+        <div className={`quick-status-tile ${online ? "is-enabled" : ""}`}>
           <Wifi aria-hidden="true" size={17} />
-          <span>Wi-Fi</span>
-          <small>Connected</small>
-        </button>
+          <span>네트워크</span>
+          <small>{online ? "연결됨" : "오프라인"}</small>
+        </div>
         <button
           aria-pressed={soundEnabled}
           className={soundEnabled ? "is-enabled" : ""}
@@ -3743,41 +3740,19 @@ function QuickSettingsPanel({
           type="button"
         >
           <Volume2 aria-hidden="true" size={17} />
-          <span>Sounds</span>
-          <small>{soundEnabled ? "On" : "Off"}</small>
+          <span>시스템 소리</span>
+          <small>{soundEnabled ? "켜짐" : "꺼짐"}</small>
         </button>
       </div>
-      <label className="quick-slider">
-        <span>
-          <Volume2 aria-hidden="true" size={16} />
-          Volume
-        </span>
-        <input
-          aria-label="볼륨"
-          max={100}
-          min={0}
-          onChange={(event) => setVolume(Number(event.target.value))}
-          type="range"
-          value={volume}
-        />
-        <strong>{volume}%</strong>
-      </label>
-      <div className="quick-status-row">
-        <span>
-          <Battery aria-hidden="true" size={16} />
-          Battery
-        </span>
-        <strong>87%</strong>
-      </div>
-      <section className="notification-center" aria-label="Notifications">
+      <section className="notification-center" aria-label="알림">
         <div className="notification-center-header">
           <div>
-            <strong>Notifications</strong>
-            <small>{notifications.length} recent</small>
+            <strong>알림</strong>
+            <small>{notifications.length}개</small>
           </div>
           {notifications.length > 0 && (
             <button onClick={onClearNotifications} type="button">
-              Clear all
+              모두 지우기
             </button>
           )}
         </div>
@@ -3810,7 +3785,7 @@ function QuickSettingsPanel({
       <div className="quick-actions">
         <button onClick={onOpenSettings} type="button">
           <Settings aria-hidden="true" size={16} />
-          Settings
+          설정
         </button>
       </div>
     </section>
@@ -3833,9 +3808,7 @@ function TaskbarPreview({
         ? "최대화됨"
         : "열림"
     : "고정됨";
-  const detail = window
-    ? `${Math.round(window.width)} x ${Math.round(window.height)} · z${window.z}`
-    : "클릭해서 실행";
+  const detail = window ? app.subtitle : "고정된 앱";
 
   return (
     <div
@@ -3935,13 +3908,13 @@ function StartMenu({
         )}
       </label>
       <div className="start-section-title">
-        <strong>{hasQuery ? "검색 결과" : allAppsOpen ? "All apps" : "Pinned"}</strong>
+        <strong>{hasQuery ? "검색 결과" : allAppsOpen ? "모든 앱" : "고정됨"}</strong>
         {hasQuery ? (
           <small>{results.length}개</small>
         ) : (
           <button className="start-all-apps-toggle" onClick={() => setAllAppsOpen((value) => !value)} type="button">
             {allAppsOpen ? <ChevronLeft aria-hidden="true" size={14} /> : null}
-            {allAppsOpen ? "Back" : "All apps"}
+            {allAppsOpen ? "뒤로" : "모든 앱"}
             {!allAppsOpen ? <ChevronRight aria-hidden="true" size={14} /> : null}
           </button>
         )}
@@ -4002,7 +3975,7 @@ function StartMenu({
               </div>
               <section className="start-recommended">
                 <div className="start-section-title start-subsection-title">
-                  <strong>Recommended</strong>
+                  <strong>추천</strong>
                   <small>{recentItems.length}개</small>
                 </div>
                 {recentItems.length > 0 ? (
@@ -4039,7 +4012,7 @@ function StartMenu({
         </div>
       )}
       <div className="start-menu-footer">
-        <button className="start-account" type="button">
+        <div className="start-account">
           <span className="start-account-avatar">
             <UserRound aria-hidden="true" size={17} />
           </span>
@@ -4047,7 +4020,7 @@ function StartMenu({
             <strong>Seung-Won</strong>
             <small>로컬 계정</small>
           </span>
-        </button>
+        </div>
         <div className="start-footer-actions">
           <div className="power-menu-wrap">
             <button
@@ -4064,15 +4037,15 @@ function StartMenu({
               <div className="power-menu" role="menu">
                 <button onClick={() => runPowerAction(onLock)} role="menuitem" type="button">
                   <Power aria-hidden="true" size={15} />
-                  Lock
+                  잠금
                 </button>
                 <button onClick={() => runPowerAction(onRestart)} role="menuitem" type="button">
                   <RotateCcw aria-hidden="true" size={15} />
-                  Restart
+                  다시 시작
                 </button>
                 <button onClick={() => runPowerAction(onShutdown)} role="menuitem" type="button">
                   <Power aria-hidden="true" size={15} />
-                  Shut down
+                  시스템 종료
                 </button>
               </div>
             )}
@@ -4094,11 +4067,15 @@ function RunDialog({
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const frameId = window.requestAnimationFrame(() => {
       inputRef.current?.focus();
       inputRef.current?.select();
     });
-    return () => window.cancelAnimationFrame(frameId);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      previousFocus?.focus();
+    };
   }, []);
 
   const submit = (event: FormEvent) => {
@@ -4121,6 +4098,8 @@ function RunDialog({
           if (event.key === "Escape") {
             event.preventDefault();
             onClose();
+          } else {
+            trapDialogFocus(event, event.currentTarget);
           }
         }}
         onPointerDown={(event) => event.stopPropagation()}
@@ -4131,23 +4110,23 @@ function RunDialog({
           <AppIconTile accent="#78d6ff" icon={SquareTerminal} size="medium" />
           <div>
             <p>PocketDesk</p>
-            <h2 id="run-dialog-title">Run</h2>
+            <h2 id="run-dialog-title">실행</h2>
           </div>
-          <button aria-label="Run 닫기" onClick={onClose} title="닫기" type="button">
+          <button aria-label="실행 창 닫기" onClick={onClose} title="닫기" type="button">
             <X aria-hidden="true" size={16} />
           </button>
         </div>
         <label className="run-input-row">
-          <span>Open</span>
+          <span>열기</span>
           <input
-            aria-label="Open"
+            aria-label="열기"
             onChange={(event) => setCommand(event.target.value)}
             ref={inputRef}
             spellCheck={false}
             value={command}
           />
         </label>
-        <div className="run-suggestions" aria-label="Run commands">
+        <div className="run-suggestions" aria-label="실행 명령어">
           {runCommandSuggestions.map((suggestion) => (
             <button
               key={suggestion.command}
@@ -4160,10 +4139,10 @@ function RunDialog({
         </div>
         <div className="run-actions">
           <button onClick={onClose} type="button">
-            Cancel
+            취소
           </button>
           <button disabled={!command.trim()} type="submit">
-            OK
+            확인
           </button>
         </div>
       </form>
@@ -4208,27 +4187,34 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
     localStorage.setItem(BROWSER_HISTORY_KEY, JSON.stringify(history));
   }, [history]);
 
-  const navigateTo = (value: string) => {
+  const recordNavigation = (value: string) => {
     const nextUrl = normalizeUrl(value, searchEngine);
     const title = getBrowserPageTitle(nextUrl);
     const now = Date.now();
     setUrl(nextUrl);
     setDraft(nextUrl);
-    setNotice("페이지를 불러오는 중입니다. 막히면 오른쪽의 새 탭 열기를 사용하세요.");
     setHistory((current) => [
       { id: `history-${crypto.randomUUID()}`, title, url: nextUrl, visitedAt: now },
       ...current.filter((entry) => entry.url !== nextUrl),
     ].slice(0, 20));
+    return nextUrl;
+  };
+
+  const openExternal = (value: string) => {
+    const nextUrl = recordNavigation(value);
+    window.open(nextUrl, "_blank", "noopener,noreferrer");
+    setNotice("새 브라우저 탭에서 열었습니다.");
   };
 
   useEffect(() => {
     if (!browserLaunchRequest) return;
-    navigateTo(browserLaunchRequest.value);
+    recordNavigation(browserLaunchRequest.value);
+    setNotice("주소를 준비했습니다. 새 탭 열기를 누르세요.");
   }, [browserLaunchRequest?.id]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    navigateTo(draft || "PocketDesk");
+    openExternal(draft || "PocketDesk");
   };
 
   const openHome = () => {
@@ -4267,7 +4253,7 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
   const clearHistory = () => {
     setHistory([]);
     notify({
-      detail: "Internet 방문 기록을 비웠습니다.",
+      detail: "웹 브라우저 방문 기록을 비웠습니다.",
       title: "방문 기록 삭제됨",
       tone: "success",
     });
@@ -4321,18 +4307,21 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
       </form>
       <p className="browser-notice">{notice}</p>
       {url ? (
-        <iframe
-          onLoad={() => setNotice("로드 완료. iframe 차단 사이트는 빈 화면으로 보일 수 있습니다.")}
-          sandbox="allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-scripts"
-          src={url}
-          title="Internet browser"
-        />
+        <section className="browser-external-page">
+          <Globe2 aria-hidden="true" size={42} />
+          <strong>{getBrowserPageTitle(url)}</strong>
+          <small>{url}</small>
+          <a href={url} rel="noreferrer" target="_blank">
+            <ExternalLink aria-hidden="true" size={17} />
+            새 탭에서 열기
+          </a>
+        </section>
       ) : (
         <BrowserHome
           bookmarks={bookmarks}
           history={history}
           onClearHistory={clearHistory}
-          onNavigate={navigateTo}
+          onNavigate={openExternal}
           searchEngine={getBrowserSearchEngine(searchEngine).label}
         />
       )}
@@ -4363,7 +4352,7 @@ function BrowserHome({
     <div className="browser-home">
       <section className="browser-home-search">
         <Globe2 aria-hidden="true" size={30} />
-        <h2>Internet</h2>
+        <h2>웹 브라우저</h2>
         <p>{searchEngine}로 검색하거나 주소를 입력하세요.</p>
         <div className="browser-quick-links" aria-label="빠른 링크">
           {quickLinks.map((link) => (
@@ -5375,44 +5364,55 @@ function ThisPcApp({
   openApp,
   trashedItems,
 }: AppContentProps) {
+  const [storageEstimate, setStorageEstimate] = useState<StorageEstimate | null>(null);
   const folderCount = desktopItems.filter((item) => item.kind === "folder").length;
-  const documentCount = desktopItems.filter((item) => item.kind === "note").length;
-  const imageCount = desktopItems.filter((item) => item.kind === "canvas").length;
   const totalItems = desktopItems.length;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!navigator.storage?.estimate) {
+      setStorageEstimate({});
+      return;
+    }
+
+    navigator.storage.estimate().then((estimate) => {
+      if (!cancelled) setStorageEstimate(estimate);
+    }).catch(() => {
+      if (!cancelled) setStorageEstimate({});
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const folders = [
     {
       detail: `${desktopItems.filter((item) => item.showOnDesktop).length}개 항목`,
       icon: Monitor,
-      label: "Desktop",
+      label: "바탕 화면",
       open: () => openApp("files"),
     },
     {
-      detail: `${documentCount}개 문서`,
-      icon: FileText,
-      label: "Documents",
-      open: () => openApp("files"),
-    },
-    {
-      detail: `${imageCount}개 이미지`,
-      icon: Paintbrush,
-      label: "Pictures",
-      open: () => openApp("files"),
-    },
-    {
-      detail: "브라우저 다운로드 위치",
-      icon: Download,
-      label: "Downloads",
-      open: () => openApp("files"),
+      detail: `${trashedItems.length}개 항목`,
+      icon: Trash2,
+      label: "휴지통",
+      open: () => openApp("recycle"),
     },
   ];
+  const quota = storageEstimate?.quota ?? 0;
+  const used = storageEstimate?.usage ?? 0;
+  const free = Math.max(0, quota - used);
   const drives = [
-    { free: "38.4 GB free of 64.0 GB", icon: Monitor, label: "Local Disk (C:)", usage: 40 },
     {
-      free: `${totalItems} files indexed`,
-      icon: Folder,
-      label: "PocketDesk (D:)",
-      usage: clamp(totalItems * 8, 14, 82),
+      free:
+        quota > 0
+          ? `${formatStorageSize(free)} 사용 가능 / ${formatStorageSize(quota)}`
+          : storageEstimate === null
+            ? "용량 확인 중"
+            : "사용량 정보 없음",
+      icon: Monitor,
+      label: "로컬 디스크 (C:)",
+      usage: quota > 0 ? clamp((used / quota) * 100, 1, 100) : 0,
     },
   ];
 
@@ -5426,22 +5426,22 @@ function ThisPcApp({
         </button>
         <button onClick={() => openApp("recycle")} type="button">
           <Trash2 aria-hidden="true" size={16} />
-          Recycle Bin
+          휴지통
         </button>
         <button onClick={() => openApp("settings")} type="button">
           <Settings aria-hidden="true" size={16} />
-          Settings
+          설정
         </button>
       </aside>
       <section className="this-pc-main">
         <div className="file-address this-pc-address">
           <House aria-hidden="true" size={15} />
-          <span>Home</span>
+          <span>홈</span>
           <span aria-hidden="true">›</span>
           <strong>내 PC</strong>
         </div>
         <section className="this-pc-section">
-          <h2>Folders</h2>
+          <h2>폴더</h2>
           <div className="this-pc-folder-grid">
             {folders.map((folder) => {
               const FolderIcon = folder.icon;
@@ -5458,7 +5458,7 @@ function ThisPcApp({
           </div>
         </section>
         <section className="this-pc-section">
-          <h2>Devices and drives</h2>
+          <h2>장치 및 드라이브</h2>
           <div className="this-pc-drive-list">
             {drives.map((drive) => {
               const DriveIcon = drive.icon;
@@ -5478,21 +5478,21 @@ function ThisPcApp({
           </div>
         </section>
         <section className="this-pc-section this-pc-system">
-          <h2>System</h2>
+          <h2>시스템</h2>
           <div>
             <span>
-              <strong>Device name</strong>
+              <strong>장치 이름</strong>
               <small>PocketDesk-PC</small>
             </span>
             <span>
-              <strong>Items</strong>
+              <strong>항목</strong>
               <small>
-                {totalItems} active · {trashedItems.length} in Recycle Bin
+                사용 중 {totalItems}개 · 휴지통 {trashedItems.length}개
               </small>
             </span>
             <span>
-              <strong>Folders</strong>
-              <small>{folderCount} indexed folders</small>
+              <strong>폴더</strong>
+              <small>{folderCount}개</small>
             </span>
           </div>
         </section>
@@ -5512,9 +5512,24 @@ function FilesApp({
   renameVfsEntry,
 }: AppContentProps) {
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const [location, setLocation] = useState<"desktop" | "documents" | "games" | "pictures">(
+    "desktop",
+  );
+  const locationLabel = {
+    desktop: "바탕 화면",
+    documents: "문서",
+    games: "게임",
+    pictures: "사진",
+  }[location];
+  const locationItems = useMemo(() => {
+    if (location === "documents") return desktopItems.filter((item) => item.kind === "note");
+    if (location === "pictures") return desktopItems.filter((item) => item.kind === "canvas");
+    if (location === "games") return desktopItems.filter((item) => item.kind === "game");
+    return desktopItems;
+  }, [desktopItems, location]);
   const files = useMemo(
     () =>
-      desktopItems.map((item) => {
+      locationItems.map((item) => {
         const association = getVfsEntryAssociation(item);
         return {
           association,
@@ -5527,7 +5542,7 @@ function FilesApp({
           type: association.typeLabel,
         };
       }),
-    [desktopItems],
+    [locationItems],
   );
   const [selected, setSelected] = useState(0);
   const [fileQuery, setFileQuery] = useState("");
@@ -5599,13 +5614,47 @@ function FilesApp({
           <Monitor aria-hidden="true" size={16} />
           내 PC
         </button>
-        <button className="is-selected" type="button">
+        <button
+          className={location === "desktop" ? "is-selected" : ""}
+          onClick={() => {
+            setLocation("desktop");
+            setSelected(0);
+          }}
+          type="button"
+        >
           <Folder aria-hidden="true" size={16} />
-          Desktop
+          바탕 화면
         </button>
-        <button type="button">Documents</button>
-        <button type="button">Pictures</button>
-        <button type="button">Games</button>
+        <button
+          className={location === "documents" ? "is-selected" : ""}
+          onClick={() => {
+            setLocation("documents");
+            setSelected(0);
+          }}
+          type="button"
+        >
+          문서
+        </button>
+        <button
+          className={location === "pictures" ? "is-selected" : ""}
+          onClick={() => {
+            setLocation("pictures");
+            setSelected(0);
+          }}
+          type="button"
+        >
+          사진
+        </button>
+        <button
+          className={location === "games" ? "is-selected" : ""}
+          onClick={() => {
+            setLocation("games");
+            setSelected(0);
+          }}
+          type="button"
+        >
+          게임
+        </button>
         <div className="file-backup-actions">
           <button onClick={exportVfsZip} type="button">
             <Download aria-hidden="true" size={16} />
@@ -5639,7 +5688,7 @@ function FilesApp({
               type="button"
             >
               <ExternalLink aria-hidden="true" size={15} />
-              Open
+              열기
             </button>
             <button
               disabled={!selectedFile}
@@ -5647,7 +5696,7 @@ function FilesApp({
               type="button"
             >
               <Pencil aria-hidden="true" size={15} />
-              Rename
+              이름 바꾸기
             </button>
             <button
               className="file-danger"
@@ -5656,22 +5705,22 @@ function FilesApp({
               type="button"
             >
               <Trash2 aria-hidden="true" size={15} />
-              Delete
+              삭제
             </button>
           </div>
           <div className="file-address-row">
             <div className="file-address">
               <House aria-hidden="true" size={15} />
-              <span>Home</span>
+              <span>홈</span>
               <span aria-hidden="true">›</span>
-              <strong>Desktop</strong>
+              <strong>{locationLabel}</strong>
             </div>
             <label className="file-search">
               <Search aria-hidden="true" size={15} />
               <input
                 aria-label="파일 검색"
                 onChange={(event) => setFileQuery(event.target.value)}
-                placeholder="Search Desktop"
+                placeholder={`${locationLabel} 검색`}
                 value={fileQuery}
               />
             </label>
@@ -5718,7 +5767,7 @@ function FilesApp({
                   size="small"
                 />
                 <span>
-                  Open with <strong>{selectedFile.association.appTitle}</strong>
+                  연결 프로그램: <strong>{selectedFile.association.appTitle}</strong>
                 </span>
               </div>
               <p>{selectedFile.detail}</p>
@@ -5770,7 +5819,7 @@ function FilesApp({
             </>
           ) : (
             <>
-              <h3>Desktop</h3>
+              <h3>{locationLabel}</h3>
               <p>표시할 파일이 없습니다.</p>
             </>
           )}
@@ -5786,6 +5835,7 @@ function RecycleBinApp({
   restoreVfsEntry,
   trashedItems,
 }: AppContentProps) {
+  const [confirmAction, setConfirmAction] = useState<"delete" | "empty" | null>(null);
   const files = useMemo(
     () =>
       trashedItems.map((item) => {
@@ -5814,10 +5864,10 @@ function RecycleBinApp({
     <div className="recycle-app app-fill">
       <div className="app-toolbar recycle-toolbar">
         <div>
-          <strong>Recycle Bin</strong>
+          <strong>휴지통</strong>
           <span>{files.length}개 항목</span>
         </div>
-        <button disabled={files.length === 0} onClick={emptyRecycleBin} type="button">
+        <button disabled={files.length === 0} onClick={() => setConfirmAction("empty")} type="button">
           <Trash2 aria-hidden="true" size={16} />
           휴지통 비우기
         </button>
@@ -5844,7 +5894,7 @@ function RecycleBinApp({
             <div className="recycle-empty">
               <Trash2 aria-hidden="true" size={30} />
               <strong>휴지통이 비어 있습니다</strong>
-              <small>File Explorer에서 삭제한 항목은 여기서 복원하거나 영구 삭제할 수 있습니다.</small>
+              <small>파일 탐색기에서 삭제한 항목은 여기서 복원하거나 영구 삭제할 수 있습니다.</small>
             </div>
           )}
         </div>
@@ -5864,7 +5914,7 @@ function RecycleBinApp({
                   size="small"
                 />
                 <span>
-                  Restore to <strong>{selectedFile.association.appTitle}</strong>
+                  연결 프로그램: <strong>{selectedFile.association.appTitle}</strong>
                 </span>
               </div>
               <p>{selectedFile.detail}</p>
@@ -5882,7 +5932,7 @@ function RecycleBinApp({
                 </button>
                 <button
                   className="file-danger"
-                  onClick={() => permanentlyDeleteVfsEntry(selectedFile.id)}
+                  onClick={() => setConfirmAction("delete")}
                   type="button"
                 >
                   <Trash2 aria-hidden="true" size={15} />
@@ -5892,10 +5942,83 @@ function RecycleBinApp({
             </>
           ) : (
             <>
-              <h3>Recycle Bin</h3>
+              <h3>휴지통</h3>
               <p>삭제된 파일이 없습니다.</p>
             </>
           )}
+        </div>
+      </section>
+      {confirmAction && (
+        <ConfirmDialog
+          confirmLabel={confirmAction === "empty" ? "모두 삭제" : "삭제"}
+          detail={
+            confirmAction === "empty"
+              ? `${files.length}개 항목이 영구적으로 삭제됩니다.`
+              : `"${selectedFile?.name ?? "선택한 항목"}" 항목이 영구적으로 삭제됩니다.`
+          }
+          onCancel={() => setConfirmAction(null)}
+          onConfirm={() => {
+            if (confirmAction === "empty") {
+              emptyRecycleBin();
+            } else if (selectedFile) {
+              permanentlyDeleteVfsEntry(selectedFile.id);
+            }
+            setConfirmAction(null);
+          }}
+          title={confirmAction === "empty" ? "휴지통을 비울까요?" : "이 항목을 삭제할까요?"}
+        />
+      )}
+    </div>
+  );
+}
+
+function ConfirmDialog({
+  confirmLabel,
+  detail,
+  onCancel,
+  onConfirm,
+  title,
+}: {
+  confirmLabel: string;
+  detail: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+  title: string;
+}) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    cancelRef.current?.focus();
+    return () => previousFocus?.focus();
+  }, []);
+
+  return (
+    <div className="confirm-overlay" onPointerDown={onCancel}>
+      <section
+        aria-labelledby="confirm-title"
+        aria-modal="true"
+        className="confirm-dialog"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onCancel();
+          } else {
+            trapDialogFocus(event, event.currentTarget);
+          }
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <h2 id="confirm-title">{title}</h2>
+        <p>{detail}</p>
+        <div>
+          <button onClick={onCancel} ref={cancelRef} type="button">
+            취소
+          </button>
+          <button className="is-danger" onClick={onConfirm} type="button">
+            {confirmLabel}
+          </button>
         </div>
       </section>
     </div>
@@ -5913,6 +6036,9 @@ function SettingsApp({
   theme,
   wallpaper,
 }: AppContentProps) {
+  const [section, setSection] = useState<"personalization" | "sound" | "system">(
+    "personalization",
+  );
   const themes: Array<{ id: ThemeName; label: string; detail: string }> = [
     { id: "lagoon", label: "Lagoon", detail: "청록, 감청, 노란 포인트" },
     { id: "meadow", label: "Meadow", detail: "초록, 회색, 코랄 포인트" },
@@ -5926,126 +6052,120 @@ function SettingsApp({
           <Monitor aria-hidden="true" size={24} />
           <span>
             <strong>PocketDesk</strong>
-            <small>Local device</small>
+            <small>로컬 장치</small>
           </span>
         </div>
-        <button className="is-selected" type="button">
+        <button
+          className={section === "personalization" ? "is-selected" : ""}
+          onClick={() => setSection("personalization")}
+          type="button"
+        >
           <Palette aria-hidden="true" size={16} />
-          Personalization
+          개인 설정
         </button>
-        <button type="button">
+        <button
+          className={section === "system" ? "is-selected" : ""}
+          onClick={() => setSection("system")}
+          type="button"
+        >
           <Monitor aria-hidden="true" size={16} />
-          System
+          시스템
         </button>
-        <button type="button">
+        <button
+          className={section === "sound" ? "is-selected" : ""}
+          onClick={() => setSection("sound")}
+          type="button"
+        >
           <Volume2 aria-hidden="true" size={16} />
-          Sound
+          소리
         </button>
       </aside>
       <section className="settings-content">
         <header className="settings-hero">
           <div>
-            <p>Settings</p>
-            <h2>Personalization</h2>
+            <p>설정</p>
+            <h2>
+              {section === "personalization" ? "개인 설정" : section === "system" ? "시스템" : "소리"}
+            </h2>
           </div>
           <span className="settings-device-pill">PocketDesk OS</span>
         </header>
-        <section className="settings-section">
-          <h3>테마</h3>
-          <p>브랜드 자산을 베끼지 않고, 데스크톱 메타포만 빌린 자체 스타일입니다.</p>
-          <div className="theme-options">
-            {themes.map((option) => (
-              <button
-                className={theme === option.id ? "is-selected" : ""}
-                key={option.id}
-                onClick={() => setTheme(option.id)}
-                type="button"
-              >
-                <span className={`theme-swatch theme-swatch-${option.id}`} />
-                <strong>{option.label}</strong>
-                <small>{option.detail}</small>
+        {section === "personalization" && (
+          <>
+            <section className="settings-section">
+              <h3>테마</h3>
+              <div className="theme-options">
+                {themes.map((option) => (
+                  <button
+                    className={theme === option.id ? "is-selected" : ""}
+                    key={option.id}
+                    onClick={() => setTheme(option.id)}
+                    type="button"
+                  >
+                    <span className={`theme-swatch theme-swatch-${option.id}`} />
+                    <strong>{option.label}</strong>
+                    <small>{option.detail}</small>
+                  </button>
+                ))}
+              </div>
+            </section>
+            <section className="settings-section">
+              <h3>배경</h3>
+              <div className="wallpaper-options">
+                {wallpaperGallery.map((option) => (
+                  <button
+                    className={wallpaper === option.id ? "is-selected" : ""}
+                    key={option.id}
+                    onClick={() => setWallpaper(option.id)}
+                    type="button"
+                  >
+                    <span className="wallpaper-preview" style={getWallpaperPreviewStyle(option.id)} />
+                    <strong>{option.label}</strong>
+                    <small>{option.detail}</small>
+                  </button>
+                ))}
+              </div>
+            </section>
+          </>
+        )}
+        {section === "system" && (
+          <section className="settings-section">
+            <h3>창과 바탕 화면</h3>
+            <p>창 위치와 크기, 아이콘 위치를 기본값으로 되돌립니다.</p>
+            <div className="settings-action-row">
+              <button className="settings-action" onClick={resetWindowLayout} type="button">
+                <RotateCcw aria-hidden="true" size={16} />
+                창 배치 초기화
               </button>
-            ))}
-          </div>
-        </section>
-        <section className="settings-section">
-          <h3>배경화면</h3>
-          <p>Windows 감성의 풍경과 리본감을 자체 제작한 월페이퍼입니다.</p>
-          <div className="wallpaper-options">
-            {wallpaperGallery.map((option) => (
-              <button
-                className={wallpaper === option.id ? "is-selected" : ""}
-                key={option.id}
-                onClick={() => setWallpaper(option.id)}
-                type="button"
-              >
-                <span className="wallpaper-preview" style={getWallpaperPreviewStyle(option.id)} />
-                <strong>{option.label}</strong>
-                <small>{option.detail}</small>
+              <button className="settings-action" onClick={resetDesktopIconLayout} type="button">
+                <RotateCcw aria-hidden="true" size={16} />
+                아이콘 배치 초기화
               </button>
-            ))}
-          </div>
-        </section>
-        <section className="settings-section">
-          <h3>창과 바탕화면</h3>
-          <p>열린 앱, 위치, 크기는 자동 저장됩니다. 필요하면 기본 배치로 되돌릴 수 있습니다.</p>
-          <div className="settings-action-row">
-            <button className="settings-action" onClick={resetWindowLayout} type="button">
-              <RotateCcw aria-hidden="true" size={16} />
-              창 배치 초기화
-            </button>
-            <button className="settings-action" onClick={resetDesktopIconLayout} type="button">
-              <RotateCcw aria-hidden="true" size={16} />
-              아이콘 배치 초기화
-            </button>
-          </div>
-        </section>
-        <section className="settings-section">
-          <h3>사운드</h3>
-          <p>창 열기, 닫기, 저장 같은 순간에 아주 짧은 시스템 효과음을 재생합니다.</p>
-          <label className="settings-toggle">
-            <input
-              checked={soundEnabled}
-              onChange={(event) => {
-                const enabled = event.target.checked;
-                if (!enabled) {
-                  playSound("toggle");
-                }
-                setSoundEnabled(enabled);
-                if (enabled) {
-                  window.setTimeout(() => playSound("success"), 0);
-                }
-              }}
-              type="checkbox"
-            />
-            <span>
-              <strong>시스템 사운드</strong>
-              <small>{soundEnabled ? "켜짐" : "꺼짐"}</small>
-            </span>
-          </label>
-        </section>
+            </div>
+          </section>
+        )}
+        {section === "sound" && (
+          <section className="settings-section">
+            <h3>시스템 소리</h3>
+            <label className="settings-toggle">
+              <input
+                checked={soundEnabled}
+                onChange={(event) => {
+                  const enabled = event.target.checked;
+                  if (!enabled) playSound("toggle");
+                  setSoundEnabled(enabled);
+                  if (enabled) window.setTimeout(() => playSound("success"), 0);
+                }}
+                type="checkbox"
+              />
+              <span>
+                <strong>시스템 소리 재생</strong>
+                <small>{soundEnabled ? "켜짐" : "꺼짐"}</small>
+              </span>
+            </label>
+          </section>
+        )}
       </section>
-    </div>
-  );
-}
-
-function AboutApp({ openApp }: AppContentProps) {
-  return (
-    <div className="about-app">
-      <BrandMark className="brand-mark-about" />
-      <h2>PocketDesk OS</h2>
-      <p>
-        브라우저 안에서 데스크톱처럼 작동하는 웹 페이지 MVP입니다. 창 관리자, 작업표시줄,
-        시작 메뉴, 기본 앱 세트를 한 화면에 담았습니다.
-      </p>
-      <div className="about-actions">
-        <button onClick={() => openApp("browser")} type="button">
-          인터넷 열기
-        </button>
-        <button onClick={() => openApp("settings")} type="button">
-          설정 열기
-        </button>
-      </div>
     </div>
   );
 }
@@ -6431,6 +6551,26 @@ function getSnapPreviewStyle(zone: SnapZone): React.CSSProperties {
     top: patch.y,
     width: patch.width,
   };
+}
+
+function trapDialogFocus(event: React.KeyboardEvent, container: HTMLElement) {
+  if (event.key !== "Tab") return;
+  const controls = Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]',
+    ),
+  );
+  const first = controls[0];
+  const last = controls[controls.length - 1];
+  if (!first || !last) return;
+
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 function clamp(value: number, min: number, max: number) {

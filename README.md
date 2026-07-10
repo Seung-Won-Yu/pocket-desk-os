@@ -3,7 +3,7 @@
 [![CI](https://github.com/Seung-Won-Yu/pocket-desk-os/actions/workflows/ci.yml/badge.svg)](https://github.com/Seung-Won-Yu/pocket-desk-os/actions/workflows/ci.yml)
 [![Deploy GitHub Pages](https://github.com/Seung-Won-Yu/pocket-desk-os/actions/workflows/pages.yml/badge.svg)](https://github.com/Seung-Won-Yu/pocket-desk-os/actions/workflows/pages.yml)
 
-브라우저 안에서 Windows 감성의 데스크톱을 실행하는 React/Vite 기반 웹 OS 프로토타입입니다. 창 관리자, 시작 메뉴, 작업표시줄, 내 PC, 파일 탐색기, 휴지통, 메모장, 그림판, 계산기, 지뢰찾기, 웹 브라우저가 한 화면 안에서 동작합니다.
+브라우저 안에서 Windows 11 사용 흐름을 실행하는 React/Vite 기반 웹 데스크톱입니다. 창 관리자, 시작 메뉴, 작업 표시줄, 내 PC, 파일 탐색기, 휴지통, 메모장, 그림판, 계산기, 지뢰찾기와 웹 브라우저가 실제 상태를 저장하며 동작합니다.
 
 ![PocketDesk OS preview](./public/brand/pocketdesk-social.png)
 
@@ -18,7 +18,7 @@
 
 ## 프로젝트 요약
 
-PocketDesk OS는 네이티브 Windows를 복제하는 프로젝트가 아니라, 익숙한 데스크톱 사용감을 웹 기술로 재해석한 정적 웹 앱입니다. 모든 기능은 브라우저 안에서 동작하며, 백엔드 없이 GitHub Pages, Vercel, Netlify 같은 정적 호스팅에 배포할 수 있습니다.
+PocketDesk OS는 Windows 11의 셸 구조와 사용 순서를 웹 기술로 구현한 정적 앱입니다. 동작하지 않는 설치 버튼이나 가짜 시스템 수치는 노출하지 않으며, 표시되는 기능은 브라우저 안에서 완료 가능한 흐름만 제공합니다.
 
 ## 실행
 
@@ -63,30 +63,30 @@ npm run qa:smoke
 | 앱 | 역할 |
 | --- | --- |
 | 내 PC | 드라이브, 기본 폴더, 시스템 상태 허브 |
-| Internet | 검색, 북마크, 히스토리를 갖춘 브라우저 앱 |
-| Minesweeper | 난이도, 타이머, 기록 저장이 있는 지뢰찾기 |
-| Calculator | 표준/공학 모드와 키보드 입력을 지원하는 계산기 |
-| Paint | 브러시, 도형, 팔레트, PNG 저장을 지원하는 그림판 |
-| Notepad | 여러 노트, 자동 저장, Markdown 미리보기를 지원하는 메모장 |
-| File Explorer | IndexedDB 기반 가상 파일 탐색기 |
-| Recycle Bin | 삭제된 파일 복원, 영구 삭제, 비우기 |
-| Settings | 테마, 배경화면, 창 배치, 사운드 설정 |
-| About Windows | 프로젝트 정보와 빠른 이동 |
+| 웹 브라우저 | 검색, 즐겨찾기, 방문 기록, 실제 새 탭 열기 |
+| 지뢰찾기 | 난이도, 타이머, 기록 저장 |
+| 계산기 | 일반/공학 모드와 키보드 입력 |
+| 그림판 | 브러시, 도형, 팔레트, PNG 저장 |
+| 메모장 | 여러 노트, 자동 저장, Markdown 미리보기 |
+| 파일 탐색기 | IndexedDB 기반 파일과 종류별 폴더 보기 |
+| 휴지통 | 삭제 항목 복원, 영구 삭제 확인, 비우기 |
+| 설정 | 개인 설정, 창 배치, 시스템 소리 |
 
 ## 주요 기능 (Current Features)
 
-- 데스크톱 아이콘, 시작 메뉴, 작업표시줄, 시스템 트레이, 드래그/리사이즈 가능한 창
+- 내 PC와 휴지통 중심 바탕 화면, 시작 메뉴, 중앙 작업 표시줄, 시스템 트레이
+- 드래그/리사이즈 가능한 창, 스냅 레이아웃, 오류 복구 화면
 - 부팅 화면, 잠금 화면, 재시작/종료/전원 켜기 시뮬레이션
 - 창 위치, 크기, z-index, 최소화/최대화 상태 저장
 - 바탕화면 아이콘 위치 저장과 우클릭 메뉴
-- 시작 메뉴 Pinned, All apps, Recent, 검색, 앱 alias
-- Run dialog: `computer`, `explorer`, `calc`, `notepad`, `mspaint`, URL/검색어 Internet 전달
+- 시작 메뉴 고정됨, 모든 앱, 추천, 검색, 앱 별칭
+- 실행 창: `computer`, `explorer`, `calc`, `notepad`, `mspaint`, URL/검색어 전달
 - 창 스냅, titlebar 시스템 메뉴, Alt+Tab, Esc, Ctrl+S 단축키
-- 작업표시줄 핀/언핀, hover/focus 미리보기
-- Quick settings, 볼륨, 사운드 토글, 알림 센터, Clear all
+- 작업 표시줄 context menu 핀/언핀, hover/focus 미리보기
+- 실제 온라인 상태, 시스템 소리 토글, 알림 센터
 - IndexedDB 기반 가상 파일 시스템
-- 파일 연결: `.txt`/`.md` Notepad, `.png`/`.canvas` Paint, `.url` Internet, `.game` Minesweeper
-- Recycle Bin 복원/비우기 흐름
+- 파일 연결: `.txt`/`.md` 메모장, `.png`/`.canvas` 그림판, `.url` 웹 브라우저, `.game` 지뢰찾기
+- 휴지통 복원/영구 삭제 확인/비우기 흐름
 - ZIP 백업 export/import
 - Windows 감성의 자체 제작 배경화면 8종
 - PWA manifest, service worker, install icon, social preview, `robots.txt`, `llms.txt`
@@ -131,8 +131,8 @@ npm run social:preview
 - [x] 창 시스템 메뉴
 - [x] 작업표시줄 핀/언핀
 - [x] 작업표시줄 미리보기
-- [x] 시스템 트레이 Quick settings
-- [x] 시작 메뉴 Pinned, All apps, Recent
+- [x] 시스템 트레이 빠른 설정
+- [x] 시작 메뉴 고정됨, 모든 앱, 추천
 
 ### 2. Virtual File System
 
@@ -171,13 +171,13 @@ npm run social:preview
 ## 저장 키 (Persistence Keys)
 
 - `pocket-desk-theme`
-- `pocket-desk-wallpaper`
+- `pocket-desk-wallpaper-v2`
 - `pocket-desk-windows-v1`
 - `pocket-desk-icons-v1`
 - `pocket-desk-desktop-items-v1` (legacy migration source)
 - `pocket-desk-note`
 - `pocket-desk-mines-best-records-v1`
-- `pocket-desk-taskbar-pinned-v1`
+- `pocket-desk-taskbar-pinned-v2`
 
 ## IndexedDB Stores
 

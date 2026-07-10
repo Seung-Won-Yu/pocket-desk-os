@@ -58,9 +58,10 @@ async function captureSocialPreview(baseUrl) {
     await page.evaluate(() => {
       localStorage.removeItem("pocket-desk-installed-packages-v1");
       localStorage.removeItem("pocket-desk-taskbar-pinned-v1");
+      localStorage.removeItem("pocket-desk-taskbar-pinned-v2");
       localStorage.removeItem("pocket-desk-windows-v1");
       localStorage.setItem("pocket-desk-theme", "lagoon");
-      localStorage.setItem("pocket-desk-wallpaper", "meadow");
+      localStorage.setItem("pocket-desk-wallpaper-v2", "ribbon");
     });
     await page.evaluate(
       () =>

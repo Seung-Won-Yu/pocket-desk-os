@@ -73,7 +73,7 @@ const textChecks = [
   ["public/manifest.webmanifest", "brand/pocketdesk-social.png"],
   ["public/robots.txt", "Allow: /"],
   ["public/llms.txt", "PocketDesk OS"],
-  ["public/sw.js", "pocketdesk-os-v2"],
+  ["public/sw.js", "pocketdesk-os-v3"],
 ];
 
 async function assertFileExists(path) {

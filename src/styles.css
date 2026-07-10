@@ -372,6 +372,10 @@ button {
   color: #ffb4aa;
 }
 
+.window-system-menu button:disabled {
+  opacity: 0.42;
+}
+
 .window-system-menu .is-danger:hover,
 .window-system-menu .is-danger:focus-visible {
   background: rgba(217, 76, 76, 0.28);
@@ -1140,6 +1144,31 @@ button {
   color: var(--muted);
 }
 
+.taskbar-context-menu {
+  backdrop-filter: blur(22px);
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  bottom: 54px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.38);
+  padding: 6px;
+  position: absolute;
+  transform: translateX(-50%);
+  width: 220px;
+}
+
+.taskbar-context-menu button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  display: flex;
+  gap: 9px;
+  justify-content: flex-start;
+  min-height: 36px;
+  padding: 0 10px;
+  width: 100%;
+}
+
 .system-tray-wrap {
   grid-column: 3;
   justify-self: end;
@@ -1212,6 +1241,7 @@ button {
 
 .quick-settings-header button,
 .quick-toggle-grid button,
+.quick-status-tile,
 .quick-actions button {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1232,7 +1262,8 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.quick-toggle-grid button {
+.quick-toggle-grid button,
+.quick-status-tile {
   align-items: start;
   display: grid;
   gap: 4px;
@@ -1242,43 +1273,12 @@ button {
   text-align: left;
 }
 
-.quick-toggle-grid button.is-enabled {
+.quick-toggle-grid button.is-enabled,
+.quick-status-tile.is-enabled {
   background:
     radial-gradient(circle at 18% 18%, color-mix(in srgb, var(--active) 22%, transparent), transparent 52%),
     color-mix(in srgb, var(--active) 22%, rgba(255, 255, 255, 0.08));
   border-color: color-mix(in srgb, var(--active) 58%, white);
-}
-
-.quick-slider {
-  align-items: center;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  display: grid;
-  gap: 10px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  min-height: 48px;
-  padding: 10px 12px;
-}
-
-.quick-slider span,
-.quick-status-row span {
-  align-items: center;
-  color: var(--muted);
-  display: inline-flex;
-  gap: 7px;
-  white-space: nowrap;
-}
-
-.quick-slider input {
-  accent-color: var(--active);
-  min-width: 0;
-}
-
-.quick-status-row {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
 }
 
 .notification-center {
@@ -1485,8 +1485,6 @@ button {
   width: 34px;
 }
 
-.start-account:hover,
-.start-account:focus-visible,
 .start-footer-actions .power-menu-wrap > button:hover,
 .start-footer-actions .power-menu-wrap > button:focus-visible,
 .power-menu button:hover,
@@ -2086,12 +2084,35 @@ button {
   margin: 0;
 }
 
-.browser-app iframe {
-  background: #ffffff;
-  border: 0;
+.browser-external-page {
+  align-items: center;
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: center;
   min-height: 0;
-  width: 100%;
+  padding: 24px;
+  text-align: center;
+}
+
+.browser-external-page small {
+  color: var(--muted);
+  max-width: min(620px, 100%);
+  overflow-wrap: anywhere;
+}
+
+.browser-external-page a {
+  align-items: center;
+  background: color-mix(in srgb, var(--active) 36%, rgba(255, 255, 255, 0.1));
+  border: 1px solid color-mix(in srgb, var(--active) 64%, white);
+  border-radius: 7px;
+  color: var(--text);
+  display: inline-flex;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 14px;
+  text-decoration: none;
 }
 
 .mines-app {
@@ -2672,8 +2693,7 @@ button {
 .file-command-strip button,
 .file-list button,
 .file-preview button,
-.settings-app button,
-.about-actions button {
+.settings-app button {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 7px;
@@ -2797,12 +2817,66 @@ button {
   width: 100%;
 }
 
-.recycle-app section {
+.recycle-app > section {
   display: grid;
   flex: 1;
   grid-template-rows: 1fr auto;
   min-height: 0;
   min-width: 0;
+}
+
+.recycle-app {
+  position: relative;
+}
+
+.confirm-overlay {
+  align-items: center;
+  background: rgba(0, 0, 0, 0.42);
+  display: grid;
+  inset: 0;
+  justify-items: center;
+  padding: 16px;
+  position: absolute;
+  z-index: 20;
+}
+
+.confirm-dialog {
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.42);
+  display: grid !important;
+  gap: 12px;
+  max-width: 420px;
+  padding: 20px;
+  width: 100%;
+}
+
+.confirm-dialog h2,
+.confirm-dialog p {
+  margin: 0;
+}
+
+.confirm-dialog p {
+  color: var(--muted);
+}
+
+.confirm-dialog > div {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.confirm-dialog button {
+  min-height: 36px;
+  min-width: 84px;
+  padding: 0 14px;
+}
+
+.confirm-dialog .is-danger {
+  background: #c42b1c;
+  border-color: #d94f43;
+  color: #fff;
 }
 
 .recycle-toolbar {
@@ -2892,8 +2966,7 @@ button {
 }
 
 .file-preview h3,
-.settings-app h2,
-.about-app h2 {
+.settings-app h2 {
   margin: 0 0 8px;
 }
 
@@ -2932,8 +3005,7 @@ button {
 }
 
 .file-preview p,
-.settings-app p,
-.about-app p {
+.settings-app p {
   color: var(--muted);
   margin: 0 0 12px;
 }
@@ -2963,8 +3035,7 @@ button {
   padding: 0 10px;
 }
 
-.file-preview button,
-.about-actions button {
+.file-preview button {
   min-height: 36px;
   padding: 0 14px;
 }
@@ -3151,10 +3222,6 @@ button {
   gap: 2px;
 }
 
-.about-app {
-  padding: 20px;
-}
-
 .theme-options button,
 .wallpaper-options button {
   align-items: center;
@@ -3216,24 +3283,6 @@ button {
   height: 58px;
   overflow: hidden;
   width: 92px;
-}
-
-.about-app {
-  align-items: flex-start;
-  display: flex;
-  flex-direction: column;
-}
-
-.brand-mark-about {
-  height: 58px;
-  margin-bottom: 14px;
-  width: 58px;
-}
-
-.about-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: auto;
 }
 
 @media (max-width: 740px) {
