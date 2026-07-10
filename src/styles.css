@@ -205,6 +205,28 @@ button {
   width: 86px;
 }
 
+.desktop-view-small .desktop-icon {
+  gap: 4px;
+  height: 76px;
+  padding: 5px;
+  width: 76px;
+}
+
+.desktop-view-small .desktop-icon .app-icon-large {
+  --icon-size: 32px;
+}
+
+.desktop-view-large .desktop-icon {
+  gap: 9px;
+  height: 116px;
+  padding: 9px 7px;
+  width: 110px;
+}
+
+.desktop-view-large .desktop-icon .app-icon-large {
+  --icon-size: 56px;
+}
+
 .desktop-icon:hover,
 .desktop-icon:focus-visible,
 .desktop-icon.is-selected {
@@ -305,6 +327,15 @@ button {
   white-space: nowrap;
 }
 
+.desktop-view-small .desktop-icon span:last-child {
+  font-size: 0.72rem;
+  max-width: 66px;
+}
+
+.desktop-view-large .desktop-icon span:last-child {
+  max-width: 98px;
+}
+
 .desktop-context-menu,
 .window-system-menu {
   backdrop-filter: blur(24px) saturate(1.45);
@@ -331,6 +362,7 @@ button {
 }
 
 .desktop-context-menu button,
+.desktop-context-submenu button,
 .window-system-menu button {
   align-items: center;
   background: transparent;
@@ -344,8 +376,59 @@ button {
   text-align: left;
 }
 
+.desktop-menu-row {
+  position: relative;
+}
+
+.desktop-menu-row > button {
+  width: 100%;
+}
+
+.desktop-menu-row > button > span:not(.menu-chevron) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-chevron {
+  margin-left: auto;
+}
+
+.desktop-context-submenu {
+  backdrop-filter: blur(24px) saturate(1.45);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.025)),
+    var(--mica-strong);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.38);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  left: calc(100% + 4px);
+  padding: 6px;
+  position: absolute;
+  top: -6px;
+  width: 190px;
+  z-index: 2;
+}
+
+.desktop-context-menu.opens-left .desktop-context-submenu {
+  left: auto;
+  right: calc(100% + 4px);
+}
+
+.desktop-context-submenu button > svg:first-child,
+.desktop-context-submenu button > span:first-child,
+.desktop-context-menu > button > span:first-child {
+  flex: 0 0 16px;
+  width: 16px;
+}
+
 .desktop-context-menu button:hover,
 .desktop-context-menu button:focus-visible,
+.desktop-context-submenu button:hover,
+.desktop-context-submenu button:focus-visible,
 .window-system-menu button:hover,
 .window-system-menu button:focus-visible {
   background: color-mix(in srgb, var(--active) 26%, rgba(255, 255, 255, 0.08));

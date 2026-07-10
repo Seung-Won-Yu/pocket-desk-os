@@ -109,6 +109,45 @@ async function runSmoke(baseUrl) {
     assert((await page.locator(".desktop").count()) === 1, "Desktop selection drag crashed the shell");
     assert((await page.locator(".desktop-icon").count()) === 2, "Desktop should only show core system icons");
 
+    await page.locator(".desktop").dispatchEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 720,
+      clientY: 180,
+    });
+    const desktopMenu = page.locator(".desktop-context-menu");
+    await desktopMenu.waitFor({ state: "visible" });
+    const desktopMenuText = await desktopMenu.innerText();
+    assert(desktopMenuText.includes("보기"), "Desktop context menu is missing View");
+    assert(desktopMenuText.includes("정렬 기준"), "Desktop context menu is missing Sort by");
+    assert(desktopMenuText.includes("새로 고침"), "Desktop context menu is missing Refresh");
+    await desktopMenu.getByRole("menuitem", { name: "보기" }).hover();
+    const viewMenu = page.getByRole("menu", { name: "보기" });
+    await viewMenu.waitFor({ state: "visible" });
+    await viewMenu.getByRole("menuitemradio", { name: "큰 아이콘" }).click();
+    assert(await page.locator(".desktop").evaluate((node) => node.classList.contains("desktop-view-large")), "Large desktop icon view did not apply");
+    const largeIconWidth = await page.locator(".desktop-icon").first().evaluate((node) => node.getBoundingClientRect().width);
+    assert(largeIconWidth > 86, "Large desktop icon view did not increase icon width");
+
+    await page.locator(".desktop").dispatchEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 720,
+      clientY: 180,
+    });
+    await desktopMenu.getByRole("menuitem", { name: "정렬 기준" }).hover();
+    const sortMenu = page.getByRole("menu", { name: "정렬 기준" });
+    await sortMenu.waitFor({ state: "visible" });
+    await sortMenu.getByRole("menuitemradio", { name: "이름" }).click();
+    const sortedIconBoxes = await page.locator(".desktop-icon").evaluateAll((icons) =>
+      icons.map((icon) => {
+        const box = icon.getBoundingClientRect();
+        return { left: box.left, top: box.top };
+      }),
+    );
+    assert(sortedIconBoxes[0].left === sortedIconBoxes[1].left, "Desktop name sort did not form a vertical grid");
+    assert(sortedIconBoxes[0].top < sortedIconBoxes[1].top, "Desktop name sort order is wrong");
+
     const startButton = page.getByRole("button", { name: "시작 메뉴" });
     await startButton.waitFor({ state: "visible" });
     await startButton.click();

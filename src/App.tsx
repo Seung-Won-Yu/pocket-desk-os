@@ -12,8 +12,10 @@ import {
   Flag,
   Folder,
   Globe2,
+  Grid2X2,
   History,
   House,
+  LayoutGrid,
   LucideIcon,
   Maximize2,
   Minus,
@@ -25,6 +27,7 @@ import {
   PinOff,
   Play,
   Power,
+  RefreshCw,
   RotateCcw,
   Redo2,
   Save,
@@ -89,6 +92,8 @@ type IconPosition = {
 };
 
 type DesktopIconLayout = Partial<Record<AppId, IconPosition>>;
+type DesktopSortKey = "name" | "type" | "modified";
+type DesktopViewMode = "small" | "medium" | "large";
 type PersistedIconPosition = {
   x?: unknown;
   y?: unknown;
@@ -296,7 +301,7 @@ const APP_BAR_HEIGHT = 48;
 const DESKTOP_ICON_WIDTH = 86;
 const DESKTOP_ICON_HEIGHT = 94;
 const CONTEXT_MENU_WIDTH = 220;
-const CONTEXT_MENU_HEIGHT = 138;
+const CONTEXT_MENU_HEIGHT = 260;
 const WINDOW_SYSTEM_MENU_WIDTH = 214;
 const WINDOW_SYSTEM_MENU_HEIGHT = 220;
 const NOTE_KEY = "pocket-desk-note";
@@ -311,6 +316,9 @@ const VFS_PRIMARY_CANVAS_ID = "vfs-sketch";
 const WALLPAPER_KEY = "pocket-desk-wallpaper-v2";
 const WINDOW_STATE_KEY = "pocket-desk-windows-v1";
 const DESKTOP_ICON_LAYOUT_KEY = "pocket-desk-icons-v1";
+const DESKTOP_ICON_VIEW_KEY = "pocket-desk-icon-view-v1";
+const DESKTOP_ICON_SORT_KEY = "pocket-desk-icon-sort-v1";
+const DESKTOP_ICON_GRID_KEY = "pocket-desk-icon-grid-v1";
 const DESKTOP_ITEMS_KEY = "pocket-desk-desktop-items-v1";
 const BROWSER_BOOKMARKS_KEY = "pocket-desk-browser-bookmarks-v1";
 const BROWSER_HISTORY_KEY = "pocket-desk-browser-history-v1";
@@ -602,6 +610,15 @@ export default function App() {
   const [desktopItems, setDesktopItems] = useState<DesktopItem[]>([]);
   const [vfsReady, setVfsReady] = useState(false);
   const [iconLayout, setIconLayout] = useState<DesktopIconLayout>(() => loadDesktopIconLayout());
+  const [desktopViewMode, setDesktopViewMode] = useState<DesktopViewMode>(() =>
+    loadDesktopViewMode(),
+  );
+  const [desktopSortKey, setDesktopSortKey] = useState<DesktopSortKey>(() =>
+    loadDesktopSortKey(),
+  );
+  const [alignDesktopIcons, setAlignDesktopIcons] = useState(
+    () => localStorage.getItem(DESKTOP_ICON_GRID_KEY) !== "off",
+  );
   const [desktopMenu, setDesktopMenu] = useState<DesktopContextMenuState | null>(null);
   const [windowMenu, setWindowMenu] = useState<WindowSystemMenuState | null>(null);
   const [startOpen, setStartOpen] = useState(false);
@@ -687,6 +704,18 @@ export default function App() {
   useEffect(() => {
     persistDesktopIconLayout(iconLayout);
   }, [iconLayout]);
+
+  useEffect(() => {
+    localStorage.setItem(DESKTOP_ICON_VIEW_KEY, desktopViewMode);
+  }, [desktopViewMode]);
+
+  useEffect(() => {
+    localStorage.setItem(DESKTOP_ICON_SORT_KEY, desktopSortKey);
+  }, [desktopSortKey]);
+
+  useEffect(() => {
+    localStorage.setItem(DESKTOP_ICON_GRID_KEY, alignDesktopIcons ? "on" : "off");
+  }, [alignDesktopIcons]);
 
   useEffect(() => {
     if (!vfsReady) return;
@@ -893,7 +922,9 @@ export default function App() {
   const moveDesktopIcon = (appId: AppId, nextPosition: IconPosition) => {
     setIconLayout((current) => ({
       ...current,
-      [appId]: clampIconPosition(nextPosition.x, nextPosition.y),
+      [appId]: alignDesktopIcons
+        ? snapDesktopIconPosition(nextPosition, desktopViewMode)
+        : clampIconPosition(nextPosition.x, nextPosition.y, desktopViewMode),
     }));
   };
 
@@ -901,7 +932,13 @@ export default function App() {
     setDesktopItems((current) =>
       current.map((item) =>
         item.id === itemId
-          ? { ...item, ...clampIconPosition(nextPosition.x, nextPosition.y), updatedAt: Date.now() }
+          ? {
+              ...item,
+              ...(alignDesktopIcons
+                ? snapDesktopIconPosition(nextPosition, desktopViewMode)
+                : clampIconPosition(nextPosition.x, nextPosition.y, desktopViewMode)),
+              updatedAt: Date.now(),
+            }
           : item,
       ),
     );
@@ -963,6 +1000,65 @@ export default function App() {
   const activeDesktopItems = useMemo(() => {
     return desktopItems.filter((item) => !item.trashed);
   }, [desktopItems]);
+
+  const arrangeDesktopIcons = (
+    sortKey: DesktopSortKey,
+    viewMode: DesktopViewMode = desktopViewMode,
+  ) => {
+    const entries = [
+      ...desktopApps.map((app) => ({
+        id: app.id,
+        kind: "app" as const,
+        name: app.title,
+        type: "시스템",
+        updatedAt: 0,
+      })),
+      ...activeDesktopItems
+        .filter((item) => item.showOnDesktop)
+        .map((item) => ({
+          id: item.id,
+          kind: "item" as const,
+          name: item.name,
+          type: getVfsEntryAssociation(item).typeLabel,
+          updatedAt: item.updatedAt,
+        })),
+    ].sort((first, second) => compareDesktopEntries(first, second, sortKey));
+    const positions = createDesktopGridPositions(entries.length, viewMode);
+
+    setDesktopSortKey(sortKey);
+    setIconLayout((current) => {
+      const next = { ...current };
+      entries.forEach((entry, index) => {
+        if (entry.kind === "app") next[entry.id] = positions[index];
+      });
+      return next;
+    });
+    setDesktopItems((current) =>
+      current.map((item) => {
+        const index = entries.findIndex((entry) => entry.kind === "item" && entry.id === item.id);
+        return index >= 0 ? { ...item, ...positions[index] } : item;
+      }),
+    );
+    setDesktopMenu(null);
+  };
+
+  const changeDesktopView = (viewMode: DesktopViewMode) => {
+    setDesktopViewMode(viewMode);
+    arrangeDesktopIcons(desktopSortKey, viewMode);
+  };
+
+  const toggleDesktopGrid = () => {
+    const next = !alignDesktopIcons;
+    setAlignDesktopIcons(next);
+    if (next) arrangeDesktopIcons(desktopSortKey);
+  };
+
+  const refreshDesktop = () => {
+    setIconLayout((current) => ({ ...current }));
+    setDesktopItems((current) => [...current]);
+    setDesktopMenu(null);
+    playSound("toggle");
+  };
 
   const trashedItems = useMemo(() => {
     return desktopItems
@@ -1348,7 +1444,9 @@ export default function App() {
     };
     desktopSelectionRef.current = nextSelection;
     setDesktopSelection(nextSelection);
-    setSelectedDesktopIds(getDesktopSelectionIds(nextSelection, iconLayout, activeDesktopItems));
+    setSelectedDesktopIds(
+      getDesktopSelectionIds(nextSelection, iconLayout, activeDesktopItems, desktopViewMode),
+    );
   };
 
   const finishDesktopSelection = (event: React.PointerEvent<HTMLElement>) => {
@@ -1529,7 +1627,7 @@ export default function App() {
 
   return (
     <main
-      className={`desktop theme-${theme} wallpaper-${wallpaper}`}
+      className={`desktop desktop-view-${desktopViewMode} theme-${theme} wallpaper-${wallpaper}`}
       onContextMenu={showDesktopContextMenu}
       onPointerCancel={finishDesktopSelection}
       onPointerDown={beginDesktopPointerAction}
@@ -1697,11 +1795,18 @@ export default function App() {
 
       {desktopMenu && (
         <DesktopContextMenu
+          alignToGrid={alignDesktopIcons}
+          currentSort={desktopSortKey}
+          currentView={desktopViewMode}
           onChangeWallpaper={() => {
             setDesktopMenu(null);
             openApp("settings");
           }}
           onCreateNote={() => createDesktopItem("note")}
+          onRefresh={refreshDesktop}
+          onSort={arrangeDesktopIcons}
+          onToggleGrid={toggleDesktopGrid}
+          onViewChange={changeDesktopView}
           x={desktopMenu.x}
           y={desktopMenu.y}
         />
@@ -2619,6 +2724,62 @@ function createDefaultIconLayout(): DesktopIconLayout {
   }, {});
 }
 
+function loadDesktopViewMode(): DesktopViewMode {
+  const stored = localStorage.getItem(DESKTOP_ICON_VIEW_KEY);
+  return stored === "small" || stored === "large" ? stored : "medium";
+}
+
+function loadDesktopSortKey(): DesktopSortKey {
+  const stored = localStorage.getItem(DESKTOP_ICON_SORT_KEY);
+  return stored === "type" || stored === "modified" ? stored : "name";
+}
+
+function getDesktopIconMetrics(viewMode: DesktopViewMode) {
+  if (viewMode === "small") return { height: 76, width: 76 };
+  if (viewMode === "large") return { height: 116, width: 110 };
+  return { height: DESKTOP_ICON_HEIGHT, width: DESKTOP_ICON_WIDTH };
+}
+
+function createDesktopGridPositions(count: number, viewMode: DesktopViewMode): IconPosition[] {
+  const metrics = getDesktopIconMetrics(viewMode);
+  const gapX = 18;
+  const gapY = 10;
+  const origin = 18;
+  const availableHeight = Math.max(
+    metrics.height,
+    window.innerHeight - APP_BAR_HEIGHT - origin * 2,
+  );
+  const rows = Math.max(1, Math.floor((availableHeight + gapY) / (metrics.height + gapY)));
+
+  return Array.from({ length: count }, (_, index) => {
+    const column = Math.floor(index / rows);
+    const row = index % rows;
+    return clampIconPosition(
+      origin + column * (metrics.width + gapX),
+      origin + row * (metrics.height + gapY),
+      viewMode,
+    );
+  });
+}
+
+function compareDesktopEntries(
+  first: { name: string; type: string; updatedAt: number },
+  second: { name: string; type: string; updatedAt: number },
+  sortKey: DesktopSortKey,
+) {
+  if (sortKey === "modified" && first.updatedAt !== second.updatedAt) {
+    return second.updatedAt - first.updatedAt;
+  }
+  if (sortKey === "type") {
+    const typeOrder = first.type.localeCompare(second.type, "ko", {
+      numeric: true,
+      sensitivity: "base",
+    });
+    if (typeOrder !== 0) return typeOrder;
+  }
+  return first.name.localeCompare(second.name, "ko", { numeric: true, sensitivity: "base" });
+}
+
 function loadDesktopIconLayout(): DesktopIconLayout {
   const fallback = createDefaultIconLayout();
   const stored = localStorage.getItem(DESKTOP_ICON_LAYOUT_KEY);
@@ -2657,13 +2818,26 @@ function persistDesktopIconLayout(layout: DesktopIconLayout) {
   localStorage.setItem(DESKTOP_ICON_LAYOUT_KEY, JSON.stringify(payload));
 }
 
-function clampIconPosition(x: number, y: number): IconPosition {
-  const maxX = Math.max(8, window.innerWidth - DESKTOP_ICON_WIDTH - 8);
-  const maxY = Math.max(8, window.innerHeight - APP_BAR_HEIGHT - DESKTOP_ICON_HEIGHT - 8);
+function clampIconPosition(
+  x: number,
+  y: number,
+  viewMode: DesktopViewMode = "medium",
+): IconPosition {
+  const metrics = getDesktopIconMetrics(viewMode);
+  const maxX = Math.max(8, window.innerWidth - metrics.width - 8);
+  const maxY = Math.max(8, window.innerHeight - APP_BAR_HEIGHT - metrics.height - 8);
   return {
     x: clamp(Number.isFinite(x) ? x : 18, 8, maxX),
     y: clamp(Number.isFinite(y) ? y : 18, 8, maxY),
   };
+}
+
+function snapDesktopIconPosition(position: IconPosition, viewMode: DesktopViewMode) {
+  const metrics = getDesktopIconMetrics(viewMode);
+  const origin = 18;
+  const x = origin + Math.round((position.x - origin) / (metrics.width + 18)) * (metrics.width + 18);
+  const y = origin + Math.round((position.y - origin) / (metrics.height + 10)) * (metrics.height + 10);
+  return clampIconPosition(x, y, viewMode);
 }
 
 function clampContextMenuPosition(x: number, y: number): IconPosition {
@@ -2714,6 +2888,7 @@ function getDesktopSelectionIds(
   selection: DesktopSelectionState,
   iconLayout: DesktopIconLayout,
   desktopItems: DesktopItem[],
+  viewMode: DesktopViewMode,
 ) {
   if (!isDesktopSelectionVisible(selection)) return [];
 
@@ -2723,7 +2898,7 @@ function getDesktopSelectionIds(
 
   desktopApps.forEach((app) => {
     const position = iconLayout[app.id] ?? fallbackLayout[app.id];
-    if (position && rectsIntersect(selectionBounds, getDesktopIconBounds(position))) {
+    if (position && rectsIntersect(selectionBounds, getDesktopIconBounds(position, viewMode))) {
       selectedIds.push(`app:${app.id}`);
     }
   });
@@ -2731,7 +2906,7 @@ function getDesktopSelectionIds(
   desktopItems
     .filter((item) => item.showOnDesktop)
     .forEach((item) => {
-      if (rectsIntersect(selectionBounds, getDesktopIconBounds(item))) {
+      if (rectsIntersect(selectionBounds, getDesktopIconBounds(item, viewMode))) {
         selectedIds.push(`item:${item.id}`);
       }
     });
@@ -2739,11 +2914,12 @@ function getDesktopSelectionIds(
   return selectedIds;
 }
 
-function getDesktopIconBounds(position: IconPosition) {
+function getDesktopIconBounds(position: IconPosition, viewMode: DesktopViewMode) {
+  const metrics = getDesktopIconMetrics(viewMode);
   return {
-    bottom: position.y + DESKTOP_ICON_HEIGHT,
+    bottom: position.y + metrics.height,
     left: position.x,
-    right: position.x + DESKTOP_ICON_WIDTH,
+    right: position.x + metrics.width,
     top: position.y,
   };
 }
@@ -2932,17 +3108,33 @@ function DesktopIconButton({
 }
 
 function DesktopContextMenu({
+  alignToGrid,
+  currentSort,
+  currentView,
   onChangeWallpaper,
   onCreateNote,
+  onRefresh,
+  onSort,
+  onToggleGrid,
+  onViewChange,
   x,
   y,
 }: {
+  alignToGrid: boolean;
+  currentSort: DesktopSortKey;
+  currentView: DesktopViewMode;
   onChangeWallpaper: () => void;
   onCreateNote: () => void;
+  onRefresh: () => void;
+  onSort: (sortKey: DesktopSortKey) => void;
+  onToggleGrid: () => void;
+  onViewChange: (viewMode: DesktopViewMode) => void;
   x: number;
   y: number;
 }) {
   const firstItemRef = useRef<HTMLButtonElement>(null);
+  const [submenu, setSubmenu] = useState<"sort" | "view" | null>(null);
+  const opensLeft = x > window.innerWidth - CONTEXT_MENU_WIDTH * 2 - 20;
 
   useEffect(() => {
     firstItemRef.current?.focus();
@@ -2950,20 +3142,106 @@ function DesktopContextMenu({
 
   return (
     <div
-      className="desktop-context-menu"
+      className={`desktop-context-menu ${opensLeft ? "opens-left" : ""}`}
       onContextMenu={(event) => event.preventDefault()}
       onPointerDown={(event) => event.stopPropagation()}
       role="menu"
       style={{ left: x, top: y }}
     >
-      <button onClick={onCreateNote} ref={firstItemRef} role="menuitem" type="button">
+      <div className="desktop-menu-row" onMouseEnter={() => setSubmenu("view")}>
+        <button
+          aria-expanded={submenu === "view"}
+          aria-haspopup="menu"
+          onClick={() => setSubmenu((current) => (current === "view" ? null : "view"))}
+          ref={firstItemRef}
+          role="menuitem"
+          type="button"
+        >
+          <LayoutGrid aria-hidden="true" size={16} />
+          <span>보기</span>
+          <ChevronRight aria-hidden="true" className="menu-chevron" size={15} />
+        </button>
+        {submenu === "view" && (
+          <div aria-label="보기" className="desktop-context-submenu" role="menu">
+            {(
+              [
+                ["large", "큰 아이콘"],
+                ["medium", "보통 아이콘"],
+                ["small", "작은 아이콘"],
+              ] as Array<[DesktopViewMode, string]>
+            ).map(([viewMode, label]) => (
+              <button
+                aria-checked={currentView === viewMode}
+                key={viewMode}
+                onClick={() => onViewChange(viewMode)}
+                role="menuitemradio"
+                type="button"
+              >
+                {currentView === viewMode ? <Check aria-hidden="true" size={15} /> : <span />}
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="desktop-menu-row" onMouseEnter={() => setSubmenu("sort")}>
+        <button
+          aria-expanded={submenu === "sort"}
+          aria-haspopup="menu"
+          onClick={() => setSubmenu((current) => (current === "sort" ? null : "sort"))}
+          role="menuitem"
+          type="button"
+        >
+          <Grid2X2 aria-hidden="true" size={16} />
+          <span>정렬 기준</span>
+          <ChevronRight aria-hidden="true" className="menu-chevron" size={15} />
+        </button>
+        {submenu === "sort" && (
+          <div aria-label="정렬 기준" className="desktop-context-submenu" role="menu">
+            {(
+              [
+                ["name", "이름"],
+                ["type", "항목 유형"],
+                ["modified", "수정한 날짜"],
+              ] as Array<[DesktopSortKey, string]>
+            ).map(([sortKey, label]) => (
+              <button
+                aria-checked={currentSort === sortKey}
+                key={sortKey}
+                onClick={() => onSort(sortKey)}
+                role="menuitemradio"
+                type="button"
+              >
+                {currentSort === sortKey ? <Check aria-hidden="true" size={15} /> : <span />}
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <button onClick={onRefresh} onMouseEnter={() => setSubmenu(null)} role="menuitem" type="button">
+        <RefreshCw aria-hidden="true" size={16} />
+        새로 고침
+      </button>
+      <button
+        aria-checked={alignToGrid}
+        onClick={onToggleGrid}
+        onMouseEnter={() => setSubmenu(null)}
+        role="menuitemcheckbox"
+        type="button"
+      >
+        {alignToGrid ? <Check aria-hidden="true" size={16} /> : <span />}
+        아이콘을 그리드에 맞춤
+      </button>
+      <span aria-hidden="true" className="menu-separator" />
+      <button onClick={onCreateNote} onMouseEnter={() => setSubmenu(null)} role="menuitem" type="button">
         <FileText aria-hidden="true" size={16} />
         새 메모
       </button>
       <span aria-hidden="true" className="menu-separator" />
-      <button onClick={onChangeWallpaper} role="menuitem" type="button">
+      <button onClick={onChangeWallpaper} onMouseEnter={() => setSubmenu(null)} role="menuitem" type="button">
         <Palette aria-hidden="true" size={16} />
-        배경 변경
+        개인 설정
       </button>
     </div>
   );
