@@ -23,6 +23,58 @@ body {
   overflow: hidden;
 }
 
+.shell-crash-screen {
+  align-items: center;
+  background: #0f6cbd;
+  color: #fff;
+  display: grid;
+  height: 100%;
+  justify-items: center;
+  padding: 24px;
+  width: 100%;
+}
+
+.shell-crash-panel {
+  display: grid;
+  gap: 14px;
+  max-width: 520px;
+}
+
+.shell-crash-panel h1,
+.shell-crash-panel p {
+  margin: 0;
+}
+
+.shell-crash-panel h1 {
+  font-size: clamp(1.55rem, 4vw, 2.3rem);
+  font-weight: 520;
+}
+
+.shell-crash-panel p {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.shell-crash-panel button {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 6px;
+  color: #12344d;
+  min-height: 40px;
+  padding: 0 18px;
+  width: max-content;
+}
+
+.shell-crash-mark {
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(2, 18px);
+  grid-template-rows: repeat(2, 18px);
+}
+
+.shell-crash-mark span {
+  background: currentColor;
+}
+
 button,
 input,
 textarea {

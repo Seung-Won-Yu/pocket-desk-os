@@ -100,6 +100,13 @@ async function runSmoke(baseUrl) {
       await unlock.click();
     }
 
+    await page.mouse.move(900, 180);
+    await page.mouse.down();
+    await page.mouse.move(380, 520, { steps: 10 });
+    await page.mouse.up();
+    await page.waitForTimeout(100);
+    assert((await page.locator(".desktop").count()) === 1, "Desktop selection drag crashed the shell");
+
     const startButton = page.getByRole("button", { name: "시작 메뉴" });
     await startButton.waitFor({ state: "visible" });
     await startButton.click();

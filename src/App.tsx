@@ -1389,11 +1389,13 @@ export default function App() {
   };
 
   const finishDesktopSelection = (event: React.PointerEvent<HTMLElement>) => {
+    const surface = event.currentTarget;
+    if (surface.hasPointerCapture(event.pointerId)) {
+      surface.releasePointerCapture(event.pointerId);
+    }
+
     setDesktopSelection((current) => {
       if (!current || current.pointerId !== event.pointerId) return current;
-      if (event.currentTarget.hasPointerCapture(current.pointerId)) {
-        event.currentTarget.releasePointerCapture(current.pointerId);
-      }
       if (!isDesktopSelectionVisible(current)) {
         setSelectedDesktopIds([]);
       }
