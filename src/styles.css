@@ -2983,6 +2983,64 @@ button {
   width: 24px;
 }
 
+.browser-frame-fallback {
+  align-items: center;
+  background: #f3f3f3;
+  border: 1px solid #c8c8c8;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  color: #202020;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  left: 50%;
+  max-width: calc(100% - 32px);
+  padding: 12px 12px 12px 14px;
+  position: absolute;
+  top: 16px;
+  transform: translateX(-50%);
+  width: 680px;
+  z-index: 4;
+}
+
+.browser-frame-fallback > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.browser-frame-fallback small {
+  color: #5d5d5d;
+}
+
+.browser-frame-fallback button,
+.browser-frame-fallback a,
+.browser-reader-state a {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #b8b8b8;
+  border-radius: 4px;
+  color: #202020;
+  display: inline-flex;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  text-decoration: none;
+}
+
+.browser-frame-fallback button.is-primary {
+  background: #0067c0;
+  border-color: #0067c0;
+  color: #ffffff;
+}
+
+.browser-frame-fallback .browser-frame-fallback-close {
+  background: transparent;
+  border-color: transparent;
+  justify-content: center;
+  padding: 0;
+  width: 32px;
+}
+
 .browser-reader {
   background: #f7f8fa;
   color: #202124;
@@ -3146,7 +3204,8 @@ button {
   text-align: center;
 }
 
-.browser-reader-state button {
+.browser-reader-state button,
+.browser-reader-state a {
   align-items: center;
   background: #0067c0;
   border: 1px solid #1473e6;
@@ -5845,6 +5904,24 @@ button {
 
   .browser-home {
     grid-template-columns: 1fr;
+  }
+
+  .browser-frame-fallback {
+    gap: 8px;
+    grid-template-columns: auto minmax(0, 1fr);
+    top: 8px;
+    width: calc(100% - 16px);
+  }
+
+  .browser-frame-fallback > button,
+  .browser-frame-fallback > a {
+    justify-content: center;
+  }
+
+  .browser-frame-fallback .browser-frame-fallback-close {
+    position: absolute;
+    right: 4px;
+    top: 4px;
   }
 
   .browser-quick-links {

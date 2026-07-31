@@ -697,6 +697,26 @@ async function runSmoke(baseUrl) {
     await edge.getByRole("button", { name: "웹 보기" }).click();
     await edgeFrame.waitFor({ state: "visible" });
     await edge.getByRole("link", { name: "새 탭에서 열기" }).waitFor({ state: "visible" });
+    await edge.getByRole("button", { name: "설정 및 기타" }).click();
+    await edge.getByRole("menuitem", { name: "페이지 표시 문제" }).click();
+    const frameFallback = edge.locator(".browser-frame-fallback");
+    await frameFallback.waitFor({ state: "visible" });
+    assert(
+      (await frameFallback.innerText()).includes("사이트 보안 정책"),
+      "Edge iframe recovery panel did not explain the display failure",
+    );
+    await frameFallback.getByRole("button", { name: "읽기 보기" }).click();
+    await readerView.waitFor({ state: "visible" });
+    await edge.getByRole("button", { name: "웹 보기" }).click();
+    await edgeFrame.waitFor({ state: "visible" });
+
+    const edgeAddress = edge.getByLabel("웹 주소 또는 검색어");
+    await edgeAddress.fill("https://github.com");
+    await edgeAddress.press("Enter");
+    await readerView.waitFor({ state: "visible" });
+    assert((await edge.locator("iframe").count()) === 0, "Known iframe-blocked host did not prefer reader view");
+    await edge.getByRole("button", { name: "뒤로" }).click();
+    await edgeFrame.waitFor({ state: "visible" });
     await edge.getByRole("button", { name: "홈" }).click();
     await edge.getByRole("button", { name: "사과게임" }).click();
     await page.waitForFunction(() => {

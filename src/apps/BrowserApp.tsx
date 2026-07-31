@@ -10,13 +10,16 @@ import {
   MoreHorizontal,
   Plus,
   RotateCcw,
+  ShieldAlert,
   Star,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 
 type BrowserSearchEngineId = "duckduckgo" | "google" | "bing";
 type BrowserViewMode = "reader" | "web";
+type BrowserFrameIssue = "error" | "manual";
 
 type BrowserBookmark = {
   createdAt: number;
@@ -90,8 +93,15 @@ const browserReaderPreferredHosts = [
   "bing.com",
   "developer.mozilla.org",
   "duckduckgo.com",
+  "facebook.com",
+  "github.com",
   "google.com",
+  "instagram.com",
   "naver.com",
+  "notion.so",
+  "openai.com",
+  "x.com",
+  "youtube.com",
 ];
 
 
@@ -109,6 +119,7 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
   ]);
   const [navigationIndex, setNavigationIndex] = useState(0);
   const [browserMenuOpen, setBrowserMenuOpen] = useState(false);
+  const [frameIssue, setFrameIssue] = useState<BrowserFrameIssue | null>(null);
   const isBookmarked = Boolean(url && bookmarks.some((bookmark) => bookmark.url === url));
 
   useEffect(() => {
@@ -132,6 +143,7 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
       setUrl(nextUrl);
       setDraft(nextUrl);
       setViewMode(nextViewMode);
+      setFrameIssue(null);
       setPageLoading(nextViewMode === "web");
       setPageLoadKey((current) => current + 1);
       setNavigationStack((current) => [
@@ -167,6 +179,7 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
     setUrl(null);
     setDraft("");
     setViewMode("web");
+    setFrameIssue(null);
     setPageLoading(false);
     setNavigationStack((current) => [
       ...current.slice(0, navigationIndex + 1),
@@ -183,6 +196,7 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
     setUrl(nextEntry.url);
     setDraft(nextEntry.url ?? "");
     setViewMode(nextEntry.viewMode);
+    setFrameIssue(null);
     setPageLoading(Boolean(nextEntry.url) && nextEntry.viewMode === "web");
     setPageLoadKey((current) => current + 1);
     setBrowserMenuOpen(false);
@@ -191,6 +205,7 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
   const changeViewMode = (nextViewMode: BrowserViewMode) => {
     if (!url || nextViewMode === viewMode) return;
     setViewMode(nextViewMode);
+    setFrameIssue(null);
     setPageLoading(nextViewMode === "web");
     setPageLoadKey((current) => current + 1);
     setNavigationStack((current) =>
@@ -204,6 +219,7 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
   const refreshPage = () => {
     if (!url) return;
     setPageLoading(viewMode === "web");
+    setFrameIssue(null);
     setPageLoadKey((current) => current + 1);
   };
 
@@ -375,6 +391,18 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
             읽기 보기
           </button>
           <button
+            disabled={!url || viewMode !== "web"}
+            onClick={() => {
+              setFrameIssue("manual");
+              setBrowserMenuOpen(false);
+            }}
+            role="menuitem"
+            type="button"
+          >
+            <ShieldAlert aria-hidden="true" size={16} />
+            페이지 표시 문제
+          </button>
+          <button
             disabled={history.length === 0}
             onClick={() => {
               clearHistory();
@@ -402,18 +430,49 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
             <BrowserReader
               key={`${pageLoadKey}-${url}`}
               onNavigate={navigateReader}
+              onOpenWeb={() => changeViewMode("web")}
               url={url}
             />
           ) : (
             <iframe
               allow="clipboard-read; clipboard-write; fullscreen"
               key={`${pageLoadKey}-${url}`}
+              onError={() => {
+                setPageLoading(false);
+                setFrameIssue("error");
+              }}
               onLoad={() => setPageLoading(false)}
               referrerPolicy="strict-origin-when-cross-origin"
               sandbox="allow-downloads allow-forms allow-modals allow-same-origin allow-scripts"
               src={url}
               title={`${getBrowserPageTitle(url)} 웹 보기`}
             />
+          )}
+          {viewMode === "web" && frameIssue && (
+            <div className="browser-frame-fallback" role="alert">
+              <ShieldAlert aria-hidden="true" size={24} />
+              <span>
+                <strong>이 사이트를 창 안에 표시할 수 없습니다</strong>
+                <small>사이트 보안 정책이 iframe 표시를 차단했을 수 있습니다.</small>
+              </span>
+              <button className="is-primary" onClick={() => changeViewMode("reader")} type="button">
+                <BookOpen aria-hidden="true" size={15} />
+                읽기 보기
+              </button>
+              <a href={url} rel="noreferrer" target="_blank">
+                <ExternalLink aria-hidden="true" size={15} />
+                새 탭
+              </a>
+              <button
+                aria-label="표시 문제 안내 닫기"
+                className="browser-frame-fallback-close"
+                onClick={() => setFrameIssue(null)}
+                title="닫기"
+                type="button"
+              >
+                <X aria-hidden="true" size={15} />
+              </button>
+            </div>
           )}
         </section>
       ) : (
@@ -431,9 +490,11 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
 
 function BrowserReader({
   onNavigate,
+  onOpenWeb,
   url,
 }: {
   onNavigate: (url: string) => void;
+  onOpenWeb: () => void;
   url: string;
 }) {
   const [document, setDocument] = useState<BrowserReaderDocument | null>(null);
@@ -500,6 +561,14 @@ function BrowserReader({
           <RotateCcw aria-hidden="true" size={15} />
           다시 시도
         </button>
+        <button onClick={onOpenWeb} type="button">
+          <Globe2 aria-hidden="true" size={15} />
+          웹 보기
+        </button>
+        <a href={url} rel="noreferrer" target="_blank">
+          <ExternalLink aria-hidden="true" size={15} />
+          새 탭
+        </a>
       </div>
     );
   }
