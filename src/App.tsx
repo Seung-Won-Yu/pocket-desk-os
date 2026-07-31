@@ -864,11 +864,6 @@ export default function App() {
   const unlockDesktop = () => {
     playSound("unlock");
     setShellPhase("unlocked");
-    notify({
-      detail: "이전 창과 바탕화면 상태를 그대로 복원했습니다.",
-      title: "PocketDesk 잠금 해제",
-      tone: "success",
-    });
   };
 
   const resetDesktopIconLayout = () => {
@@ -4168,20 +4163,22 @@ function ToastStack({
     <section aria-label="알림" className="toast-stack" role="status">
       {toasts.map((toast) => (
         <article className={`toast toast-${toast.tone}`} key={toast.id}>
-          <span className="toast-icon">
-            {toast.tone === "success" ? (
-              <Check aria-hidden="true" size={16} />
-            ) : (
-              <Bell aria-hidden="true" size={16} />
-            )}
-          </span>
-          <div>
+          <header className="toast-header">
+            <BrandMark className="toast-app-mark" />
+            <strong>PocketDesk</strong>
+            <time dateTime={new Date(toast.createdAt).toISOString()}>지금</time>
+            <button
+              aria-label={`${toast.title} 알림 닫기`}
+              onClick={() => onDismiss(toast.id)}
+              type="button"
+            >
+              <X aria-hidden="true" size={14} />
+            </button>
+          </header>
+          <div className="toast-body">
             <strong>{toast.title}</strong>
             {toast.detail && <small>{toast.detail}</small>}
           </div>
-          <button aria-label={`${toast.title} 알림 닫기`} onClick={() => onDismiss(toast.id)} type="button">
-            <X aria-hidden="true" size={15} />
-          </button>
         </article>
       ))}
     </section>
