@@ -61,7 +61,7 @@ async function captureSocialPreview(baseUrl) {
       localStorage.removeItem("pocket-desk-taskbar-pinned-v2");
       localStorage.removeItem("pocket-desk-windows-v1");
       localStorage.setItem("pocket-desk-theme", "lagoon");
-      localStorage.setItem("pocket-desk-wallpaper-v2", "ribbon");
+      localStorage.setItem("pocket-desk-wallpaper-v2", "sunny");
     });
     await page.evaluate(
       () =>
@@ -75,11 +75,13 @@ async function captureSocialPreview(baseUrl) {
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForTimeout(1400);
 
-    const unlock = page.getByRole("button", { name: /PocketDesk 잠금 해제/ });
-    if (await unlock.count()) {
-      await unlock.click();
+    const lockScreen = page.getByRole("region", { name: "PocketDesk 잠금 화면" });
+    if (await lockScreen.count()) {
+      await lockScreen.click();
+      await page.getByRole("button", { name: "로그인" }).click();
+      await page.locator("main.desktop.is-unlocked").waitFor({ state: "visible" });
     }
-    await page.waitForTimeout(3800);
+    await page.waitForTimeout(1200);
 
     await mkdir(new URL("../public/brand/", import.meta.url), { recursive: true });
     await page.screenshot({ path: outputPath, type: "png" });
