@@ -14,7 +14,7 @@
 | 영역 | 구현 내용 |
 | --- | --- |
 | Desktop shell | 시작 메뉴, 작업 표시줄, 시스템 트레이, 알림 센터 |
-| Window manager | 이동·크기 조절·최소화·최대화·스냅·Alt+Tab |
+| Window manager | 이동·크기 조절·최소화·최대화·스냅·Alt+Tab·Windows 11 전환 효과 |
 | Virtual file system | IndexedDB 파일·폴더, 연결 앱, 휴지통, ZIP 백업 |
 | Built-in apps | 내 PC, 탐색기, 브라우저, 메모장, 그림판, 계산기, 지뢰찾기 |
 | Persistence | 창·아이콘·설정은 localStorage, 파일은 IndexedDB |
@@ -44,6 +44,8 @@
 - 파일 탐색기 새 텍스트 문서, 영구 저장 복사/붙여넣기, 우클릭 메뉴와 속성
 - 작업 표시줄 바탕 화면 표시/복원
 - 부팅·잠금·재시작·종료 흐름
+- 잠금 해제, 창과 시스템 패널에 적용된 Windows 11 스타일 전환 효과
+- 운영체제의 동작 줄이기 설정을 따르는 모션 접근성
 - 키보드 탐색과 `Ctrl+S`, `F2`, `Delete`, `Alt+Tab`, `Alt+F4`, `Win+E/R/D`
 - 자체 제작 배경화면 8종과 통일된 브랜드 아이콘
 

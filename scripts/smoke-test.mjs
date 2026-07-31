@@ -77,12 +77,18 @@ async function launchBrowser() {
 }
 
 async function unlockPocketDesk(page) {
+  const shellGate = page.locator(".shell-gate");
   const lockScreen = page.locator('[aria-label="PocketDesk 잠금 화면"]');
   await lockScreen.waitFor({ state: "visible", timeout: 6000 });
   await lockScreen.click();
   const signInButton = page.getByRole("button", { name: "로그인", exact: true });
   await signInButton.waitFor({ state: "visible" });
   await signInButton.click();
+  await shellGate.waitFor({ state: "hidden" });
+  assert(
+    await page.locator(".desktop").evaluate((desktop) => desktop.classList.contains("is-unlocked")),
+    "Desktop unlock transition state missing",
+  );
 }
 
 function withTimeout(promise, timeoutMs, label) {
@@ -191,12 +197,22 @@ async function runSmoke(baseUrl) {
     await desktopThisPc.dblclick();
     const desktopThisPcWindow = page.locator('article[aria-label="내 PC"]');
     await desktopThisPcWindow.waitFor({ state: "visible" });
+    assert(
+      (await desktopThisPcWindow.evaluate((frame) => getComputedStyle(frame).animationName)).includes(
+        "window-open",
+      ),
+      "Window open transition missing",
+    );
     const showDesktopButton = page.getByRole("button", { name: "바탕 화면 표시" });
     await showDesktopButton.click();
     await desktopThisPcWindow.waitFor({ state: "hidden" });
     await showDesktopButton.click();
     await desktopThisPcWindow.waitFor({ state: "visible" });
     await desktopThisPcWindow.getByRole("button", { name: "내 PC 닫기" }).click();
+    assert(
+      await desktopThisPcWindow.evaluate((frame) => frame.classList.contains("is-closing")),
+      "Window close transition missing",
+    );
     await desktopThisPcWindow.waitFor({ state: "hidden" });
 
     await page.keyboard.press("Meta+e");

@@ -94,6 +94,7 @@ type WallpaperName =
   | "coast";
 type BrowserSearchEngineId = "duckduckgo" | "google" | "bing";
 type BrowserViewMode = "reader" | "web";
+type WindowMotion = "closing" | "minimizing";
 
 type WindowInstance = {
   id: string;
@@ -403,6 +404,7 @@ const DISPLAY_BRIGHTNESS_KEY = "pocket-desk-display-brightness-v1";
 const TASKBAR_PINNED_APPS_KEY = "pocket-desk-taskbar-pinned-v2";
 const SNAP_EDGE_SIZE = 24;
 const SNAP_GUTTER = 10;
+const WINDOW_EXIT_MOTION_MS = 170;
 
 const minesDifficulties: MinesDifficulty[] = [
   { cols: 9, id: "easy", label: "초급", mines: 10, rows: 9 },
@@ -734,18 +736,28 @@ export default function App() {
   const [notificationHistory, setNotificationHistory] = useState<ToastMessage[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [windows, setWindows] = useState<WindowInstance[]>(() => loadWindowState());
+  const [windowMotions, setWindowMotions] = useState<Record<string, WindowMotion>>({});
   const altTabTimerRef = useRef<number | null>(null);
   const desktopRenameGuardRef = useRef(false);
   const desktopSelectionRef = useRef<DesktopSelectionState | null>(null);
   const showDesktopRestoreRef = useRef<string[]>([]);
   const soundEnabledRef = useRef(soundEnabled);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const windowMotionTimersRef = useRef(new Map<string, number>());
 
   useEffect(() => {
     if (shellPhase !== "booting") return;
     const timer = window.setTimeout(() => setShellPhase("locked"), 1150);
     return () => window.clearTimeout(timer);
   }, [shellPhase]);
+
+  useEffect(
+    () => () => {
+      windowMotionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+      windowMotionTimersRef.current.clear();
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -969,6 +981,8 @@ export default function App() {
   };
 
   const openApp = (appId: AppId) => {
+    const existingWindow = windows.find((item) => item.appId === appId);
+    if (existingWindow) cancelWindowMotion(existingWindow.id);
     playSound("open");
     setDesktopIconMenu(null);
     setDesktopMenu(null);
@@ -1696,19 +1710,61 @@ export default function App() {
 
   const restoreWindow = (id: string) => {
     playSound("toggle");
+    cancelWindowMotion(id);
     updateWindow(id, { maximized: false, minimized: false });
+  };
+
+  const cancelWindowMotion = (id: string) => {
+    const timer = windowMotionTimersRef.current.get(id);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      windowMotionTimersRef.current.delete(id);
+    }
+    setWindowMotions((current) => {
+      if (!current[id]) return current;
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const scheduleWindowMotion = (
+    id: string,
+    motion: WindowMotion,
+    complete: () => void,
+  ) => {
+    const activeTimer = windowMotionTimersRef.current.get(id);
+    if (activeTimer !== undefined) window.clearTimeout(activeTimer);
+
+    setWindowMotions((current) => ({ ...current, [id]: motion }));
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timer = window.setTimeout(() => {
+      windowMotionTimersRef.current.delete(id);
+      complete();
+      setWindowMotions((current) => {
+        if (!current[id]) return current;
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+    }, reduceMotion ? 0 : WINDOW_EXIT_MOTION_MS);
+    windowMotionTimersRef.current.set(id, timer);
   };
 
   const closeWindow = (id: string) => {
     playSound("close");
     setWindowMenu(null);
-    setWindows((current) => current.filter((item) => item.id !== id));
+    scheduleWindowMotion(id, "closing", () => {
+      setWindows((current) => current.filter((item) => item.id !== id));
+    });
   };
 
   const minimizeWindow = (id: string) => {
     playSound("minimize");
     setWindowMenu(null);
-    updateWindow(id, { minimized: true });
+    scheduleWindowMotion(id, "minimizing", () => {
+      updateWindow(id, { minimized: true });
+    });
   };
 
   const toggleMaximize = (id: string) => {
@@ -1720,22 +1776,19 @@ export default function App() {
   };
 
   const toggleFromTaskbar = (id: string) => {
-    playSound("click");
-    setWindows((current) => {
-      const active = current.find((item) => item.id === id);
-      const topVisible = current
-        .filter((item) => !item.minimized)
-        .sort((a, b) => b.z - a.z)[0]?.id;
-      const topZ = Math.max(1, ...current.map((item) => item.z));
+    const target = windows.find((item) => item.id === id);
+    const topVisibleId = windows
+      .filter((item) => !item.minimized)
+      .sort((a, b) => b.z - a.z)[0]?.id;
 
-      return current.map((item) => {
-        if (item.id !== id) return item;
-        if (active && !active.minimized && topVisible === id) {
-          return { ...item, minimized: true };
-        }
-        return { ...item, minimized: false, z: topZ + 1 };
-      });
-    });
+    if (target && !target.minimized && topVisibleId === id) {
+      minimizeWindow(id);
+      return;
+    }
+
+    playSound("click");
+    cancelWindowMotion(id);
+    focusWindow(id);
   };
 
   const snapWindow = (id: string, zone: SnapZone) => {
@@ -1749,25 +1802,27 @@ export default function App() {
     setRunOpen(false);
     setDesktopIconMenu(null);
     setDesktopMenu(null);
-    setWindows((current) => {
-      const visibleIds = current.filter((item) => !item.minimized).map((item) => item.id);
-      if (visibleIds.length > 0) {
-        showDesktopRestoreRef.current = visibleIds;
-        return current.map((item) =>
-          visibleIds.includes(item.id) ? { ...item, minimized: true } : item,
-        );
-      }
+    const visibleIds = windows.filter((item) => !item.minimized).map((item) => item.id);
+    if (visibleIds.length > 0) {
+      showDesktopRestoreRef.current = visibleIds;
+      visibleIds.forEach((id) => {
+        scheduleWindowMotion(id, "minimizing", () => updateWindow(id, { minimized: true }));
+      });
+      return;
+    }
 
-      const restoreIds = new Set(showDesktopRestoreRef.current);
-      if (restoreIds.size === 0) return current;
+    const restoreIds = new Set(showDesktopRestoreRef.current);
+    if (restoreIds.size === 0) return;
+    restoreIds.forEach(cancelWindowMotion);
+    setWindows((current) => {
       let nextZ = Math.max(12, ...current.map((item) => item.z));
-      showDesktopRestoreRef.current = [];
       return current.map((item) =>
         restoreIds.has(item.id)
           ? { ...item, minimized: false, z: (nextZ += 1) }
           : item,
       );
     });
+    showDesktopRestoreRef.current = [];
   };
 
   const availableApps = appCatalog;
@@ -2107,7 +2162,9 @@ export default function App() {
 
   return (
     <main
-      className={`desktop desktop-view-${desktopViewMode} theme-${theme} wallpaper-${wallpaper}`}
+      className={`desktop desktop-view-${desktopViewMode} theme-${theme} wallpaper-${wallpaper} ${
+        shellPhase === "unlocked" ? "is-unlocked" : ""
+      }`}
       onContextMenu={showDesktopContextMenu}
       onPointerCancel={finishDesktopSelection}
       onPointerDown={beginDesktopPointerAction}
@@ -2175,6 +2232,7 @@ export default function App() {
               app={app}
               active={activeWindowId === item.id}
               instance={item}
+              motion={windowMotions[item.id]}
               onClose={() => closeWindow(item.id)}
               onFocus={() => focusWindow(item.id)}
               onMinimize={() => minimizeWindow(item.id)}
@@ -4360,6 +4418,8 @@ function LockScreen({
   const signInButtonRef = useRef<HTMLButtonElement>(null);
   const [now, setNow] = useState(() => new Date());
   const [signInVisible, setSignInVisible] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
+  const unlockTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => lockRef.current?.focus());
@@ -4375,6 +4435,20 @@ function LockScreen({
     const frameId = window.requestAnimationFrame(() => signInButtonRef.current?.focus());
     return () => window.cancelAnimationFrame(frameId);
   }, [signInVisible]);
+
+  useEffect(
+    () => () => {
+      if (unlockTimerRef.current !== null) window.clearTimeout(unlockTimerRef.current);
+    },
+    [],
+  );
+
+  const beginUnlock = () => {
+    if (unlocking) return;
+    setUnlocking(true);
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    unlockTimerRef.current = window.setTimeout(onUnlock, reduceMotion ? 0 : 220);
+  };
 
   const unlockFromKey = (event: React.KeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape" && signInVisible) {
@@ -4393,7 +4467,9 @@ function LockScreen({
   return (
     <section
       aria-label={signInVisible ? "PocketDesk 로그인" : "PocketDesk 잠금 화면"}
-      className={`shell-gate lock-screen wallpaper-${wallpaper} ${signInVisible ? "is-sign-in" : ""}`}
+      className={`shell-gate lock-screen wallpaper-${wallpaper} ${
+        signInVisible ? "is-sign-in" : ""
+      } ${unlocking ? "is-unlocking" : ""}`}
       onClick={() => {
         if (!signInVisible) setSignInVisible(true);
       }}
@@ -4410,7 +4486,7 @@ function LockScreen({
               <UserRound aria-hidden="true" size={48} strokeWidth={1.45} />
             </span>
             <strong>Seung-Won</strong>
-            <button onClick={onUnlock} ref={signInButtonRef} type="button">
+            <button disabled={unlocking} onClick={beginUnlock} ref={signInButtonRef} type="button">
               로그인
             </button>
           </div>
@@ -4479,6 +4555,7 @@ function WindowFrame({
   app,
   children,
   instance,
+  motion,
   onClose,
   onFocus,
   onMinimize,
@@ -4491,6 +4568,7 @@ function WindowFrame({
   app: AppDefinition;
   children: React.ReactNode;
   instance: WindowInstance;
+  motion?: WindowMotion;
   onClose: () => void;
   onFocus: () => void;
   onMinimize: () => void;
@@ -4596,7 +4674,7 @@ function WindowFrame({
       aria-label={app.title}
       className={`window-frame ${active ? "is-active" : ""} ${
         instance.maximized ? "is-maximized" : ""
-      }`}
+      } ${motion ? `is-${motion}` : ""}`}
       onPointerDown={onFocus}
       style={frameStyle}
     >
