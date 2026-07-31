@@ -263,7 +263,15 @@ type CalculatorButton = {
   value?: string;
 };
 type NoteSaveStatus = "saved" | "dirty" | "saving";
-type SoundEffectName = "click" | "close" | "minimize" | "open" | "success" | "toggle" | "unlock";
+type SoundEffectName =
+  | "click"
+  | "close"
+  | "error"
+  | "minimize"
+  | "open"
+  | "success"
+  | "toggle"
+  | "unlock";
 type SoundStep = {
   duration: number;
   frequency: number;
@@ -375,8 +383,8 @@ const SNAP_GUTTER = 10;
 
 const minesDifficulties: MinesDifficulty[] = [
   { cols: 9, id: "easy", label: "초급", mines: 10, rows: 9 },
-  { cols: 12, id: "medium", label: "중급", mines: 24, rows: 12 },
-  { cols: 16, id: "hard", label: "고급", mines: 40, rows: 16 },
+  { cols: 16, id: "medium", label: "중급", mines: 40, rows: 16 },
+  { cols: 30, id: "hard", label: "고급", mines: 99, rows: 16 },
 ];
 
 const browserSearchEngines: Array<{
@@ -5629,13 +5637,18 @@ function BrowserHome({
   );
 }
 
-function MinesweeperApp() {
+function MinesweeperApp({ playSound }: AppContentProps) {
   const [difficultyId, setDifficultyId] = useState<MinesDifficultyId>("easy");
   const difficulty = getMinesDifficulty(difficultyId);
   const [board, setBoard] = useState(() => createMineBoard(difficulty));
   const [status, setStatus] = useState<"playing" | "won" | "lost">("playing");
+  const [boardReady, setBoardReady] = useState(false);
   const [started, setStarted] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [detonatedIndex, setDetonatedIndex] = useState<number | null>(null);
+  const [resultVisible, setResultVisible] = useState(false);
+  const [newBest, setNewBest] = useState(false);
+  const [flagMode, setFlagMode] = useState(false);
   const [bestRecords, setBestRecords] = useState<Record<MinesDifficultyId, number | null>>(() =>
     loadMinesBestRecords(),
   );
@@ -5657,8 +5670,13 @@ function MinesweeperApp() {
   const reset = () => {
     setBoard(createMineBoard(difficulty));
     setStatus("playing");
+    setBoardReady(false);
     setStarted(false);
     setElapsedSeconds(0);
+    setDetonatedIndex(null);
+    setResultVisible(false);
+    setNewBest(false);
+    setFlagMode(false);
   };
 
   const changeDifficulty = (nextDifficultyId: MinesDifficultyId) => {
@@ -5666,8 +5684,50 @@ function MinesweeperApp() {
     setDifficultyId(nextDifficulty.id);
     setBoard(createMineBoard(nextDifficulty));
     setStatus("playing");
+    setBoardReady(false);
     setStarted(false);
     setElapsedSeconds(0);
+    setDetonatedIndex(null);
+    setResultVisible(false);
+    setNewBest(false);
+    setFlagMode(false);
+  };
+
+  const finishWin = (completedBoard: MineCell[]) => {
+    const completedTime = Math.max(elapsedSeconds, 1);
+    const currentBest = bestRecords[difficulty.id];
+    const hasNewBest = currentBest === null || completedTime < currentBest;
+
+    setBoard(
+      completedBoard.map((cell) =>
+        cell.mine ? { ...cell, flagged: true, revealed: false } : cell,
+      ),
+    );
+    setStatus("won");
+    setStarted(false);
+    setElapsedSeconds(completedTime);
+    setDetonatedIndex(null);
+    setResultVisible(true);
+    setNewBest(hasNewBest);
+    playSound("success");
+
+    if (hasNewBest) {
+      setBestRecords((current) => ({ ...current, [difficulty.id]: completedTime }));
+    }
+  };
+
+  const finishLoss = (failedBoard: MineCell[], explodedIndex: number) => {
+    setBoard(
+      failedBoard.map((cell) =>
+        cell.mine && !cell.flagged ? { ...cell, revealed: true } : cell,
+      ),
+    );
+    setStatus("lost");
+    setStarted(false);
+    setDetonatedIndex(explodedIndex);
+    setResultVisible(true);
+    setNewBest(false);
+    playSound("error");
   };
 
   const reveal = (index: number) => {
@@ -5682,9 +5742,11 @@ function MinesweeperApp() {
       const adjacentFlags = neighbors.filter((neighbor) => activeBoard[neighbor]?.flagged).length;
       if (adjacentFlags !== target.adjacent) return;
 
-      if (neighbors.some((neighbor) => activeBoard[neighbor]?.mine && !activeBoard[neighbor]?.flagged)) {
-        setBoard(activeBoard.map((cell) => (cell.mine ? { ...cell, revealed: true } : cell)));
-        setStatus("lost");
+      const explodedNeighbor = neighbors.find(
+        (neighbor) => activeBoard[neighbor]?.mine && !activeBoard[neighbor]?.flagged,
+      );
+      if (explodedNeighbor !== undefined) {
+        finishLoss(activeBoard, explodedNeighbor);
         return;
       }
 
@@ -5696,32 +5758,24 @@ function MinesweeperApp() {
       });
       setBoard(chordedBoard);
       if (chordedBoard.every((cell) => cell.mine || cell.revealed)) {
-        const completedTime = Math.max(elapsedSeconds, 1);
-        setStatus("won");
-        setElapsedSeconds(completedTime);
-        setBestRecords((current) => {
-          const currentBest = current[difficulty.id];
-          if (currentBest !== null && currentBest <= completedTime) return current;
-          return { ...current, [difficulty.id]: completedTime };
-        });
+        finishWin(chordedBoard);
       }
       return;
     }
 
-    if (!started && (target.mine || target.adjacent > 0)) {
-      let attempts = 0;
-      do {
-        activeBoard = createMineBoard(difficulty);
-        target = activeBoard[index];
-        attempts += 1;
-      } while ((target.mine || target.adjacent > 0) && attempts < 160);
+    if (!boardReady) {
+      activeBoard = createMineBoard(difficulty, index).map((cell, cellIndex) => ({
+        ...cell,
+        flagged: board[cellIndex]?.flagged ?? false,
+      }));
+      target = activeBoard[index];
+      setBoardReady(true);
     }
 
     setStarted(true);
 
     if (target.mine) {
-      setBoard(activeBoard.map((cell) => (cell.mine ? { ...cell, revealed: true } : cell)));
-      setStatus("lost");
+      finishLoss(activeBoard, index);
       return;
     }
 
@@ -5729,21 +5783,12 @@ function MinesweeperApp() {
     setBoard(next);
 
     if (next.every((cell) => cell.mine || cell.revealed)) {
-      setStatus("won");
-      const completedTime = Math.max(elapsedSeconds, 1);
-      setElapsedSeconds(completedTime);
-      setBestRecords((current) => {
-        const currentBest = current[difficulty.id];
-        if (currentBest !== null && currentBest <= completedTime) return current;
-        return { ...current, [difficulty.id]: completedTime };
-      });
+      finishWin(next);
     }
   };
 
-  const toggleFlag = (event: React.MouseEvent, index: number) => {
-    event.preventDefault();
+  const toggleFlagAt = (index: number) => {
     if (status !== "playing") return;
-    setStarted(true);
     setBoard((current) =>
       current.map((cell, cellIndex) =>
         cellIndex === index && !cell.revealed ? { ...cell, flagged: !cell.flagged } : cell,
@@ -5751,9 +5796,25 @@ function MinesweeperApp() {
     );
   };
 
+  const toggleFlag = (event: React.MouseEvent, index: number) => {
+    event.preventDefault();
+    toggleFlagAt(index);
+  };
+
+  const activateCell = (index: number) => {
+    if (flagMode) {
+      toggleFlagAt(index);
+      return;
+    }
+    reveal(index);
+  };
+
   const flagCount = board.filter((cell) => cell.flagged).length;
-  const remainingMines = Math.max(0, difficulty.mines - flagCount);
+  const remainingMines = difficulty.mines - flagCount;
+  const wrongFlagCount = board.filter((cell) => cell.flagged && !cell.mine).length;
   const bestRecord = bestRecords[difficulty.id];
+  const displayedBestRecord =
+    status === "won" && newBest ? elapsedSeconds : bestRecord;
 
   return (
     <div className="mines-app">
@@ -5762,7 +5823,7 @@ function MinesweeperApp() {
           <Bomb aria-hidden="true" size={17} />
           <span>
             <small>남은 지뢰</small>
-            <strong>{String(remainingMines).padStart(2, "0")}</strong>
+            <strong>{formatMineCounter(remainingMines)}</strong>
           </span>
         </div>
         <button
@@ -5797,17 +5858,35 @@ function MinesweeperApp() {
             ))}
           </select>
         </label>
-        <span>{difficulty.rows} × {difficulty.cols}</span>
-        <span>깃발 {flagCount}</span>
+        <span>{difficulty.cols} × {difficulty.rows}</span>
+        <button
+          aria-label="깃발 모드"
+          aria-pressed={flagMode}
+          className="mines-flag-mode"
+          onClick={() => setFlagMode((current) => !current)}
+          title="깃발 모드"
+          type="button"
+        >
+          <Flag aria-hidden="true" size={14} />
+        </button>
+        <span>{status === "lost" && wrongFlagCount > 0 ? `잘못된 깃발 ${wrongFlagCount}` : `깃발 ${flagCount}`}</span>
         <span className="mines-best">최고 {bestRecord === null ? "--" : formatDuration(bestRecord)}</span>
       </div>
-      <div className="mines-stage">
+      <div className={`mines-stage is-${status}`}>
         <div
+          aria-label={`지뢰찾기 ${difficulty.label} 보드`}
+          aria-readonly={status !== "playing"}
           className="mine-grid"
           role="grid"
           style={
             {
               "--mine-cols": difficulty.cols,
+              "--mine-font-size":
+                difficulty.id === "hard" ? "0.55rem" : difficulty.id === "medium" ? "0.7rem" : "1rem",
+              "--mine-gap":
+                difficulty.id === "hard" ? "1px" : difficulty.id === "medium" ? "2px" : "4px",
+              "--mine-radius":
+                difficulty.id === "hard" ? "2px" : difficulty.id === "medium" ? "3px" : "4px",
               "--mine-rows": difficulty.rows,
             } as React.CSSProperties
           }
@@ -5815,19 +5894,31 @@ function MinesweeperApp() {
           {board.map((cell, index) => (
             <button
               aria-label={`${index + 1}번 칸${
-                cell.flagged ? ", 깃발" : cell.revealed ? `, ${cell.mine ? "지뢰" : cell.adjacent}` : ""
+                cell.flagged
+                  ? status === "lost" && !cell.mine
+                    ? ", 잘못된 깃발"
+                    : ", 깃발"
+                  : cell.revealed
+                    ? `, ${cell.mine ? "지뢰" : cell.adjacent}`
+                    : ""
               }`}
               className={`mine-cell ${cell.revealed ? "is-open" : ""} ${
                 cell.flagged && !cell.revealed ? "is-flagged" : ""
               } ${cell.revealed && cell.mine ? "is-mine" : ""} ${
                 cell.revealed && cell.adjacent > 0 ? `mine-number-${cell.adjacent}` : ""
+              } ${status === "lost" && cell.flagged && !cell.mine ? "is-wrong-flag" : ""} ${
+                detonatedIndex === index ? "is-detonated" : ""
               }`}
+              disabled={status !== "playing"}
               key={cell.id}
-              onClick={() => reveal(index)}
+              onClick={() => activateCell(index)}
               onContextMenu={(event) => toggleFlag(event, index)}
+              role="gridcell"
               type="button"
             >
-              {cell.flagged && !cell.revealed ? (
+              {status === "lost" && cell.flagged && !cell.mine ? (
+                <X aria-hidden="true" size={17} />
+              ) : cell.flagged && !cell.revealed ? (
                 <Flag aria-hidden="true" size={15} />
               ) : cell.revealed && cell.mine ? (
                 <Bomb aria-hidden="true" size={16} />
@@ -5837,6 +5928,60 @@ function MinesweeperApp() {
             </button>
           ))}
         </div>
+        {status !== "playing" && resultVisible && (
+          <div className="mines-result-overlay">
+            <section
+              aria-labelledby="mines-result-title"
+              aria-modal="true"
+              className={`mines-result-dialog is-${status}`}
+              role="dialog"
+            >
+              <div className="mines-result-heading">
+                <span className="mines-result-icon">
+                  {status === "won" ? (
+                    <Check aria-hidden="true" size={22} />
+                  ) : (
+                    <Bomb aria-hidden="true" size={22} />
+                  )}
+                </span>
+                <span>
+                  <h2 id="mines-result-title">{status === "won" ? "게임 완료" : "게임 종료"}</h2>
+                  <p>
+                    {status === "won"
+                      ? "모든 지뢰를 찾았습니다."
+                      : wrongFlagCount > 0
+                        ? `지뢰를 밟았습니다. 잘못된 깃발 ${wrongFlagCount}개`
+                        : "지뢰를 밟았습니다."}
+                  </p>
+                </span>
+              </div>
+              {newBest && <strong className="mines-new-record">새 최고 기록</strong>}
+              <dl className="mines-result-stats">
+                <div>
+                  <dt>난이도</dt>
+                  <dd>{difficulty.label}</dd>
+                </div>
+                <div>
+                  <dt>시간</dt>
+                  <dd>{formatDuration(elapsedSeconds)}</dd>
+                </div>
+                <div>
+                  <dt>최고 기록</dt>
+                  <dd>{displayedBestRecord === null ? "--" : formatDuration(displayedBestRecord)}</dd>
+                </div>
+              </dl>
+              <div className="mines-result-actions">
+                <button autoFocus className="is-primary" onClick={reset} type="button">
+                  <RotateCcw aria-hidden="true" size={15} />
+                  다시 플레이
+                </button>
+                <button onClick={() => setResultVisible(false)} type="button">
+                  보드 보기
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -6981,6 +7126,10 @@ function getPocketDeskSoundSteps(effect: SoundEffectName): SoundStep[] {
     close: [
       { duration: 0.055, frequency: 420, gain: 0.015, type: "triangle" },
       { duration: 0.07, frequency: 260, gain: 0.012, offset: 0.035, type: "sine" },
+    ],
+    error: [
+      { duration: 0.065, frequency: 190, gain: 0.018, type: "sawtooth" },
+      { duration: 0.1, frequency: 130, gain: 0.014, offset: 0.045, type: "triangle" },
     ],
     minimize: [
       { duration: 0.045, frequency: 520, gain: 0.012, type: "triangle" },
@@ -8567,13 +8716,25 @@ function normalizeBestRecord(value: unknown) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null;
 }
 
-function createMineBoard(difficulty: MinesDifficulty): MineCell[] {
+function createMineBoard(difficulty: MinesDifficulty, safeStartIndex?: number): MineCell[] {
   const size = difficulty.rows * difficulty.cols;
-  const minePositions = new Set<number>();
+  const excludedPositions = new Set<number>();
 
-  while (minePositions.size < difficulty.mines) {
-    minePositions.add(Math.floor(Math.random() * size));
+  if (safeStartIndex !== undefined) {
+    excludedPositions.add(safeStartIndex);
+    getNeighbors(safeStartIndex, difficulty).forEach((index) => excludedPositions.add(index));
   }
+
+  const candidates = Array.from({ length: size }, (_, index) => index).filter(
+    (index) => !excludedPositions.has(index),
+  );
+
+  for (let index = candidates.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [candidates[index], candidates[swapIndex]] = [candidates[swapIndex], candidates[index]];
+  }
+
+  const minePositions = new Set(candidates.slice(0, difficulty.mines));
 
   return Array.from({ length: size }, (_, index) => ({
     adjacent: getNeighbors(index, difficulty).filter((neighbor) => minePositions.has(neighbor)).length,
@@ -8632,6 +8793,13 @@ function formatDuration(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+}
+
+function formatMineCounter(value: number) {
+  if (value < 0) {
+    return `-${Math.abs(value).toString().padStart(1, "0")}`;
+  }
+  return value.toString().padStart(2, "0");
 }
 
 function normalizeUrl(value: string, searchEngine: BrowserSearchEngineId = "duckduckgo") {

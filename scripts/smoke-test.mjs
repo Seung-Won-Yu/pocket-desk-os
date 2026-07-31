@@ -12,6 +12,32 @@ function assert(condition, message) {
   }
 }
 
+function getDeterministicMineIndices({ rows, cols, mines, safeIndex }) {
+  const excluded = new Set([safeIndex]);
+  const safeRow = Math.floor(safeIndex / cols);
+  const safeColumn = safeIndex % cols;
+
+  for (let rowOffset = -1; rowOffset <= 1; rowOffset += 1) {
+    for (let columnOffset = -1; columnOffset <= 1; columnOffset += 1) {
+      const row = safeRow + rowOffset;
+      const column = safeColumn + columnOffset;
+      if (row >= 0 && row < rows && column >= 0 && column < cols) {
+        excluded.add(row * cols + column);
+      }
+    }
+  }
+
+  const candidates = Array.from({ length: rows * cols }, (_, index) => index).filter(
+    (index) => !excluded.has(index),
+  );
+
+  for (let index = candidates.length - 1; index > 0; index -= 1) {
+    [candidates[index], candidates[0]] = [candidates[0], candidates[index]];
+  }
+
+  return new Set(candidates.slice(0, mines));
+}
+
 function getFreePort() {
   return new Promise((resolve, reject) => {
     const server = createServer();
@@ -420,12 +446,79 @@ async function runSmoke(baseUrl) {
     await runDialog.getByRole("button", { name: "확인" }).click();
     const minesweeper = page.locator('article[aria-label="지뢰찾기"]');
     await minesweeper.waitFor({ state: "visible" });
-    await minesweeper.locator(".mine-cell").first().click();
+    const difficultySelect = minesweeper.getByLabel("지뢰찾기 난이도");
+    await difficultySelect.selectOption("medium");
+    assert((await minesweeper.locator(".mine-cell").count()) === 256, "Minesweeper intermediate board is not 16x16");
+    assert((await minesweeper.locator(".mines-commandbar").innerText()).includes("16 × 16"), "Minesweeper intermediate dimensions are wrong");
+    await difficultySelect.selectOption("hard");
+    assert((await minesweeper.locator(".mine-cell").count()) === 480, "Minesweeper expert board is not 30x16");
+    assert((await minesweeper.locator(".mines-commandbar").innerText()).includes("30 × 16"), "Minesweeper expert dimensions are wrong");
+    await difficultySelect.selectOption("easy");
+    await page.evaluate(() => {
+      window.__pocketDeskOriginalRandom = Math.random;
+      Math.random = () => 0;
+    });
+    const mineCells = minesweeper.locator(".mine-cell");
+    const deterministicMines = getDeterministicMineIndices({
+      cols: 9,
+      mines: 10,
+      rows: 9,
+      safeIndex: 0,
+    });
+    await minesweeper.getByRole("button", { name: "깃발 모드" }).click();
+    await mineCells.nth(80).click();
+    assert(await mineCells.nth(80).evaluate((node) => node.classList.contains("is-flagged")), "Minesweeper touch flag mode failed");
+    assert((await minesweeper.locator(".mines-counter.is-time strong").innerText()) === "0:00", "Minesweeper timer started before the first reveal");
+    await mineCells.nth(80).click();
+    await minesweeper.getByRole("button", { name: "깃발 모드" }).click();
+
+    await mineCells.first().click();
     assert((await minesweeper.locator(".mine-cell.is-open").count()) > 0, "Minesweeper first click opened no cells");
     assert((await minesweeper.locator(".mine-cell.is-mine").count()) === 0, "Minesweeper first click hit a mine");
-    const closedMineCell = minesweeper.locator(".mine-cell:not(.is-open)").first();
-    await closedMineCell.dispatchEvent("contextmenu", { bubbles: true, cancelable: true });
-    assert(await closedMineCell.evaluate((node) => node.classList.contains("is-flagged")), "Minesweeper flagging failed");
+    const wrongFlagIndex = (
+      await Promise.all(
+        [...Array(81).keys()]
+          .filter((index) => !deterministicMines.has(index))
+          .map(async (index) => ({
+            index,
+            open: await mineCells.nth(index).evaluate((node) => node.classList.contains("is-open")),
+          })),
+      )
+    ).find((cell) => !cell.open)?.index;
+    assert(wrongFlagIndex !== undefined, "Minesweeper deterministic board has no closed safe cell");
+    await mineCells.nth(wrongFlagIndex).dispatchEvent("contextmenu", { bubbles: true, cancelable: true });
+    await mineCells.nth([...deterministicMines][0]).click();
+    const lostDialog = minesweeper.getByRole("dialog");
+    await lostDialog.waitFor({ state: "visible" });
+    assert((await lostDialog.innerText()).includes("게임 종료"), "Minesweeper loss result was not shown");
+    assert((await minesweeper.locator(".mine-cell.is-detonated").count()) === 1, "Minesweeper did not mark the detonated mine");
+    assert((await minesweeper.locator(".mine-cell.is-wrong-flag").count()) === 1, "Minesweeper did not mark the wrong flag");
+    await lostDialog.getByRole("button", { name: "보드 보기" }).click();
+    await lostDialog.waitFor({ state: "hidden" });
+    assert(await mineCells.first().isDisabled(), "Minesweeper board stayed interactive after loss");
+    await minesweeper.getByRole("button", { name: "새 게임" }).click();
+
+    await mineCells.first().click();
+    for (const index of [...Array(81).keys()].filter((cellIndex) => !deterministicMines.has(cellIndex))) {
+      const cell = mineCells.nth(index);
+      if (!(await cell.evaluate((node) => node.classList.contains("is-open")))) {
+        await cell.click();
+      }
+    }
+    const wonDialog = minesweeper.getByRole("dialog");
+    await wonDialog.waitFor({ state: "visible" });
+    assert((await wonDialog.innerText()).includes("게임 완료"), "Minesweeper win result was not shown");
+    assert((await minesweeper.locator(".mine-cell.is-flagged").count()) === 10, "Minesweeper did not auto-flag every mine on win");
+    assert((await minesweeper.locator(".mines-counter").first().locator("strong").innerText()) === "00", "Minesweeper counter did not finish at zero");
+    const completedTime = await minesweeper.locator(".mines-counter.is-time strong").innerText();
+    await page.waitForTimeout(1100);
+    assert((await minesweeper.locator(".mines-counter.is-time strong").innerText()) === completedTime, "Minesweeper timer kept running after completion");
+    await wonDialog.getByRole("button", { name: "보드 보기" }).click();
+    assert(await mineCells.first().isDisabled(), "Minesweeper board stayed interactive after victory");
+    await page.evaluate(() => {
+      Math.random = window.__pocketDeskOriginalRandom;
+      delete window.__pocketDeskOriginalRandom;
+    });
 
     await page.locator(".taskbar-app", { hasText: "파일 탐색기" }).click();
     await files.waitFor({ state: "visible" });
