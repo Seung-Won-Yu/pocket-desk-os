@@ -29,6 +29,8 @@ import {
   wallpaperGallery,
   type WallpaperCssVars,
 } from "./wallpapers";
+import { persistVfsEntries, readVfsEntries } from "./vfs/storage";
+import { createVfsBackupZip, readVfsBackupZip } from "./vfs/backup";
 import {
   ArrowUpDown,
   Bell,
@@ -272,10 +274,6 @@ const NOTE_KEY = "pocket-desk-note";
 const LEGACY_DEFAULT_NOTE_CONTENT =
   "PocketDesk 메모장\n\n여기에 내용을 적고 저장하면 브라우저 로컬 저장소와 IndexedDB 파일 시스템에 남습니다.";
 const NOTE_SAVE_EVENT = "pocket-desk-save-note";
-const VFS_DB_NAME = "pocket-desk-vfs";
-const VFS_DB_VERSION = 1;
-const VFS_STORE_NAME = "entries";
-const VFS_BACKUP_FILE_NAME = "pocket-desk-vfs.json";
 const VFS_ROOT_ID = "desktop";
 const VFS_PRIMARY_NOTE_ID = "vfs-notes";
 const VFS_PRIMARY_CANVAS_ID = "vfs-sketch";
@@ -496,6 +494,7 @@ export default function App() {
   const desktopSelectionRef = useRef<DesktopSelectionState | null>(null);
   const showDesktopRestoreRef = useRef<string[]>([]);
   const soundEnabledRef = useRef(soundEnabled);
+  const vfsSaveErrorShownRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const windowMotionTimersRef = useRef(new Map<string, number>());
 
@@ -588,9 +587,19 @@ export default function App() {
 
   useEffect(() => {
     if (!vfsReady) return;
-    persistDesktopItems(desktopItems).catch((error) => {
-      console.error("Failed to persist PocketDesk VFS", error);
-    });
+    persistVfsEntries(desktopItems)
+      .then(() => {
+        vfsSaveErrorShownRef.current = false;
+      })
+      .catch((error) => {
+        console.error("Failed to persist PocketDesk VFS", error);
+        if (vfsSaveErrorShownRef.current) return;
+        vfsSaveErrorShownRef.current = true;
+        notify({
+          detail: error instanceof Error ? error.message : "브라우저 저장소를 확인하세요.",
+          title: "파일 저장 실패",
+        });
+      });
   }, [desktopItems, vfsReady]);
 
   useEffect(() => {
@@ -1366,7 +1375,9 @@ export default function App() {
   };
 
   const importVfsZip = async (file: File) => {
-    const importedItems = await readVfsBackupZip(file);
+    const importedItems = await readVfsBackupZip(file, (item, index) =>
+      normalizePersistedDesktopItem(item as PersistedDesktopItem, index),
+    );
     const activeImportedItems = importedItems.filter((item) => !item.trashed);
     playSound("success");
     setDesktopItems(importedItems);
@@ -2341,8 +2352,9 @@ function persistWindowState(windows: WindowInstance[]) {
 }
 
 async function loadDesktopItemsFromVfs(): Promise<DesktopItem[]> {
-  const database = await openVfsDatabase();
-  const entries = await readAllVfsEntries(database);
+  const entries = await readVfsEntries((item, index) =>
+    normalizePersistedDesktopItem(item as PersistedDesktopItem, index),
+  );
   if (entries.length > 0) {
     const migratedEntries = entries
       .filter((entry) => entry.id !== "vfs-pictures")
@@ -2355,257 +2367,14 @@ async function loadDesktopItemsFromVfs(): Promise<DesktopItem[]> {
       migratedEntries.length !== entries.length ||
       migratedEntries.some((entry, index) => entry !== entries[index]);
     if (migrationChanged) {
-      await writeAllVfsEntries(database, migratedEntries);
+      await persistVfsEntries(migratedEntries);
     }
-    database.close();
     return migratedEntries;
   }
 
   const seededEntries = [...createDefaultVfsEntries(), ...loadLegacyDesktopItems()];
-  await writeAllVfsEntries(database, seededEntries);
-  database.close();
+  await persistVfsEntries(seededEntries);
   return seededEntries;
-}
-
-function openVfsDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(VFS_DB_NAME, VFS_DB_VERSION);
-
-    request.onupgradeneeded = () => {
-      const database = request.result;
-      if (!database.objectStoreNames.contains(VFS_STORE_NAME)) {
-        const store = database.createObjectStore(VFS_STORE_NAME, { keyPath: "id" });
-        store.createIndex("parentId", "parentId", { unique: false });
-        store.createIndex("kind", "kind", { unique: false });
-      }
-    };
-
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-function readAllVfsEntries(database: IDBDatabase): Promise<DesktopItem[]> {
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(VFS_STORE_NAME, "readonly");
-    const store = transaction.objectStore(VFS_STORE_NAME);
-    const request = store.getAll();
-
-    request.onsuccess = () => {
-      resolve(
-        request.result
-          .map((item, index) => normalizePersistedDesktopItem(item as PersistedDesktopItem, index))
-          .filter((item): item is DesktopItem => Boolean(item))
-          .sort((a, b) => a.createdAt - b.createdAt),
-      );
-    };
-    request.onerror = () => reject(request.error);
-  });
-}
-
-function writeAllVfsEntries(database: IDBDatabase, entries: DesktopItem[]): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(VFS_STORE_NAME, "readwrite");
-    const store = transaction.objectStore(VFS_STORE_NAME);
-    store.clear();
-    entries.forEach((entry) => store.put(entry));
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error);
-  });
-}
-
-async function persistDesktopItems(items: DesktopItem[]) {
-  const database = await openVfsDatabase();
-  await writeAllVfsEntries(database, items);
-  database.close();
-}
-
-function createVfsBackup(entries: DesktopItem[]) {
-  return {
-    app: "PocketDesk OS",
-    exportedAt: new Date().toISOString(),
-    entries,
-    version: 1,
-  };
-}
-
-function normalizeImportedVfsEntries(value: unknown) {
-  if (!value || typeof value !== "object") {
-    throw new Error("백업 JSON을 읽을 수 없습니다.");
-  }
-
-  const entries = (value as { entries?: unknown }).entries;
-  if (!Array.isArray(entries)) {
-    throw new Error("백업 안에 파일 목록이 없습니다.");
-  }
-
-  const seenIds = new Set<string>();
-  const normalized = entries
-    .map((item, index) => normalizePersistedDesktopItem(item as PersistedDesktopItem, index))
-    .filter((item): item is DesktopItem => Boolean(item))
-    .map((item) => {
-      if (!seenIds.has(item.id)) {
-        seenIds.add(item.id);
-        return item;
-      }
-
-      const nextItem = { ...item, id: `${item.kind}-${crypto.randomUUID()}` };
-      seenIds.add(nextItem.id);
-      return nextItem;
-    })
-    .sort((a, b) => a.createdAt - b.createdAt);
-
-  if (normalized.length === 0) {
-    throw new Error("가져올 수 있는 파일이 없습니다.");
-  }
-
-  return normalized;
-}
-
-function createVfsBackupZip(entries: DesktopItem[]) {
-  const payload = JSON.stringify(createVfsBackup(entries), null, 2);
-  const data = new TextEncoder().encode(payload);
-  return createStoredZip(VFS_BACKUP_FILE_NAME, data);
-}
-
-async function readVfsBackupZip(file: File) {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const payload = readStoredZipFile(bytes, VFS_BACKUP_FILE_NAME);
-  const decoded = new TextDecoder().decode(payload);
-  return normalizeImportedVfsEntries(JSON.parse(decoded));
-}
-
-function createStoredZip(fileName: string, data: Uint8Array) {
-  const fileNameBytes = new TextEncoder().encode(fileName);
-  const crc = crc32(data);
-  const localHeaderSize = 30 + fileNameBytes.length;
-  const centralHeaderSize = 46 + fileNameBytes.length;
-  const totalSize = localHeaderSize + data.length + centralHeaderSize + 22;
-  const bytes = new Uint8Array(totalSize);
-  const view = new DataView(bytes.buffer);
-  let offset = 0;
-
-  const writeBytes = (chunk: Uint8Array) => {
-    bytes.set(chunk, offset);
-    offset += chunk.length;
-  };
-  const writeUint16 = (value: number) => {
-    view.setUint16(offset, value, true);
-    offset += 2;
-  };
-  const writeUint32 = (value: number) => {
-    view.setUint32(offset, value >>> 0, true);
-    offset += 4;
-  };
-
-  const writeFileHeader = () => {
-    writeUint32(0x04034b50);
-    writeUint16(20);
-    writeUint16(0x0800);
-    writeUint16(0);
-    writeUint16(0);
-    writeUint16(0);
-    writeUint32(crc);
-    writeUint32(data.length);
-    writeUint32(data.length);
-    writeUint16(fileNameBytes.length);
-    writeUint16(0);
-    writeBytes(fileNameBytes);
-    writeBytes(data);
-  };
-
-  const writeCentralDirectory = () => {
-    writeUint32(0x02014b50);
-    writeUint16(20);
-    writeUint16(20);
-    writeUint16(0x0800);
-    writeUint16(0);
-    writeUint16(0);
-    writeUint16(0);
-    writeUint32(crc);
-    writeUint32(data.length);
-    writeUint32(data.length);
-    writeUint16(fileNameBytes.length);
-    writeUint16(0);
-    writeUint16(0);
-    writeUint16(0);
-    writeUint16(0);
-    writeUint32(0);
-    writeUint32(0);
-    writeBytes(fileNameBytes);
-  };
-
-  writeFileHeader();
-  const centralDirectoryOffset = offset;
-  writeCentralDirectory();
-  const centralDirectorySize = offset - centralDirectoryOffset;
-
-  writeUint32(0x06054b50);
-  writeUint16(0);
-  writeUint16(0);
-  writeUint16(1);
-  writeUint16(1);
-  writeUint32(centralDirectorySize);
-  writeUint32(centralDirectoryOffset);
-  writeUint16(0);
-
-  return bytes;
-}
-
-function readStoredZipFile(bytes: Uint8Array, fileName: string) {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const decoder = new TextDecoder();
-  let offset = 0;
-
-  while (offset + 30 <= bytes.length) {
-    const signature = view.getUint32(offset, true);
-    if (signature !== 0x04034b50) {
-      break;
-    }
-
-    const flags = view.getUint16(offset + 6, true);
-    const compressionMethod = view.getUint16(offset + 8, true);
-    const compressedSize = view.getUint32(offset + 18, true);
-    const fileNameLength = view.getUint16(offset + 26, true);
-    const extraLength = view.getUint16(offset + 28, true);
-    const nameOffset = offset + 30;
-    const dataOffset = nameOffset + fileNameLength + extraLength;
-    const nextOffset = dataOffset + compressedSize;
-    const currentFileName = decoder.decode(bytes.slice(nameOffset, nameOffset + fileNameLength));
-
-    if (flags & 0x0001) {
-      throw new Error("암호화된 ZIP은 지원하지 않습니다.");
-    }
-    if (flags & 0x0008) {
-      throw new Error("데이터 디스크립터 ZIP은 지원하지 않습니다.");
-    }
-    if (compressionMethod !== 0) {
-      throw new Error("PocketDesk에서 내보낸 ZIP만 가져올 수 있습니다.");
-    }
-    if (nextOffset > bytes.length) {
-      throw new Error("ZIP 파일이 손상되었습니다.");
-    }
-    if (currentFileName === fileName) {
-      return bytes.slice(dataOffset, nextOffset);
-    }
-
-    offset = nextOffset;
-  }
-
-  throw new Error(`${fileName} 파일을 찾지 못했습니다.`);
-}
-
-function crc32(data: Uint8Array) {
-  let crc = 0xffffffff;
-
-  for (const byte of data) {
-    crc ^= byte;
-    for (let bit = 0; bit < 8; bit += 1) {
-      crc = crc & 1 ? (crc >>> 1) ^ 0xedb88320 : crc >>> 1;
-    }
-  }
-
-  return (crc ^ 0xffffffff) >>> 0;
 }
 
 function createDefaultVfsEntries(): DesktopItem[] {

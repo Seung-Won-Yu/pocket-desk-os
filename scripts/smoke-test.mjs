@@ -493,6 +493,55 @@ async function runSmoke(baseUrl) {
     );
     assert(copiedFilePersisted, "Explorer copy was not persisted to IndexedDB");
 
+    const vfsMetadata = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const request = indexedDB.open("pocket-desk-vfs");
+          request.onerror = () => resolve(null);
+          request.onsuccess = () => {
+            const database = request.result;
+            if (!database.objectStoreNames.contains("meta")) {
+              database.close();
+              resolve(null);
+              return;
+            }
+            const transaction = database.transaction(["entries", "meta"], "readonly");
+            const entriesRequest = transaction.objectStore("entries").count();
+            const metaRequest = transaction.objectStore("meta").get("snapshot");
+            transaction.oncomplete = () => {
+              resolve({
+                databaseVersion: database.version,
+                entryCount: entriesRequest.result,
+                metadata: metaRequest.result,
+              });
+              database.close();
+            };
+            transaction.onerror = () => {
+              database.close();
+              resolve(null);
+            };
+          };
+        }),
+    );
+    assert(vfsMetadata?.databaseVersion === 2, "VFS database did not migrate to schema version 2");
+    assert(vfsMetadata?.metadata?.schemaVersion === 2, "VFS snapshot metadata is missing");
+    assert(
+      vfsMetadata?.metadata?.entryCount === vfsMetadata?.entryCount,
+      "VFS snapshot metadata count does not match persisted entries",
+    );
+
+    const explorerFileCountBeforeInvalidImport = await files.locator(".file-list button").count();
+    await files.locator('input[type="file"][accept*=".zip"]').setInputFiles({
+      buffer: Buffer.from("not-a-pocketdesk-zip"),
+      mimeType: "application/zip",
+      name: "damaged-backup.zip",
+    });
+    await page.getByText("ZIP 가져오기 실패", { exact: true }).waitFor({ state: "visible" });
+    assert(
+      (await files.locator(".file-list button").count()) === explorerFileCountBeforeInvalidImport,
+      "Invalid ZIP import replaced the current VFS state",
+    );
+
     await page.keyboard.press("Control+Alt+R");
     const runDialog = page.locator(".run-dialog");
     await runDialog.waitFor({ state: "visible" });
