@@ -1,6 +1,7 @@
 import {
   ArrowUpDown,
   Bell,
+  BookOpen,
   Bomb,
   Calculator,
   Check,
@@ -58,7 +59,17 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { ChangeEvent, FormEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChangeEvent,
+  FormEvent,
+  PointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
 
 type AppId =
   | "thispc"
@@ -82,6 +93,7 @@ type WallpaperName =
   | "mist"
   | "coast";
 type BrowserSearchEngineId = "duckduckgo" | "google" | "bing";
+type BrowserViewMode = "reader" | "web";
 
 type WindowInstance = {
   id: string;
@@ -239,6 +251,14 @@ type BrowserHistoryEntry = {
 type BrowserLaunchRequest = {
   id: string;
   value: string;
+};
+type BrowserReaderDocument = {
+  markdown: string;
+  title: string;
+};
+type BrowserNavigationEntry = {
+  url: string | null;
+  viewMode: BrowserViewMode;
 };
 type PaintTool = "brush" | "line" | "rect" | "ellipse";
 type CalculatorMode = "standard" | "scientific";
@@ -412,6 +432,14 @@ const browserSearchEngines: Array<{
   },
 ];
 
+const browserReaderPreferredHosts = [
+  "bing.com",
+  "developer.mozilla.org",
+  "duckduckgo.com",
+  "google.com",
+  "naver.com",
+];
+
 const paintPalette = [
   "#0f6c81",
   "#111827",
@@ -556,8 +584,8 @@ const appCatalog: AppDefinition[] = [
   },
   {
     id: "browser",
-    title: "웹 브라우저",
-    subtitle: "웹 검색 및 주소 열기",
+    title: "Microsoft Edge",
+    subtitle: "웹 검색 및 사이트 열기",
     icon: Globe2,
     accent: "#43b0f1",
     defaultSize: { width: 860, height: 560 },
@@ -1848,7 +1876,7 @@ export default function App() {
       openApp("browser");
       notify({
         detail: resolution.value,
-        title: "웹 브라우저에서 열기",
+        title: "Microsoft Edge에서 열기",
         tone: "success",
       });
       return;
@@ -5503,7 +5531,12 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
   const [history, setHistory] = useState<BrowserHistoryEntry[]>(() => loadBrowserHistory());
   const [draft, setDraft] = useState("");
   const [url, setUrl] = useState<string | null>(null);
-  const [navigationStack, setNavigationStack] = useState<Array<string | null>>([null]);
+  const [viewMode, setViewMode] = useState<BrowserViewMode>("web");
+  const [pageLoading, setPageLoading] = useState(false);
+  const [pageLoadKey, setPageLoadKey] = useState(0);
+  const [navigationStack, setNavigationStack] = useState<BrowserNavigationEntry[]>([
+    { url: null, viewMode: "web" },
+  ]);
   const [navigationIndex, setNavigationIndex] = useState(0);
   const [browserMenuOpen, setBrowserMenuOpen] = useState(false);
   const isBookmarked = Boolean(url && bookmarks.some((bookmark) => bookmark.url === url));
@@ -5520,25 +5553,35 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
     localStorage.setItem(BROWSER_HISTORY_KEY, JSON.stringify(history));
   }, [history]);
 
-  const recordNavigation = (value: string) => {
-    const nextUrl = normalizeUrl(value, searchEngine);
-    const title = getBrowserPageTitle(nextUrl);
-    const now = Date.now();
-    setUrl(nextUrl);
-    setDraft(nextUrl);
-    setNavigationStack((current) => [...current.slice(0, navigationIndex + 1), nextUrl]);
-    setNavigationIndex((current) => current + 1);
-    setHistory((current) => [
-      { id: `history-${crypto.randomUUID()}`, title, url: nextUrl, visitedAt: now },
-      ...current.filter((entry) => entry.url !== nextUrl),
-    ].slice(0, 20));
-    return nextUrl;
-  };
+  const recordNavigation = useCallback(
+    (value: string, requestedViewMode?: BrowserViewMode) => {
+      const nextUrl = normalizeUrl(value, searchEngine);
+      const nextViewMode = requestedViewMode ?? getPreferredBrowserViewMode(value, nextUrl);
+      const title = getBrowserPageTitle(nextUrl);
+      const now = Date.now();
+      setUrl(nextUrl);
+      setDraft(nextUrl);
+      setViewMode(nextViewMode);
+      setPageLoading(nextViewMode === "web");
+      setPageLoadKey((current) => current + 1);
+      setNavigationStack((current) => [
+        ...current.slice(0, navigationIndex + 1),
+        { url: nextUrl, viewMode: nextViewMode },
+      ]);
+      setNavigationIndex((current) => current + 1);
+      setHistory((current) => [
+        { id: `history-${crypto.randomUUID()}`, title, url: nextUrl, visitedAt: now },
+        ...current.filter((entry) => entry.url !== nextUrl),
+      ].slice(0, 20));
+      return nextUrl;
+    },
+    [navigationIndex, searchEngine],
+  );
 
-  const openExternal = (value: string) => {
-    const nextUrl = recordNavigation(value);
-    window.open(nextUrl, "_blank", "noopener,noreferrer");
-  };
+  const navigateReader = useCallback(
+    (nextUrl: string) => recordNavigation(nextUrl, "reader"),
+    [recordNavigation],
+  );
 
   useEffect(() => {
     if (!browserLaunchRequest) return;
@@ -5547,24 +5590,51 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    openExternal(draft || "PocketDesk");
+    recordNavigation(draft || "PocketDesk");
   };
 
   const openHome = () => {
     setUrl(null);
     setDraft("");
-    setNavigationStack((current) => [...current.slice(0, navigationIndex + 1), null]);
+    setViewMode("web");
+    setPageLoading(false);
+    setNavigationStack((current) => [
+      ...current.slice(0, navigationIndex + 1),
+      { url: null, viewMode: "web" },
+    ]);
     setNavigationIndex((current) => current + 1);
     setBrowserMenuOpen(false);
   };
 
   const moveThroughHistory = (nextIndex: number) => {
-    const nextUrl = navigationStack[nextIndex];
-    if (nextUrl === undefined) return;
+    const nextEntry = navigationStack[nextIndex];
+    if (!nextEntry) return;
     setNavigationIndex(nextIndex);
-    setUrl(nextUrl);
-    setDraft(nextUrl ?? "");
+    setUrl(nextEntry.url);
+    setDraft(nextEntry.url ?? "");
+    setViewMode(nextEntry.viewMode);
+    setPageLoading(Boolean(nextEntry.url) && nextEntry.viewMode === "web");
+    setPageLoadKey((current) => current + 1);
     setBrowserMenuOpen(false);
+  };
+
+  const changeViewMode = (nextViewMode: BrowserViewMode) => {
+    if (!url || nextViewMode === viewMode) return;
+    setViewMode(nextViewMode);
+    setPageLoading(nextViewMode === "web");
+    setPageLoadKey((current) => current + 1);
+    setNavigationStack((current) =>
+      current.map((entry, index) =>
+        index === navigationIndex ? { ...entry, viewMode: nextViewMode } : entry,
+      ),
+    );
+    setBrowserMenuOpen(false);
+  };
+
+  const refreshPage = () => {
+    if (!url) return;
+    setPageLoading(viewMode === "web");
+    setPageLoadKey((current) => current + 1);
   };
 
   const toggleBookmark = () => {
@@ -5597,7 +5667,7 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
   const clearHistory = () => {
     setHistory([]);
     notify({
-      detail: "웹 브라우저 방문 기록을 비웠습니다.",
+      detail: "Microsoft Edge 방문 기록을 비웠습니다.",
       title: "방문 기록 삭제됨",
       tone: "success",
     });
@@ -5636,7 +5706,7 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
         <button
           aria-label="새로고침"
           disabled={!url}
-          onClick={() => url && window.open(url, "_blank", "noopener,noreferrer")}
+          onClick={refreshPage}
           title="새로고침"
           type="button"
         >
@@ -5661,8 +5731,26 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
         >
           <Star aria-hidden="true" fill={isBookmarked ? "currentColor" : "none"} size={16} />
         </button>
+        <button
+          aria-label={viewMode === "reader" ? "웹 보기" : "읽기 보기"}
+          aria-pressed={viewMode === "reader"}
+          className={viewMode === "reader" ? "is-active" : ""}
+          disabled={!url}
+          onClick={() => changeViewMode(viewMode === "reader" ? "web" : "reader")}
+          title={viewMode === "reader" ? "웹 보기" : "읽기 보기"}
+          type="button"
+        >
+          <BookOpen aria-hidden="true" size={16} />
+        </button>
         {url ? (
-          <a className="icon-link" href={url} rel="noreferrer" target="_blank" title="새 탭에서 열기">
+          <a
+            aria-label="새 탭에서 열기"
+            className="icon-link"
+            href={url}
+            rel="noreferrer"
+            target="_blank"
+            title="새 탭에서 열기"
+          >
             <ExternalLink aria-hidden="true" size={16} />
           </a>
         ) : (
@@ -5697,6 +5785,26 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
             </select>
           </label>
           <button
+            aria-pressed={viewMode === "web"}
+            disabled={!url}
+            onClick={() => changeViewMode("web")}
+            role="menuitem"
+            type="button"
+          >
+            <Globe2 aria-hidden="true" size={16} />
+            웹 보기
+          </button>
+          <button
+            aria-pressed={viewMode === "reader"}
+            disabled={!url}
+            onClick={() => changeViewMode("reader")}
+            role="menuitem"
+            type="button"
+          >
+            <BookOpen aria-hidden="true" size={16} />
+            읽기 보기
+          </button>
+          <button
             disabled={history.length === 0}
             onClick={() => {
               clearHistory();
@@ -5711,24 +5819,143 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
         </div>
       )}
       {url ? (
-        <section className="browser-external-page">
-          <Globe2 aria-hidden="true" size={42} />
-          <strong>{getBrowserPageTitle(url)}</strong>
-          <small>{url}</small>
-          <a href={url} rel="noreferrer" target="_blank">
-            <ExternalLink aria-hidden="true" size={17} />
-            새 탭에서 열기
-          </a>
+        <section
+          aria-label={`${viewMode === "reader" ? "읽기" : "웹"} 보기`}
+          className={`browser-viewport is-${viewMode}`}
+        >
+          {pageLoading && viewMode === "web" && (
+            <div aria-label="페이지 불러오는 중" className="browser-loading" role="status">
+              <span aria-hidden="true" />
+            </div>
+          )}
+          {viewMode === "reader" ? (
+            <BrowserReader
+              key={`${pageLoadKey}-${url}`}
+              onNavigate={navigateReader}
+              url={url}
+            />
+          ) : (
+            <iframe
+              allow="clipboard-read; clipboard-write; fullscreen"
+              key={`${pageLoadKey}-${url}`}
+              onLoad={() => setPageLoading(false)}
+              referrerPolicy="strict-origin-when-cross-origin"
+              sandbox="allow-downloads allow-forms allow-modals allow-same-origin allow-scripts"
+              src={url}
+              title={`${getBrowserPageTitle(url)} 웹 보기`}
+            />
+          )}
         </section>
       ) : (
         <BrowserHome
           bookmarks={bookmarks}
           history={history}
           onClearHistory={clearHistory}
-          onNavigate={openExternal}
+          onNavigate={recordNavigation}
           searchEngine={getBrowserSearchEngine(searchEngine).label}
         />
       )}
+    </div>
+  );
+}
+
+function BrowserReader({
+  onNavigate,
+  url,
+}: {
+  onNavigate: (url: string) => void;
+  url: string;
+}) {
+  const [document, setDocument] = useState<BrowserReaderDocument | null>(null);
+  const [error, setError] = useState("");
+  const [retryKey, setRetryKey] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setDocument(null);
+    setError("");
+
+    fetch(getBrowserReaderUrl(url), {
+      headers: {
+        Accept: "text/plain",
+        "X-Retain-Images": "none",
+      },
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Reader request failed: ${response.status}`);
+        }
+        return response.text();
+      })
+      .then((content) => setDocument(parseBrowserReaderResponse(content, url)))
+      .catch((reason: unknown) => {
+        if (reason instanceof DOMException && reason.name === "AbortError") return;
+        setError("페이지를 읽기 보기로 변환하지 못했습니다.");
+      });
+
+    return () => controller.abort();
+  }, [retryKey, url]);
+
+  const markdownComponents = useMemo<Components>(
+    () => ({
+      a: ({ children, href }) => (
+        <a
+          href={href}
+          onClick={(event) => {
+            if (!href || href.startsWith("#")) return;
+            event.preventDefault();
+            if (href.startsWith("javascript:")) return;
+            const nextUrl = getBrowserReaderLinkUrl(href, url);
+            if (nextUrl) onNavigate(nextUrl);
+          }}
+        >
+          {children}
+        </a>
+      ),
+      img: ({ alt, src }) => {
+        if (!src || src.startsWith("blob:") || src.startsWith("data:")) return null;
+        return <img alt={alt ?? ""} loading="lazy" referrerPolicy="no-referrer" src={src} />;
+      },
+    }),
+    [onNavigate, url],
+  );
+
+  if (error) {
+    return (
+      <div className="browser-reader-state is-error">
+        <Info aria-hidden="true" size={24} />
+        <strong>{error}</strong>
+        <button onClick={() => setRetryKey((current) => current + 1)} type="button">
+          <RotateCcw aria-hidden="true" size={15} />
+          다시 시도
+        </button>
+      </div>
+    );
+  }
+
+  if (!document) {
+    return (
+      <div aria-label="읽기 보기 불러오는 중" className="browser-reader-state" role="status">
+        <span aria-hidden="true" className="browser-reader-spinner" />
+      </div>
+    );
+  }
+
+  const isSearchResult = Boolean(getBrowserSearchQuery(new URL(url)));
+
+  return (
+    <div className={`browser-reader${isSearchResult ? " is-search" : ""}`}>
+      <header>
+        <BookOpen aria-hidden="true" size={20} />
+        <span>
+          <strong>{document.title}</strong>
+          <small>{getBrowserPageTitle(url)}</small>
+        </span>
+      </header>
+      <article>
+        <ReactMarkdown components={markdownComponents}>{document.markdown}</ReactMarkdown>
+      </article>
     </div>
   );
 }
@@ -5756,7 +5983,7 @@ function BrowserHome({
     <div className="browser-home">
       <section className="browser-home-search">
         <Globe2 aria-hidden="true" size={30} />
-        <h2>웹 브라우저</h2>
+        <h2>Microsoft Edge</h2>
         <p>{searchEngine}로 검색하거나 주소를 입력하세요.</p>
         <div className="browser-quick-links" aria-label="빠른 링크">
           {quickLinks.map((link) => (
@@ -8976,7 +9203,7 @@ function formatMineCounter(value: number) {
   return value.toString().padStart(2, "0");
 }
 
-function normalizeUrl(value: string, searchEngine: BrowserSearchEngineId = "duckduckgo") {
+function normalizeUrl(value: string, searchEngine: BrowserSearchEngineId = "bing") {
   const trimmed = value.trim();
   if (trimmed.length === 0) return "https://example.com";
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
@@ -8985,12 +9212,94 @@ function normalizeUrl(value: string, searchEngine: BrowserSearchEngineId = "duck
 }
 
 function getBrowserSearchEngine(searchEngineId: BrowserSearchEngineId) {
-  return browserSearchEngines.find((engine) => engine.id === searchEngineId) ?? browserSearchEngines[0];
+  return (
+    browserSearchEngines.find((engine) => engine.id === searchEngineId) ??
+    browserSearchEngines.find((engine) => engine.id === "bing")!
+  );
 }
 
 function loadBrowserSearchEngine() {
   const stored = localStorage.getItem(BROWSER_SEARCH_ENGINE_KEY) as BrowserSearchEngineId | null;
-  return browserSearchEngines.some((engine) => engine.id === stored) ? stored! : "duckduckgo";
+  return browserSearchEngines.some((engine) => engine.id === stored) ? stored! : "bing";
+}
+
+function getPreferredBrowserViewMode(input: string, url: string): BrowserViewMode {
+  const trimmed = input.trim();
+  const looksLikeSearch =
+    !/^https?:\/\//i.test(trimmed) && !(trimmed.includes(".") && !trimmed.includes(" "));
+  if (looksLikeSearch) return "reader";
+
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return browserReaderPreferredHosts.some(
+      (blockedHost) => hostname === blockedHost || hostname.endsWith(`.${blockedHost}`),
+    )
+      ? "reader"
+      : "web";
+  } catch {
+    return "web";
+  }
+}
+
+function getBrowserReaderUrl(url: string) {
+  try {
+    const readerTarget = new URL(url);
+    readerTarget.hash = "";
+    const searchQuery = getBrowserSearchQuery(readerTarget);
+    if (searchQuery) {
+      return `https://r.jina.ai/https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`;
+    }
+    return `https://r.jina.ai/${readerTarget.toString()}`;
+  } catch {
+    return `https://r.jina.ai/${url}`;
+  }
+}
+
+function parseBrowserReaderResponse(content: string, url: string): BrowserReaderDocument {
+  const titleMatch = content.match(/^Title:\s*(.+)$/m);
+  const marker = "Markdown Content:";
+  const markerIndex = content.indexOf(marker);
+  const rawMarkdown =
+    markerIndex >= 0 ? content.slice(markerIndex + marker.length).trim() : content.trim();
+  const markdown = rawMarkdown
+    .replace(/^\[\]\([^\n]*\)\s*$/gm, "")
+    .replace(/^## \[[^\n]+\]\([^\n]+\)\n\nAd\n[\s\S]*?(?=^## \[)/gm, "")
+    .replace(/\*{4}/g, " ")
+    .replace(/\s+\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return {
+    markdown: markdown || `[${url}](${url})`,
+    title: getBrowserSearchQuery(new URL(url))
+      ? `${getBrowserPageTitle(url)} - 검색 결과`
+      : titleMatch?.[1]?.trim() || getBrowserPageTitle(url),
+  };
+}
+
+function getBrowserSearchQuery(url: URL) {
+  const hostname = url.hostname.toLowerCase();
+  if (
+    hostname === "bing.com" ||
+    hostname.endsWith(".bing.com") ||
+    hostname === "duckduckgo.com" ||
+    hostname.endsWith(".duckduckgo.com") ||
+    hostname === "google.com" ||
+    hostname.endsWith(".google.com")
+  ) {
+    return url.searchParams.get("q")?.trim() || "";
+  }
+  return "";
+}
+
+function getBrowserReaderLinkUrl(href: string, baseUrl: string) {
+  const resolved = new URL(href, baseUrl);
+  if (!["http:", "https:"].includes(resolved.protocol)) return null;
+  if (resolved.hostname.endsWith("duckduckgo.com") && resolved.pathname === "/l/") {
+    const destination = resolved.searchParams.get("uddg");
+    if (destination && /^https?:\/\//i.test(destination)) return destination;
+  }
+  return resolved.toString();
 }
 
 function getBrowserPageTitle(url: string) {

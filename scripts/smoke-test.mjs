@@ -112,6 +112,35 @@ async function runSmoke(baseUrl) {
       consoleErrors.push(message.text());
     }
   });
+  await page.route("https://r.jina.ai/**", (route) => {
+    const headers = {
+      "access-control-allow-headers": "x-retain-images",
+      "access-control-allow-methods": "GET, OPTIONS",
+      "access-control-allow-origin": "*",
+    };
+
+    if (route.request().method() === "OPTIONS") {
+      return route.fulfill({ headers, status: 204 });
+    }
+
+    return route.fulfill({
+      body: [
+        "Title: Example Domain",
+        "",
+        "URL Source: https://example.com/",
+        "",
+        "Markdown Content:",
+        "# Example Domain",
+        "",
+        "Reader mode content.",
+        "",
+        "[Learn more](https://iana.org/domains/example)",
+      ].join("\n"),
+      contentType: "text/plain; charset=utf-8",
+      headers,
+      status: 200,
+    });
+  });
 
   try {
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
@@ -535,20 +564,63 @@ async function runSmoke(baseUrl) {
     await files.waitFor({ state: "visible" });
     await files.locator(".file-list button", { hasText: "web-surf.url" }).click();
     const filePreviewText = await files.locator(".file-preview").innerText();
-    assert(filePreviewText.includes("연결 프로그램: 웹 브라우저"), "File Explorer did not show URL association");
+    assert(filePreviewText.includes("연결 프로그램: Microsoft Edge"), "File Explorer did not show URL association");
     await page.keyboard.press("Enter");
-    await page.locator('article[aria-label="웹 브라우저"]').waitFor({ state: "visible" });
+    const edge = page.locator('article[aria-label="Microsoft Edge"]');
+    await edge.waitFor({ state: "visible" });
     await page.waitForFunction(() => {
-      const browser = document.querySelector('article[aria-label="웹 브라우저"]');
+      const browser = document.querySelector('article[aria-label="Microsoft Edge"]');
       const input = browser?.querySelector('input[aria-label="웹 주소 또는 검색어"]');
       return input instanceof HTMLInputElement && input.value.includes("https://example.com");
     });
-    assert((await page.locator('article[aria-label="웹 브라우저"] iframe').count()) === 0, "Browser kept unreliable iframe rendering");
-    await page.locator('article[aria-label="웹 브라우저"] .browser-external-page').getByRole("link", { name: "새 탭에서 열기" }).waitFor({ state: "visible" });
-    await page.locator(".taskbar-app", { hasText: "웹 브라우저" }).hover();
+    const edgeFrame = edge.locator("iframe");
+    assert((await edgeFrame.count()) === 1, "Edge did not render the website inside its window");
+    assert(
+      (await edgeFrame.getAttribute("src"))?.startsWith("https://example.com"),
+      "Edge web view did not load the requested website",
+    );
+    assert(page.context().pages().length === 1, "Edge opened an external tab during normal navigation");
+    await edge.getByRole("button", { name: "읽기 보기" }).click();
+    const readerView = edge.locator(".browser-reader");
+    await readerView.waitFor({ state: "visible" });
+    assert(
+      (await readerView.innerText()).includes("Reader mode content"),
+      "Edge reader view did not render the page inside the window",
+    );
+    await readerView.getByRole("link", { name: "Learn more" }).click();
+    await page.waitForFunction(() => {
+      const browser = document.querySelector('article[aria-label="Microsoft Edge"]');
+      const input = browser?.querySelector('input[aria-label="웹 주소 또는 검색어"]');
+      return input instanceof HTMLInputElement && input.value.includes("iana.org");
+    });
+    await edge.getByRole("button", { name: "뒤로" }).click();
+    await page.waitForFunction(() => {
+      const browser = document.querySelector('article[aria-label="Microsoft Edge"]');
+      const input = browser?.querySelector('input[aria-label="웹 주소 또는 검색어"]');
+      return input instanceof HTMLInputElement && input.value === "https://example.com";
+    });
+    await readerView.waitFor({ state: "visible" });
+    await edge.getByRole("button", { name: "앞으로" }).click();
+    await page.waitForFunction(() => {
+      const browser = document.querySelector('article[aria-label="Microsoft Edge"]');
+      const input = browser?.querySelector('input[aria-label="웹 주소 또는 검색어"]');
+      return input instanceof HTMLInputElement && input.value.includes("iana.org");
+    });
+    await readerView.waitFor({ state: "visible" });
+    await edge.getByRole("button", { name: "뒤로" }).click();
+    await page.waitForFunction(() => {
+      const browser = document.querySelector('article[aria-label="Microsoft Edge"]');
+      const input = browser?.querySelector('input[aria-label="웹 주소 또는 검색어"]');
+      return input instanceof HTMLInputElement && input.value === "https://example.com";
+    });
+    await readerView.waitFor({ state: "visible" });
+    await edge.getByRole("button", { name: "웹 보기" }).click();
+    await edgeFrame.waitFor({ state: "visible" });
+    await edge.getByRole("link", { name: "새 탭에서 열기" }).waitFor({ state: "visible" });
+    await page.locator(".taskbar-app", { hasText: "Microsoft Edge" }).hover();
     const taskbarPreview = page.locator(".taskbar-preview-card");
     await taskbarPreview.waitFor({ state: "visible" });
-    assert((await taskbarPreview.innerText()).includes("웹 브라우저"), "Taskbar preview did not show browser");
+    assert((await taskbarPreview.innerText()).includes("Microsoft Edge"), "Taskbar preview did not show browser");
     await page.getByRole("button", { name: "알림 센터 열기" }).click();
     const notificationCenter = page.locator(".notification-center-panel");
     await notificationCenter.waitFor({ state: "visible" });
@@ -628,10 +700,10 @@ async function runSmoke(baseUrl) {
     const pinnedAfterUnpin = await page.evaluate(() => localStorage.getItem("pocket-desk-taskbar-pinned-v2"));
     assert(pinnedAfterUnpin && !pinnedAfterUnpin.includes("files"), "Taskbar unpin did not persist");
 
-    await page.locator(".taskbar-app", { hasText: "웹 브라우저" }).click();
-    const frame = page.locator('article[aria-label="웹 브라우저"]');
+    await page.locator(".taskbar-app", { hasText: "Microsoft Edge" }).click();
+    const frame = page.locator('article[aria-label="Microsoft Edge"]');
     const titlebar = frame.locator(".window-titlebar");
-    await frame.getByRole("button", { name: "웹 브라우저 최대화" }).hover();
+    await frame.getByRole("button", { name: "Microsoft Edge 최대화" }).hover();
     const snapLayoutMenu = frame.getByRole("menu", { name: "스냅 레이아웃" });
     await snapLayoutMenu.waitFor({ state: "visible" });
     assert((await snapLayoutMenu.getByRole("menuitem").count()) === 3, "Snap layout choices missing");
