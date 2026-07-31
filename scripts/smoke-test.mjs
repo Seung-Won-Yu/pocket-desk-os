@@ -118,6 +118,29 @@ async function runSmoke(baseUrl) {
     assert(defaultIconBoxes[0].left === defaultIconBoxes[1].left, "Desktop system icons are not vertically aligned");
     assert(defaultIconBoxes[0].top < defaultIconBoxes[1].top, "Desktop system icon order is wrong");
 
+    const desktopThisPc = page.locator(".desktop-icon", { hasText: "내 PC" });
+    await desktopThisPc.click();
+    assert(
+      (await page.locator('article[aria-label="내 PC"]').count()) === 0,
+      "Desktop icon opened on a single click",
+    );
+    await desktopThisPc.dblclick();
+    const desktopThisPcWindow = page.locator('article[aria-label="내 PC"]');
+    await desktopThisPcWindow.waitFor({ state: "visible" });
+    const showDesktopButton = page.getByRole("button", { name: "바탕 화면 표시" });
+    await showDesktopButton.click();
+    await desktopThisPcWindow.waitFor({ state: "hidden" });
+    await showDesktopButton.click();
+    await desktopThisPcWindow.waitFor({ state: "visible" });
+    await desktopThisPcWindow.getByRole("button", { name: "내 PC 닫기" }).click();
+    await desktopThisPcWindow.waitFor({ state: "hidden" });
+
+    await page.keyboard.press("Meta+e");
+    const shortcutExplorer = page.locator('article[aria-label="파일 탐색기"]');
+    await shortcutExplorer.waitFor({ state: "visible" });
+    await page.keyboard.press("Alt+F4");
+    await shortcutExplorer.waitFor({ state: "hidden" });
+
     await page.locator(".desktop").dispatchEvent("contextmenu", {
       bubbles: true,
       cancelable: true,
@@ -156,6 +179,72 @@ async function runSmoke(baseUrl) {
     );
     assert(sortedIconBoxes[0].left === sortedIconBoxes[1].left, "Desktop name sort did not form a vertical grid");
     assert(sortedIconBoxes[0].top < sortedIconBoxes[1].top, "Desktop name sort order is wrong");
+
+    await page.locator(".desktop").dispatchEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 720,
+      clientY: 180,
+    });
+    await desktopMenu.getByRole("menuitem", { name: "새 텍스트 문서" }).click();
+    const desktopRenameInput = page.getByLabel("바탕 화면 파일 이름");
+    await desktopRenameInput.waitFor({ state: "visible" });
+    await desktopRenameInput.fill("바탕 화면 메모.txt");
+    await desktopRenameInput.press("Enter");
+    const desktopNote = page.locator(".desktop-icon", { hasText: "바탕 화면 메모.txt" });
+    await desktopNote.waitFor({ state: "visible" });
+    await desktopNote.click();
+    assert(
+      (await page.locator('article[aria-label="메모장"]').count()) === 0,
+      "Desktop file opened on a single click",
+    );
+    await desktopNote.dblclick();
+    const desktopNotepad = page.locator('article[aria-label="메모장"]');
+    await desktopNotepad.waitFor({ state: "visible" });
+    await desktopNotepad.getByRole("button", { name: "메모장 닫기" }).click();
+
+    await desktopNote.dispatchEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 320,
+      clientY: 240,
+    });
+    const desktopItemMenu = page.getByRole("menu", { name: "바탕 화면 항목 메뉴" });
+    await desktopItemMenu.waitFor({ state: "visible" });
+    assert((await desktopItemMenu.innerText()).includes("복사"), "Desktop item menu is missing Copy");
+    assert((await desktopItemMenu.innerText()).includes("속성"), "Desktop item menu is missing Properties");
+    await desktopItemMenu.getByRole("menuitem", { name: "속성" }).click();
+    const desktopProperties = page.getByRole("dialog", { name: "바탕 화면 파일 속성" });
+    await desktopProperties.waitFor({ state: "visible" });
+    assert(
+      (await desktopProperties.innerText()).includes("바탕 화면 메모.txt"),
+      "Desktop Properties did not show the file name",
+    );
+    await desktopProperties.getByRole("button", { name: "확인" }).click();
+
+    await desktopNote.dispatchEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 320,
+      clientY: 240,
+    });
+    await desktopItemMenu.getByRole("menuitem", { name: "복사" }).click();
+    await page.locator(".desktop").dispatchEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 760,
+      clientY: 260,
+    });
+    await desktopMenu.getByRole("menuitem", { name: "붙여넣기" }).click();
+    const desktopNoteCopy = page.locator(".desktop-icon", {
+      hasText: "바탕 화면 메모 - 복사본.txt",
+    });
+    await desktopNoteCopy.waitFor({ state: "visible" });
+    await desktopNote.click();
+    await desktopNoteCopy.click({ modifiers: [multiSelectModifier] });
+    await page.keyboard.press("Delete");
+    await desktopNote.waitFor({ state: "hidden" });
+    await desktopNoteCopy.waitFor({ state: "hidden" });
 
     const startButton = page.getByRole("button", { name: "시작 메뉴" });
     await startButton.waitFor({ state: "visible" });
@@ -221,6 +310,73 @@ async function runSmoke(baseUrl) {
     await files.getByRole("button", { name: "정렬" }).click();
     await files.locator(".file-address").click();
     await explorerSortMenu.waitFor({ state: "hidden" });
+
+    await files.getByRole("button", { name: "새로 만들기" }).click();
+    const newFileMenu = files.getByRole("menu", { name: "새로 만들기" });
+    await newFileMenu.waitFor({ state: "visible" });
+    await newFileMenu.getByRole("menuitem", { name: "텍스트 문서" }).click();
+    const newFileNameInput = files.getByLabel("파일 이름");
+    await newFileNameInput.waitFor({ state: "visible" });
+    await newFileNameInput.fill("작업 메모.txt");
+    await newFileNameInput.press("Enter");
+    const workNote = files.locator(".file-list button", { hasText: "작업 메모.txt" });
+    await workNote.waitFor({ state: "visible" });
+
+    await workNote.dispatchEvent("contextmenu", { bubbles: true, cancelable: true });
+    const fileContextMenu = page.getByRole("menu", { name: "파일 메뉴" });
+    await fileContextMenu.waitFor({ state: "visible" });
+    assert((await fileContextMenu.innerText()).includes("열기"), "Explorer file context menu is missing Open");
+    assert((await fileContextMenu.innerText()).includes("복사"), "Explorer file context menu is missing Copy");
+    assert((await fileContextMenu.innerText()).includes("속성"), "Explorer file context menu is missing Properties");
+    await fileContextMenu.getByRole("menuitem", { name: "속성" }).click();
+    const propertiesDialog = files.getByRole("dialog", { name: "파일 속성" });
+    await propertiesDialog.waitFor({ state: "visible" });
+    const propertiesText = await propertiesDialog.innerText();
+    assert(propertiesText.includes("작업 메모.txt"), "Explorer Properties did not show the file name");
+    assert(propertiesText.includes("크기"), "Explorer Properties did not show file size");
+    assert(propertiesText.includes("만든 날짜"), "Explorer Properties did not show creation time");
+    const propertiesLayout = await propertiesDialog.evaluate((dialog) => {
+      const overlay = dialog.parentElement;
+      const windowContent = dialog.closest(".window-content");
+      const dialogBox = dialog.getBoundingClientRect();
+      const overlayBox = overlay?.getBoundingClientRect();
+      return {
+        contained:
+          Boolean(overlayBox) &&
+          dialogBox.top >= overlayBox.top &&
+          dialogBox.bottom <= overlayBox.bottom,
+        windowScrollTop: windowContent?.scrollTop ?? -1,
+      };
+    });
+    assert(propertiesLayout.contained, "Explorer Properties overflowed its window");
+    assert(propertiesLayout.windowScrollTop === 0, "Explorer Properties scrolled the whole app");
+    await propertiesDialog.getByRole("button", { name: "확인" }).click();
+
+    await workNote.click();
+    await page.keyboard.press("Control+c");
+    await page.keyboard.press("Control+v");
+    const copiedWorkNote = files.locator(".file-list button", { hasText: "작업 메모 - 복사본.txt" });
+    await copiedWorkNote.waitFor({ state: "visible" });
+    assert((await copiedWorkNote.count()) === 1, "Explorer copy/paste did not create one persisted copy");
+    await page.waitForTimeout(180);
+    const copiedFilePersisted = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const request = indexedDB.open("pocket-desk-vfs");
+          request.onerror = () => resolve(false);
+          request.onsuccess = () => {
+            const database = request.result;
+            const transaction = database.transaction("entries", "readonly");
+            const allEntries = transaction.objectStore("entries").getAll();
+            allEntries.onerror = () => resolve(false);
+            allEntries.onsuccess = () => {
+              resolve(allEntries.result.some((entry) => entry.name === "작업 메모 - 복사본.txt"));
+              database.close();
+            };
+          };
+        }),
+    );
+    assert(copiedFilePersisted, "Explorer copy was not persisted to IndexedDB");
 
     await page.keyboard.press("Control+Alt+R");
     const runDialog = page.locator(".run-dialog");

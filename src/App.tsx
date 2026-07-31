@@ -6,9 +6,12 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  ClipboardPaste,
+  Copy,
   Download,
   Eraser,
   ExternalLink,
+  FilePlus2,
   FileText,
   Flag,
   Folder,
@@ -16,6 +19,7 @@ import {
   Grid2X2,
   History,
   House,
+  Info,
   LayoutGrid,
   List,
   LucideIcon,
@@ -99,6 +103,28 @@ type DesktopViewMode = "small" | "medium" | "large";
 type FileSortDirection = "asc" | "desc";
 type FileSortKey = "name" | "type" | "modified";
 type FileViewMode = "details" | "list" | "icons";
+type FileContextMenuState = {
+  fileId: string;
+  x: number;
+  y: number;
+};
+type DesktopIconContextMenuState =
+  | {
+      appId: AppId;
+      kind: "app";
+      x: number;
+      y: number;
+    }
+  | {
+      itemId: string;
+      kind: "item";
+      x: number;
+      y: number;
+    };
+type VfsDuplicateOptions = {
+  position?: IconPosition;
+  showOnDesktop?: boolean;
+};
 type PersistedIconPosition = {
   x?: unknown;
   y?: unknown;
@@ -266,7 +292,9 @@ type AppContentProps = {
   activeNoteId: string;
   browserLaunchRequest: BrowserLaunchRequest | null;
   canvasEntries: DesktopItem[];
+  createVfsTextFile: () => DesktopItem;
   desktopItems: DesktopItem[];
+  duplicateVfsEntries: (itemIds: string[], options?: VfsDuplicateOptions) => string[];
   noteEntries: DesktopItem[];
   trashedItems: DesktopItem[];
   notify: (toast: ToastInput) => void;
@@ -628,6 +656,12 @@ export default function App() {
     () => localStorage.getItem(DESKTOP_ICON_GRID_KEY) !== "off",
   );
   const [desktopMenu, setDesktopMenu] = useState<DesktopContextMenuState | null>(null);
+  const [desktopIconMenu, setDesktopIconMenu] =
+    useState<DesktopIconContextMenuState | null>(null);
+  const [desktopClipboardIds, setDesktopClipboardIds] = useState<string[]>([]);
+  const [desktopRenamingItemId, setDesktopRenamingItemId] = useState<string | null>(null);
+  const [desktopRenameDraft, setDesktopRenameDraft] = useState("");
+  const [desktopPropertiesItemId, setDesktopPropertiesItemId] = useState<string | null>(null);
   const [windowMenu, setWindowMenu] = useState<WindowSystemMenuState | null>(null);
   const [startOpen, setStartOpen] = useState(false);
   const [runOpen, setRunOpen] = useState(false);
@@ -646,7 +680,9 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [windows, setWindows] = useState<WindowInstance[]>(() => loadWindowState());
   const altTabTimerRef = useRef<number | null>(null);
+  const desktopRenameGuardRef = useRef(false);
   const desktopSelectionRef = useRef<DesktopSelectionState | null>(null);
+  const showDesktopRestoreRef = useRef<string[]>([]);
   const soundEnabledRef = useRef(soundEnabled);
   const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -733,17 +769,18 @@ export default function App() {
   }, [desktopItems, vfsReady]);
 
   useEffect(() => {
-    if (!desktopMenu) return;
+    if (!desktopMenu && !desktopIconMenu) return;
 
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setDesktopMenu(null);
+        setDesktopIconMenu(null);
       }
     };
 
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [desktopMenu]);
+  }, [desktopIconMenu, desktopMenu]);
 
   const dismissToast = (id: string) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
@@ -784,6 +821,8 @@ export default function App() {
     setStartOpen(false);
     setRunOpen(false);
     setDesktopMenu(null);
+    setDesktopIconMenu(null);
+    setDesktopPropertiesItemId(null);
     setWindowMenu(null);
     setQuery("");
     setToasts([]);
@@ -795,6 +834,8 @@ export default function App() {
     setStartOpen(false);
     setRunOpen(false);
     setDesktopMenu(null);
+    setDesktopIconMenu(null);
+    setDesktopPropertiesItemId(null);
     setWindowMenu(null);
     setQuery("");
     setToasts([]);
@@ -806,6 +847,8 @@ export default function App() {
     setStartOpen(false);
     setRunOpen(false);
     setDesktopMenu(null);
+    setDesktopIconMenu(null);
+    setDesktopPropertiesItemId(null);
     setWindowMenu(null);
     setQuery("");
     setAltTabWindowId(null);
@@ -873,6 +916,8 @@ export default function App() {
 
   const openApp = (appId: AppId) => {
     playSound("open");
+    setDesktopIconMenu(null);
+    setDesktopMenu(null);
     setWindows((current) => {
       const app = getApp(appId);
       const existing = current.find((item) => item.appId === appId);
@@ -979,25 +1024,38 @@ export default function App() {
       x: 24,
       y: 24,
     };
-    const position = clampIconPosition(origin.originX - 18, origin.originY - 10);
-    const name = getUniqueDesktopItemName(activeDesktopItems);
+    const position = findAvailableDesktopPosition(
+      clampIconPosition(origin.originX - 18, origin.originY - 10, desktopViewMode),
+      desktopViewMode,
+      [
+        ...desktopApps.map(
+          (app) => iconLayout[app.id] ?? createDefaultIconLayout()[app.id]!,
+        ),
+        ...activeDesktopItems
+          .filter((item) => item.showOnDesktop)
+          .map((item) => ({ x: item.x, y: item.y })),
+      ],
+    );
+    const name = getUniqueTextFileName(activeDesktopItems);
     const now = Date.now();
+    const item: DesktopItem = {
+      content: "",
+      createdAt: now,
+      id: `${kind}-${crypto.randomUUID()}`,
+      kind,
+      name,
+      parentId: VFS_ROOT_ID,
+      showOnDesktop: true,
+      updatedAt: now,
+      ...position,
+    };
 
-    setDesktopItems((current) => [
-      ...current,
-      {
-        content: "",
-        createdAt: now,
-        id: `${kind}-${crypto.randomUUID()}`,
-        kind,
-        name,
-        parentId: VFS_ROOT_ID,
-        showOnDesktop: true,
-        updatedAt: now,
-        ...position,
-      },
-    ]);
+    setDesktopItems((current) => [...current, item]);
     setDesktopMenu(null);
+    setDesktopIconMenu(null);
+    setSelectedDesktopIds([`item:${item.id}`]);
+    setDesktopRenameDraft(item.name);
+    setDesktopRenamingItemId(item.id);
     notify({
       detail: "메모장에서 열어 작성할 수 있습니다.",
       title: `${name} 생성됨`,
@@ -1008,6 +1066,115 @@ export default function App() {
   const activeDesktopItems = useMemo(() => {
     return desktopItems.filter((item) => !item.trashed);
   }, [desktopItems]);
+  const desktopContextItem =
+    desktopIconMenu?.kind === "item"
+      ? activeDesktopItems.find((item) => item.id === desktopIconMenu.itemId)
+      : undefined;
+  const desktopContextApp =
+    desktopIconMenu?.kind === "app" ? getApp(desktopIconMenu.appId) : undefined;
+  const desktopPropertiesItem = activeDesktopItems.find(
+    (item) => item.id === desktopPropertiesItemId,
+  );
+
+  const createVfsTextFile = () => {
+    const now = Date.now();
+    const item: DesktopItem = {
+      content: "",
+      createdAt: now,
+      id: `note-${crypto.randomUUID()}`,
+      kind: "note",
+      name: getUniqueTextFileName(activeDesktopItems),
+      parentId: VFS_ROOT_ID,
+      showOnDesktop: false,
+      updatedAt: now,
+      x: 0,
+      y: 0,
+    };
+
+    setDesktopItems((current) => [...current, item]);
+    playSound("success");
+    notify({
+      detail: "이름을 정한 뒤 메모장에서 바로 열 수 있습니다.",
+      title: `${item.name} 생성됨`,
+      tone: "success",
+    });
+    return item;
+  };
+
+  const duplicateVfsEntries = (itemIds: string[], options?: VfsDuplicateOptions) => {
+    const sourceIds = itemIds.filter((id, index) => itemIds.indexOf(id) === index);
+    const copyDescriptors = sourceIds
+      .filter((id) => activeDesktopItems.some((item) => item.id === id))
+      .map((sourceId) => ({ id: crypto.randomUUID(), sourceId }));
+    if (copyDescriptors.length === 0) return [];
+
+    setDesktopItems((current) => {
+      const existingNames = new Set(
+        current.filter((item) => !item.trashed).map((item) => item.name),
+      );
+      const occupiedDesktopPositions = options?.showOnDesktop
+        ? [
+            ...desktopApps.map(
+              (app) => iconLayout[app.id] ?? createDefaultIconLayout()[app.id]!,
+            ),
+            ...current
+              .filter((item) => !item.trashed && item.showOnDesktop)
+              .map((item) => ({ x: item.x, y: item.y })),
+          ]
+        : [];
+      const now = Date.now();
+      const copies = copyDescriptors.flatMap((descriptor, index) => {
+        const source = current.find(
+          (item) => item.id === descriptor.sourceId && !item.trashed,
+        );
+        if (!source) return [];
+        const name = getUniqueVfsCopyName(existingNames, source.name);
+        existingNames.add(name);
+        const preferredPosition =
+          options?.showOnDesktop && options.position
+            ? clampIconPosition(
+                options.position.x + index * 18,
+                options.position.y + index * 18,
+                desktopViewMode,
+              )
+            : { x: 0, y: 0 };
+        const position =
+          options?.showOnDesktop && options.position
+            ? findAvailableDesktopPosition(
+                preferredPosition,
+                desktopViewMode,
+                occupiedDesktopPositions,
+              )
+            : preferredPosition;
+        if (options?.showOnDesktop) occupiedDesktopPositions.push(position);
+        return [
+          {
+            ...source,
+            createdAt: now + index,
+            id: `${source.kind}-${descriptor.id}`,
+            name,
+            restoreShowOnDesktop: false,
+            showOnDesktop: options?.showOnDesktop ?? false,
+            trashed: false,
+            trashedAt: undefined,
+            updatedAt: now + index,
+            ...position,
+          },
+        ];
+      });
+      return [...current, ...copies];
+    });
+    playSound("success");
+    notify({
+      detail: "복사본이 IndexedDB 파일 시스템에 저장되었습니다.",
+      title: `${copyDescriptors.length}개 항목 붙여넣기 완료`,
+      tone: "success",
+    });
+    return copyDescriptors.map((descriptor) => {
+      const source = activeDesktopItems.find((item) => item.id === descriptor.sourceId);
+      return `${source?.kind ?? "note"}-${descriptor.id}`;
+    });
+  };
 
   const arrangeDesktopIcons = (
     sortKey: DesktopSortKey,
@@ -1171,6 +1338,132 @@ export default function App() {
     });
   };
 
+  const selectDesktopTarget = (
+    targetId: string,
+    event?: Pick<React.MouseEvent, "ctrlKey" | "metaKey">,
+  ) => {
+    if (event?.ctrlKey || event?.metaKey) {
+      setSelectedDesktopIds((current) =>
+        current.includes(targetId)
+          ? current.filter((id) => id !== targetId)
+          : [...current, targetId],
+      );
+      return;
+    }
+    setSelectedDesktopIds([targetId]);
+  };
+
+  const showDesktopIconContextMenu = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    target: { appId: AppId; kind: "app" } | { itemId: string; kind: "item" },
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const targetId = target.kind === "app" ? `app:${target.appId}` : `item:${target.itemId}`;
+    if (!selectedDesktopIds.includes(targetId)) {
+      setSelectedDesktopIds([targetId]);
+    }
+    setStartOpen(false);
+    setRunOpen(false);
+    setDesktopMenu(null);
+    setWindowMenu(null);
+    setDesktopIconMenu({
+      ...target,
+      ...clampContextMenuPosition(event.clientX, event.clientY),
+    });
+  };
+
+  const beginDesktopRename = (item: DesktopItem) => {
+    desktopRenameGuardRef.current = false;
+    setDesktopIconMenu(null);
+    setSelectedDesktopIds([`item:${item.id}`]);
+    setDesktopRenameDraft(item.name);
+    setDesktopRenamingItemId(item.id);
+  };
+
+  const commitDesktopRename = () => {
+    if (desktopRenameGuardRef.current) {
+      desktopRenameGuardRef.current = false;
+      return;
+    }
+    if (!desktopRenamingItemId) return;
+    desktopRenameGuardRef.current = true;
+    renameVfsEntry(desktopRenamingItemId, desktopRenameDraft);
+    setDesktopRenamingItemId(null);
+    window.requestAnimationFrame(() => {
+      desktopRenameGuardRef.current = false;
+    });
+  };
+
+  const cancelDesktopRename = () => {
+    desktopRenameGuardRef.current = true;
+    setDesktopRenamingItemId(null);
+    setDesktopRenameDraft("");
+    window.requestAnimationFrame(() => {
+      desktopRenameGuardRef.current = false;
+    });
+  };
+
+  const getSelectedDesktopItemIds = (fallbackItemId?: string) => {
+    const selectedItemIds = selectedDesktopIds
+      .filter((id) => id.startsWith("item:"))
+      .map((id) => id.slice(5))
+      .filter((id) => activeDesktopItems.some((item) => item.id === id));
+    if (fallbackItemId && !selectedItemIds.includes(fallbackItemId)) return [fallbackItemId];
+    return selectedItemIds;
+  };
+
+  const copyDesktopItems = (fallbackItemId?: string) => {
+    const itemIds = getSelectedDesktopItemIds(fallbackItemId);
+    if (itemIds.length === 0) return;
+    setDesktopClipboardIds(itemIds);
+    setDesktopIconMenu(null);
+    notify({
+      detail: "바탕 화면에서 붙여넣을 수 있습니다.",
+      title: `${itemIds.length}개 항목 복사됨`,
+      tone: "success",
+    });
+  };
+
+  const pasteDesktopItems = () => {
+    if (desktopClipboardIds.length === 0) return;
+    const origin = desktopMenu ?? {
+      originX: 120,
+      originY: 120,
+      x: 120,
+      y: 120,
+    };
+    const copiedIds = duplicateVfsEntries(desktopClipboardIds, {
+      position: clampIconPosition(origin.originX - 18, origin.originY - 10, desktopViewMode),
+      showOnDesktop: true,
+    });
+    setSelectedDesktopIds(copiedIds.map((id) => `item:${id}`));
+    setDesktopMenu(null);
+    setDesktopIconMenu(null);
+  };
+
+  const deleteSelectedDesktopItems = (fallbackItemId?: string) => {
+    const itemIds = getSelectedDesktopItemIds(fallbackItemId);
+    itemIds.forEach(deleteVfsEntry);
+    setSelectedDesktopIds([]);
+    setDesktopIconMenu(null);
+    setDesktopRenamingItemId(null);
+  };
+
+  const openSelectedDesktopTarget = () => {
+    const targetId = selectedDesktopIds[0];
+    if (!targetId) return;
+    if (targetId.startsWith("app:")) {
+      const appId = targetId.slice(4);
+      if (isAppId(appId)) openApp(appId);
+      return;
+    }
+    if (targetId.startsWith("item:")) {
+      const item = activeDesktopItems.find((entry) => entry.id === targetId.slice(5));
+      if (item) openDesktopItem(item);
+    }
+  };
+
   const restoreVfsEntry = (itemId: string) => {
     const target = trashedItems.find((item) => item.id === itemId);
     if (!target) return;
@@ -1309,12 +1602,15 @@ export default function App() {
     }
 
     event.preventDefault();
+    const originX = Number.isFinite(event.clientX) ? event.clientX : 18;
+    const originY = Number.isFinite(event.clientY) ? event.clientY : 18;
     setStartOpen(false);
+    setDesktopIconMenu(null);
     setWindowMenu(null);
     setDesktopMenu({
-      ...clampContextMenuPosition(event.clientX, event.clientY),
-      originX: event.clientX,
-      originY: event.clientY,
+      ...clampContextMenuPosition(originX, originY),
+      originX,
+      originY,
     });
   };
 
@@ -1393,6 +1689,33 @@ export default function App() {
     updateWindow(id, getWindowSnapPatch(zone));
   };
 
+  const toggleShowDesktop = () => {
+    playSound("toggle");
+    setStartOpen(false);
+    setRunOpen(false);
+    setDesktopIconMenu(null);
+    setDesktopMenu(null);
+    setWindows((current) => {
+      const visibleIds = current.filter((item) => !item.minimized).map((item) => item.id);
+      if (visibleIds.length > 0) {
+        showDesktopRestoreRef.current = visibleIds;
+        return current.map((item) =>
+          visibleIds.includes(item.id) ? { ...item, minimized: true } : item,
+        );
+      }
+
+      const restoreIds = new Set(showDesktopRestoreRef.current);
+      if (restoreIds.size === 0) return current;
+      let nextZ = Math.max(12, ...current.map((item) => item.z));
+      showDesktopRestoreRef.current = [];
+      return current.map((item) =>
+        restoreIds.has(item.id)
+          ? { ...item, minimized: false, z: (nextZ += 1) }
+          : item,
+      );
+    });
+  };
+
   const availableApps = appCatalog;
   const startSearchResults = useMemo(
     () => buildStartSearchResults(query, activeDesktopItems, availableApps),
@@ -1415,6 +1738,7 @@ export default function App() {
     setStartOpen(false);
     setRunOpen(false);
     setDesktopMenu(null);
+    setDesktopIconMenu(null);
     setWindowMenu(null);
 
     if (shellPhase !== "unlocked" || event.button !== 0) return;
@@ -1474,6 +1798,7 @@ export default function App() {
     playSound("toggle");
     setStartOpen(false);
     setDesktopMenu(null);
+    setDesktopIconMenu(null);
     setWindowMenu(null);
     setRunOpen(true);
   };
@@ -1545,6 +1870,30 @@ export default function App() {
 
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
       if (shellPhase !== "unlocked") return;
+      const target = event.target;
+      const editingText =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
+
+      if (event.metaKey && !event.ctrlKey && !event.altKey) {
+        const key = event.key.toLowerCase();
+        if (key === "e") {
+          event.preventDefault();
+          openApp("files");
+          return;
+        }
+        if (key === "r") {
+          event.preventDefault();
+          openRunDialog();
+          return;
+        }
+        if (key === "d") {
+          event.preventDefault();
+          toggleShowDesktop();
+          return;
+        }
+      }
 
       if (event.ctrlKey && event.altKey && event.key.toLowerCase() === "r") {
         event.preventDefault();
@@ -1552,10 +1901,50 @@ export default function App() {
         return;
       }
 
+      if (event.altKey && event.key === "F4" && activeWindowId) {
+        event.preventDefault();
+        closeWindow(activeWindowId);
+        return;
+      }
+
       if (event.altKey && event.key === "Tab") {
         event.preventDefault();
         cycleAltTab(event.shiftKey);
         return;
+      }
+
+      if (
+        !editingText &&
+        !activeWindowId &&
+        !startOpen &&
+        !runOpen &&
+        !desktopPropertiesItemId
+      ) {
+        if (event.key === "Enter" && selectedDesktopIds.length > 0) {
+          event.preventDefault();
+          openSelectedDesktopTarget();
+          return;
+        }
+        if (event.key === "Delete") {
+          const itemIds = getSelectedDesktopItemIds();
+          if (itemIds.length > 0) {
+            event.preventDefault();
+            deleteSelectedDesktopItems();
+            return;
+          }
+        }
+        if (event.key === "F2") {
+          const itemIds = getSelectedDesktopItemIds();
+          const item =
+            itemIds.length === 1
+              ? activeDesktopItems.find((entry) => entry.id === itemIds[0])
+              : undefined;
+          if (item) {
+            event.preventDefault();
+            beginDesktopRename(item);
+            return;
+          }
+        }
       }
 
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
@@ -1583,6 +1972,21 @@ export default function App() {
       }
 
       if (event.key === "Escape") {
+        if (desktopPropertiesItemId) {
+          event.preventDefault();
+          setDesktopPropertiesItemId(null);
+          return;
+        }
+        if (desktopRenamingItemId) {
+          event.preventDefault();
+          cancelDesktopRename();
+          return;
+        }
+        if (desktopIconMenu) {
+          event.preventDefault();
+          setDesktopIconMenu(null);
+          return;
+        }
         if (runOpen) {
           event.preventDefault();
           setRunOpen(false);
@@ -1623,7 +2027,21 @@ export default function App() {
       window.removeEventListener("keydown", handleGlobalKeyDown);
       window.removeEventListener("keyup", handleGlobalKeyUp);
     };
-  }, [activeWindowId, altTabWindowId, desktopMenu, runOpen, shellPhase, startOpen, windowMenu, windows]);
+  }, [
+    activeDesktopItems,
+    activeWindowId,
+    altTabWindowId,
+    desktopIconMenu,
+    desktopMenu,
+    desktopPropertiesItemId,
+    desktopRenamingItemId,
+    runOpen,
+    selectedDesktopIds,
+    shellPhase,
+    startOpen,
+    windowMenu,
+    windows,
+  ]);
 
   const openStartSearchResult = (result: StartSearchResult) => {
     if (result.kind === "app") {
@@ -1648,19 +2066,33 @@ export default function App() {
           <DesktopIcon
             key={app.id}
             app={app}
+            onContextMenu={(event) =>
+              showDesktopIconContextMenu(event, { appId: app.id, kind: "app" })
+            }
             onMove={(position) => moveDesktopIcon(app.id, position)}
             onOpen={() => openApp(app.id)}
+            onSelect={(event) => selectDesktopTarget(`app:${app.id}`, event)}
             position={iconLayout[app.id] ?? createDefaultIconLayout()[app.id]!}
             selected={selectedDesktopIds.includes(`app:${app.id}`)}
           />
         ))}
         {activeDesktopItems.filter((item) => item.showOnDesktop).map((item) => (
           <DesktopItemIcon
+            draftName={desktopRenameDraft}
             item={item}
             key={item.id}
+            onCancelRename={cancelDesktopRename}
+            onChangeDraftName={setDesktopRenameDraft}
+            onCommitRename={commitDesktopRename}
+            onContextMenu={(event) =>
+              showDesktopIconContextMenu(event, { itemId: item.id, kind: "item" })
+            }
             onMove={(position) => moveDesktopItem(item.id, position)}
             onOpen={() => openDesktopItem(item)}
+            onSelect={(event) => selectDesktopTarget(`item:${item.id}`, event)}
+            renaming={desktopRenamingItemId === item.id}
             selected={selectedDesktopIds.includes(`item:${item.id}`)}
+            viewMode={desktopViewMode}
           />
         ))}
       </section>
@@ -1698,7 +2130,9 @@ export default function App() {
                 activeNoteId={activeNoteId}
                 browserLaunchRequest={browserLaunchRequest}
                 canvasEntries={canvasEntries}
+                createVfsTextFile={createVfsTextFile}
                 desktopItems={activeDesktopItems}
+                duplicateVfsEntries={duplicateVfsEntries}
                 noteEntries={noteEntries}
                 trashedItems={trashedItems}
                 notify={notify}
@@ -1765,6 +2199,7 @@ export default function App() {
         }}
         onOpenApp={openApp}
         onSetSoundEnabled={setSoundEnabled}
+        onShowDesktop={toggleShowDesktop}
         onTogglePinnedApp={togglePinnedApp}
         onToggleWindow={toggleFromTaskbar}
         pinnedAppIds={pinnedAppIds}
@@ -1811,12 +2246,83 @@ export default function App() {
             openApp("settings");
           }}
           onCreateNote={() => createDesktopItem("note")}
+          onPaste={pasteDesktopItems}
           onRefresh={refreshDesktop}
           onSort={arrangeDesktopIcons}
           onToggleGrid={toggleDesktopGrid}
           onViewChange={changeDesktopView}
+          pasteEnabled={desktopClipboardIds.length > 0}
           x={desktopMenu.x}
           y={desktopMenu.y}
+        />
+      )}
+
+      {desktopIconMenu && (desktopContextItem || desktopContextApp) && (
+        <DesktopIconContextMenu
+          appPinned={
+            desktopContextApp ? pinnedAppIds.includes(desktopContextApp.id) : undefined
+          }
+          itemSelectionCount={getSelectedDesktopItemIds(desktopContextItem?.id).length}
+          onCopy={
+            desktopContextItem
+              ? () => copyDesktopItems(desktopContextItem.id)
+              : undefined
+          }
+          onDelete={
+            desktopContextItem
+              ? () => deleteSelectedDesktopItems(desktopContextItem.id)
+              : undefined
+          }
+          onOpen={() => {
+            setDesktopIconMenu(null);
+            if (desktopContextItem) openDesktopItem(desktopContextItem);
+            if (desktopContextApp) openApp(desktopContextApp.id);
+          }}
+          onProperties={
+            desktopContextItem
+              ? () => {
+                  setDesktopIconMenu(null);
+                  setDesktopPropertiesItemId(desktopContextItem.id);
+                }
+              : undefined
+          }
+          onRename={
+            desktopContextItem
+              ? () => beginDesktopRename(desktopContextItem)
+              : undefined
+          }
+          onTogglePin={
+            desktopContextApp
+              ? () => {
+                  togglePinnedApp(desktopContextApp.id);
+                  setDesktopIconMenu(null);
+                }
+              : undefined
+          }
+          target={
+            desktopContextItem
+              ? {
+                  accent: getVfsEntryAssociation(desktopContextItem).accent,
+                  icon: getVfsEntryAssociation(desktopContextItem).icon,
+                  kind: "item",
+                  title: desktopContextItem.name,
+                }
+              : {
+                  accent: desktopContextApp!.accent,
+                  icon: desktopContextApp!.icon,
+                  kind: "app",
+                  title: desktopContextApp!.title,
+                }
+          }
+          x={desktopIconMenu.x}
+          y={desktopIconMenu.y}
+        />
+      )}
+
+      {desktopPropertiesItem && (
+        <DesktopItemPropertiesDialog
+          item={desktopPropertiesItem}
+          onClose={() => setDesktopPropertiesItemId(null)}
         />
       )}
 
@@ -2341,21 +2847,28 @@ function normalizePersistedDesktopItem(
   };
 }
 
-function getUniqueDesktopItemName(items: DesktopItem[]) {
-  const baseName = "새 메모.txt";
+function getUniqueTextFileName(items: DesktopItem[]) {
   const existingNames = new Set(items.map((item) => item.name));
-  if (!existingNames.has(baseName)) {
-    return baseName;
-  }
+  const baseName = "새 텍스트 문서.txt";
+  if (!existingNames.has(baseName)) return baseName;
 
-  for (let index = 2; index < 100; index += 1) {
-    const name = `새 메모 ${index}.txt`;
-    if (!existingNames.has(name)) {
-      return name;
-    }
+  for (let index = 2; index < 1000; index += 1) {
+    const name = `새 텍스트 문서 (${index}).txt`;
+    if (!existingNames.has(name)) return name;
   }
+  return `새 텍스트 문서 ${Date.now()}.txt`;
+}
 
-  return `새 메모 ${Date.now()}.txt`;
+function getUniqueVfsCopyName(existingNames: Set<string>, sourceName: string) {
+  const { base, extension } = getVfsNameParts(sourceName);
+  const firstCopyName = `${base} - 복사본${extension}`;
+  if (!existingNames.has(firstCopyName)) return firstCopyName;
+
+  for (let index = 2; index < 1000; index += 1) {
+    const name = `${base} - 복사본 (${index})${extension}`;
+    if (!existingNames.has(name)) return name;
+  }
+  return `${base} - 복사본 ${Date.now()}${extension}`.slice(0, 48);
 }
 
 function getDefaultVfsEntryName(kind: VfsEntryKind) {
@@ -2536,6 +3049,18 @@ function formatStorageSize(bytes: number) {
   const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   const value = bytes / 1024 ** unitIndex;
   return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function formatVfsEntrySize(item: DesktopItem) {
+  if (item.kind === "folder") return "0 B";
+  return formatStorageSize(new Blob([item.content ?? ""]).size);
+}
+
+function formatVfsPropertyDate(timestamp: number) {
+  return new Date(timestamp).toLocaleString("ko-KR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 }
 
 function buildStartSearchResults(
@@ -2768,6 +3293,28 @@ function createDesktopGridPositions(count: number, viewMode: DesktopViewMode): I
   });
 }
 
+function findAvailableDesktopPosition(
+  preferred: IconPosition,
+  viewMode: DesktopViewMode,
+  occupiedPositions: IconPosition[],
+) {
+  const candidates = [
+    clampIconPosition(preferred.x, preferred.y, viewMode),
+    ...createDesktopGridPositions(160, viewMode),
+  ];
+  return (
+    candidates.find((candidate) =>
+      occupiedPositions.every(
+        (position) =>
+          !rectsIntersect(
+            getDesktopIconBounds(candidate, viewMode),
+            getDesktopIconBounds(position, viewMode),
+          ),
+      ),
+    ) ?? clampIconPosition(preferred.x, preferred.y, viewMode)
+  );
+}
+
 function compareDesktopEntries(
   first: { name: string; type: string; updatedAt: number },
   second: { name: string; type: string; updatedAt: number },
@@ -2847,9 +3394,15 @@ function snapDesktopIconPosition(position: IconPosition, viewMode: DesktopViewMo
 }
 
 function clampContextMenuPosition(x: number, y: number): IconPosition {
+  const safeX = Number.isFinite(x) ? x : 18;
+  const safeY = Number.isFinite(y) ? y : 18;
   return {
-    x: clamp(x, 8, Math.max(8, window.innerWidth - CONTEXT_MENU_WIDTH - 8)),
-    y: clamp(y, 8, Math.max(8, window.innerHeight - APP_BAR_HEIGHT - CONTEXT_MENU_HEIGHT - 8)),
+    x: clamp(safeX, 8, Math.max(8, window.innerWidth - CONTEXT_MENU_WIDTH - 8)),
+    y: clamp(
+      safeY,
+      8,
+      Math.max(8, window.innerHeight - APP_BAR_HEIGHT - CONTEXT_MENU_HEIGHT - 8),
+    ),
   };
 }
 
@@ -2944,14 +3497,18 @@ function rectsIntersect(
 
 function DesktopIcon({
   app,
+  onContextMenu,
   onMove,
   onOpen,
+  onSelect,
   position,
   selected,
 }: {
   app: AppDefinition;
+  onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onMove: (position: IconPosition) => void;
   onOpen: () => void;
+  onSelect: (event: React.MouseEvent<HTMLButtonElement>) => void;
   position: IconPosition;
   selected: boolean;
 }) {
@@ -2960,8 +3517,10 @@ function DesktopIcon({
     <DesktopIconButton
       accent={app.accent}
       icon={Icon}
+      onContextMenu={onContextMenu}
       onMove={onMove}
       onOpen={onOpen}
+      onSelect={onSelect}
       position={position}
       selected={selected}
       title={app.title}
@@ -2970,28 +3529,74 @@ function DesktopIcon({
 }
 
 function DesktopItemIcon({
+  draftName,
   item,
+  onCancelRename,
+  onChangeDraftName,
+  onCommitRename,
+  onContextMenu,
   onMove,
   onOpen,
+  onSelect,
+  renaming,
   selected,
+  viewMode,
 }: {
+  draftName: string;
   item: DesktopItem;
+  onCancelRename: () => void;
+  onChangeDraftName: (name: string) => void;
+  onCommitRename: () => void;
+  onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onMove: (position: IconPosition) => void;
   onOpen: () => void;
+  onSelect: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  renaming: boolean;
   selected: boolean;
+  viewMode: DesktopViewMode;
 }) {
   const association = getVfsEntryAssociation(item);
   return (
-    <DesktopIconButton
-      accent={association.accent}
-      icon={association.icon}
-      onMove={onMove}
-      onOpen={onOpen}
-      position={item}
-      selected={selected}
-      title={item.name}
-      tone="file"
-    />
+    <>
+      <DesktopIconButton
+        accent={association.accent}
+        icon={association.icon}
+        onContextMenu={onContextMenu}
+        onMove={onMove}
+        onOpen={onOpen}
+        onSelect={onSelect}
+        position={item}
+        selected={selected}
+        title={item.name}
+        tone="file"
+      />
+      {renaming && (
+        <form
+          className={`desktop-icon-rename desktop-icon-rename-${viewMode}`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onSubmit={(event) => {
+            event.preventDefault();
+            onCommitRename();
+          }}
+          style={{ left: item.x, top: item.y }}
+        >
+          <input
+            aria-label="바탕 화면 파일 이름"
+            autoFocus
+            onBlur={onCommitRename}
+            onChange={(event) => onChangeDraftName(event.target.value)}
+            onFocus={(event) => event.currentTarget.select()}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              event.preventDefault();
+              event.stopPropagation();
+              onCancelRename();
+            }}
+            value={draftName}
+          />
+        </form>
+      )}
+    </>
   );
 }
 
@@ -3024,8 +3629,10 @@ function AppIconTile({
 function DesktopIconButton({
   accent,
   icon: Icon,
+  onContextMenu,
   onMove,
   onOpen,
+  onSelect,
   position,
   selected,
   title,
@@ -3033,8 +3640,10 @@ function DesktopIconButton({
 }: {
   accent: string;
   icon: LucideIcon;
+  onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onMove: (position: IconPosition) => void;
   onOpen: () => void;
+  onSelect: (event: React.MouseEvent<HTMLButtonElement>) => void;
   position: IconPosition;
   selected: boolean;
   title: string;
@@ -3091,14 +3700,26 @@ function DesktopIconButton({
 
   const handleClick = () => {
     if (suppressNextClick.current) return;
-    onOpen();
   };
 
   return (
     <button
       className={`desktop-icon ${selected ? "is-selected" : ""}`}
-      onClick={handleClick}
-      onContextMenu={(event) => event.preventDefault()}
+      onClick={(event) => {
+        handleClick();
+        if (!suppressNextClick.current) onSelect(event);
+      }}
+      onContextMenu={onContextMenu}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        if (!suppressNextClick.current) onOpen();
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        event.stopPropagation();
+        onOpen();
+      }}
       onPointerCancel={endDrag}
       onPointerDown={startDrag}
       onPointerMove={moveDrag}
@@ -3119,10 +3740,12 @@ function DesktopContextMenu({
   currentView,
   onChangeWallpaper,
   onCreateNote,
+  onPaste,
   onRefresh,
   onSort,
   onToggleGrid,
   onViewChange,
+  pasteEnabled,
   x,
   y,
 }: {
@@ -3131,10 +3754,12 @@ function DesktopContextMenu({
   currentView: DesktopViewMode;
   onChangeWallpaper: () => void;
   onCreateNote: () => void;
+  onPaste: () => void;
   onRefresh: () => void;
   onSort: (sortKey: DesktopSortKey) => void;
   onToggleGrid: () => void;
   onViewChange: (viewMode: DesktopViewMode) => void;
+  pasteEnabled: boolean;
   x: number;
   y: number;
 }) {
@@ -3148,6 +3773,7 @@ function DesktopContextMenu({
 
   return (
     <div
+      aria-label="바탕 화면 메뉴"
       className={`desktop-context-menu ${opensLeft ? "opens-left" : ""}`}
       onContextMenu={(event) => event.preventDefault()}
       onPointerDown={(event) => event.stopPropagation()}
@@ -3240,15 +3866,204 @@ function DesktopContextMenu({
         아이콘을 그리드에 맞춤
       </button>
       <span aria-hidden="true" className="menu-separator" />
+      <button
+        disabled={!pasteEnabled}
+        onClick={onPaste}
+        onMouseEnter={() => setSubmenu(null)}
+        role="menuitem"
+        type="button"
+      >
+        <ClipboardPaste aria-hidden="true" size={16} />
+        붙여넣기
+      </button>
       <button onClick={onCreateNote} onMouseEnter={() => setSubmenu(null)} role="menuitem" type="button">
         <FileText aria-hidden="true" size={16} />
-        새 메모
+        새 텍스트 문서
       </button>
       <span aria-hidden="true" className="menu-separator" />
       <button onClick={onChangeWallpaper} onMouseEnter={() => setSubmenu(null)} role="menuitem" type="button">
         <Palette aria-hidden="true" size={16} />
         개인 설정
       </button>
+    </div>
+  );
+}
+
+function DesktopIconContextMenu({
+  appPinned,
+  itemSelectionCount,
+  onCopy,
+  onDelete,
+  onOpen,
+  onProperties,
+  onRename,
+  onTogglePin,
+  target,
+  x,
+  y,
+}: {
+  appPinned?: boolean;
+  itemSelectionCount: number;
+  onCopy?: () => void;
+  onDelete?: () => void;
+  onOpen: () => void;
+  onProperties?: () => void;
+  onRename?: () => void;
+  onTogglePin?: () => void;
+  target: {
+    accent: string;
+    icon: LucideIcon;
+    kind: "app" | "item";
+    title: string;
+  };
+  x: number;
+  y: number;
+}) {
+  const firstItemRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => firstItemRef.current?.focus());
+    return () => window.cancelAnimationFrame(frameId);
+  }, []);
+
+  return (
+    <div
+      aria-label="바탕 화면 항목 메뉴"
+      className="desktop-context-menu desktop-icon-context-menu"
+      onContextMenu={(event) => event.preventDefault()}
+      onPointerDown={(event) => event.stopPropagation()}
+      role="menu"
+      style={{ left: x, top: y }}
+    >
+      <div className="desktop-context-title">
+        <AppIconTile accent={target.accent} icon={target.icon} size="tiny" tone={target.kind === "item" ? "file" : "app"} />
+        <strong>{target.title}</strong>
+      </div>
+      <button onClick={onOpen} ref={firstItemRef} role="menuitem" type="button">
+        <ExternalLink aria-hidden="true" size={16} />
+        열기
+      </button>
+      {onCopy && (
+        <button onClick={onCopy} role="menuitem" type="button">
+          <Copy aria-hidden="true" size={16} />
+          복사
+        </button>
+      )}
+      {onRename && (
+        <button
+          disabled={itemSelectionCount > 1}
+          onClick={onRename}
+          role="menuitem"
+          type="button"
+        >
+          <Pencil aria-hidden="true" size={16} />
+          이름 바꾸기
+        </button>
+      )}
+      {onTogglePin && (
+        <button onClick={onTogglePin} role="menuitem" type="button">
+          {appPinned ? <PinOff aria-hidden="true" size={16} /> : <Pin aria-hidden="true" size={16} />}
+          {appPinned ? "작업 표시줄에서 제거" : "작업 표시줄에 고정"}
+        </button>
+      )}
+      {onDelete && (
+        <button className="desktop-context-danger" onClick={onDelete} role="menuitem" type="button">
+          <Trash2 aria-hidden="true" size={16} />
+          삭제
+        </button>
+      )}
+      {onProperties && (
+        <>
+          <span aria-hidden="true" className="menu-separator" />
+          <button onClick={onProperties} role="menuitem" type="button">
+            <Info aria-hidden="true" size={16} />
+            속성
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function DesktopItemPropertiesDialog({
+  item,
+  onClose,
+}: {
+  item: DesktopItem;
+  onClose: () => void;
+}) {
+  const association = getVfsEntryAssociation(item);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    confirmRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  return (
+    <div
+      className="file-properties-overlay desktop-properties-overlay"
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        aria-label="바탕 화면 파일 속성"
+        aria-modal="true"
+        className="file-properties-dialog"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onClose();
+            return;
+          }
+          trapDialogFocus(event, event.currentTarget);
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header>
+          <AppIconTile accent={association.accent} icon={association.icon} size="medium" tone="file" />
+          <div>
+            <h2>{item.name}</h2>
+            <span>{association.typeLabel}</span>
+          </div>
+          <button aria-label="파일 속성 닫기" onClick={onClose} type="button">
+            <X aria-hidden="true" size={16} />
+          </button>
+        </header>
+        <dl>
+          <div>
+            <dt>파일 형식</dt>
+            <dd>{association.typeLabel}</dd>
+          </div>
+          <div>
+            <dt>연결 프로그램</dt>
+            <dd>{association.appTitle}</dd>
+          </div>
+          <div>
+            <dt>위치</dt>
+            <dd>바탕 화면</dd>
+          </div>
+          <div>
+            <dt>크기</dt>
+            <dd>{formatVfsEntrySize(item)}</dd>
+          </div>
+          <div>
+            <dt>만든 날짜</dt>
+            <dd>{formatVfsPropertyDate(item.createdAt)}</dd>
+          </div>
+          <div>
+            <dt>수정한 날짜</dt>
+            <dd>{formatVfsPropertyDate(item.updatedAt)}</dd>
+          </div>
+        </dl>
+        <footer>
+          <button onClick={onClose} ref={confirmRef} type="button">
+            확인
+          </button>
+        </footer>
+      </section>
     </div>
   );
 }
@@ -3757,6 +4572,7 @@ function Taskbar({
   onOpenStart,
   onOpenApp,
   onSetSoundEnabled,
+  onShowDesktop,
   onTogglePinnedApp,
   onToggleWindow,
   pinnedAppIds,
@@ -3771,6 +4587,7 @@ function Taskbar({
   onOpenStart: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onOpenApp: (appId: AppId) => void;
   onSetSoundEnabled: (enabled: boolean) => void;
+  onShowDesktop: () => void;
   onTogglePinnedApp: (appId: AppId) => void;
   onToggleWindow: (id: string) => void;
   pinnedAppIds: AppId[];
@@ -3965,6 +4782,13 @@ function Taskbar({
           />
         )}
       </div>
+      <button
+        aria-label="바탕 화면 표시"
+        className="show-desktop-button"
+        onClick={onShowDesktop}
+        title="바탕 화면 표시"
+        type="button"
+      />
     </footer>
   );
 }
@@ -5786,8 +6610,10 @@ function ThisPcApp({
 }
 
 function FilesApp({
+  createVfsTextFile,
   deleteVfsEntry,
   desktopItems,
+  duplicateVfsEntries,
   exportVfsZip,
   importVfsZip,
   notify,
@@ -5796,7 +6622,11 @@ function FilesApp({
   renameVfsEntry,
 }: AppContentProps) {
   const fileListRef = useRef<HTMLDivElement | null>(null);
+  const fileContextMenuRef = useRef<HTMLDivElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const newControlRef = useRef<HTMLDivElement | null>(null);
+  const cancelRenameRef = useRef(false);
+  const propertiesConfirmRef = useRef<HTMLButtonElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const selectionAnchorRef = useRef<string | null>(null);
   const sortControlRef = useRef<HTMLDivElement | null>(null);
@@ -5815,6 +6645,11 @@ function FilesApp({
     return stored === "list" || stored === "icons" ? stored : "details";
   });
   const [sortOpen, setSortOpen] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
+  const [clipboardIds, setClipboardIds] = useState<string[]>([]);
+  const [fileContextMenu, setFileContextMenu] = useState<FileContextMenuState | null>(null);
+  const [pendingRenameId, setPendingRenameId] = useState<string | null>(null);
+  const [propertiesFileId, setPropertiesFileId] = useState<string | null>(null);
   const locationLabel = {
     desktop: "바탕 화면",
     documents: "문서",
@@ -5875,6 +6710,8 @@ function FilesApp({
     visibleFiles.find((file) => file.id === activeFileId) ??
     visibleFiles.find((file) => selectedIds.includes(file.id)) ??
     visibleFiles[0];
+  const propertiesFile = files.find((file) => file.id === propertiesFileId);
+  const contextFile = files.find((file) => file.id === fileContextMenu?.fileId);
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState(selectedFile?.name ?? "");
   const [importing, setImporting] = useState(false);
@@ -5900,15 +6737,20 @@ function FilesApp({
   }, [viewMode]);
 
   useEffect(() => {
-    if (!sortOpen) return;
+    if (!sortOpen && !newOpen) return;
 
     const closeOnOutsidePointer = (event: Event) => {
       if (event.target instanceof Node && !sortControlRef.current?.contains(event.target)) {
         setSortOpen(false);
       }
+      if (event.target instanceof Node && !newControlRef.current?.contains(event.target)) {
+        setNewOpen(false);
+      }
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSortOpen(false);
+      if (event.key !== "Escape") return;
+      setNewOpen(false);
+      setSortOpen(false);
     };
 
     window.addEventListener("pointerdown", closeOnOutsidePointer);
@@ -5917,15 +6759,59 @@ function FilesApp({
       window.removeEventListener("pointerdown", closeOnOutsidePointer);
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [sortOpen]);
+  }, [newOpen, sortOpen]);
+
+  useEffect(() => {
+    if (!fileContextMenu && !propertiesFileId) return;
+    const closeOnOutsidePointer = (event: Event) => {
+      if (
+        fileContextMenu &&
+        event.target instanceof Node &&
+        !fileContextMenuRef.current?.contains(event.target)
+      ) {
+        setFileContextMenu(null);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setFileContextMenu(null);
+      setPropertiesFileId(null);
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [fileContextMenu, propertiesFileId]);
+
+  useEffect(() => {
+    if (!propertiesFileId) return;
+    const windowContent = propertiesConfirmRef.current?.closest<HTMLElement>(".window-content");
+    if (windowContent) {
+      windowContent.scrollLeft = 0;
+      windowContent.scrollTop = 0;
+    }
+    const focusFrame = window.requestAnimationFrame(() => {
+      propertiesConfirmRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [propertiesFileId]);
 
   useEffect(() => {
     setDraftName(selectedFile?.name ?? "");
-    setRenaming(false);
+    if (selectedFile?.id === pendingRenameId) {
+      setRenaming(true);
+      setPendingRenameId(null);
+    } else {
+      setRenaming(false);
+    }
   }, [selectedFile?.id, selectedFile?.name]);
 
   useEffect(() => {
-    if (renaming) renameInputRef.current?.select();
+    if (!renaming) return;
+    cancelRenameRef.current = false;
+    renameInputRef.current?.select();
   }, [renaming]);
 
   const focusFileList = () => {
@@ -5933,9 +6819,69 @@ function FilesApp({
     window.requestAnimationFrame(() => fileListRef.current?.focus());
   };
 
+  const getSelectedCommandIds = () =>
+    selectedIds.length > 0 ? selectedIds : selectedFile ? [selectedFile.id] : [];
+
+  const copySelectedFiles = (itemIds = getSelectedCommandIds()) => {
+    if (itemIds.length === 0) return;
+    setClipboardIds(itemIds);
+    setFileContextMenu(null);
+    notify({
+      detail: "이 파일 탐색기 안에서 Ctrl+V로 붙여넣을 수 있습니다.",
+      title: `${itemIds.length}개 항목 복사됨`,
+      tone: "success",
+    });
+  };
+
+  const pasteCopiedFiles = () => {
+    if (clipboardIds.length === 0) return;
+    const copiedIds = duplicateVfsEntries(clipboardIds);
+    if (copiedIds.length === 0) return;
+    setSelectedIds(copiedIds);
+    setActiveFileId(copiedIds[0] ?? null);
+    selectionAnchorRef.current = copiedIds[0] ?? null;
+    setFileContextMenu(null);
+    focusFileList();
+  };
+
+  const createTextFile = () => {
+    const item = createVfsTextFile();
+    setSelectedIds([item.id]);
+    setActiveFileId(item.id);
+    setPendingRenameId(item.id);
+    selectionAnchorRef.current = item.id;
+    setNewOpen(false);
+    setFileContextMenu(null);
+  };
+
+  const showFileContextMenu = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    fileId: string,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!selectedIds.includes(fileId)) {
+      setSelectedIds([fileId]);
+      selectionAnchorRef.current = fileId;
+    }
+    setActiveFileId(fileId);
+    setRenaming(false);
+    setFileContextMenu({
+      fileId,
+      x: clamp(event.clientX, 8, Math.max(8, window.innerWidth - 212)),
+      y: clamp(event.clientY, 8, Math.max(8, window.innerHeight - APP_BAR_HEIGHT - 226)),
+    });
+  };
+
+  const openFileProperties = (fileId: string) => {
+    setFileContextMenu(null);
+    setPropertiesFileId(fileId);
+  };
+
   const submitRename = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selectedFile) return;
+    cancelRenameRef.current = false;
     renameVfsEntry(selectedFile.id, draftName);
     setRenaming(false);
     focusFileList();
@@ -5946,6 +6892,8 @@ function FilesApp({
     if (ids.length === 0) return;
     ids.forEach(deleteVfsEntry);
     setRenaming(false);
+    setFileContextMenu(null);
+    setPropertiesFileId(null);
     setSelectedIds([]);
     setActiveFileId(null);
     selectionAnchorRef.current = null;
@@ -5956,7 +6904,10 @@ function FilesApp({
     setSelectedIds([]);
     setActiveFileId(null);
     setRenaming(false);
+    setNewOpen(false);
     setSortOpen(false);
+    setFileContextMenu(null);
+    setPropertiesFileId(null);
     selectionAnchorRef.current = null;
   };
 
@@ -5990,13 +6941,29 @@ function FilesApp({
   };
 
   const handleFileListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (
+      event.target instanceof HTMLInputElement ||
+      event.target instanceof HTMLTextAreaElement ||
+      (event.target instanceof HTMLElement && event.target.isContentEditable)
+    ) {
+      return;
+    }
+
     if (event.ctrlKey || event.metaKey) {
-      if (event.key.toLowerCase() !== "a") return;
-      event.preventDefault();
-      const ids = visibleFiles.map((file) => file.id);
-      setSelectedIds(ids);
-      setActiveFileId(ids[0] ?? null);
-      selectionAnchorRef.current = ids[0] ?? null;
+      const key = event.key.toLowerCase();
+      if (key === "c") {
+        event.preventDefault();
+        copySelectedFiles();
+      } else if (key === "v") {
+        event.preventDefault();
+        pasteCopiedFiles();
+      } else if (key === "a") {
+        event.preventDefault();
+        const ids = visibleFiles.map((file) => file.id);
+        setSelectedIds(ids);
+        setActiveFileId(ids[0] ?? null);
+        selectionAnchorRef.current = ids[0] ?? null;
+      }
       return;
     }
 
@@ -6116,9 +7083,33 @@ function FilesApp({
       <section className="file-main-pane">
         <div className="file-explorer-top">
           <div className="file-command-strip">
+            <div className="file-new-control" ref={newControlRef}>
+              <button
+                aria-expanded={newOpen}
+                aria-haspopup="menu"
+                aria-label="새로 만들기"
+                className="file-command-action"
+                onClick={() => {
+                  setNewOpen((current) => !current);
+                  setSortOpen(false);
+                }}
+                type="button"
+              >
+                <FilePlus2 aria-hidden="true" size={15} />
+                <span>새로 만들기</span>
+              </button>
+              {newOpen && (
+                <div aria-label="새로 만들기" className="file-command-menu file-new-menu" role="menu">
+                  <button onClick={createTextFile} role="menuitem" type="button">
+                    <FileText aria-hidden="true" size={15} />
+                    텍스트 문서
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               aria-label="열기"
-              className="file-command-action"
+              className="file-command-action file-command-compact"
               disabled={!selectedFile}
               onClick={() => selectedFile && openVfsEntry(selectedFile.item)}
               type="button"
@@ -6127,8 +7118,28 @@ function FilesApp({
               <span>열기</span>
             </button>
             <button
+              aria-label="복사"
+              className="file-command-action file-command-compact"
+              disabled={!selectedFile}
+              onClick={() => copySelectedFiles()}
+              type="button"
+            >
+              <Copy aria-hidden="true" size={15} />
+              <span>복사</span>
+            </button>
+            <button
+              aria-label="붙여넣기"
+              className="file-command-action file-command-compact"
+              disabled={clipboardIds.length === 0}
+              onClick={pasteCopiedFiles}
+              type="button"
+            >
+              <ClipboardPaste aria-hidden="true" size={15} />
+              <span>붙여넣기</span>
+            </button>
+            <button
               aria-label="이름 바꾸기"
-              className="file-command-action"
+              className="file-command-action file-command-compact"
               disabled={!selectedFile || selectedIds.length > 1}
               onClick={() => selectedFile && setRenaming(true)}
               type="button"
@@ -6138,7 +7149,7 @@ function FilesApp({
             </button>
             <button
               aria-label="삭제"
-              className="file-command-action file-danger"
+              className="file-command-action file-command-compact file-danger"
               disabled={!selectedFile}
               onClick={deleteSelectedFiles}
               type="button"
@@ -6153,7 +7164,10 @@ function FilesApp({
                 aria-expanded={sortOpen}
                 aria-haspopup="menu"
                 className="file-command-action"
-                onClick={() => setSortOpen((current) => !current)}
+                onClick={() => {
+                  setSortOpen((current) => !current);
+                  setNewOpen(false);
+                }}
                 type="button"
               >
                 <ArrowUpDown aria-hidden="true" size={15} />
@@ -6259,6 +7273,7 @@ function FilesApp({
           aria-multiselectable="true"
           className={`file-list file-view-${viewMode}`}
           onKeyDown={handleFileListKeyDown}
+          onPointerDown={() => setFileContextMenu(null)}
           ref={fileListRef}
           role="listbox"
           tabIndex={0}
@@ -6266,20 +7281,49 @@ function FilesApp({
           {visibleFiles.map((file, index) => {
             const FileIcon = file.icon;
             return (
-              <button
-                aria-selected={selectedIds.includes(file.id)}
-                className={selectedIds.includes(file.id) ? "is-selected" : ""}
-                key={file.id}
-                onClick={(event) => selectFile(file.id, index, event)}
-                onDoubleClick={() => openVfsEntry(file.item)}
-                role="option"
-                type="button"
-              >
-                <FileIcon aria-hidden="true" size={18} />
-                <span>{file.name}</span>
-                <small>{file.type}</small>
-                <small>{file.modified}</small>
-              </button>
+              <div className="file-list-item" key={file.id}>
+                <button
+                  aria-selected={selectedIds.includes(file.id)}
+                  className={selectedIds.includes(file.id) ? "is-selected" : ""}
+                  data-file-id={file.id}
+                  onClick={(event) => selectFile(file.id, index, event)}
+                  onContextMenu={(event) => showFileContextMenu(event, file.id)}
+                  onDoubleClick={() => openVfsEntry(file.item)}
+                  role="option"
+                  type="button"
+                >
+                  <FileIcon aria-hidden="true" size={18} />
+                  <span>{file.name}</span>
+                  <small>{file.type}</small>
+                  <small>{file.modified}</small>
+                </button>
+                {renaming && selectedFile?.id === file.id && (
+                  <form className="file-inline-rename" onSubmit={submitRename}>
+                    <input
+                      aria-label="파일 이름"
+                      onBlur={() => {
+                        if (!cancelRenameRef.current) renameVfsEntry(file.id, draftName);
+                        cancelRenameRef.current = false;
+                        setRenaming(false);
+                      }}
+                      onChange={(event) => setDraftName(event.target.value)}
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Escape") return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        cancelRenameRef.current = true;
+                        setDraftName(file.name);
+                        setRenaming(false);
+                        focusFileList();
+                      }}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      ref={renameInputRef}
+                      value={draftName}
+                    />
+                  </form>
+                )}
+              </div>
             );
           })}
           {visibleFiles.length === 0 && (
@@ -6317,53 +7361,24 @@ function FilesApp({
                   src={selectedFile.item.content}
                 />
               )}
-              {renaming ? (
-                <form className="file-rename-form" onSubmit={submitRename}>
-                  <input
-                    aria-label="파일 이름"
-                    onChange={(event) => setDraftName(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Escape") return;
-                      event.preventDefault();
-                      setDraftName(selectedFile.name);
-                      setRenaming(false);
-                      focusFileList();
-                    }}
-                    ref={renameInputRef}
-                    value={draftName}
-                  />
-                  <button type="submit">
-                    <Save aria-hidden="true" size={15} />
-                    저장
-                  </button>
-                  <button
-                    onClick={() => {
-                      setDraftName(selectedFile.name);
-                      setRenaming(false);
-                      focusFileList();
-                    }}
-                    type="button"
-                  >
-                    <X aria-hidden="true" size={15} />
-                    취소
-                  </button>
-                </form>
-              ) : (
-                <div className="file-actions">
-                  <button onClick={() => openVfsEntry(selectedFile.item)} type="button">
-                    <ExternalLink aria-hidden="true" size={15} />
-                    열기
-                  </button>
-                  <button onClick={() => setRenaming(true)} type="button">
-                    <Pencil aria-hidden="true" size={15} />
-                    이름 변경
-                  </button>
-                  <button className="file-danger" onClick={deleteSelectedFiles} type="button">
-                    <Trash2 aria-hidden="true" size={15} />
-                    삭제
-                  </button>
-                </div>
-              )}
+              <div className="file-actions">
+                <button onClick={() => openVfsEntry(selectedFile.item)} type="button">
+                  <ExternalLink aria-hidden="true" size={15} />
+                  열기
+                </button>
+                <button onClick={() => setRenaming(true)} type="button">
+                  <Pencil aria-hidden="true" size={15} />
+                  이름 변경
+                </button>
+                <button onClick={() => openFileProperties(selectedFile.id)} type="button">
+                  <Info aria-hidden="true" size={15} />
+                  속성
+                </button>
+                <button className="file-danger" onClick={deleteSelectedFiles} type="button">
+                  <Trash2 aria-hidden="true" size={15} />
+                  삭제
+                </button>
+              </div>
             </>
           ) : (
             <>
@@ -6373,6 +7388,126 @@ function FilesApp({
           )}
         </div>
       </section>
+      {fileContextMenu && contextFile && (
+        <div
+          aria-label="파일 메뉴"
+          className="file-context-menu"
+          onContextMenu={(event) => event.preventDefault()}
+          onPointerDown={(event) => event.stopPropagation()}
+          ref={fileContextMenuRef}
+          role="menu"
+          style={{ left: fileContextMenu.x, top: fileContextMenu.y }}
+        >
+          <button
+            onClick={() => {
+              setFileContextMenu(null);
+              openVfsEntry(contextFile.item);
+            }}
+            role="menuitem"
+            type="button"
+          >
+            <ExternalLink aria-hidden="true" size={16} />
+            열기
+          </button>
+          <button onClick={() => copySelectedFiles()} role="menuitem" type="button">
+            <Copy aria-hidden="true" size={16} />
+            복사
+          </button>
+          <button
+            disabled={selectedIds.length > 1}
+            onClick={() => {
+              setFileContextMenu(null);
+              setRenaming(true);
+            }}
+            role="menuitem"
+            type="button"
+          >
+            <Pencil aria-hidden="true" size={16} />
+            이름 바꾸기
+          </button>
+          <button onClick={() => deleteSelectedFiles()} role="menuitem" type="button">
+            <Trash2 aria-hidden="true" size={16} />
+            삭제
+          </button>
+          <span aria-hidden="true" className="menu-separator" />
+          <button
+            onClick={() => openFileProperties(contextFile.id)}
+            role="menuitem"
+            type="button"
+          >
+            <Info aria-hidden="true" size={16} />
+            속성
+          </button>
+        </div>
+      )}
+      {propertiesFile && (
+        <div
+          className="file-properties-overlay"
+          onPointerDown={() => setPropertiesFileId(null)}
+        >
+          <section
+            aria-label="파일 속성"
+            aria-modal="true"
+            className="file-properties-dialog"
+            onPointerDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <header>
+              <AppIconTile
+                accent={propertiesFile.association.accent}
+                icon={propertiesFile.association.icon}
+                size="medium"
+              />
+              <div>
+                <h2>{propertiesFile.name}</h2>
+                <span>{propertiesFile.type}</span>
+              </div>
+              <button
+                aria-label="파일 속성 닫기"
+                onClick={() => setPropertiesFileId(null)}
+                type="button"
+              >
+                <X aria-hidden="true" size={16} />
+              </button>
+            </header>
+            <dl>
+              <div>
+                <dt>파일 형식</dt>
+                <dd>{propertiesFile.type}</dd>
+              </div>
+              <div>
+                <dt>연결 프로그램</dt>
+                <dd>{propertiesFile.association.appTitle}</dd>
+              </div>
+              <div>
+                <dt>위치</dt>
+                <dd>바탕 화면</dd>
+              </div>
+              <div>
+                <dt>크기</dt>
+                <dd>{formatVfsEntrySize(propertiesFile.item)}</dd>
+              </div>
+              <div>
+                <dt>만든 날짜</dt>
+                <dd>{formatVfsPropertyDate(propertiesFile.item.createdAt)}</dd>
+              </div>
+              <div>
+                <dt>수정한 날짜</dt>
+                <dd>{formatVfsPropertyDate(propertiesFile.item.updatedAt)}</dd>
+              </div>
+            </dl>
+            <footer>
+              <button
+                onClick={() => setPropertiesFileId(null)}
+                ref={propertiesConfirmRef}
+                type="button"
+              >
+                확인
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

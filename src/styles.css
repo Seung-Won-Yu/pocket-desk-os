@@ -244,6 +244,44 @@ button {
   border-color: color-mix(in srgb, var(--active) 62%, rgba(255, 255, 255, 0.4));
 }
 
+.desktop-icon-rename {
+  margin-left: 5px;
+  position: absolute;
+  transform: translateY(67px);
+  width: 76px;
+  z-index: 4;
+}
+
+.desktop-icon-rename-small {
+  margin-left: 5px;
+  transform: translateY(53px);
+  width: 66px;
+}
+
+.desktop-icon-rename-large {
+  margin-left: 6px;
+  transform: translateY(83px);
+  width: 98px;
+}
+
+.desktop-icon-rename input {
+  background: #ffffff;
+  border: 1px solid #1675c1;
+  border-radius: 2px;
+  color: #111111;
+  font: inherit;
+  font-size: 0.78rem;
+  height: 24px;
+  padding: 2px 4px;
+  text-align: center;
+  width: 100%;
+}
+
+.desktop-icon-rename input:focus {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7);
+  outline: none;
+}
+
 .desktop-selection {
   background: color-mix(in srgb, var(--active) 24%, transparent);
   border: 1px solid color-mix(in srgb, var(--active) 72%, rgba(255, 255, 255, 0.65));
@@ -433,6 +471,41 @@ button {
 .window-system-menu button:focus-visible {
   background: color-mix(in srgb, var(--active) 26%, rgba(255, 255, 255, 0.08));
   outline: none;
+}
+
+.desktop-context-menu button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.desktop-context-title {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  display: flex;
+  gap: 9px;
+  min-height: 38px;
+  padding: 0 9px 6px;
+}
+
+.desktop-context-title strong {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-icon-context-menu {
+  z-index: 9700;
+}
+
+.desktop-icon-context-menu .desktop-context-danger {
+  color: #ffb4aa;
+}
+
+.desktop-properties-overlay {
+  position: absolute;
+  z-index: 9900;
 }
 
 .window-system-menu-title {
@@ -1255,7 +1328,28 @@ button {
 .system-tray-wrap {
   grid-column: 3;
   justify-self: end;
+  margin-right: 4px;
   position: relative;
+}
+
+.show-desktop-button {
+  background: transparent;
+  border: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0;
+  bottom: 0;
+  min-width: 0;
+  padding: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 7px;
+}
+
+.show-desktop-button:hover,
+.show-desktop-button:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+  outline: none;
 }
 
 .system-tray {
@@ -2761,6 +2855,7 @@ button {
 .files-app {
   display: grid;
   grid-template-columns: 174px 1fr;
+  position: relative;
 }
 
 .files-app aside {
@@ -2859,6 +2954,16 @@ button {
   opacity: 0.42;
 }
 
+.file-command-strip .file-command-compact {
+  justify-content: center;
+  padding: 0;
+  width: 34px;
+}
+
+.file-command-compact > span {
+  display: none;
+}
+
 .file-command-separator {
   align-self: stretch;
   background: var(--line);
@@ -2866,11 +2971,13 @@ button {
   margin: 2px 1px;
 }
 
+.file-new-control,
 .file-sort-control {
   flex: 0 0 auto;
   position: relative;
 }
 
+.file-command-menu,
 .file-sort-menu {
   backdrop-filter: blur(22px) saturate(1.4);
   background: var(--mica-strong);
@@ -2888,6 +2995,7 @@ button {
   z-index: 8;
 }
 
+.file-command-menu button,
 .file-sort-menu button {
   background: transparent;
   border-color: transparent;
@@ -2895,16 +3003,24 @@ button {
   width: 100%;
 }
 
+.file-command-menu button:hover,
+.file-command-menu button:focus-visible,
 .file-sort-menu button:hover,
 .file-sort-menu button:focus-visible {
   background: var(--control-hover);
   outline: none;
 }
 
+.file-command-menu button > svg:first-child,
+.file-command-menu button > span:first-child,
 .file-sort-menu button > svg:first-child,
 .file-sort-menu button > span:first-child {
   flex: 0 0 15px;
   width: 15px;
+}
+
+.file-new-menu {
+  width: 180px;
 }
 
 .file-view-control {
@@ -3078,6 +3194,11 @@ button {
   width: 100%;
 }
 
+.file-list-item {
+  min-width: 0;
+  position: relative;
+}
+
 .file-list button > span {
   min-width: 0;
   overflow: hidden;
@@ -3085,7 +3206,7 @@ button {
   white-space: nowrap;
 }
 
-.file-list button + button {
+.file-list-item + .file-list-item {
   margin-top: 6px;
 }
 
@@ -3107,6 +3228,11 @@ button {
 
 .file-list.file-view-list button + button,
 .file-list.file-view-icons button + button {
+  margin-top: 0;
+}
+
+.file-list.file-view-list .file-list-item + .file-list-item,
+.file-list.file-view-icons .file-list-item + .file-list-item {
   margin-top: 0;
 }
 
@@ -3146,6 +3272,39 @@ button {
   white-space: normal;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.file-inline-rename {
+  left: 48px;
+  position: absolute;
+  right: 190px;
+  top: 6px;
+  z-index: 2;
+}
+
+.file-inline-rename input {
+  background: var(--panel-strong);
+  border: 2px solid color-mix(in srgb, var(--active) 72%, white);
+  border-radius: 4px;
+  color: var(--text);
+  height: 32px;
+  min-width: 0;
+  outline: none;
+  padding: 0 7px;
+  width: 100%;
+}
+
+.file-view-list .file-inline-rename {
+  left: 40px;
+  right: 8px;
+  top: 3px;
+}
+
+.file-view-icons .file-inline-rename {
+  bottom: 8px;
+  left: 6px;
+  right: 6px;
+  top: auto;
 }
 
 .file-empty-state {
@@ -3281,6 +3440,168 @@ button {
   margin: 0 0 12px;
   object-fit: contain;
   width: 148px;
+}
+
+.file-context-menu {
+  backdrop-filter: blur(24px) saturate(1.45);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.025)),
+    var(--mica-strong);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.42);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px;
+  position: fixed;
+  width: 204px;
+  z-index: 9800;
+}
+
+.file-context-menu button {
+  align-items: center;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--text);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-start;
+  min-height: 34px;
+  padding: 0 10px;
+  text-align: left;
+}
+
+.file-context-menu button:hover,
+.file-context-menu button:focus-visible {
+  background: var(--control-hover);
+  outline: none;
+}
+
+.file-context-menu button:disabled {
+  opacity: 0.42;
+}
+
+.file-properties-overlay {
+  align-items: center;
+  background: rgba(0, 0, 0, 0.42);
+  display: grid;
+  inset: 0;
+  justify-items: center;
+  padding: 16px;
+  position: absolute;
+  z-index: 30;
+}
+
+.file-properties-dialog {
+  background: var(--panel-strong);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.48);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  max-width: 440px;
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+.file-properties-dialog header {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.055);
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr) 32px;
+  padding: 14px;
+}
+
+.file-properties-dialog h2,
+.file-properties-dialog header span {
+  display: block;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-properties-dialog h2 {
+  font-size: 1rem;
+}
+
+.file-properties-dialog header span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 3px;
+}
+
+.file-properties-dialog header button {
+  background: transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  display: grid;
+  height: 32px;
+  padding: 0;
+  place-items: center;
+  width: 32px;
+}
+
+.file-properties-dialog header button:hover,
+.file-properties-dialog header button:focus-visible {
+  background: var(--control-hover);
+  color: var(--text);
+  outline: none;
+}
+
+.file-properties-dialog dl {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 16px;
+}
+
+.file-properties-dialog dl > div {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 112px minmax(0, 1fr);
+  min-height: 38px;
+  padding: 9px 0;
+}
+
+.file-properties-dialog dl > div:last-child {
+  border-bottom: 0;
+}
+
+.file-properties-dialog dt {
+  color: var(--muted);
+}
+
+.file-properties-dialog dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.file-properties-dialog footer {
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 14px;
+}
+
+.file-properties-dialog footer button {
+  background: color-mix(in srgb, var(--active) 32%, rgba(255, 255, 255, 0.1));
+  border: 1px solid color-mix(in srgb, var(--active) 52%, white);
+  border-radius: 7px;
+  color: var(--text);
+  min-height: 34px;
+  min-width: 82px;
+  padding: 0 14px;
 }
 
 .settings-app {
@@ -3657,7 +3978,7 @@ button {
   }
 
   .file-command-strip {
-    gap: 4px;
+    gap: 2px;
   }
 
   .file-command-strip .file-command-action {
@@ -3665,7 +3986,7 @@ button {
     min-height: 32px;
     padding: 0;
     place-items: center;
-    width: 32px;
+    width: 30px;
   }
 
   .file-command-action > span {
@@ -3674,6 +3995,15 @@ button {
 
   .file-view-control {
     margin-left: 0;
+  }
+
+  .file-command-strip .file-view-control button {
+    width: 28px;
+  }
+
+  .file-properties-dialog dl > div {
+    gap: 8px;
+    grid-template-columns: 92px minmax(0, 1fr);
   }
 
   .file-backup-actions {
@@ -3696,6 +4026,11 @@ button {
 
   .file-list small {
     display: none;
+  }
+
+  .file-inline-rename {
+    left: 40px;
+    right: 8px;
   }
 
   .settings-app {
