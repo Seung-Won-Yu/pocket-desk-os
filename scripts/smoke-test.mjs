@@ -76,6 +76,15 @@ async function launchBrowser() {
   return chromium.launch({ headless: true });
 }
 
+async function unlockPocketDesk(page) {
+  const lockScreen = page.locator('[aria-label="PocketDesk 잠금 화면"]');
+  await lockScreen.waitFor({ state: "visible", timeout: 6000 });
+  await lockScreen.click();
+  const signInButton = page.getByRole("button", { name: "로그인", exact: true });
+  await signInButton.waitFor({ state: "visible" });
+  await signInButton.click();
+}
+
 function withTimeout(promise, timeoutMs, label) {
   let timeoutId;
   const timeout = new Promise((_, reject) => {
@@ -122,11 +131,11 @@ async function runSmoke(baseUrl) {
     );
     await page.reload({ waitUntil: "domcontentloaded" });
 
-    const unlock = page.getByRole("button", { name: /PocketDesk 잠금 해제/ });
-    await unlock.waitFor({ state: "visible", timeout: 6000 }).catch(() => null);
-    if (await unlock.count()) {
-      await unlock.click();
-    }
+    await unlockPocketDesk(page);
+    assert(
+      (await page.locator(".taskbar-app.is-current").count()) === 0,
+      "Pinned taskbar app appeared active without an open window",
+    );
 
     await page.mouse.move(900, 180);
     await page.mouse.down();
@@ -212,7 +221,10 @@ async function runSmoke(baseUrl) {
       clientX: 720,
       clientY: 180,
     });
-    await desktopMenu.getByRole("menuitem", { name: "새 텍스트 문서" }).click();
+    await desktopMenu.getByRole("menuitem", { name: "새로 만들기" }).hover();
+    const desktopNewMenu = page.getByRole("menu", { name: "새로 만들기" });
+    await desktopNewMenu.waitFor({ state: "visible" });
+    await desktopNewMenu.getByRole("menuitem", { name: "텍스트 문서" }).click();
     const desktopRenameInput = page.getByLabel("바탕 화면 파일 이름");
     await desktopRenameInput.waitFor({ state: "visible" });
     await desktopRenameInput.fill("바탕 화면 메모.txt");
@@ -292,8 +304,7 @@ async function runSmoke(baseUrl) {
     await startMenu.getByRole("button", { name: "전원 옵션" }).click();
     await startMenu.getByRole("menuitem", { name: "다시 시작" }).click();
     await page.locator('[aria-label="부팅 화면"]').waitFor({ state: "visible" });
-    await page.getByRole("button", { name: /PocketDesk 잠금 해제/ }).waitFor({ state: "visible" });
-    await page.getByRole("button", { name: /PocketDesk 잠금 해제/ }).click();
+    await unlockPocketDesk(page);
     await page.waitForTimeout(250);
 
     await page.getByRole("button", { name: "시작 메뉴" }).click();
@@ -544,12 +555,34 @@ async function runSmoke(baseUrl) {
     assert((await notificationCenter.locator(".notification-item").count()) > 0, "Notification center did not keep recent alerts");
     await notificationCenter.getByRole("button", { name: "모두 지우기" }).click();
     assert((await notificationCenter.innerText()).includes("새 알림 없음"), "Notification center did not clear alerts");
+    const calendarMonth = notificationCenter.locator(".notification-calendar header strong");
+    const initialCalendarMonth = await calendarMonth.innerText();
+    await notificationCenter.getByRole("button", { name: "다음 달" }).click();
+    assert(
+      (await calendarMonth.innerText()) !== initialCalendarMonth,
+      "Notification calendar did not advance to the next month",
+    );
     await page.getByRole("button", { name: "알림 센터 열기" }).click();
     await page.getByRole("button", { name: "빠른 설정 열기" }).click();
     const quickSettings = page.locator(".quick-settings-panel");
     await quickSettings.waitFor({ state: "visible" });
     const quickSettingsText = await quickSettings.innerText();
     assert(quickSettingsText.includes("네트워크"), "Network status missing");
+    const brightnessSlider = quickSettings.getByRole("slider", { name: "화면 밝기" });
+    await brightnessSlider.fill("55");
+    assert(
+      (await page.evaluate(() => localStorage.getItem("pocket-desk-display-brightness-v1"))) === "55",
+      "Quick Settings brightness was not persisted",
+    );
+    assert(
+      Number(
+        await page.locator(".desktop").evaluate((desktop) =>
+          getComputedStyle(desktop).getPropertyValue("--display-dim"),
+        ),
+      ) > 0,
+      "Quick Settings brightness did not dim the desktop",
+    );
+    await brightnessSlider.fill("100");
     await quickSettings.getByRole("button", { name: "설정", exact: true }).click();
     const settings = page.locator('article[aria-label="설정"]');
     await settings.waitFor({ state: "visible" });
@@ -634,8 +667,7 @@ async function runSmoke(baseUrl) {
     await page.locator('[aria-label="PocketDesk 전원 꺼짐"]').waitFor({ state: "visible" });
     await page.getByRole("button", { name: "전원 켜기" }).click();
     await page.locator('[aria-label="부팅 화면"]').waitFor({ state: "visible" });
-    await page.getByRole("button", { name: /PocketDesk 잠금 해제/ }).waitFor({ state: "visible" });
-    await page.getByRole("button", { name: /PocketDesk 잠금 해제/ }).click();
+    await unlockPocketDesk(page);
     await page.waitForTimeout(250);
 
     await page.setViewportSize({ width: 390, height: 780 });

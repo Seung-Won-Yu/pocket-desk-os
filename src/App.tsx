@@ -23,6 +23,7 @@ import {
   Info,
   LayoutGrid,
   List,
+  Lock,
   LucideIcon,
   Menu,
   Maximize2,
@@ -46,6 +47,7 @@ import {
   Square,
   SquareTerminal,
   Star,
+  Sun,
   Trash2,
   Undo2,
   Upload,
@@ -377,6 +379,7 @@ const BROWSER_HISTORY_KEY = "pocket-desk-browser-history-v1";
 const BROWSER_SEARCH_ENGINE_KEY = "pocket-desk-browser-search-engine-v1";
 const MINES_BEST_RECORDS_KEY = "pocket-desk-mines-best-records-v1";
 const SOUND_ENABLED_KEY = "pocket-desk-sound-enabled-v1";
+const DISPLAY_BRIGHTNESS_KEY = "pocket-desk-display-brightness-v1";
 const TASKBAR_PINNED_APPS_KEY = "pocket-desk-taskbar-pinned-v2";
 const SNAP_EDGE_SIZE = 24;
 const SNAP_GUTTER = 10;
@@ -620,7 +623,7 @@ const appCatalog: AppDefinition[] = [
     subtitle: "테마와 배경",
     icon: Settings,
     accent: "#b99cff",
-    defaultSize: { width: 620, height: 610 },
+    defaultSize: { width: 840, height: 610 },
     component: SettingsApp,
   },
 ];
@@ -662,6 +665,10 @@ export default function App() {
   });
   const [soundEnabled, setSoundEnabled] = useState(() => {
     return localStorage.getItem(SOUND_ENABLED_KEY) !== "off";
+  });
+  const [displayBrightness, setDisplayBrightness] = useState(() => {
+    const stored = Number(localStorage.getItem(DISPLAY_BRIGHTNESS_KEY));
+    return Number.isFinite(stored) && stored >= 30 && stored <= 100 ? stored : 100;
   });
   const [desktopItems, setDesktopItems] = useState<DesktopItem[]>([]);
   const [vfsReady, setVfsReady] = useState(false);
@@ -746,6 +753,10 @@ export default function App() {
     soundEnabledRef.current = soundEnabled;
     localStorage.setItem(SOUND_ENABLED_KEY, soundEnabled ? "on" : "off");
   }, [soundEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem(DISPLAY_BRIGHTNESS_KEY, String(displayBrightness));
+  }, [displayBrightness]);
 
   useEffect(() => {
     localStorage.setItem(TASKBAR_PINNED_APPS_KEY, JSON.stringify(pinnedAppIds));
@@ -2074,7 +2085,12 @@ export default function App() {
       onPointerDown={beginDesktopPointerAction}
       onPointerMove={updateDesktopSelection}
       onPointerUp={finishDesktopSelection}
-      style={getWallpaperStyle(wallpaper)}
+      style={
+        {
+          ...getWallpaperStyle(wallpaper),
+          "--display-dim": ((100 - displayBrightness) / 100) * 0.7,
+        } as WallpaperCssVars
+      }
     >
       <section className="desktop-icons" aria-label="바탕화면 바로가기">
         {desktopApps.map((app) => (
@@ -2207,12 +2223,14 @@ export default function App() {
         activeWindowId={activeWindowId}
         availableApps={availableApps}
         notificationHistory={notificationHistory}
+        brightness={displayBrightness}
         onClearNotifications={clearNotificationHistory}
         onOpenStart={(event) => {
           event.stopPropagation();
           setStartOpen((value) => !value);
         }}
         onOpenApp={openApp}
+        onSetBrightness={setDisplayBrightness}
         onSetSoundEnabled={setSoundEnabled}
         onShowDesktop={toggleShowDesktop}
         onTogglePinnedApp={togglePinnedApp}
@@ -3067,6 +3085,26 @@ function formatNotificationTime(createdAt: number) {
   return new Date(createdAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
 }
 
+function createCalendarGrid(month: Date) {
+  const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
+  const gridStart = new Date(firstDay);
+  gridStart.setDate(firstDay.getDate() - firstDay.getDay());
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + index);
+    return date;
+  });
+}
+
+function getLocalDateKey(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
 function formatStorageSize(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -3788,7 +3826,7 @@ function DesktopContextMenu({
   y: number;
 }) {
   const firstItemRef = useRef<HTMLButtonElement>(null);
-  const [submenu, setSubmenu] = useState<"sort" | "view" | null>(null);
+  const [submenu, setSubmenu] = useState<"new" | "sort" | "view" | null>(null);
   const opensLeft = x > window.innerWidth - CONTEXT_MENU_WIDTH * 2 - 20;
 
   useEffect(() => {
@@ -3837,6 +3875,16 @@ function DesktopContextMenu({
                 {label}
               </button>
             ))}
+            <span aria-hidden="true" className="menu-separator" />
+            <button
+              aria-checked={alignToGrid}
+              onClick={onToggleGrid}
+              role="menuitemcheckbox"
+              type="button"
+            >
+              {alignToGrid ? <Check aria-hidden="true" size={15} /> : <span />}
+              아이콘을 그리드에 맞춤
+            </button>
           </div>
         )}
       </div>
@@ -3879,16 +3927,6 @@ function DesktopContextMenu({
         <RefreshCw aria-hidden="true" size={16} />
         새로 고침
       </button>
-      <button
-        aria-checked={alignToGrid}
-        onClick={onToggleGrid}
-        onMouseEnter={() => setSubmenu(null)}
-        role="menuitemcheckbox"
-        type="button"
-      >
-        {alignToGrid ? <Check aria-hidden="true" size={16} /> : <span />}
-        아이콘을 그리드에 맞춤
-      </button>
       <span aria-hidden="true" className="menu-separator" />
       <button
         disabled={!pasteEnabled}
@@ -3900,10 +3938,27 @@ function DesktopContextMenu({
         <ClipboardPaste aria-hidden="true" size={16} />
         붙여넣기
       </button>
-      <button onClick={onCreateNote} onMouseEnter={() => setSubmenu(null)} role="menuitem" type="button">
-        <FileText aria-hidden="true" size={16} />
-        새 텍스트 문서
-      </button>
+      <div className="desktop-menu-row" onMouseEnter={() => setSubmenu("new")}>
+        <button
+          aria-expanded={submenu === "new"}
+          aria-haspopup="menu"
+          onClick={() => setSubmenu((current) => (current === "new" ? null : "new"))}
+          role="menuitem"
+          type="button"
+        >
+          <FilePlus2 aria-hidden="true" size={16} />
+          <span>새로 만들기</span>
+          <ChevronRight aria-hidden="true" className="menu-chevron" size={15} />
+        </button>
+        {submenu === "new" && (
+          <div aria-label="새로 만들기" className="desktop-context-submenu" role="menu">
+            <button onClick={onCreateNote} role="menuitem" type="button">
+              <FileText aria-hidden="true" size={16} />
+              텍스트 문서
+            </button>
+          </div>
+        )}
+      </div>
       <span aria-hidden="true" className="menu-separator" />
       <button onClick={onChangeWallpaper} onMouseEnter={() => setSubmenu(null)} role="menuitem" type="button">
         <Palette aria-hidden="true" size={16} />
@@ -4228,13 +4283,10 @@ function ShellGate({
   if (phase === "booting") {
     return (
       <section className="shell-gate shell-boot" aria-label="부팅 화면">
-        <div className="boot-mark">
-          <BrandMark />
+        <div className="boot-windows-mark">
+          <StartGlyph />
         </div>
-        <strong>PocketDesk OS</strong>
-        <div className="boot-progress" aria-hidden="true">
-          <span />
-        </div>
+        <span aria-hidden="true" className="boot-spinner" />
       </section>
     );
   }
@@ -4277,7 +4329,9 @@ function LockScreen({
   wallpaper: WallpaperName;
 }) {
   const lockRef = useRef<HTMLElement>(null);
+  const signInButtonRef = useRef<HTMLButtonElement>(null);
   const [now, setNow] = useState(() => new Date());
+  const [signInVisible, setSignInVisible] = useState(false);
 
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => lockRef.current?.focus());
@@ -4288,40 +4342,71 @@ function LockScreen({
     };
   }, []);
 
+  useEffect(() => {
+    if (!signInVisible) return;
+    const frameId = window.requestAnimationFrame(() => signInButtonRef.current?.focus());
+    return () => window.cancelAnimationFrame(frameId);
+  }, [signInVisible]);
+
   const unlockFromKey = (event: React.KeyboardEvent<HTMLElement>) => {
-    if (event.key === "Enter" || event.key === " ") {
+    if (event.key === "Escape" && signInVisible) {
       event.preventDefault();
-      onUnlock();
+      setSignInVisible(false);
+      lockRef.current?.focus();
+      return;
+    }
+
+    if (!signInVisible && (event.key === "Enter" || event.key === " " || event.key === "ArrowUp")) {
+      event.preventDefault();
+      setSignInVisible(true);
     }
   };
 
   return (
     <section
-      aria-label="PocketDesk 잠금 해제"
-      className={`shell-gate lock-screen wallpaper-${wallpaper}`}
-      onClick={onUnlock}
+      aria-label={signInVisible ? "PocketDesk 로그인" : "PocketDesk 잠금 화면"}
+      className={`shell-gate lock-screen wallpaper-${wallpaper} ${signInVisible ? "is-sign-in" : ""}`}
+      onClick={() => {
+        if (!signInVisible) setSignInVisible(true);
+      }}
       onKeyDown={unlockFromKey}
       ref={lockRef}
-      role="button"
       style={getWallpaperStyle(wallpaper)}
       tabIndex={0}
     >
-      <div className="lock-time">
-        <time dateTime={now.toISOString()}>
-          {now.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
-        </time>
-        <span>
-          {now.toLocaleDateString("ko-KR", {
-            month: "long",
-            day: "numeric",
-            weekday: "long",
-          })}
-        </span>
-      </div>
-      <div className="lock-panel">
-        <BrandMark />
-        <strong>PocketDesk</strong>
-        <small>클릭하거나 Enter를 눌러 시작</small>
+      {signInVisible ? (
+        <>
+          <div aria-hidden="true" className="lock-sign-in-backdrop" />
+          <div className="sign-in-panel">
+            <span className="sign-in-avatar">
+              <UserRound aria-hidden="true" size={48} strokeWidth={1.45} />
+            </span>
+            <strong>Seung-Won</strong>
+            <button onClick={onUnlock} ref={signInButtonRef} type="button">
+              로그인
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="lock-time">
+            <time dateTime={now.toISOString()}>
+              {now.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+            </time>
+            <span>
+              {now.toLocaleDateString("ko-KR", {
+                month: "long",
+                day: "numeric",
+                weekday: "long",
+              })}
+            </span>
+          </div>
+          <small className="lock-hint">클릭하거나 위로 밀어 로그인</small>
+        </>
+      )}
+      <div className="lock-system-status" aria-label="네트워크와 소리 상태">
+        <Wifi aria-hidden="true" size={17} />
+        <Volume2 aria-hidden="true" size={17} />
       </div>
     </section>
   );
@@ -4394,7 +4479,7 @@ function WindowFrame({
 
   const frameStyle = instance.maximized
     ? {
-        inset: `10px 10px ${APP_BAR_HEIGHT + 10}px 10px`,
+        inset: `0 0 ${APP_BAR_HEIGHT}px 0`,
         zIndex: instance.z,
       }
     : {
@@ -4593,10 +4678,12 @@ function SnapPreview({ zone }: { zone: SnapZone }) {
 function Taskbar({
   activeWindowId,
   availableApps,
+  brightness,
   notificationHistory,
   onClearNotifications,
   onOpenStart,
   onOpenApp,
+  onSetBrightness,
   onSetSoundEnabled,
   onShowDesktop,
   onTogglePinnedApp,
@@ -4608,10 +4695,12 @@ function Taskbar({
 }: {
   activeWindowId?: string;
   availableApps: AppDefinition[];
+  brightness: number;
   notificationHistory: ToastMessage[];
   onClearNotifications: () => void;
   onOpenStart: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onOpenApp: (appId: AppId) => void;
+  onSetBrightness: (brightness: number) => void;
   onSetSoundEnabled: (enabled: boolean) => void;
   onShowDesktop: () => void;
   onTogglePinnedApp: (appId: AppId) => void;
@@ -4723,7 +4812,7 @@ function Taskbar({
                 onMouseLeave={hidePreview}
               >
                 <button
-                  className={`taskbar-app ${activeWindowId === windowItem?.id ? "is-current" : ""} ${
+                  className={`taskbar-app ${windowItem && activeWindowId === windowItem.id ? "is-current" : ""} ${
                     windowItem?.minimized ? "is-minimized" : ""
                   } ${isPinned ? "is-pinned" : ""} ${windowItem ? "is-open" : ""}`}
                   onClick={() => {
@@ -4808,10 +4897,12 @@ function Taskbar({
         </div>
         {trayPanel === "quick" && (
           <QuickSettingsPanel
+            brightness={brightness}
             onOpenSettings={() => {
               setTrayPanel(null);
               onOpenApp("settings");
             }}
+            onSetBrightness={onSetBrightness}
             onSetSoundEnabled={onSetSoundEnabled}
             soundEnabled={soundEnabled}
           />
@@ -4835,11 +4926,15 @@ function Taskbar({
 }
 
 function QuickSettingsPanel({
+  brightness,
   onOpenSettings,
+  onSetBrightness,
   onSetSoundEnabled,
   soundEnabled,
 }: {
+  brightness: number;
   onOpenSettings: () => void;
+  onSetBrightness: (brightness: number) => void;
   onSetSoundEnabled: (enabled: boolean) => void;
   soundEnabled: boolean;
 }) {
@@ -4878,6 +4973,17 @@ function QuickSettingsPanel({
           <small>{soundEnabled ? "켜짐" : "꺼짐"}</small>
         </button>
       </div>
+      <label className="quick-slider">
+        <Sun aria-hidden="true" size={17} />
+        <input
+          aria-label="화면 밝기"
+          max="100"
+          min="30"
+          onChange={(event) => onSetBrightness(Number(event.target.value))}
+          type="range"
+          value={brightness}
+        />
+      </label>
       <label className="quick-volume">
         <Volume2 aria-hidden="true" size={17} />
         <input
@@ -4906,6 +5012,13 @@ function NotificationCenterPanel({
   onClearNotifications: () => void;
 }) {
   const now = new Date();
+  const [visibleMonth, setVisibleMonth] = useState(
+    () => new Date(now.getFullYear(), now.getMonth(), 1),
+  );
+  const [selectedDate, setSelectedDate] = useState(
+    () => new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+  );
+  const calendarDays = createCalendarGrid(visibleMonth);
 
   return (
     <section
@@ -4945,6 +5058,68 @@ function NotificationCenterPanel({
           <span>새 알림 없음</span>
         </div>
       )}
+      <section className="notification-calendar" aria-label="달력">
+        <header>
+          <strong>
+            {visibleMonth.toLocaleDateString("ko-KR", { month: "long", year: "numeric" })}
+          </strong>
+          <div>
+            <button
+              aria-label="이전 달"
+              onClick={() =>
+                setVisibleMonth(
+                  (current) => new Date(current.getFullYear(), current.getMonth() - 1, 1),
+                )
+              }
+              title="이전 달"
+              type="button"
+            >
+              <ChevronLeft aria-hidden="true" size={15} />
+            </button>
+            <button
+              aria-label="다음 달"
+              onClick={() =>
+                setVisibleMonth(
+                  (current) => new Date(current.getFullYear(), current.getMonth() + 1, 1),
+                )
+              }
+              title="다음 달"
+              type="button"
+            >
+              <ChevronRight aria-hidden="true" size={15} />
+            </button>
+          </div>
+        </header>
+        <div className="calendar-weekdays" aria-hidden="true">
+          {["일", "월", "화", "수", "목", "금", "토"].map((weekday) => (
+            <span key={weekday}>{weekday}</span>
+          ))}
+        </div>
+        <div className="calendar-days">
+          {calendarDays.map((date) => {
+            const dateKey = getLocalDateKey(date);
+            const isCurrentMonth = date.getMonth() === visibleMonth.getMonth();
+            const isToday = dateKey === getLocalDateKey(now);
+            const isSelected = dateKey === getLocalDateKey(selectedDate);
+            return (
+              <button
+                aria-label={date.toLocaleDateString("ko-KR", {
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                })}
+                aria-pressed={isSelected}
+                className={`${isCurrentMonth ? "" : "is-outside"} ${isToday ? "is-today" : ""}`}
+                key={dateKey}
+                onClick={() => setSelectedDate(date)}
+                type="button"
+              >
+                {date.getDate()}
+              </button>
+            );
+          })}
+        </div>
+      </section>
     </section>
   );
 }
@@ -5175,7 +5350,6 @@ function StartMenu({
           </span>
           <span>
             <strong>Seung-Won</strong>
-            <small>로컬 계정</small>
           </span>
         </div>
         <div className="start-footer-actions">
@@ -5193,7 +5367,7 @@ function StartMenu({
             {powerMenuOpen && (
               <div className="power-menu" role="menu">
                 <button onClick={() => runPowerAction(onLock)} role="menuitem" type="button">
-                  <Power aria-hidden="true" size={15} />
+                  <Lock aria-hidden="true" size={15} />
                   잠금
                 </button>
                 <button onClick={() => runPowerAction(onRestart)} role="menuitem" type="button">
@@ -8560,8 +8734,8 @@ function SettingsApp({
         <div className="settings-profile">
           <Monitor aria-hidden="true" size={24} />
           <span>
-            <strong>PocketDesk</strong>
-            <small>로컬 장치</small>
+            <strong>Seung-Won</strong>
+            <small>로컬 계정</small>
           </span>
         </div>
         <label className="settings-search">

@@ -113,6 +113,15 @@ button {
   color: var(--text);
 }
 
+.desktop::after {
+  background: rgba(0, 0, 0, var(--display-dim, 0));
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 9890;
+}
+
 .wallpaper-ribbon {
   --desktop-wallpaper:
     linear-gradient(rgba(0, 16, 48, 0.04), rgba(0, 14, 36, 0.1)),
@@ -667,107 +676,159 @@ button {
 
 .shell-boot {
   align-items: center;
-  background:
-    radial-gradient(circle at 50% 38%, rgba(67, 176, 241, 0.26), transparent 32%),
-    linear-gradient(150deg, #081520, #102b3f 54%, #061017);
-  color: var(--text);
+  background: #000000;
+  color: #ffffff;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 42px;
   justify-content: center;
 }
 
-.boot-mark {
-  align-items: center;
-  background: color-mix(in srgb, var(--active) 28%, rgba(255, 255, 255, 0.08));
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.36);
+.boot-windows-mark {
   display: grid;
-  height: 72px;
   place-items: center;
-  width: 72px;
 }
 
-.boot-mark .brand-mark {
-  height: 58px;
-  width: 58px;
+.boot-windows-mark .start-glyph {
+  gap: 3px;
+  grid-template-columns: repeat(2, 17px);
+  grid-template-rows: repeat(2, 17px);
 }
 
-.shell-boot strong {
-  font-size: 1.18rem;
+.boot-windows-mark .start-glyph span {
+  background: #ffffff;
+  border-radius: 0;
+  box-shadow: none;
 }
 
-.boot-progress {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
-  height: 4px;
-  overflow: hidden;
-  width: 180px;
-}
-
-.boot-progress span {
-  animation: boot-progress 1050ms ease-in-out infinite;
-  background: var(--accent);
-  border-radius: inherit;
+.boot-spinner {
+  animation: boot-spin 950ms linear infinite;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+  border-top-color: #ffffff;
   display: block;
-  height: 100%;
-  width: 42%;
+  height: 24px;
+  width: 24px;
+}
+
+@keyframes boot-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .lock-screen {
-  --lock-scrim: linear-gradient(rgba(2, 12, 20, 0.28), rgba(2, 12, 20, 0.48));
-  align-items: flex-start;
-  background: var(--lock-scrim), var(--desktop-wallpaper);
+  background:
+    linear-gradient(rgba(2, 12, 20, 0.14), rgba(2, 12, 20, 0.3)),
+    var(--desktop-wallpaper);
   background-size: cover;
-  color: var(--text);
+  color: #ffffff;
   cursor: default;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
   outline: none;
-  padding: clamp(28px, 6vw, 72px);
+  overflow: hidden;
 }
 
 .lock-time {
+  align-items: center;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 7px;
+  left: 50%;
+  position: absolute;
   text-shadow: 0 4px 22px rgba(0, 0, 0, 0.45);
+  top: clamp(62px, 12vh, 116px);
+  transform: translateX(-50%);
+  z-index: 2;
 }
 
 .lock-time time {
-  font-size: clamp(4rem, 13vw, 8.8rem);
-  font-weight: 750;
-  line-height: 0.92;
+  font-size: clamp(4.5rem, 8vw, 6rem);
+  font-weight: 350;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .lock-time span {
-  font-size: clamp(1.05rem, 2.4vw, 1.55rem);
+  font-size: clamp(1rem, 1.7vw, 1.25rem);
 }
 
-.lock-panel {
+.lock-hint {
+  bottom: 26px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.78rem;
+  left: 50%;
+  position: absolute;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.62);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.lock-system-status {
   align-items: center;
-  backdrop-filter: blur(20px);
-  background: rgba(9, 24, 36, 0.62);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.34);
+  bottom: 22px;
+  display: flex;
+  gap: 17px;
+  position: absolute;
+  right: 26px;
+  z-index: 3;
+}
+
+.lock-sign-in-backdrop {
+  backdrop-filter: blur(18px) brightness(0.68);
+  background: rgba(2, 8, 16, 0.18);
+  inset: -26px;
+  position: absolute;
+  z-index: 1;
+}
+
+.sign-in-panel {
+  align-items: center;
   display: grid;
-  gap: 2px 12px;
-  grid-template-columns: 36px 1fr;
-  min-width: min(330px, 100%);
-  padding: 14px 16px;
+  gap: 12px;
+  justify-items: center;
+  left: 50%;
+  min-width: min(320px, calc(100vw - 32px));
+  position: absolute;
+  text-align: center;
+  top: 47%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
 }
 
-.lock-panel .brand-mark {
-  grid-row: span 2;
-  height: 36px;
-  width: 36px;
+.sign-in-avatar {
+  align-items: center;
+  background: rgba(232, 238, 244, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 50%;
+  display: flex;
+  height: 96px;
+  justify-content: center;
+  margin-bottom: 3px;
+  width: 96px;
 }
 
-.lock-panel small {
-  color: var(--muted);
+.sign-in-panel > strong {
+  font-size: 1.5rem;
+  font-weight: 500;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.42);
+}
+
+.sign-in-panel > button {
+  background: #0067c0;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 4px;
+  color: #ffffff;
+  min-height: 34px;
+  min-width: 116px;
+  padding: 0 18px;
+}
+
+.sign-in-panel > button:hover,
+.sign-in-panel > button:focus-visible {
+  background: #1975c5;
+  outline: 2px solid rgba(255, 255, 255, 0.82);
+  outline-offset: 2px;
 }
 
 .shutdown-screen {
@@ -965,7 +1026,11 @@ button {
 }
 
 .window-frame.is-maximized {
+  border: 0;
+  border-radius: 0;
   height: auto;
+  max-height: none;
+  max-width: none;
   width: auto;
 }
 
@@ -974,7 +1039,7 @@ button {
   background: rgba(32, 32, 32, 0.9);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
-  height: 40px;
+  height: 32px;
   justify-content: space-between;
   padding: 0 0 0 10px;
   user-select: none;
@@ -983,7 +1048,7 @@ button {
 .window-title {
   align-items: center;
   display: flex;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 500;
   gap: 8px;
   min-width: 0;
@@ -1023,6 +1088,11 @@ button {
   width: 46px;
 }
 
+.window-frame:not(.is-active) .window-title,
+.window-frame:not(.is-active) .window-controls {
+  opacity: 0.58;
+}
+
 .maximize-control {
   height: 100%;
   position: relative;
@@ -1042,7 +1112,7 @@ button {
   padding: 7px;
   position: absolute;
   right: -52px;
-  top: 40px;
+  top: 32px;
   width: auto;
   z-index: 40;
 }
@@ -1222,7 +1292,7 @@ button {
 }
 
 .taskbar-app {
-  background: rgba(255, 255, 255, 0.08);
+  background: transparent;
   border: 1px solid transparent;
   border-radius: 8px;
   height: 40px;
@@ -1250,8 +1320,7 @@ button {
   width: 7px;
 }
 
-.taskbar-app.is-open::after,
-.taskbar-app.is-pinned:not(.is-open)::after {
+.taskbar-app.is-open::after {
   display: block;
 }
 
@@ -1272,11 +1341,7 @@ button {
 }
 
 .taskbar-app.is-pinned:not(.is-open) {
-  background: rgba(255, 255, 255, 0.055);
-}
-
-.taskbar-app.is-pinned:not(.is-open)::after {
-  opacity: 0.48;
+  background: transparent;
 }
 
 .taskbar-pin-icon {
@@ -1495,13 +1560,28 @@ button {
 
 .quick-toggle-grid button,
 .quick-status-tile {
-  align-items: start;
+  align-items: center;
   display: grid;
-  gap: 4px;
+  gap: 1px 9px;
+  grid-template-columns: 22px minmax(0, 1fr);
   justify-items: start;
-  min-height: 84px;
-  padding: 12px;
+  min-height: 48px;
+  padding: 7px 11px;
   text-align: left;
+}
+
+.quick-toggle-grid button > svg,
+.quick-status-tile > svg {
+  grid-row: 1 / span 2;
+}
+
+.quick-toggle-grid span {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.quick-toggle-grid small {
+  font-size: 0.7rem;
 }
 
 .quick-toggle-grid button.is-enabled,
@@ -1510,7 +1590,8 @@ button {
   border-color: color-mix(in srgb, var(--active) 56%, white);
 }
 
-.quick-volume {
+.quick-volume,
+.quick-slider {
   align-items: center;
   display: grid;
   gap: 10px;
@@ -1518,7 +1599,8 @@ button {
   padding: 2px 4px;
 }
 
-.quick-volume input {
+.quick-volume input,
+.quick-slider input {
   accent-color: var(--active);
   min-width: 0;
   width: 100%;
@@ -1630,6 +1712,78 @@ button {
   min-height: 52px;
   justify-content: center;
   padding: 16px 10px;
+}
+
+.notification-calendar {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: grid;
+  gap: 8px;
+  padding-top: 11px;
+}
+
+.notification-calendar > header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  min-height: 32px;
+}
+
+.notification-calendar > header > div {
+  display: flex;
+  gap: 2px;
+}
+
+.notification-calendar > header button {
+  background: transparent;
+  border-radius: 4px;
+  color: var(--text);
+  display: grid;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  width: 30px;
+}
+
+.calendar-weekdays,
+.calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.calendar-weekdays span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  text-align: center;
+}
+
+.calendar-days {
+  gap: 2px 0;
+}
+
+.calendar-days button {
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  color: var(--text);
+  font-size: 0.72rem;
+  height: 32px;
+  justify-self: center;
+  padding: 0;
+  width: 32px;
+}
+
+.calendar-days button.is-outside {
+  color: #787878;
+}
+
+.calendar-days button.is-today {
+  border-color: var(--active);
+}
+
+.calendar-days button[aria-pressed="true"] {
+  background: #0067c0;
+  border-color: #2797ea;
+  color: #ffffff;
 }
 
 .quick-actions {
@@ -4896,6 +5050,10 @@ button {
   gap: 10px;
 }
 
+.theme-options {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .settings-action-row {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -5053,6 +5211,10 @@ button {
 
   .window-frame {
     min-width: 288px;
+  }
+
+  .theme-options {
+    grid-template-columns: 1fr;
   }
 
   .taskbar {
