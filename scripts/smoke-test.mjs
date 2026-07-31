@@ -76,6 +76,19 @@ async function launchBrowser() {
   return chromium.launch({ headless: true });
 }
 
+async function stopProcess(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+
+  await new Promise((resolve) => {
+    const forceStop = setTimeout(() => child.kill("SIGKILL"), 3000);
+    child.once("exit", () => {
+      clearTimeout(forceStop);
+      resolve();
+    });
+    child.kill();
+  });
+}
+
 async function unlockPocketDesk(page) {
   const shellGate = page.locator(".shell-gate");
   const lockScreen = page.locator('[aria-label="PocketDesk 잠금 화면"]');
@@ -182,6 +195,37 @@ async function runSmoke(baseUrl) {
     await page.reload({ waitUntil: "domcontentloaded" });
 
     await unlockPocketDesk(page);
+    await page.evaluate(() => {
+      window.__pocketDeskPwaTestRegistration = { waiting: { postMessage() {} } };
+      window.dispatchEvent(
+        new CustomEvent("pocketdesk:pwa-update", {
+          detail: { registration: window.__pocketDeskPwaTestRegistration },
+        }),
+      );
+    });
+    const pwaUpdatePrompt = page.locator('[aria-label="PocketDesk 업데이트"]');
+    await pwaUpdatePrompt.waitFor({ state: "visible" });
+    await pwaUpdatePrompt.getByRole("button", { name: "업데이트 알림 닫기" }).click();
+    await pwaUpdatePrompt.waitFor({ state: "hidden" });
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new CustomEvent("pocketdesk:pwa-update", {
+          detail: { registration: window.__pocketDeskPwaTestRegistration },
+        }),
+      );
+    });
+    await page.waitForTimeout(100);
+    assert(!(await pwaUpdatePrompt.isVisible()), "Dismissed PWA update prompt reopened for the same worker");
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new CustomEvent("pocketdesk:pwa-update", {
+          detail: { registration: { waiting: { postMessage() {} } } },
+        }),
+      );
+      delete window.__pocketDeskPwaTestRegistration;
+    });
+    await pwaUpdatePrompt.waitFor({ state: "visible" });
+    await pwaUpdatePrompt.getByRole("button", { name: "업데이트 알림 닫기" }).click();
     assert(
       (await page.locator(".taskbar-app.is-current").count()) === 0,
       "Pinned taskbar app appeared active without an open window",
@@ -901,5 +945,5 @@ try {
   await waitForServer(baseUrl);
   await withTimeout(runSmoke(baseUrl), smokeTimeoutMs, "PocketDesk smoke test");
 } finally {
-  preview.kill();
+  await stopProcess(preview);
 }

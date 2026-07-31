@@ -9,6 +9,7 @@ import SettingsApp from "./apps/SettingsApp";
 import ThisPcApp from "./apps/ThisPcApp";
 import { appMetadata, appOrder } from "./apps/metadata";
 import AppIconTile from "./components/AppIconTile";
+import PwaUpdatePrompt from "./components/PwaUpdatePrompt";
 import type {
   AppId,
   DesktopItem,
@@ -1533,7 +1534,7 @@ export default function App() {
     const target = event.target as HTMLElement;
     if (
       target.closest(
-        ".desktop-icon, .desktop-context-menu, .window-system-menu, .window-frame, .start-menu, .taskbar, .shell-gate",
+        ".desktop-icon, .desktop-context-menu, .window-system-menu, .window-frame, .start-menu, .taskbar, .shell-gate, .toast-stack, .pwa-update-prompt",
       )
     ) {
       return;
@@ -2137,6 +2138,7 @@ export default function App() {
       )}
 
       <ToastStack onDismiss={dismissToast} toasts={toasts} />
+      <PwaUpdatePrompt />
     </main>
   );
 }

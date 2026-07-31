@@ -51,7 +51,7 @@ PocketDesk OS는 Windows 11의 데스크톱 사용 흐름을 웹에서 재현한
 | 내 PC | 기본 폴더, 로컬 디스크와 저장 상태 확인 |
 | 파일 탐색기 | 탐색, 검색, 보기·정렬, 새 문서, 복사·붙여넣기, 이름 변경, 속성 |
 | 휴지통 | 삭제 항목 복원, 영구 삭제, 휴지통 비우기 |
-| Microsoft Edge | 주소 이동, 검색, 방문 기록, 창 안 웹 보기, 읽기 보기 |
+| Microsoft Edge | 주소 이동, 검색, 방문 기록, 창 안 웹 보기, 읽기 보기, 차단 페이지 복구 |
 | 메모장 | 여러 문서, 자동 저장, Markdown 미리보기 |
 | 그림판 | 브러시, 지우개, 도형, 색상 선택, PNG 저장 |
 | 계산기 | 일반·공학 계산과 키보드 입력 |
@@ -66,7 +66,8 @@ Microsoft Edge 앱은 주소를 새 탭으로 넘기지 않고 PocketDesk OS 창
 - 뒤로, 앞으로, 새로 고침, 홈
 - 즐겨찾기와 방문 기록
 - iframe을 허용하는 실제 웹사이트 표시
-- iframe이 차단된 페이지의 읽기 보기
+- iframe 차단 가능성이 높은 사이트의 자동 읽기 보기
+- 표시 실패 시 읽기 보기 또는 새 탭으로 이어지는 복구 화면
 - 시작 화면의 **사과게임** 바로가기
 
 사과게임은 [Apple Burst](https://seung-won-yu.github.io/apple-burst/) 데스크톱 버전을 Edge 창 안에서 바로 실행합니다.
@@ -122,6 +123,7 @@ npm run preview
 npm run release:check
 npm run qa:pages
 npm run qa:smoke
+npm run qa:pwa
 ```
 
 | 명령 | 확인 범위 |
@@ -129,12 +131,15 @@ npm run qa:smoke
 | `release:check` | 배포 필수 파일, PWA 자산, workflow와 문서 |
 | `qa:pages` | `/pocket-desk-os/` 하위 경로 기준 GitHub Pages 빌드 |
 | `qa:smoke` | 시작 메뉴, 앱, 파일, 휴지통과 창 관리의 실제 브라우저 흐름 |
+| `qa:pwa` | 서비스 워커 설치, 핵심 번들 사전 캐시와 실제 오프라인 재실행 |
 
 ## 프로젝트 구조
 
 ```text
 src/App.tsx           데스크톱 셸, 창 관리자와 공통 상태 연결
-src/apps/             Edge, 계산기와 지뢰찾기 독립 앱 모듈
+src/apps/             모든 기본 앱의 독립 기능 모듈
+src/vfs/              IndexedDB 저장소, 파일 모델과 ZIP 백업 검증
+src/pwa/              서비스 워커 등록과 안전한 업데이트 적용
 src/styles.css        Windows 스타일 UI와 전환 효과
 src/ErrorBoundary.tsx 앱 오류 복구 화면
 public/brand/         PWA 아이콘과 공유 이미지
@@ -157,7 +162,12 @@ DEPLOYMENT.md         정적 호스팅과 배포 안내
 - [x] IndexedDB 가상 파일 시스템과 휴지통
 - [x] 기본 앱, 파일 연결과 브라우저 내 웹 실행
 - [x] PWA, 자동 테스트와 GitHub Pages 배포
-- [ ] 앱 모듈 분리와 장기 유지보수 구조 개선 (Edge·계산기·지뢰찾기 완료)
+- [x] 모든 기본 앱 모듈 분리와 장기 유지보수 구조 개선
+- [x] IndexedDB 원자적 저장, 스키마 마이그레이션과 손상 백업 방어
+- [x] iframe 차단 사이트 복구 UX
+- [x] 오프라인 앱 셸과 사용자 선택형 PWA 업데이트
+
+구현 과정과 설계 기준은 [개발 기록](./docs/DEVELOPMENT-NOTES.md)에 정리했습니다.
 
 ## 배포
 
@@ -168,6 +178,6 @@ DEPLOYMENT.md         정적 호스팅과 배포 안내
 
 ## 웹 실행 범위
 
-PocketDesk OS는 브라우저 기반 시뮬레이터입니다. Windows 실행 파일, 장치 드라이버와 운영체제용 설치 프로그램은 실행하지 않습니다. 외부 웹사이트는 해당 사이트의 iframe 보안 정책에 따라 창 안 표시가 제한될 수 있습니다.
+PocketDesk OS는 브라우저 기반 시뮬레이터입니다. Windows 실행 파일, 장치 드라이버와 운영체제용 설치 프로그램은 실행하지 않습니다. 외부 웹사이트는 해당 사이트의 iframe 보안 정책에 따라 창 안 표시가 제한되며, 이때 읽기 보기 또는 새 탭 열기를 제공합니다.
 
 Microsoft Windows의 프로그램 파일, 로고와 공식 배경 화면은 포함하지 않았으며 프로젝트의 시각 자산은 별도로 제작했습니다.

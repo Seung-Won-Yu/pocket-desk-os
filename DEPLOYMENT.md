@@ -10,6 +10,7 @@ npm run release:check
 npm run qa:pages
 npm run build
 npm run qa:smoke
+npm run qa:pwa
 ```
 
 Expected result:
@@ -19,6 +20,7 @@ Expected result:
 - GitHub Pages base-path build check passes.
 - Vite creates `dist/`.
 - Playwright smoke QA passes.
+- PWA installation and offline reload QA passes.
 - `dist/manifest.webmanifest`, `dist/sw.js`, `dist/.nojekyll`, `dist/robots.txt`, `dist/llms.txt`, wallpapers, brand icons, and the social preview image are present.
 
 ## GitHub Actions CI
@@ -28,8 +30,11 @@ Expected result:
 The workflow:
 
 - installs dependencies with `npm ci`
+- installs Playwright Chromium
 - runs `npm run release:check`
 - runs `npm run qa:pages`
+- runs `npm run qa:smoke`
+- runs `npm run qa:pwa`
 
 Use this as the merge/deploy gate once the project is pushed to GitHub.
 
@@ -42,7 +47,7 @@ The Pages workflow:
 - verifies a Pages bundle with the correct `VITE_BASE_PATH`
 - uploads and deploys `dist/` with GitHub Pages Actions
 
-`npm run release:check` is a local pre-push guard for required repository files, PWA assets, hosting config, CI workflow, and docs. It does not replace `npm run qa:smoke`.
+`npm run release:check` is a local pre-push guard for required repository files, PWA assets, hosting config, CI workflow, and docs. It does not replace the browser flow and offline tests.
 
 ## GitHub Repository Setup
 
@@ -142,16 +147,16 @@ VITE_BASE_PATH=/your-repo/ npm run build
 - [ ] `npm run release:check` passes locally.
 - [ ] `npm run qa:pages` passes locally.
 - [ ] `npm run qa:smoke` passes locally.
+- [ ] `npm run qa:pwa` passes locally.
 - [ ] GitHub Actions CI is green on `main`.
 - [ ] `CHANGELOG.md` reflects the release.
 - [ ] Open the production preview with `npm run preview`.
 - [ ] Confirm boot screen, lock screen, desktop icons, Start menu, taskbar, and windows render.
 - [ ] Confirm Start menu power menu can restart, shut down, and power on.
 - [ ] Confirm Start menu shows Pinned, All apps, and Recent sections.
-- [ ] Confirm Setup Center can install Python Lab and Code Studio.
-- [ ] Confirm Python Lab `Run` prints output.
-- [ ] Confirm Run opens `calc` and URL/search commands hand off to Web Surf.
-- [ ] Confirm Files shows Open with associations and `.url` entries open in Web Surf.
+- [ ] Confirm Run opens `calc` and URL/search commands hand off to Microsoft Edge.
+- [ ] Confirm Files shows Open with associations and `.url` entries open in Microsoft Edge.
+- [ ] Confirm blocked iframe pages offer Reader view and external-tab recovery.
 - [ ] Confirm Files deletion moves entries to Recycle Bin, restore works, and empty removes entries.
 - [ ] Confirm taskbar hover/focus previews appear for open windows.
 - [ ] Confirm system tray opens Quick settings and Settings shortcut works.
@@ -160,4 +165,5 @@ VITE_BASE_PATH=/your-repo/ npm run build
 - [ ] Confirm taskbar pin/unpin works with right-click.
 - [ ] Confirm window snapping works by dragging to the left, right, and top edges.
 - [ ] Confirm `manifest.webmanifest` and `sw.js` load with HTTP 200 after deploy.
+- [ ] Confirm a second load works with the browser network set to Offline.
 - [ ] Confirm `robots.txt`, `llms.txt`, and `brand/pocketdesk-social.png` load with HTTP 200 after deploy.

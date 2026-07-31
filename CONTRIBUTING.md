@@ -20,6 +20,7 @@ npm run release:check
 npm run qa:pages
 npm run build
 npm run qa:smoke
+npm run qa:pwa
 ```
 
 `npm run release:check` verifies repository files needed for GitHub deployment, hosting config, PWA assets, CI, and docs.
@@ -31,10 +32,10 @@ npm run qa:smoke
 - unlock desktop
 - Start menu Pinned / All apps / Recent
 - Start menu power menu restart and shut down
-- Setup Center installation
-- Python Lab execution
 - Run dialog command execution
-- Files extension association and `.url` Web Surf handoff
+- File associations and `.url` Microsoft Edge handoff
+- IndexedDB metadata and malformed ZIP rejection
+- iframe failure recovery and reader-first blocked hosts
 - Recycle Bin restore and empty flow
 - taskbar hover/focus preview
 - system tray Quick settings panel
@@ -43,6 +44,8 @@ npm run qa:smoke
 - taskbar pin/unpin
 - window snapping
 - mobile overflow
+
+`npm run qa:pwa` uses a controlled Chromium service worker session to verify production bundle precaching, offline reload, and the system tray network state.
 
 ## Development Guidelines
 

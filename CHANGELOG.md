@@ -6,8 +6,22 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Changed
 
-- Extracted Microsoft Edge, Calculator, and Minesweeper into independent feature modules.
+- Extracted every built-in app into an independent feature module.
 - Reduced `App.tsx` to focus on the desktop shell, window management, and shared application state.
+- Moved app metadata, wallpaper data, format helpers, and shared types into owned modules.
+- Upgraded the service worker to precache production bundles and wait for user-approved updates.
+
+### Added
+
+- Windows-style update prompt with controlled service worker activation.
+- Automated PWA test covering service worker control, bundle precaching, offline reload, and tray status.
+- Reader-first routing and a recovery panel for websites that block iframe embedding.
+
+### Fixed
+
+- Serialized IndexedDB writes with atomic transactions, schema metadata, migration indexes, and failure reporting.
+- Hardened ZIP restore against malformed headers, unsupported compression, invalid UTF-8, duplicate entries, oversized data, and CRC mismatches.
+- Prevented service worker activation from deleting unrelated origin caches.
 
 ## 0.1.0
 

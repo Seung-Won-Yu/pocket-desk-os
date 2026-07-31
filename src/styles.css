@@ -679,6 +679,102 @@ button {
   outline: none;
 }
 
+.toast-stack:has(+ .pwa-update-prompt) {
+  bottom: 224px;
+}
+
+.pwa-update-prompt {
+  animation: toast-enter 180ms ease-out;
+  backdrop-filter: blur(28px) saturate(1.08);
+  background: rgba(32, 32, 32, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 8px;
+  bottom: 60px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 16px 44px rgba(0, 0, 0, 0.42);
+  color: var(--text);
+  padding: 12px;
+  position: absolute;
+  right: 12px;
+  width: min(364px, calc(100vw - 24px));
+  z-index: 9700;
+}
+
+.pwa-update-prompt header {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+}
+
+.pwa-update-icon {
+  background: color-mix(in srgb, var(--active) 24%, rgba(255, 255, 255, 0.08));
+  border-radius: 5px;
+  color: #79c5ff;
+  display: grid;
+  height: 28px;
+  place-items: center;
+  width: 28px;
+}
+
+.pwa-update-prompt header > strong {
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.pwa-update-prompt header > button {
+  background: transparent;
+  border-radius: 4px;
+  color: var(--muted);
+  display: grid;
+  height: 28px;
+  place-items: center;
+  width: 28px;
+}
+
+.pwa-update-prompt header > button:hover,
+.pwa-update-prompt header > button:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+  outline: none;
+}
+
+.pwa-update-prompt p {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin: 10px 0 12px 36px;
+}
+
+.pwa-update-apply {
+  align-items: center;
+  background: var(--active);
+  border: 1px solid color-mix(in srgb, var(--active) 74%, white);
+  border-radius: 4px;
+  color: #07131d;
+  display: flex;
+  font-size: 0.78rem;
+  font-weight: 600;
+  gap: 7px;
+  justify-content: center;
+  margin-left: 36px;
+  min-height: 32px;
+  padding: 5px 12px;
+  width: calc(100% - 36px);
+}
+
+.pwa-update-apply:hover,
+.pwa-update-apply:focus-visible {
+  filter: brightness(1.08);
+  outline: 2px solid rgba(255, 255, 255, 0.72);
+  outline-offset: 1px;
+}
+
+.pwa-update-apply:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 .shell-gate {
   inset: 0;
   position: absolute;
