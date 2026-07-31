@@ -201,6 +201,13 @@ async function runSmoke(baseUrl) {
     await desktopNote.dblclick();
     const desktopNotepad = page.locator('article[aria-label="메모장"]');
     await desktopNotepad.waitFor({ state: "visible" });
+    await desktopNotepad.getByRole("button", { name: "보기", exact: true }).click();
+    const noteViewMenu = desktopNotepad.getByRole("menu");
+    await noteViewMenu.getByRole("menuitemcheckbox", { name: /자동 줄 바꿈/ }).click();
+    assert(
+      (await desktopNotepad.getByLabel("메모 내용").getAttribute("wrap")) === "off",
+      "Notepad word wrap command did not apply",
+    );
     await desktopNotepad.getByRole("button", { name: "메모장 닫기" }).click();
 
     await desktopNote.dispatchEvent("contextmenu", {
@@ -394,7 +401,31 @@ async function runSmoke(baseUrl) {
     await runDialog.waitFor({ state: "visible" });
     await runDialog.getByLabel("열기").fill("calc");
     await runDialog.getByRole("button", { name: "확인" }).click();
-    await page.locator('article[aria-label="계산기"]').waitFor({ state: "visible" });
+    const calculator = page.locator('article[aria-label="계산기"]');
+    await calculator.waitFor({ state: "visible" });
+    for (const key of ["7", "+", "5", "="]) {
+      await calculator.getByRole("button", { name: key, exact: true }).click();
+    }
+    assert((await calculator.getByLabel("계산기 표시창").innerText()) === "12", "Calculator result is wrong");
+    await calculator.getByRole("button", { name: "M+", exact: true }).click();
+    await calculator.getByRole("button", { name: "C", exact: true }).click();
+    await calculator.getByRole("button", { name: "MR", exact: true }).click();
+    assert((await calculator.getByLabel("계산기 표시창").innerText()) === "12", "Calculator memory recall failed");
+    await calculator.getByRole("button", { name: "기록", exact: true }).click();
+    assert((await calculator.locator(".calc-history-panel").innerText()).includes("7+5"), "Calculator history is empty");
+
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("지뢰찾기");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const minesweeper = page.locator('article[aria-label="지뢰찾기"]');
+    await minesweeper.waitFor({ state: "visible" });
+    await minesweeper.locator(".mine-cell").first().click();
+    assert((await minesweeper.locator(".mine-cell.is-open").count()) > 0, "Minesweeper first click opened no cells");
+    assert((await minesweeper.locator(".mine-cell.is-mine").count()) === 0, "Minesweeper first click hit a mine");
+    const closedMineCell = minesweeper.locator(".mine-cell:not(.is-open)").first();
+    await closedMineCell.dispatchEvent("contextmenu", { bubbles: true, cancelable: true });
+    assert(await closedMineCell.evaluate((node) => node.classList.contains("is-flagged")), "Minesweeper flagging failed");
 
     await page.locator(".taskbar-app", { hasText: "파일 탐색기" }).click();
     await files.waitFor({ state: "visible" });

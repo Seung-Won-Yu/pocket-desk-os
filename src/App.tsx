@@ -24,15 +24,18 @@ import {
   LayoutGrid,
   List,
   LucideIcon,
+  Menu,
   Maximize2,
   Minus,
   Monitor,
+  MoreHorizontal,
   Paintbrush,
   Palette,
   Pencil,
   Pin,
   PinOff,
   Play,
+  Plus,
   Power,
   RefreshCw,
   RotateCcw,
@@ -50,6 +53,8 @@ import {
   Volume2,
   Wifi,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { ChangeEvent, FormEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 
@@ -237,6 +242,7 @@ type PaintTool = "brush" | "line" | "rect" | "ellipse";
 type CalculatorMode = "standard" | "scientific";
 type CalculatorAction =
   | "clear"
+  | "clear-entry"
   | "delete"
   | "equals"
   | "toggle-sign"
@@ -414,9 +420,13 @@ const paintTools: Array<{ id: PaintTool; label: string }> = [
 ];
 
 const calculatorStandardButtons: CalculatorButton[] = [
-  { action: "clear", className: "is-utility", label: "C" },
-  { action: "delete", className: "is-utility", label: "DEL" },
   { action: "percent", className: "is-utility", label: "%" },
+  { action: "clear-entry", className: "is-utility", label: "CE" },
+  { action: "clear", className: "is-utility", label: "C" },
+  { action: "delete", className: "is-utility", label: "⌫" },
+  { action: "reciprocal", className: "is-utility", label: "1/x" },
+  { action: "square", className: "is-utility", label: "x²" },
+  { action: "sqrt", className: "is-utility", label: "²√x" },
   { label: "÷", value: "/" },
   { label: "7", value: "7" },
   { label: "8", value: "8" },
@@ -4509,9 +4519,9 @@ function WindowFrame({
               type="button"
             >
               {instance.maximized ? (
-                <Square aria-hidden="true" size={12} />
+                <Copy aria-hidden="true" size={12} />
               ) : (
-                <Maximize2 aria-hidden="true" size={13} />
+                <Square aria-hidden="true" size={11} />
               )}
             </button>
             {snapFlyoutOpen && !instance.maximized && (
@@ -5311,6 +5321,9 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
   const [history, setHistory] = useState<BrowserHistoryEntry[]>(() => loadBrowserHistory());
   const [draft, setDraft] = useState("");
   const [url, setUrl] = useState<string | null>(null);
+  const [navigationStack, setNavigationStack] = useState<Array<string | null>>([null]);
+  const [navigationIndex, setNavigationIndex] = useState(0);
+  const [browserMenuOpen, setBrowserMenuOpen] = useState(false);
   const isBookmarked = Boolean(url && bookmarks.some((bookmark) => bookmark.url === url));
 
   useEffect(() => {
@@ -5331,6 +5344,8 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
     const now = Date.now();
     setUrl(nextUrl);
     setDraft(nextUrl);
+    setNavigationStack((current) => [...current.slice(0, navigationIndex + 1), nextUrl]);
+    setNavigationIndex((current) => current + 1);
     setHistory((current) => [
       { id: `history-${crypto.randomUUID()}`, title, url: nextUrl, visitedAt: now },
       ...current.filter((entry) => entry.url !== nextUrl),
@@ -5356,6 +5371,18 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
   const openHome = () => {
     setUrl(null);
     setDraft("");
+    setNavigationStack((current) => [...current.slice(0, navigationIndex + 1), null]);
+    setNavigationIndex((current) => current + 1);
+    setBrowserMenuOpen(false);
+  };
+
+  const moveThroughHistory = (nextIndex: number) => {
+    const nextUrl = navigationStack[nextIndex];
+    if (nextUrl === undefined) return;
+    setNavigationIndex(nextIndex);
+    setUrl(nextUrl);
+    setDraft(nextUrl ?? "");
+    setBrowserMenuOpen(false);
   };
 
   const toggleBookmark = () => {
@@ -5396,12 +5423,45 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
 
   return (
     <div className="browser-app app-fill">
+      <div className="browser-tab-strip">
+        <button className="browser-tab is-current" type="button">
+          <Globe2 aria-hidden="true" size={14} />
+          <span>{url ? getBrowserPageTitle(url) : "새 탭"}</span>
+        </button>
+        <button aria-label="새 탭" onClick={openHome} title="새 탭" type="button">
+          <Plus aria-hidden="true" size={16} />
+        </button>
+      </div>
       <form className="browser-toolbar" onSubmit={submit}>
+        <button
+          aria-label="뒤로"
+          disabled={navigationIndex <= 0}
+          onClick={() => moveThroughHistory(navigationIndex - 1)}
+          title="뒤로"
+          type="button"
+        >
+          <ChevronLeft aria-hidden="true" size={17} />
+        </button>
+        <button
+          aria-label="앞으로"
+          disabled={navigationIndex >= navigationStack.length - 1}
+          onClick={() => moveThroughHistory(navigationIndex + 1)}
+          title="앞으로"
+          type="button"
+        >
+          <ChevronRight aria-hidden="true" size={17} />
+        </button>
+        <button
+          aria-label="새로고침"
+          disabled={!url}
+          onClick={() => url && window.open(url, "_blank", "noopener,noreferrer")}
+          title="새로고침"
+          type="button"
+        >
+          <RotateCcw aria-hidden="true" size={16} />
+        </button>
         <button aria-label="홈" onClick={openHome} title="홈" type="button">
           <House aria-hidden="true" size={16} />
-        </button>
-        <button aria-label={url ? "새로고침" : "검색"} title={url ? "새로고침" : "검색"} type="submit">
-          {url ? <RotateCcw aria-hidden="true" size={16} /> : <Search aria-hidden="true" size={16} />}
         </button>
         <input
           aria-label="웹 주소 또는 검색어"
@@ -5410,17 +5470,6 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
           spellCheck={false}
           value={draft}
         />
-        <select
-          aria-label="검색 엔진"
-          onChange={(event) => setSearchEngine(event.target.value as BrowserSearchEngineId)}
-          value={searchEngine}
-        >
-          {browserSearchEngines.map((engine) => (
-            <option key={engine.id} value={engine.id}>
-              {engine.label}
-            </option>
-          ))}
-        </select>
         <button
           aria-label={isBookmarked ? "즐겨찾기 제거" : "즐겨찾기 추가"}
           disabled={!url}
@@ -5439,7 +5488,46 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
             <ExternalLink aria-hidden="true" size={16} />
           </span>
         )}
+        <button
+          aria-expanded={browserMenuOpen}
+          aria-label="설정 및 기타"
+          onClick={() => setBrowserMenuOpen((current) => !current)}
+          title="설정 및 기타"
+          type="button"
+        >
+          <MoreHorizontal aria-hidden="true" size={18} />
+        </button>
       </form>
+      {browserMenuOpen && (
+        <div className="browser-menu" role="menu">
+          <label>
+            검색 엔진
+            <select
+              aria-label="검색 엔진"
+              onChange={(event) => setSearchEngine(event.target.value as BrowserSearchEngineId)}
+              value={searchEngine}
+            >
+              {browserSearchEngines.map((engine) => (
+                <option key={engine.id} value={engine.id}>
+                  {engine.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            disabled={history.length === 0}
+            onClick={() => {
+              clearHistory();
+              setBrowserMenuOpen(false);
+            }}
+            role="menuitem"
+            type="button"
+          >
+            <History aria-hidden="true" size={16} />
+            방문 기록 지우기
+          </button>
+        </div>
+      )}
       {url ? (
         <section className="browser-external-page">
           <Globe2 aria-hidden="true" size={42} />
@@ -5584,17 +5672,60 @@ function MinesweeperApp() {
 
   const reveal = (index: number) => {
     if (status !== "playing") return;
-    const target = board[index];
-    if (!target || target.flagged || target.revealed) return;
+    let activeBoard = board;
+    let target = activeBoard[index];
+    if (!target || target.flagged) return;
+
+    if (target.revealed) {
+      if (target.adjacent === 0) return;
+      const neighbors = getNeighbors(index, difficulty);
+      const adjacentFlags = neighbors.filter((neighbor) => activeBoard[neighbor]?.flagged).length;
+      if (adjacentFlags !== target.adjacent) return;
+
+      if (neighbors.some((neighbor) => activeBoard[neighbor]?.mine && !activeBoard[neighbor]?.flagged)) {
+        setBoard(activeBoard.map((cell) => (cell.mine ? { ...cell, revealed: true } : cell)));
+        setStatus("lost");
+        return;
+      }
+
+      let chordedBoard = activeBoard;
+      neighbors.forEach((neighbor) => {
+        if (!chordedBoard[neighbor]?.flagged) {
+          chordedBoard = revealSafeCells(chordedBoard, neighbor, difficulty);
+        }
+      });
+      setBoard(chordedBoard);
+      if (chordedBoard.every((cell) => cell.mine || cell.revealed)) {
+        const completedTime = Math.max(elapsedSeconds, 1);
+        setStatus("won");
+        setElapsedSeconds(completedTime);
+        setBestRecords((current) => {
+          const currentBest = current[difficulty.id];
+          if (currentBest !== null && currentBest <= completedTime) return current;
+          return { ...current, [difficulty.id]: completedTime };
+        });
+      }
+      return;
+    }
+
+    if (!started && (target.mine || target.adjacent > 0)) {
+      let attempts = 0;
+      do {
+        activeBoard = createMineBoard(difficulty);
+        target = activeBoard[index];
+        attempts += 1;
+      } while ((target.mine || target.adjacent > 0) && attempts < 160);
+    }
+
     setStarted(true);
 
     if (target.mine) {
-      setBoard(board.map((cell) => ({ ...cell, revealed: true })));
+      setBoard(activeBoard.map((cell) => (cell.mine ? { ...cell, revealed: true } : cell)));
       setStatus("lost");
       return;
     }
 
-    const next = revealSafeCells(board, index, difficulty);
+    const next = revealSafeCells(activeBoard, index, difficulty);
     setBoard(next);
 
     if (next.every((cell) => cell.mine || cell.revealed)) {
@@ -5621,19 +5752,39 @@ function MinesweeperApp() {
   };
 
   const flagCount = board.filter((cell) => cell.flagged).length;
+  const remainingMines = Math.max(0, difficulty.mines - flagCount);
   const bestRecord = bestRecords[difficulty.id];
 
   return (
     <div className="mines-app">
-      <div className="app-toolbar">
-        <div>
-          <strong>{status === "won" ? "승리!" : status === "lost" ? "폭발!" : "진행 중"}</strong>
+      <div className="mines-scorebar">
+        <div className="mines-counter">
+          <Bomb aria-hidden="true" size={17} />
           <span>
-            {difficulty.rows}x{difficulty.cols} · 지뢰 {difficulty.mines}개 · 깃발 {flagCount}개
+            <small>남은 지뢰</small>
+            <strong>{String(remainingMines).padStart(2, "0")}</strong>
           </span>
         </div>
+        <button
+          aria-label="새 게임"
+          className="mines-face"
+          onClick={reset}
+          title="새 게임"
+          type="button"
+        >
+          {status === "won" ? "😎" : status === "lost" ? "😵" : "🙂"}
+        </button>
+        <div className="mines-counter is-time">
+          <History aria-hidden="true" size={17} />
+          <span>
+            <small>시간</small>
+            <strong>{formatDuration(elapsedSeconds)}</strong>
+          </span>
+        </div>
+      </div>
+      <div className="mines-commandbar">
         <label>
-          난이도
+          <span>난이도</span>
           <select
             aria-label="지뢰찾기 난이도"
             onChange={(event) => changeDifficulty(event.target.value as MinesDifficultyId)}
@@ -5646,41 +5797,46 @@ function MinesweeperApp() {
             ))}
           </select>
         </label>
-        <div className="mines-stat">
-          <span>시간</span>
-          <strong>{formatDuration(elapsedSeconds)}</strong>
-        </div>
-        <div className="mines-stat">
-          <span>최고</span>
-          <strong>{bestRecord === null ? "--" : formatDuration(bestRecord)}</strong>
-        </div>
-        <button aria-label="새 게임" onClick={reset} title="새 게임" type="button">
-          <RotateCcw aria-hidden="true" size={16} />
-        </button>
+        <span>{difficulty.rows} × {difficulty.cols}</span>
+        <span>깃발 {flagCount}</span>
+        <span className="mines-best">최고 {bestRecord === null ? "--" : formatDuration(bestRecord)}</span>
       </div>
-      <div
-        className="mine-grid"
-        role="grid"
-        style={{ "--mine-cols": difficulty.cols } as React.CSSProperties}
-      >
-        {board.map((cell, index) => (
-          <button
-            aria-label={`${index + 1}번 칸`}
-            className={`mine-cell ${cell.revealed ? "is-open" : ""}`}
-            key={cell.id}
-            onClick={() => reveal(index)}
-            onContextMenu={(event) => toggleFlag(event, index)}
-            type="button"
-          >
-            {cell.flagged && !cell.revealed ? (
-              <Flag aria-hidden="true" size={14} />
-            ) : cell.revealed && cell.mine ? (
-              <Bomb aria-hidden="true" size={15} />
-            ) : cell.revealed && cell.adjacent > 0 ? (
-              cell.adjacent
-            ) : null}
-          </button>
-        ))}
+      <div className="mines-stage">
+        <div
+          className="mine-grid"
+          role="grid"
+          style={
+            {
+              "--mine-cols": difficulty.cols,
+              "--mine-rows": difficulty.rows,
+            } as React.CSSProperties
+          }
+        >
+          {board.map((cell, index) => (
+            <button
+              aria-label={`${index + 1}번 칸${
+                cell.flagged ? ", 깃발" : cell.revealed ? `, ${cell.mine ? "지뢰" : cell.adjacent}` : ""
+              }`}
+              className={`mine-cell ${cell.revealed ? "is-open" : ""} ${
+                cell.flagged && !cell.revealed ? "is-flagged" : ""
+              } ${cell.revealed && cell.mine ? "is-mine" : ""} ${
+                cell.revealed && cell.adjacent > 0 ? `mine-number-${cell.adjacent}` : ""
+              }`}
+              key={cell.id}
+              onClick={() => reveal(index)}
+              onContextMenu={(event) => toggleFlag(event, index)}
+              type="button"
+            >
+              {cell.flagged && !cell.revealed ? (
+                <Flag aria-hidden="true" size={15} />
+              ) : cell.revealed && cell.mine ? (
+                <Bomb aria-hidden="true" size={16} />
+              ) : cell.revealed && cell.adjacent > 0 ? (
+                cell.adjacent
+              ) : null}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -5689,6 +5845,10 @@ function MinesweeperApp() {
 function CalculatorApp() {
   const [display, setDisplay] = useState("0");
   const [mode, setMode] = useState<CalculatorMode>("standard");
+  const [modeMenuOpen, setModeMenuOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [calculationHistory, setCalculationHistory] = useState<Array<{ expression: string; result: string }>>([]);
+  const [memory, setMemory] = useState<number | null>(null);
   const calculatorRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -5704,7 +5864,7 @@ function CalculatorApp() {
   };
 
   const runAction = (action: CalculatorAction) => {
-    if (action === "clear") {
+    if (action === "clear" || action === "clear-entry") {
       setDisplay("0");
       return;
     }
@@ -5717,7 +5877,12 @@ function CalculatorApp() {
     if (action === "equals") {
       setDisplay((current) => {
         const result = evaluateExpression(current);
-        return formatCalculatorResult(result);
+        const formatted = formatCalculatorResult(result);
+        setCalculationHistory((historyItems) => [
+          { expression: current, result: formatted },
+          ...historyItems,
+        ].slice(0, 20));
+        return formatted;
       });
       return;
     }
@@ -5745,6 +5910,26 @@ function CalculatorApp() {
     if (action === "tan") applyUnary((value) => Math.tan(degreesToRadians(value)));
     if (action === "log") applyUnary(Math.log10);
     if (action === "ln") applyUnary(Math.log);
+  };
+
+  const getCurrentCalculatorValue = () => {
+    const value = evaluateExpression(display);
+    return Number.isFinite(value) ? value : 0;
+  };
+
+  const runMemoryAction = (action: "clear" | "recall" | "add" | "subtract" | "store") => {
+    if (action === "clear") {
+      setMemory(null);
+      return;
+    }
+    if (action === "recall") {
+      if (memory !== null) setDisplay(formatCalculatorResult(memory));
+      return;
+    }
+    const value = getCurrentCalculatorValue();
+    if (action === "store") setMemory(value);
+    if (action === "add") setMemory((current) => (current ?? 0) + value);
+    if (action === "subtract") setMemory((current) => (current ?? 0) - value);
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -5811,20 +5996,94 @@ function CalculatorApp() {
       ref={calculatorRef}
       tabIndex={0}
     >
-      <div className="calc-mode-row" role="group" aria-label="계산기 모드">
-        {(["standard", "scientific"] as CalculatorMode[]).map((option) => (
-          <button
-            aria-pressed={mode === option}
-            className={mode === option ? "is-selected" : ""}
-            key={option}
-            onClick={() => setMode(option)}
-            type="button"
-          >
-            {option === "standard" ? "일반" : "공학"}
-          </button>
-        ))}
+      <div className="calc-header">
+        <button
+          aria-expanded={modeMenuOpen}
+          aria-label="탐색 열기"
+          onClick={() => {
+            setModeMenuOpen((current) => !current);
+            setHistoryOpen(false);
+          }}
+          title="탐색 열기"
+          type="button"
+        >
+          <Menu aria-hidden="true" size={18} />
+        </button>
+        <strong>{mode === "standard" ? "표준" : "공학용"}</strong>
+        <button
+          aria-expanded={historyOpen}
+          aria-label="기록"
+          onClick={() => {
+            setHistoryOpen((current) => !current);
+            setModeMenuOpen(false);
+          }}
+          title="기록"
+          type="button"
+        >
+          <History aria-hidden="true" size={18} />
+        </button>
       </div>
+      {modeMenuOpen && (
+        <div className="calc-mode-menu" role="menu">
+          {(["standard", "scientific"] as CalculatorMode[]).map((option) => (
+            <button
+              className={mode === option ? "is-selected" : ""}
+              key={option}
+              onClick={() => {
+                setMode(option);
+                setModeMenuOpen(false);
+              }}
+              role="menuitem"
+              type="button"
+            >
+              {option === "standard" ? "표준" : "공학용"}
+            </button>
+          ))}
+        </div>
+      )}
+      {historyOpen && (
+        <aside className="calc-history-panel">
+          <header>
+            <strong>기록</strong>
+            <button
+              aria-label="기록 지우기"
+              disabled={calculationHistory.length === 0}
+              onClick={() => setCalculationHistory([])}
+              title="기록 지우기"
+              type="button"
+            >
+              <Trash2 aria-hidden="true" size={16} />
+            </button>
+          </header>
+          {calculationHistory.length > 0 ? (
+            <div>
+              {calculationHistory.map((entry, index) => (
+                <button
+                  key={`${entry.expression}-${index}`}
+                  onClick={() => {
+                    setDisplay(entry.result);
+                    setHistoryOpen(false);
+                  }}
+                  type="button"
+                >
+                  <small>{entry.expression} =</small>
+                  <strong>{entry.result}</strong>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p>아직 기록이 없습니다.</p>
+          )}
+        </aside>
+      )}
       <output aria-label="계산기 표시창">{display}</output>
+      <div className="calc-memory-row" aria-label="메모리">
+        <button disabled={memory === null} onClick={() => runMemoryAction("clear")} type="button">MC</button>
+        <button disabled={memory === null} onClick={() => runMemoryAction("recall")} type="button">MR</button>
+        <button onClick={() => runMemoryAction("add")} type="button">M+</button>
+        <button onClick={() => runMemoryAction("subtract")} type="button">M−</button>
+        <button onClick={() => runMemoryAction("store")} type="button">MS</button>
+      </div>
       {mode === "scientific" && (
         <div className="calc-grid calc-scientific-grid" aria-label="공학용 함수">
           {calculatorScientificButtons.map(renderCalculatorButton)}
@@ -5855,6 +6114,9 @@ function PaintApp({
   const [color, setColor] = useState("#0f6c81");
   const [size, setSize] = useState(5);
   const [saved, setSaved] = useState(false);
+  const [ribbonTab, setRibbonTab] = useState<"home" | "view">("home");
+  const [fileMenuOpen, setFileMenuOpen] = useState(false);
+  const [zoom, setZoom] = useState(100);
   const [historyState, setHistoryState] = useState({ redo: 0, undo: 0 });
 
   useEffect(() => {
@@ -6045,82 +6307,198 @@ function PaintApp({
 
   return (
     <div className="paint-app app-fill">
-      <div className="app-toolbar">
+      <div className="paint-tabs">
+        <button
+          aria-expanded={fileMenuOpen}
+          onClick={() => setFileMenuOpen((current) => !current)}
+          type="button"
+        >
+          파일
+        </button>
+        <button
+          aria-pressed={ribbonTab === "home"}
+          className={ribbonTab === "home" ? "is-selected" : ""}
+          onClick={() => {
+            setRibbonTab("home");
+            setFileMenuOpen(false);
+          }}
+          type="button"
+        >
+          홈
+        </button>
+        <button
+          aria-pressed={ribbonTab === "view"}
+          className={ribbonTab === "view" ? "is-selected" : ""}
+          onClick={() => {
+            setRibbonTab("view");
+            setFileMenuOpen(false);
+          }}
+          type="button"
+        >
+          보기
+        </button>
         <span className="canvas-file-label">
           <FileText aria-hidden="true" size={15} />
           {activeCanvas?.name ?? "새 그림"}
         </span>
-        <div className="paint-tool-group" aria-label="그림 도구">
-          {paintTools.map((option) => (
-            <button
-              aria-pressed={tool === option.id}
-              className={tool === option.id ? "is-selected" : ""}
-              key={option.id}
-              onClick={() => setTool(option.id)}
-              title={option.label}
-              type="button"
-            >
-              {option.id === "brush" && <Paintbrush aria-hidden="true" size={16} />}
-              {option.id === "line" && <Minus aria-hidden="true" size={16} />}
-              {option.id === "rect" && <Square aria-hidden="true" size={16} />}
-              {option.id === "ellipse" && <span aria-hidden="true" className="ellipse-tool-icon" />}
-              <span>{option.label}</span>
-            </button>
-          ))}
+      </div>
+      {fileMenuOpen && (
+        <div className="paint-file-menu" role="menu">
+          <button
+            onClick={() => {
+              save();
+              setFileMenuOpen(false);
+            }}
+            role="menuitem"
+            type="button"
+          >
+            <Save aria-hidden="true" size={16} />
+            저장
+          </button>
+          <button
+            onClick={() => {
+              downloadPng();
+              setFileMenuOpen(false);
+            }}
+            role="menuitem"
+            type="button"
+          >
+            <Download aria-hidden="true" size={16} />
+            다른 이름으로 저장
+          </button>
         </div>
-        <label>
-          <Palette aria-hidden="true" size={16} />
-          <input
-            aria-label="붓 색상"
-            onChange={(event) => setColor(event.target.value)}
-            type="color"
-            value={color}
-          />
-        </label>
-        <label>
-          굵기
-          <input
-            aria-label="붓 굵기"
-            max="22"
-            min="1"
-            onChange={(event) => setSize(Number(event.target.value))}
-            type="range"
-            value={size}
-          />
-        </label>
-        <div className="paint-palette" aria-label="색상 팔레트">
-          {paintPalette.map((swatch) => (
-            <button
-              aria-label={`${swatch} 색상 선택`}
-              aria-pressed={color.toLowerCase() === swatch}
-              className={color.toLowerCase() === swatch ? "is-selected" : ""}
-              key={swatch}
-              onClick={() => setColor(swatch)}
-              style={{ "--swatch": swatch } as React.CSSProperties}
-              type="button"
-            />
-          ))}
-        </div>
-        <button disabled={historyState.undo === 0} onClick={undo} type="button">
-          <Undo2 aria-hidden="true" size={16} />
-          실행 취소
-        </button>
-        <button disabled={historyState.redo === 0} onClick={redo} type="button">
-          <Redo2 aria-hidden="true" size={16} />
-          다시 실행
-        </button>
-        <button onClick={clear} type="button">
-          <Eraser aria-hidden="true" size={16} />
-          지우기
-        </button>
-        <button onClick={save} type="button">
-          <Save aria-hidden="true" size={16} />
-          PNG 저장
-        </button>
-        <button onClick={downloadPng} type="button">
-          <Download aria-hidden="true" size={16} />
-          다운로드
-        </button>
+      )}
+      <div className="paint-ribbon">
+        {ribbonTab === "home" ? (
+          <>
+            <div className="paint-ribbon-group paint-command-group">
+              <div>
+                <button aria-label="저장" onClick={save} title="저장" type="button">
+                  <Save aria-hidden="true" size={18} />
+                </button>
+                <button
+                  aria-label="실행 취소"
+                  disabled={historyState.undo === 0}
+                  onClick={undo}
+                  title="실행 취소"
+                  type="button"
+                >
+                  <Undo2 aria-hidden="true" size={18} />
+                </button>
+                <button
+                  aria-label="다시 실행"
+                  disabled={historyState.redo === 0}
+                  onClick={redo}
+                  title="다시 실행"
+                  type="button"
+                >
+                  <Redo2 aria-hidden="true" size={18} />
+                </button>
+                <button aria-label="모두 지우기" onClick={clear} title="모두 지우기" type="button">
+                  <Eraser aria-hidden="true" size={18} />
+                </button>
+              </div>
+              <small>파일 및 편집</small>
+            </div>
+            <div className="paint-ribbon-group">
+              <div className="paint-tool-group" aria-label="그림 도구">
+                {paintTools.map((option) => (
+                  <button
+                    aria-pressed={tool === option.id}
+                    className={tool === option.id ? "is-selected" : ""}
+                    key={option.id}
+                    onClick={() => setTool(option.id)}
+                    title={option.label}
+                    type="button"
+                  >
+                    {option.id === "brush" && <Paintbrush aria-hidden="true" size={18} />}
+                    {option.id === "line" && <Minus aria-hidden="true" size={18} />}
+                    {option.id === "rect" && <Square aria-hidden="true" size={17} />}
+                    {option.id === "ellipse" && <span aria-hidden="true" className="ellipse-tool-icon" />}
+                    <span>{option.label}</span>
+                  </button>
+                ))}
+              </div>
+              <small>도구 및 도형</small>
+            </div>
+            <div className="paint-ribbon-group paint-size-group">
+              <label>
+                <span>{size}px</span>
+                <input
+                  aria-label="붓 굵기"
+                  max="22"
+                  min="1"
+                  onChange={(event) => setSize(Number(event.target.value))}
+                  type="range"
+                  value={size}
+                />
+              </label>
+              <small>크기</small>
+            </div>
+            <div className="paint-ribbon-group paint-color-group">
+              <div>
+                <label>
+                  <Palette aria-hidden="true" size={18} />
+                  <input
+                    aria-label="붓 색상"
+                    onChange={(event) => setColor(event.target.value)}
+                    type="color"
+                    value={color}
+                  />
+                </label>
+                <div className="paint-palette" aria-label="색상 팔레트">
+                  {paintPalette.map((swatch) => (
+                    <button
+                      aria-label={`${swatch} 색상 선택`}
+                      aria-pressed={color.toLowerCase() === swatch}
+                      className={color.toLowerCase() === swatch ? "is-selected" : ""}
+                      key={swatch}
+                      onClick={() => setColor(swatch)}
+                      style={{ "--swatch": swatch } as React.CSSProperties}
+                      type="button"
+                    />
+                  ))}
+                </div>
+              </div>
+              <small>색</small>
+            </div>
+          </>
+        ) : (
+          <div className="paint-ribbon-group paint-view-group">
+            <div>
+              <button
+                aria-label="축소"
+                disabled={zoom <= 50}
+                onClick={() => setZoom((current) => Math.max(50, current - 10))}
+                title="축소"
+                type="button"
+              >
+                <ZoomOut aria-hidden="true" size={18} />
+              </button>
+              <input
+                aria-label="확대/축소"
+                max="160"
+                min="50"
+                onChange={(event) => setZoom(Number(event.target.value))}
+                type="range"
+                value={zoom}
+              />
+              <button
+                aria-label="확대"
+                disabled={zoom >= 160}
+                onClick={() => setZoom((current) => Math.min(160, current + 10))}
+                title="확대"
+                type="button"
+              >
+                <ZoomIn aria-hidden="true" size={18} />
+              </button>
+              <button onClick={() => setZoom(100)} type="button">
+                100%
+              </button>
+            </div>
+            <small>확대/축소</small>
+          </div>
+        )}
         {saved && (
           <span className="saved-indicator">
             <Check aria-hidden="true" size={15} />
@@ -6128,37 +6506,48 @@ function PaintApp({
           </span>
         )}
       </div>
-      <canvas
-        aria-label="그림판 캔버스"
-        className="paint-canvas"
-        height="720"
-        onPointerDown={startDrawing}
-        onPointerLeave={() => {
-          drawing.current = false;
-          lastPoint.current = null;
-          shapeStart.current = null;
-          shapeSnapshot.current = null;
-        }}
-        onPointerMove={draw}
-        onPointerUp={finishDrawing}
-        ref={canvasRef}
-        width="1120"
-      />
+      <div className="paint-stage">
+        <canvas
+          aria-label="그림판 캔버스"
+          className="paint-canvas"
+          height="720"
+          onPointerDown={startDrawing}
+          onPointerLeave={() => {
+            drawing.current = false;
+            lastPoint.current = null;
+            shapeStart.current = null;
+            shapeSnapshot.current = null;
+          }}
+          onPointerMove={draw}
+          onPointerUp={finishDrawing}
+          ref={canvasRef}
+          style={{ width: `${zoom}%` }}
+          width="1120"
+        />
+      </div>
+      <div className="paint-statusbar">
+        <span>1120 × 720px</span>
+        <span>{zoom}%</span>
+      </div>
     </div>
   );
 }
 
 function NotepadApp({
   activeNoteId,
+  createVfsTextFile,
   noteEntries,
   openVfsEntry,
   saveNoteContent,
 }: AppContentProps) {
   const activeNote = noteEntries.find((item) => item.id === activeNoteId) ?? noteEntries[0];
+  const noteEditorRef = useRef<HTMLTextAreaElement | null>(null);
   const [text, setText] = useState(activeNote?.content ?? "");
   const [saveStatus, setSaveStatus] = useState<NoteSaveStatus>("saved");
-  const saveStatusLabel =
-    saveStatus === "saved" ? "저장됨" : saveStatus === "saving" ? "저장 중" : "자동 저장 대기";
+  const [noteMenu, setNoteMenu] = useState<"file" | "edit" | "view" | null>(null);
+  const [wordWrap, setWordWrap] = useState(true);
+  const [fontSize, setFontSize] = useState(15);
+  const [cursorPosition, setCursorPosition] = useState({ column: 1, line: 1 });
 
   const save = () => {
     if (!activeNote) return;
@@ -6193,9 +6582,148 @@ function NotepadApp({
     return () => window.removeEventListener(NOTE_SAVE_EVENT, saveFromShortcut);
   }, [activeNote?.id, text]);
 
+  const updateCursorPosition = () => {
+    const editor = noteEditorRef.current;
+    if (!editor) return;
+    const beforeCursor = editor.value.slice(0, editor.selectionStart);
+    const lines = beforeCursor.split("\n");
+    setCursorPosition({
+      column: (lines[lines.length - 1]?.length ?? 0) + 1,
+      line: lines.length,
+    });
+  };
+
+  const downloadNote = () => {
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = activeNote?.name ?? "새 텍스트 문서.txt";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setNoteMenu(null);
+  };
+
+  const insertDateTime = () => {
+    const editor = noteEditorRef.current;
+    if (!editor) return;
+    const insertion = new Date().toLocaleString("ko-KR");
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    setText((current) => `${current.slice(0, start)}${insertion}${current.slice(end)}`);
+    setNoteMenu(null);
+    window.requestAnimationFrame(() => {
+      editor.focus();
+      editor.setSelectionRange(start + insertion.length, start + insertion.length);
+      updateCursorPosition();
+    });
+  };
+
   return (
     <div className="notepad-app app-fill">
-      <div className="app-toolbar">
+      <div className="note-menu-bar">
+        <button
+          aria-expanded={noteMenu === "file"}
+          onClick={() => setNoteMenu((current) => current === "file" ? null : "file")}
+          type="button"
+        >
+          파일
+        </button>
+        <button
+          aria-expanded={noteMenu === "edit"}
+          onClick={() => setNoteMenu((current) => current === "edit" ? null : "edit")}
+          type="button"
+        >
+          편집
+        </button>
+        <button
+          aria-expanded={noteMenu === "view"}
+          onClick={() => setNoteMenu((current) => current === "view" ? null : "view")}
+          type="button"
+        >
+          보기
+        </button>
+      </div>
+      {noteMenu === "file" && (
+        <div className="note-menu" role="menu">
+          <button
+            onClick={() => {
+              const item = createVfsTextFile();
+              openVfsEntry(item);
+              setNoteMenu(null);
+            }}
+            role="menuitem"
+            type="button"
+          >
+            새 탭 <kbd>Ctrl+N</kbd>
+          </button>
+          <button
+            onClick={() => {
+              save();
+              setNoteMenu(null);
+            }}
+            role="menuitem"
+            type="button"
+          >
+            저장 <kbd>Ctrl+S</kbd>
+          </button>
+          <button onClick={downloadNote} role="menuitem" type="button">
+            다른 이름으로 저장
+          </button>
+        </div>
+      )}
+      {noteMenu === "edit" && (
+        <div className="note-menu" role="menu">
+          <button
+            onClick={() => {
+              noteEditorRef.current?.select();
+              setNoteMenu(null);
+              updateCursorPosition();
+            }}
+            role="menuitem"
+            type="button"
+          >
+            모두 선택 <kbd>Ctrl+A</kbd>
+          </button>
+          <button onClick={insertDateTime} role="menuitem" type="button">
+            시간/날짜 <kbd>F5</kbd>
+          </button>
+        </div>
+      )}
+      {noteMenu === "view" && (
+        <div className="note-menu" role="menu">
+          <button
+            aria-checked={wordWrap}
+            onClick={() => {
+              setWordWrap((current) => !current);
+              setNoteMenu(null);
+            }}
+            role="menuitemcheckbox"
+            type="button"
+          >
+            자동 줄 바꿈 <span>{wordWrap ? "✓" : ""}</span>
+          </button>
+          <button
+            disabled={fontSize >= 24}
+            onClick={() => setFontSize((current) => Math.min(24, current + 1))}
+            role="menuitem"
+            type="button"
+          >
+            글꼴 크게
+          </button>
+          <button
+            disabled={fontSize <= 12}
+            onClick={() => setFontSize((current) => Math.max(12, current - 1))}
+            role="menuitem"
+            type="button"
+          >
+            글꼴 작게
+          </button>
+        </div>
+      )}
+      <div className="note-tab-row">
         <div className="note-tabs" role="tablist">
           {noteEntries.map((note) => (
             <button
@@ -6207,13 +6735,20 @@ function NotepadApp({
               type="button"
             >
               <FileText aria-hidden="true" size={14} />
-              {note.name}
+              <span>{note.name}</span>
+              {note.id === activeNote?.id && saveStatus !== "saved" && (
+                <span aria-label="저장되지 않은 변경 내용" className="note-dirty-dot" />
+              )}
             </button>
           ))}
         </div>
-        <button onClick={() => save()} type="button">
-          <Save aria-hidden="true" size={16} />
-          저장
+        <button
+          aria-label="새 탭"
+          onClick={() => openVfsEntry(createVfsTextFile())}
+          title="새 탭"
+          type="button"
+        >
+          <Plus aria-hidden="true" size={16} />
         </button>
       </div>
       <div className="note-workspace">
@@ -6222,13 +6757,20 @@ function NotepadApp({
           className="note-editor"
           disabled={!activeNote}
           onChange={(event) => setText(event.target.value)}
+          onClick={updateCursorPosition}
+          onKeyUp={updateCursorPosition}
+          ref={noteEditorRef}
           spellCheck
+          style={{ fontSize }}
           value={text}
+          wrap={wordWrap ? "soft" : "off"}
         />
       </div>
       <div className="note-statusbar">
-        <span>{activeNote?.name ?? "새 텍스트 문서"}</span>
-        <span className={`note-save-${saveStatus}`}>{saveStatusLabel}</span>
+        <span>Ln {cursorPosition.line}, Col {cursorPosition.column}</span>
+        <span>100%</span>
+        <span>Windows (CRLF)</span>
+        <span>UTF-8</span>
       </div>
     </div>
   );
@@ -6742,9 +7284,8 @@ function FilesApp({
     });
   }, [filteredFiles, sortDirection, sortKey]);
   const selectedFile =
-    visibleFiles.find((file) => file.id === activeFileId) ??
-    visibleFiles.find((file) => selectedIds.includes(file.id)) ??
-    visibleFiles[0];
+    visibleFiles.find((file) => file.id === activeFileId && selectedIds.includes(file.id)) ??
+    visibleFiles.find((file) => selectedIds.includes(file.id));
   const propertiesFile = files.find((file) => file.id === propertiesFileId);
   const contextFile = files.find((file) => file.id === fileContextMenu?.fileId);
   const [renaming, setRenaming] = useState(false);
@@ -7094,29 +7635,6 @@ function FilesApp({
           <Bomb aria-hidden="true" size={16} />
           게임
         </button>
-        <div className="file-backup-actions">
-          <button onClick={exportVfsZip} type="button">
-            <Download aria-hidden="true" size={16} />
-            ZIP 내보내기
-          </button>
-          <button
-            aria-busy={importing}
-            disabled={importing}
-            onClick={() => importInputRef.current?.click()}
-            type="button"
-          >
-            <Upload aria-hidden="true" size={16} />
-            {importing ? "가져오는 중" : "ZIP 가져오기"}
-          </button>
-          <input
-            accept=".zip,application/zip"
-            aria-label="ZIP 파일 가져오기"
-            className="file-import-input"
-            onChange={importSelectedZip}
-            ref={importInputRef}
-            type="file"
-          />
-        </div>
       </aside>
       <section className="file-main-pane">
         <div className="file-tab-strip">
@@ -7218,6 +7736,37 @@ function FilesApp({
               <Trash2 aria-hidden="true" size={15} />
               <span>삭제</span>
             </button>
+            <span aria-hidden="true" className="file-command-separator" />
+            <button
+              aria-label="ZIP 내보내기"
+              className="file-command-action file-command-compact"
+              onClick={exportVfsZip}
+              title="ZIP 내보내기"
+              type="button"
+            >
+              <Download aria-hidden="true" size={15} />
+              <span>내보내기</span>
+            </button>
+            <button
+              aria-busy={importing}
+              aria-label="ZIP 가져오기"
+              className="file-command-action file-command-compact"
+              disabled={importing}
+              onClick={() => importInputRef.current?.click()}
+              title="ZIP 가져오기"
+              type="button"
+            >
+              <Upload aria-hidden="true" size={15} />
+              <span>{importing ? "가져오는 중" : "가져오기"}</span>
+            </button>
+            <input
+              accept=".zip,application/zip"
+              aria-label="ZIP 파일 가져오기"
+              className="file-import-input"
+              onChange={importSelectedZip}
+              ref={importInputRef}
+              type="file"
+            />
             <span aria-hidden="true" className="file-command-separator" />
             <div className="file-sort-control" ref={sortControlRef}>
               <button
@@ -7450,7 +7999,7 @@ function FilesApp({
               ) : (
                 <>
                   <h3>{locationLabel}</h3>
-                  <p>표시할 파일이 없습니다.</p>
+                  <p>파일을 선택하면 세부 정보가 표시됩니다.</p>
                 </>
               )}
             </section>
@@ -7841,11 +8390,20 @@ function SettingsApp({
   const [section, setSection] = useState<"personalization" | "sound" | "system">(
     "personalization",
   );
+  const [settingsQuery, setSettingsQuery] = useState("");
   const themes: Array<{ id: ThemeName; label: string; detail: string }> = [
     { id: "lagoon", label: "Windows 기본", detail: "파란색 강조색" },
     { id: "meadow", label: "녹색", detail: "녹색 강조색" },
     { id: "ember", label: "회색", detail: "청록색 강조색" },
   ];
+  const settingsSections = [
+    { id: "system" as const, icon: Monitor, label: "시스템", keywords: "창 바탕 화면 배치" },
+    { id: "personalization" as const, icon: Palette, label: "개인 설정", keywords: "테마 배경 화면" },
+    { id: "sound" as const, icon: Volume2, label: "소리", keywords: "시스템 소리" },
+  ];
+  const filteredSettingsSections = settingsSections.filter((item) =>
+    normalizeSearchText(`${item.label} ${item.keywords}`).includes(normalizeSearchText(settingsQuery)),
+  );
 
   return (
     <div className="settings-app">
@@ -7857,30 +8415,32 @@ function SettingsApp({
             <small>로컬 장치</small>
           </span>
         </div>
-        <button
-          className={section === "personalization" ? "is-selected" : ""}
-          onClick={() => setSection("personalization")}
-          type="button"
-        >
-          <Palette aria-hidden="true" size={16} />
-          개인 설정
-        </button>
-        <button
-          className={section === "system" ? "is-selected" : ""}
-          onClick={() => setSection("system")}
-          type="button"
-        >
-          <Monitor aria-hidden="true" size={16} />
-          시스템
-        </button>
-        <button
-          className={section === "sound" ? "is-selected" : ""}
-          onClick={() => setSection("sound")}
-          type="button"
-        >
-          <Volume2 aria-hidden="true" size={16} />
-          소리
-        </button>
+        <label className="settings-search">
+          <Search aria-hidden="true" size={15} />
+          <input
+            aria-label="설정 찾기"
+            onChange={(event) => setSettingsQuery(event.target.value)}
+            placeholder="설정 찾기"
+            value={settingsQuery}
+          />
+        </label>
+        <nav aria-label="설정 범주">
+          {filteredSettingsSections.map((item) => {
+            const SectionIcon = item.icon;
+            return (
+              <button
+                className={section === item.id ? "is-selected" : ""}
+                key={item.id}
+                onClick={() => setSection(item.id)}
+                type="button"
+              >
+                <SectionIcon aria-hidden="true" size={16} />
+                {item.label}
+              </button>
+            );
+          })}
+          {filteredSettingsSections.length === 0 && <span className="settings-no-results">결과 없음</span>}
+        </nav>
       </aside>
       <section className="settings-content">
         <header className="settings-hero">
