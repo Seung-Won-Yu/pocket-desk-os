@@ -3,6 +3,7 @@ import CalculatorApp from "./apps/CalculatorApp";
 import MinesweeperApp from "./apps/MinesweeperApp";
 import NotepadApp from "./apps/NotepadApp";
 import PaintApp from "./apps/PaintApp";
+import SettingsApp from "./apps/SettingsApp";
 import ThisPcApp from "./apps/ThisPcApp";
 import type {
   AppId,
@@ -22,6 +23,12 @@ import {
   formatVfsPropertyDate,
   normalizeSearchText,
 } from "./utils/format";
+import {
+  getAssetUrl,
+  getWallpaperStyle,
+  wallpaperGallery,
+  type WallpaperCssVars,
+} from "./wallpapers";
 import {
   ArrowUpDown,
   Bell,
@@ -288,48 +295,6 @@ const TASKBAR_PINNED_APPS_KEY = "pocket-desk-taskbar-pinned-v2";
 const SNAP_EDGE_SIZE = 24;
 const SNAP_GUTTER = 10;
 const WINDOW_EXIT_MOTION_MS = 170;
-const wallpaperGallery: Array<{ id: WallpaperName; label: string; detail: string }> = [
-  { id: "meadow", label: "Green Vista", detail: "초록 언덕과 푸른 하늘" },
-  { id: "ribbon", label: "Blue Ribbon", detail: "푸른 유리 리본" },
-  { id: "aurora", label: "Aurora Lake", detail: "오로라와 밤 호수" },
-  { id: "dawn", label: "Dawn Lake", detail: "새벽 호수와 따뜻한 빛" },
-  { id: "sunny", label: "Sunny Field", detail: "맑은 초원과 구름" },
-  { id: "glass", label: "Glass Wave", detail: "푸른 유리 빛줄기" },
-  { id: "mist", label: "Misty Peak", detail: "안개 낀 산과 호수" },
-  { id: "coast", label: "Moon Coast", detail: "달빛 해안과 바다" },
-];
-
-const wallpaperFiles: Record<WallpaperName, string> = {
-  aurora: "wallpapers/aurora-lake.jpg",
-  coast: "wallpapers/moon-coast.jpg",
-  dawn: "wallpapers/dawn-lake.jpg",
-  glass: "wallpapers/glass-wave.jpg",
-  meadow: "wallpapers/green-vista.jpg",
-  mist: "wallpapers/misty-peak.jpg",
-  ribbon: "wallpapers/blue-ribbon.jpg",
-  sunny: "wallpapers/sunny-field.jpg",
-};
-
-type WallpaperCssVars = React.CSSProperties & {
-  "--wallpaper-image": string;
-};
-
-function getAssetUrl(path: string) {
-  return `${import.meta.env.BASE_URL}${path.replace(/^\/+/, "")}`;
-}
-
-function getWallpaperStyle(wallpaper: WallpaperName): WallpaperCssVars {
-  return {
-    "--wallpaper-image": `url("${getAssetUrl(wallpaperFiles[wallpaper])}")`,
-  };
-}
-
-function getWallpaperPreviewStyle(wallpaper: WallpaperName): React.CSSProperties {
-  return {
-    backgroundImage: `url("${getAssetUrl(wallpaperFiles[wallpaper])}")`,
-  };
-}
-
 const appSearchKeywords: Record<AppId, string[]> = {
   thispc: ["this pc", "my computer", "computer", "pc", "내 pc", "내컴퓨터", "컴퓨터", "드라이브", "disk"],
   browser: ["internet", "web", "edge", "인터넷", "웹", "브라우저", "검색", "google", "url"],
@@ -6630,158 +6595,6 @@ function ConfirmDialog({
             {confirmLabel}
           </button>
         </div>
-      </section>
-    </div>
-  );
-}
-
-function SettingsApp({
-  playSound,
-  resetDesktopIconLayout,
-  resetWindowLayout,
-  setSoundEnabled,
-  setTheme,
-  setWallpaper,
-  soundEnabled,
-  theme,
-  wallpaper,
-}: AppContentProps) {
-  const [section, setSection] = useState<"personalization" | "sound" | "system">(
-    "personalization",
-  );
-  const [settingsQuery, setSettingsQuery] = useState("");
-  const themes: Array<{ id: ThemeName; label: string; detail: string }> = [
-    { id: "lagoon", label: "Windows 기본", detail: "파란색 강조색" },
-    { id: "meadow", label: "녹색", detail: "녹색 강조색" },
-    { id: "ember", label: "회색", detail: "청록색 강조색" },
-  ];
-  const settingsSections = [
-    { id: "system" as const, icon: Monitor, label: "시스템", keywords: "창 바탕 화면 배치" },
-    { id: "personalization" as const, icon: Palette, label: "개인 설정", keywords: "테마 배경 화면" },
-    { id: "sound" as const, icon: Volume2, label: "소리", keywords: "시스템 소리" },
-  ];
-  const filteredSettingsSections = settingsSections.filter((item) =>
-    normalizeSearchText(`${item.label} ${item.keywords}`).includes(normalizeSearchText(settingsQuery)),
-  );
-
-  return (
-    <div className="settings-app">
-      <aside className="settings-sidebar">
-        <div className="settings-profile">
-          <Monitor aria-hidden="true" size={24} />
-          <span>
-            <strong>Seung-Won</strong>
-            <small>로컬 계정</small>
-          </span>
-        </div>
-        <label className="settings-search">
-          <Search aria-hidden="true" size={15} />
-          <input
-            aria-label="설정 찾기"
-            onChange={(event) => setSettingsQuery(event.target.value)}
-            placeholder="설정 찾기"
-            value={settingsQuery}
-          />
-        </label>
-        <nav aria-label="설정 범주">
-          {filteredSettingsSections.map((item) => {
-            const SectionIcon = item.icon;
-            return (
-              <button
-                className={section === item.id ? "is-selected" : ""}
-                key={item.id}
-                onClick={() => setSection(item.id)}
-                type="button"
-              >
-                <SectionIcon aria-hidden="true" size={16} />
-                {item.label}
-              </button>
-            );
-          })}
-          {filteredSettingsSections.length === 0 && <span className="settings-no-results">결과 없음</span>}
-        </nav>
-      </aside>
-      <section className="settings-content">
-        <header className="settings-hero">
-          <h2>
-            {section === "personalization" ? "개인 설정" : section === "system" ? "시스템" : "소리"}
-          </h2>
-        </header>
-        {section === "personalization" && (
-          <>
-            <section className="settings-section">
-              <h3>테마</h3>
-              <div className="theme-options">
-                {themes.map((option) => (
-                  <button
-                    className={theme === option.id ? "is-selected" : ""}
-                    key={option.id}
-                    onClick={() => setTheme(option.id)}
-                    type="button"
-                  >
-                    <span className={`theme-swatch theme-swatch-${option.id}`} />
-                    <strong>{option.label}</strong>
-                    <small>{option.detail}</small>
-                  </button>
-                ))}
-              </div>
-            </section>
-            <section className="settings-section">
-              <h3>배경</h3>
-              <div className="wallpaper-options">
-                {wallpaperGallery.map((option) => (
-                  <button
-                    className={wallpaper === option.id ? "is-selected" : ""}
-                    key={option.id}
-                    onClick={() => setWallpaper(option.id)}
-                    type="button"
-                  >
-                    <span className="wallpaper-preview" style={getWallpaperPreviewStyle(option.id)} />
-                    <strong>{option.label}</strong>
-                    <small>{option.detail}</small>
-                  </button>
-                ))}
-              </div>
-            </section>
-          </>
-        )}
-        {section === "system" && (
-          <section className="settings-section">
-            <h3>창과 바탕 화면</h3>
-            <p>창 위치와 크기, 아이콘 위치를 기본값으로 되돌립니다.</p>
-            <div className="settings-action-row">
-              <button className="settings-action" onClick={resetWindowLayout} type="button">
-                <RotateCcw aria-hidden="true" size={16} />
-                창 배치 초기화
-              </button>
-              <button className="settings-action" onClick={resetDesktopIconLayout} type="button">
-                <RotateCcw aria-hidden="true" size={16} />
-                아이콘 배치 초기화
-              </button>
-            </div>
-          </section>
-        )}
-        {section === "sound" && (
-          <section className="settings-section">
-            <h3>시스템 소리</h3>
-            <label className="settings-toggle">
-              <input
-                checked={soundEnabled}
-                onChange={(event) => {
-                  const enabled = event.target.checked;
-                  if (!enabled) playSound("toggle");
-                  setSoundEnabled(enabled);
-                  if (enabled) window.setTimeout(() => playSound("success"), 0);
-                }}
-                type="checkbox"
-              />
-              <span>
-                <strong>시스템 소리 재생</strong>
-                <small>{soundEnabled ? "켜짐" : "꺼짐"}</small>
-              </span>
-            </label>
-          </section>
-        )}
       </section>
     </div>
   );
