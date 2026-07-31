@@ -581,8 +581,8 @@ const appCatalog: AppDefinition[] = [
     title: "파일 탐색기",
     subtitle: "가상 파일 탐색기",
     icon: Folder,
-    accent: "#62c1a0",
-    defaultSize: { width: 720, height: 520 },
+    accent: "#f3c64d",
+    defaultSize: { width: 900, height: 600 },
     component: FilesApp,
   },
   {
@@ -6646,6 +6646,7 @@ function FilesApp({
   });
   const [sortOpen, setSortOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
+  const [detailsPaneOpen, setDetailsPaneOpen] = useState(true);
   const [clipboardIds, setClipboardIds] = useState<string[]>([]);
   const [fileContextMenu, setFileContextMenu] = useState<FileContextMenuState | null>(null);
   const [pendingRenameId, setPendingRenameId] = useState<string | null>(null);
@@ -7040,6 +7041,7 @@ function FilesApp({
           onClick={() => changeLocation("documents")}
           type="button"
         >
+          <FileText aria-hidden="true" size={16} />
           문서
         </button>
         <button
@@ -7047,6 +7049,7 @@ function FilesApp({
           onClick={() => changeLocation("pictures")}
           type="button"
         >
+          <Paintbrush aria-hidden="true" size={16} />
           사진
         </button>
         <button
@@ -7054,6 +7057,7 @@ function FilesApp({
           onClick={() => changeLocation("games")}
           type="button"
         >
+          <Bomb aria-hidden="true" size={16} />
           게임
         </button>
         <div className="file-backup-actions">
@@ -7081,7 +7085,30 @@ function FilesApp({
         </div>
       </aside>
       <section className="file-main-pane">
+        <div className="file-tab-strip">
+          <div className="file-tab">
+            <Folder aria-hidden="true" size={15} />
+            <span>{locationLabel}</span>
+          </div>
+        </div>
         <div className="file-explorer-top">
+          <div className="file-address-row">
+            <div className="file-address">
+              <House aria-hidden="true" size={15} />
+              <span>홈</span>
+              <span aria-hidden="true">›</span>
+              <strong>{locationLabel}</strong>
+            </div>
+            <label className="file-search">
+              <Search aria-hidden="true" size={15} />
+              <input
+                aria-label="파일 검색"
+                onChange={(event) => setFileQuery(event.target.value)}
+                placeholder={`${locationLabel} 검색`}
+                value={fileQuery}
+              />
+            </label>
+          </div>
           <div className="file-command-strip">
             <div className="file-new-control" ref={newControlRef}>
               <button
@@ -7249,143 +7276,155 @@ function FilesApp({
                 <Grid2X2 aria-hidden="true" size={16} />
               </button>
             </div>
-          </div>
-          <div className="file-address-row">
-            <div className="file-address">
-              <House aria-hidden="true" size={15} />
-              <span>홈</span>
-              <span aria-hidden="true">›</span>
-              <strong>{locationLabel}</strong>
-            </div>
-            <label className="file-search">
-              <Search aria-hidden="true" size={15} />
-              <input
-                aria-label="파일 검색"
-                onChange={(event) => setFileQuery(event.target.value)}
-                placeholder={`${locationLabel} 검색`}
-                value={fileQuery}
-              />
-            </label>
+            <button
+              aria-label="세부 정보 창"
+              aria-pressed={detailsPaneOpen}
+              className="file-details-toggle"
+              onClick={() => setDetailsPaneOpen((current) => !current)}
+              title="세부 정보 창"
+              type="button"
+            >
+              <Info aria-hidden="true" size={16} />
+            </button>
           </div>
         </div>
-        <div
-          aria-label={`${locationLabel} 파일`}
-          aria-multiselectable="true"
-          className={`file-list file-view-${viewMode}`}
-          onKeyDown={handleFileListKeyDown}
-          onPointerDown={() => setFileContextMenu(null)}
-          ref={fileListRef}
-          role="listbox"
-          tabIndex={0}
-        >
-          {visibleFiles.map((file, index) => {
-            const FileIcon = file.icon;
-            return (
-              <div className="file-list-item" key={file.id}>
-                <button
-                  aria-selected={selectedIds.includes(file.id)}
-                  className={selectedIds.includes(file.id) ? "is-selected" : ""}
-                  data-file-id={file.id}
-                  onClick={(event) => selectFile(file.id, index, event)}
-                  onContextMenu={(event) => showFileContextMenu(event, file.id)}
-                  onDoubleClick={() => openVfsEntry(file.item)}
-                  role="option"
-                  type="button"
-                >
-                  <FileIcon aria-hidden="true" size={18} />
-                  <span>{file.name}</span>
-                  <small>{file.type}</small>
-                  <small>{file.modified}</small>
-                </button>
-                {renaming && selectedFile?.id === file.id && (
-                  <form className="file-inline-rename" onSubmit={submitRename}>
-                    <input
-                      aria-label="파일 이름"
-                      onBlur={() => {
-                        if (!cancelRenameRef.current) renameVfsEntry(file.id, draftName);
-                        cancelRenameRef.current = false;
-                        setRenaming(false);
-                      }}
-                      onChange={(event) => setDraftName(event.target.value)}
-                      onClick={(event) => event.stopPropagation()}
-                      onKeyDown={(event) => {
-                        if (event.key !== "Escape") return;
-                        event.preventDefault();
-                        event.stopPropagation();
-                        cancelRenameRef.current = true;
-                        setDraftName(file.name);
-                        setRenaming(false);
-                        focusFileList();
-                      }}
-                      onPointerDown={(event) => event.stopPropagation()}
-                      ref={renameInputRef}
-                      value={draftName}
-                    />
-                  </form>
-                )}
+        <div className={`file-workspace${detailsPaneOpen ? " has-details" : ""}`}>
+          <div className="file-list-surface">
+            {viewMode === "details" && (
+              <div aria-hidden="true" className="file-list-header">
+                <span>이름</span>
+                <span>수정한 날짜</span>
+                <span>유형</span>
+                <span>크기</span>
               </div>
-            );
-          })}
-          {visibleFiles.length === 0 && (
-            <div className="file-empty-state">
-              <Search aria-hidden="true" size={24} />
-              <strong>검색 결과 없음</strong>
-              <small>다른 이름, 확장자, 앱 이름으로 검색해보세요.</small>
-            </div>
-          )}
-        </div>
-        <div className="file-preview">
-          {selectedFile ? (
-            <>
-              <div className="file-preview-header">
-                <h3>{selectedFile.name}</h3>
-                <small>
-                  {selectedFile.type} · {selectedFile.modified}
-                </small>
-              </div>
-              <div className="file-association">
-                <AppIconTile
-                  accent={selectedFile.association.accent}
-                  icon={selectedFile.association.icon}
-                  size="small"
-                />
-                <span>
-                  연결 프로그램: <strong>{selectedFile.association.appTitle}</strong>
-                </span>
-              </div>
-              <p>{selectedFile.detail}</p>
-              {selectedFile.item.kind === "canvas" && selectedFile.item.content && (
-                <img
-                  alt={`${selectedFile.name} 미리보기`}
-                  className="file-image-preview"
-                  src={selectedFile.item.content}
-                />
+            )}
+            <div
+              aria-label={`${locationLabel} 파일`}
+              aria-multiselectable="true"
+              className={`file-list file-view-${viewMode}`}
+              onKeyDown={handleFileListKeyDown}
+              onPointerDown={() => setFileContextMenu(null)}
+              ref={fileListRef}
+              role="listbox"
+              tabIndex={0}
+            >
+              {visibleFiles.map((file, index) => {
+                const FileIcon = file.icon;
+                return (
+                  <div className="file-list-item" key={file.id}>
+                    <button
+                      aria-selected={selectedIds.includes(file.id)}
+                      className={selectedIds.includes(file.id) ? "is-selected" : ""}
+                      data-file-id={file.id}
+                      onClick={(event) => selectFile(file.id, index, event)}
+                      onContextMenu={(event) => showFileContextMenu(event, file.id)}
+                      onDoubleClick={() => openVfsEntry(file.item)}
+                      role="option"
+                      type="button"
+                    >
+                      <FileIcon aria-hidden="true" size={18} />
+                      <span>{file.name}</span>
+                      <small>{file.modified}</small>
+                      <small>{file.type}</small>
+                      <small>{formatVfsEntrySize(file.item)}</small>
+                    </button>
+                    {renaming && selectedFile?.id === file.id && (
+                      <form className="file-inline-rename" onSubmit={submitRename}>
+                        <input
+                          aria-label="파일 이름"
+                          onBlur={() => {
+                            if (!cancelRenameRef.current) renameVfsEntry(file.id, draftName);
+                            cancelRenameRef.current = false;
+                            setRenaming(false);
+                          }}
+                          onChange={(event) => setDraftName(event.target.value)}
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Escape") return;
+                            event.preventDefault();
+                            event.stopPropagation();
+                            cancelRenameRef.current = true;
+                            setDraftName(file.name);
+                            setRenaming(false);
+                            focusFileList();
+                          }}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          ref={renameInputRef}
+                          value={draftName}
+                        />
+                      </form>
+                    )}
+                  </div>
+                );
+              })}
+              {visibleFiles.length === 0 && (
+                <div className="file-empty-state">
+                  <Search aria-hidden="true" size={24} />
+                  <strong>검색 결과 없음</strong>
+                  <small>다른 이름, 확장자, 앱 이름으로 검색해보세요.</small>
+                </div>
               )}
-              <div className="file-actions">
-                <button onClick={() => openVfsEntry(selectedFile.item)} type="button">
-                  <ExternalLink aria-hidden="true" size={15} />
-                  열기
-                </button>
-                <button onClick={() => setRenaming(true)} type="button">
-                  <Pencil aria-hidden="true" size={15} />
-                  이름 변경
-                </button>
-                <button onClick={() => openFileProperties(selectedFile.id)} type="button">
-                  <Info aria-hidden="true" size={15} />
-                  속성
-                </button>
-                <button className="file-danger" onClick={deleteSelectedFiles} type="button">
-                  <Trash2 aria-hidden="true" size={15} />
-                  삭제
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <h3>{locationLabel}</h3>
-              <p>표시할 파일이 없습니다.</p>
-            </>
+            </div>
+          </div>
+          {detailsPaneOpen && (
+            <section aria-label="세부 정보" className="file-preview">
+              {selectedFile ? (
+                <>
+                  <div className="file-preview-header">
+                    <h3>{selectedFile.name}</h3>
+                    <small>
+                      {selectedFile.type} · {selectedFile.modified}
+                    </small>
+                  </div>
+                  <div className="file-association">
+                    <AppIconTile
+                      accent={selectedFile.association.accent}
+                      icon={selectedFile.association.icon}
+                      size="small"
+                    />
+                    <span>
+                      연결 프로그램: <strong>{selectedFile.association.appTitle}</strong>
+                    </span>
+                  </div>
+                  <p>{selectedFile.detail}</p>
+                  {selectedFile.item.kind === "canvas" && selectedFile.item.content && (
+                    <img
+                      alt={`${selectedFile.name} 미리보기`}
+                      className="file-image-preview"
+                      src={selectedFile.item.content}
+                    />
+                  )}
+                  <div className="file-actions">
+                    <button onClick={() => openVfsEntry(selectedFile.item)} type="button">
+                      <ExternalLink aria-hidden="true" size={15} />
+                      열기
+                    </button>
+                    <button onClick={() => setRenaming(true)} type="button">
+                      <Pencil aria-hidden="true" size={15} />
+                      이름 변경
+                    </button>
+                    <button onClick={() => openFileProperties(selectedFile.id)} type="button">
+                      <Info aria-hidden="true" size={15} />
+                      속성
+                    </button>
+                    <button className="file-danger" onClick={deleteSelectedFiles} type="button">
+                      <Trash2 aria-hidden="true" size={15} />
+                      삭제
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3>{locationLabel}</h3>
+                  <p>표시할 파일이 없습니다.</p>
+                </>
+              )}
+            </section>
           )}
+        </div>
+        <div className="file-statusbar">
+          <span>{visibleFiles.length}개 항목</span>
+          <span>{selectedIds.length > 0 ? `${selectedIds.length}개 선택됨` : "선택한 항목 없음"}</span>
         </div>
       </section>
       {fileContextMenu && contextFile && (
