@@ -133,7 +133,8 @@ npm run qa:smoke
 ## 프로젝트 구조
 
 ```text
-src/App.tsx           데스크톱 셸, 창 관리자, 기본 앱과 상태 로직
+src/App.tsx           데스크톱 셸, 창 관리자와 공통 상태 연결
+src/apps/             Edge, 계산기와 지뢰찾기 독립 앱 모듈
 src/styles.css        Windows 스타일 UI와 전환 효과
 src/ErrorBoundary.tsx 앱 오류 복구 화면
 public/brand/         PWA 아이콘과 공유 이미지
@@ -156,7 +157,7 @@ DEPLOYMENT.md         정적 호스팅과 배포 안내
 - [x] IndexedDB 가상 파일 시스템과 휴지통
 - [x] 기본 앱, 파일 연결과 브라우저 내 웹 실행
 - [x] PWA, 자동 테스트와 GitHub Pages 배포
-- [ ] 앱 모듈 분리와 장기 유지보수 구조 개선
+- [ ] 앱 모듈 분리와 장기 유지보수 구조 개선 (Edge·계산기·지뢰찾기 완료)
 
 ## 배포
 

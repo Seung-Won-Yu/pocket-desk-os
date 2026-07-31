@@ -2,6 +2,13 @@
 
 All notable changes to PocketDesk OS are documented here.
 
+## Unreleased
+
+### Changed
+
+- Extracted Microsoft Edge, Calculator, and Minesweeper into independent feature modules.
+- Reduced `App.tsx` to focus on the desktop shell, window management, and shared application state.
+
 ## 0.1.0
 
 Initial deploy-ready web desktop prototype.
