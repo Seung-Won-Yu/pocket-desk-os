@@ -405,6 +405,7 @@ const TASKBAR_PINNED_APPS_KEY = "pocket-desk-taskbar-pinned-v2";
 const SNAP_EDGE_SIZE = 24;
 const SNAP_GUTTER = 10;
 const WINDOW_EXIT_MOTION_MS = 170;
+const APPLE_BURST_URL = "https://seung-won-yu.github.io/apple-burst/";
 
 const minesDifficulties: MinesDifficulty[] = [
   { cols: 9, id: "easy", label: "초급", mines: 10, rows: 9 },
@@ -6052,7 +6053,7 @@ function BrowserHome({
   searchEngine: string;
 }) {
   const quickLinks = [
-    { label: "Example", url: "https://example.com" },
+    { label: "사과게임", url: APPLE_BURST_URL },
     { label: "MDN", url: "https://developer.mozilla.org" },
     { label: "Wikipedia", url: "https://wikipedia.org" },
   ];

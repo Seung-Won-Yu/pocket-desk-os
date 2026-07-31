@@ -147,6 +147,21 @@ async function runSmoke(baseUrl) {
       status: 200,
     });
   });
+  await page.route("https://seung-won-yu.github.io/apple-burst/**", (route) =>
+    route.fulfill({
+      body: [
+        "<!doctype html>",
+        '<html lang="ko">',
+        "<head><title>사과 팡팡</title></head>",
+        '<body data-screen="start">',
+        '<main><h1>사과 팡팡</h1><button type="button">선택한 모드로 게임 시작</button></main>',
+        "</body>",
+        "</html>",
+      ].join(""),
+      contentType: "text/html; charset=utf-8",
+      status: 200,
+    }),
+  );
 
   try {
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
@@ -633,6 +648,20 @@ async function runSmoke(baseUrl) {
     await edge.getByRole("button", { name: "웹 보기" }).click();
     await edgeFrame.waitFor({ state: "visible" });
     await edge.getByRole("link", { name: "새 탭에서 열기" }).waitFor({ state: "visible" });
+    await edge.getByRole("button", { name: "홈" }).click();
+    await edge.getByRole("button", { name: "사과게임" }).click();
+    await page.waitForFunction(() => {
+      const browser = document.querySelector('article[aria-label="Microsoft Edge"]');
+      const input = browser?.querySelector('input[aria-label="웹 주소 또는 검색어"]');
+      return input instanceof HTMLInputElement && input.value.includes("/apple-burst/");
+    });
+    const appleGameFrame = edge.locator("iframe");
+    await appleGameFrame.waitFor({ state: "visible" });
+    await appleGameFrame
+      .contentFrame()
+      .getByRole("button", { name: "선택한 모드로 게임 시작" })
+      .waitFor({ state: "visible" });
+    assert(page.context().pages().length === 1, "Apple game opened outside Microsoft Edge");
     await page.locator(".taskbar-app", { hasText: "Microsoft Edge" }).hover();
     const taskbarPreview = page.locator(".taskbar-preview-card");
     await taskbarPreview.waitFor({ state: "visible" });
