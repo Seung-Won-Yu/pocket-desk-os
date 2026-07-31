@@ -17,6 +17,7 @@ import {
   Folder,
   Globe2,
   Grid2X2,
+  HardDrive,
   History,
   House,
   Info,
@@ -255,7 +256,6 @@ type CalculatorButton = {
   label: string;
   value?: string;
 };
-type NoteViewMode = "edit" | "preview";
 type NoteSaveStatus = "saved" | "dirty" | "saving";
 type SoundEffectName = "click" | "close" | "minimize" | "open" | "success" | "toggle" | "unlock";
 type SoundStep = {
@@ -338,6 +338,8 @@ const CONTEXT_MENU_HEIGHT = 260;
 const WINDOW_SYSTEM_MENU_WIDTH = 214;
 const WINDOW_SYSTEM_MENU_HEIGHT = 220;
 const NOTE_KEY = "pocket-desk-note";
+const LEGACY_DEFAULT_NOTE_CONTENT =
+  "PocketDesk 메모장\n\n여기에 내용을 적고 저장하면 브라우저 로컬 저장소와 IndexedDB 파일 시스템에 남습니다.";
 const NOTE_SAVE_EVENT = "pocket-desk-save-note";
 const VFS_DB_NAME = "pocket-desk-vfs";
 const VFS_DB_VERSION = 1;
@@ -1161,7 +1163,7 @@ export default function App() {
     });
     playSound("success");
     notify({
-      detail: "복사본이 IndexedDB 파일 시스템에 저장되었습니다.",
+      detail: "선택한 항목의 복사본을 만들었습니다.",
       title: `${copyDescriptors.length}개 항목 붙여넣기 완료`,
       tone: "success",
     });
@@ -1288,7 +1290,7 @@ export default function App() {
       ),
     );
     notify({
-      detail: "바탕화면과 IndexedDB 파일 시스템에도 반영됩니다.",
+      detail: "새 이름으로 변경했습니다.",
       title: `${nextName} 이름 변경됨`,
       tone: "success",
     });
@@ -1493,7 +1495,7 @@ export default function App() {
     playSound("close");
     setDesktopItems((current) => current.filter((item) => item.id !== itemId));
     notify({
-      detail: "IndexedDB 파일 시스템에서 완전히 제거했습니다.",
+      detail: "이 항목을 완전히 삭제했습니다.",
       title: `${target.name} 영구 삭제됨`,
       tone: "success",
     });
@@ -1512,7 +1514,7 @@ export default function App() {
     playSound("close");
     setDesktopItems((current) => current.filter((item) => !item.trashed));
     notify({
-      detail: `${deletedCount}개 항목을 IndexedDB 파일 시스템에서 완전히 제거했습니다.`,
+      detail: `${deletedCount}개 항목을 완전히 삭제했습니다.`,
       title: "휴지통 비움",
       tone: "success",
     });
@@ -1533,7 +1535,7 @@ export default function App() {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     notify({
       detail: `${desktopItems.length}개 항목을 ZIP 백업으로 내보냈습니다.`,
-      title: "VFS ZIP 내보내기 완료",
+      title: "ZIP 내보내기 완료",
       tone: "success",
     });
   };
@@ -1549,8 +1551,8 @@ export default function App() {
     );
     setActiveCanvasOpenKey((current) => current + 1);
     notify({
-      detail: `${importedItems.length}개 항목을 IndexedDB 파일 시스템에 복원했습니다.`,
-      title: "VFS ZIP 가져오기 완료",
+      detail: `${importedItems.length}개 항목을 가져왔습니다.`,
+      title: "ZIP 가져오기 완료",
       tone: "success",
     });
   };
@@ -2466,8 +2468,17 @@ async function loadDesktopItemsFromVfs(): Promise<DesktopItem[]> {
   const database = await openVfsDatabase();
   const entries = await readAllVfsEntries(database);
   if (entries.length > 0) {
-    const migratedEntries = entries.filter((entry) => entry.id !== "vfs-pictures");
-    if (migratedEntries.length !== entries.length) {
+    const migratedEntries = entries
+      .filter((entry) => entry.id !== "vfs-pictures")
+      .map((entry) =>
+        entry.id === VFS_PRIMARY_NOTE_ID && entry.content === LEGACY_DEFAULT_NOTE_CONTENT
+          ? { ...entry, content: "" }
+          : entry,
+      );
+    const migrationChanged =
+      migratedEntries.length !== entries.length ||
+      migratedEntries.some((entry, index) => entry !== entries[index]);
+    if (migrationChanged) {
       await writeAllVfsEntries(database, migratedEntries);
     }
     database.close();
@@ -2723,9 +2734,9 @@ function crc32(data: Uint8Array) {
 
 function createDefaultVfsEntries(): DesktopItem[] {
   const now = Date.now();
+  const storedNoteContent = localStorage.getItem(NOTE_KEY);
   const noteContent =
-    localStorage.getItem(NOTE_KEY) ??
-    "PocketDesk 메모장\n\n여기에 내용을 적고 저장하면 브라우저 로컬 저장소와 IndexedDB 파일 시스템에 남습니다.";
+    storedNoteContent && storedNoteContent !== LEGACY_DEFAULT_NOTE_CONTENT ? storedNoteContent : "";
 
   return [
     {
@@ -4601,7 +4612,7 @@ function Taskbar({
   } | null>(null);
   const [taskbarMenu, setTaskbarMenu] = useState<{ appId: AppId; left: number } | null>(null);
   const taskbarMenuButtonRef = useRef<HTMLButtonElement>(null);
-  const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
+  const [trayPanel, setTrayPanel] = useState<"notifications" | "quick" | null>(null);
   const availableAppIds = new Set(availableApps.map((app) => app.id));
   const pinnedApps = pinnedAppIds
     .filter((appId) => availableAppIds.has(appId))
@@ -4633,15 +4644,15 @@ function Taskbar({
   };
 
   useEffect(() => {
-    if (!quickSettingsOpen) return;
+    if (!trayPanel) return;
 
     const closeOnOutsideClick = (event: MouseEvent) => {
       if (event.target instanceof Node && trayRef.current?.contains(event.target)) return;
-      setQuickSettingsOpen(false);
+      setTrayPanel(null);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setQuickSettingsOpen(false);
+        setTrayPanel(null);
       }
     };
 
@@ -4651,7 +4662,7 @@ function Taskbar({
       window.removeEventListener("mousedown", closeOnOutsideClick);
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [quickSettingsOpen]);
+  }, [trayPanel]);
 
   useEffect(() => {
     if (!taskbarMenu) return;
@@ -4754,28 +4765,43 @@ function Taskbar({
         </div>
       )}
       <div className="system-tray-wrap" ref={trayRef}>
-        <button
-          aria-expanded={quickSettingsOpen}
-          aria-label="시스템 트레이 열기"
-          className="system-tray"
-          onClick={() => setQuickSettingsOpen((value) => !value)}
-          type="button"
-        >
-          <Wifi aria-hidden="true" size={16} />
-          <Volume2 aria-hidden="true" size={16} />
-          <Clock />
-        </button>
-        {quickSettingsOpen && (
+        <div className="system-tray-buttons">
+          <button
+            aria-expanded={trayPanel === "quick"}
+            aria-label="빠른 설정 열기"
+            className="system-tray system-tray-status"
+            onClick={() => setTrayPanel((current) => (current === "quick" ? null : "quick"))}
+            type="button"
+          >
+            <Wifi aria-hidden="true" size={16} />
+            <Volume2 aria-hidden="true" size={16} />
+          </button>
+          <button
+            aria-expanded={trayPanel === "notifications"}
+            aria-label="알림 센터 열기"
+            className="system-tray system-tray-clock-button"
+            onClick={() =>
+              setTrayPanel((current) => (current === "notifications" ? null : "notifications"))
+            }
+            type="button"
+          >
+            <Clock />
+          </button>
+        </div>
+        {trayPanel === "quick" && (
           <QuickSettingsPanel
-            notifications={notificationHistory}
-            onClearNotifications={onClearNotifications}
-            onClose={() => setQuickSettingsOpen(false)}
             onOpenSettings={() => {
-              setQuickSettingsOpen(false);
+              setTrayPanel(null);
               onOpenApp("settings");
             }}
             onSetSoundEnabled={onSetSoundEnabled}
             soundEnabled={soundEnabled}
+          />
+        )}
+        {trayPanel === "notifications" && (
+          <NotificationCenterPanel
+            notifications={notificationHistory}
+            onClearNotifications={onClearNotifications}
           />
         )}
       </div>
@@ -4791,16 +4817,10 @@ function Taskbar({
 }
 
 function QuickSettingsPanel({
-  notifications,
-  onClearNotifications,
-  onClose,
   onOpenSettings,
   onSetSoundEnabled,
   soundEnabled,
 }: {
-  notifications: ToastMessage[];
-  onClearNotifications: () => void;
-  onClose: () => void;
   onOpenSettings: () => void;
   onSetSoundEnabled: (enabled: boolean) => void;
   soundEnabled: boolean;
@@ -4823,15 +4843,6 @@ function QuickSettingsPanel({
       className="quick-settings-panel"
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <div className="quick-settings-header">
-        <div>
-          <strong>빠른 설정</strong>
-          <small>PocketDesk 상태</small>
-        </div>
-        <button aria-label="빠른 설정 닫기" onClick={onClose} type="button">
-          <X aria-hidden="true" size={15} />
-        </button>
-      </div>
       <div className="quick-toggle-grid">
         <div className={`quick-status-tile ${online ? "is-enabled" : ""}`}>
           <Wifi aria-hidden="true" size={17} />
@@ -4849,50 +4860,73 @@ function QuickSettingsPanel({
           <small>{soundEnabled ? "켜짐" : "꺼짐"}</small>
         </button>
       </div>
-      <section className="notification-center" aria-label="알림">
-        <div className="notification-center-header">
-          <div>
-            <strong>알림</strong>
-            <small>{notifications.length}개</small>
-          </div>
-          {notifications.length > 0 && (
-            <button onClick={onClearNotifications} type="button">
-              모두 지우기
-            </button>
-          )}
-        </div>
-        {notifications.length > 0 ? (
-          <div className="notification-list">
-            {notifications.slice(0, 5).map((notification) => (
-              <article className={`notification-item notification-${notification.tone}`} key={notification.id}>
-                <span className="notification-icon">
-                  {notification.tone === "success" ? (
-                    <Check aria-hidden="true" size={14} />
-                  ) : (
-                    <Bell aria-hidden="true" size={14} />
-                  )}
-                </span>
-                <div>
-                  <strong>{notification.title}</strong>
-                  {notification.detail && <p>{notification.detail}</p>}
-                  <small>{formatNotificationTime(notification.createdAt)}</small>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="notification-empty">
-            <Bell aria-hidden="true" size={18} />
-            <span>최근 알림 없음</span>
-          </div>
-        )}
-      </section>
+      <label className="quick-volume">
+        <Volume2 aria-hidden="true" size={17} />
+        <input
+          aria-label="볼륨"
+          max="100"
+          min="0"
+          onChange={(event) => onSetSoundEnabled(Number(event.target.value) > 0)}
+          type="range"
+          value={soundEnabled ? 72 : 0}
+        />
+      </label>
       <div className="quick-actions">
-        <button onClick={onOpenSettings} type="button">
+        <button aria-label="설정" onClick={onOpenSettings} title="설정" type="button">
           <Settings aria-hidden="true" size={16} />
-          설정
         </button>
       </div>
+    </section>
+  );
+}
+
+function NotificationCenterPanel({
+  notifications,
+  onClearNotifications,
+}: {
+  notifications: ToastMessage[];
+  onClearNotifications: () => void;
+}) {
+  const now = new Date();
+
+  return (
+    <section
+      aria-label="알림 센터"
+      className="notification-center-panel"
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <header className="notification-center-header">
+        <div>
+          <strong>
+            {now.toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "long" })}
+          </strong>
+          <small>{notifications.length}개 알림</small>
+        </div>
+        {notifications.length > 0 && (
+          <button onClick={onClearNotifications} type="button">
+            모두 지우기
+          </button>
+        )}
+      </header>
+      {notifications.length > 0 ? (
+        <div className="notification-list">
+          {notifications.slice(0, 8).map((notification) => (
+            <article className={`notification-item notification-${notification.tone}`} key={notification.id}>
+              <BrandMark className="notification-app-mark" />
+              <div>
+                <strong>{notification.title}</strong>
+                {notification.detail && <p>{notification.detail}</p>}
+                <small>{formatNotificationTime(notification.createdAt)}</small>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="notification-empty">
+          <Bell aria-hidden="true" size={18} />
+          <span>새 알림 없음</span>
+        </div>
+      )}
     </section>
   );
 }
@@ -5277,7 +5311,6 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
   const [history, setHistory] = useState<BrowserHistoryEntry[]>(() => loadBrowserHistory());
   const [draft, setDraft] = useState("");
   const [url, setUrl] = useState<string | null>(null);
-  const [notice, setNotice] = useState("홈 화면에서 검색하거나 즐겨찾기와 방문 기록을 열어보세요.");
   const isBookmarked = Boolean(url && bookmarks.some((bookmark) => bookmark.url === url));
 
   useEffect(() => {
@@ -5308,13 +5341,11 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
   const openExternal = (value: string) => {
     const nextUrl = recordNavigation(value);
     window.open(nextUrl, "_blank", "noopener,noreferrer");
-    setNotice("새 브라우저 탭에서 열었습니다.");
   };
 
   useEffect(() => {
     if (!browserLaunchRequest) return;
     recordNavigation(browserLaunchRequest.value);
-    setNotice("주소를 준비했습니다. 새 탭 열기를 누르세요.");
   }, [browserLaunchRequest?.id]);
 
   const submit = (event: FormEvent) => {
@@ -5325,7 +5356,6 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
   const openHome = () => {
     setUrl(null);
     setDraft("");
-    setNotice("홈 화면에서 검색하거나 즐겨찾기와 방문 기록을 열어보세요.");
   };
 
   const toggleBookmark = () => {
@@ -5410,7 +5440,6 @@ function BrowserApp({ browserLaunchRequest, notify }: AppContentProps) {
           </span>
         )}
       </form>
-      <p className="browser-notice">{notice}</p>
       {url ? (
         <section className="browser-external-page">
           <Globe2 aria-hidden="true" size={42} />
@@ -5625,9 +5654,8 @@ function MinesweeperApp() {
           <span>최고</span>
           <strong>{bestRecord === null ? "--" : formatDuration(bestRecord)}</strong>
         </div>
-        <button onClick={reset} type="button">
+        <button aria-label="새 게임" onClick={reset} title="새 게임" type="button">
           <RotateCcw aria-hidden="true" size={16} />
-          새 게임
         </button>
       </div>
       <div
@@ -5654,7 +5682,6 @@ function MinesweeperApp() {
           </button>
         ))}
       </div>
-      <p className="hint">좌클릭으로 열고, 우클릭으로 깃발을 세웁니다.</p>
     </div>
   );
 }
@@ -6124,30 +6151,20 @@ function PaintApp({
 function NotepadApp({
   activeNoteId,
   noteEntries,
-  notify,
   openVfsEntry,
   saveNoteContent,
 }: AppContentProps) {
   const activeNote = noteEntries.find((item) => item.id === activeNoteId) ?? noteEntries[0];
   const [text, setText] = useState(activeNote?.content ?? "");
-  const [viewMode, setViewMode] = useState<NoteViewMode>("edit");
   const [saveStatus, setSaveStatus] = useState<NoteSaveStatus>("saved");
   const saveStatusLabel =
     saveStatus === "saved" ? "저장됨" : saveStatus === "saving" ? "저장 중" : "자동 저장 대기";
 
-  const save = (source: "manual" | "auto" = "manual") => {
+  const save = () => {
     if (!activeNote) return;
     setSaveStatus("saving");
     saveNoteContent(activeNote.id, text);
     window.setTimeout(() => setSaveStatus("saved"), 220);
-
-    if (source === "manual") {
-      notify({
-        detail: `IndexedDB 파일 시스템에 ${activeNote.name} 내용을 저장했습니다.`,
-        title: "메모 저장됨",
-        tone: "success",
-      });
-    }
   };
 
   useEffect(() => {
@@ -6164,7 +6181,7 @@ function NotepadApp({
 
     setSaveStatus("dirty");
     const timer = window.setTimeout(() => {
-      save("auto");
+      save();
     }, 850);
 
     return () => window.clearTimeout(timer);
@@ -6174,7 +6191,7 @@ function NotepadApp({
     const saveFromShortcut = () => save();
     window.addEventListener(NOTE_SAVE_EVENT, saveFromShortcut);
     return () => window.removeEventListener(NOTE_SAVE_EVENT, saveFromShortcut);
-  }, [activeNote?.id, text, notify]);
+  }, [activeNote?.id, text]);
 
   return (
     <div className="notepad-app app-fill">
@@ -6194,42 +6211,24 @@ function NotepadApp({
             </button>
           ))}
         </div>
-        <div className="note-mode-toggle" role="group" aria-label="메모 보기 모드">
-          {(["edit", "preview"] as NoteViewMode[]).map((mode) => (
-            <button
-              aria-pressed={viewMode === mode}
-              className={viewMode === mode ? "is-selected" : ""}
-              key={mode}
-              onClick={() => setViewMode(mode)}
-              type="button"
-            >
-              {mode === "edit" ? "작성" : "미리보기"}
-            </button>
-          ))}
-        </div>
         <button onClick={() => save()} type="button">
           <Save aria-hidden="true" size={16} />
           저장
         </button>
-        <span className={`saved-indicator note-save-${saveStatus}`}>
-          <Check aria-hidden="true" size={15} />
-          {saveStatusLabel}
-        </span>
       </div>
       <div className="note-workspace">
-        {viewMode === "edit" ? (
-          <textarea
-            aria-label="메모 내용"
-            className="note-editor"
-            disabled={!activeNote}
-            onChange={(event) => setText(event.target.value)}
-            placeholder="Markdown으로 메모를 작성하세요. 예: # 제목, - 목록, **강조**"
-            spellCheck
-            value={text}
-          />
-        ) : (
-          <MarkdownPreview text={text} />
-        )}
+        <textarea
+          aria-label="메모 내용"
+          className="note-editor"
+          disabled={!activeNote}
+          onChange={(event) => setText(event.target.value)}
+          spellCheck
+          value={text}
+        />
+      </div>
+      <div className="note-statusbar">
+        <span>{activeNote?.name ?? "새 텍스트 문서"}</span>
+        <span className={`note-save-${saveStatus}`}>{saveStatusLabel}</span>
       </div>
     </div>
   );
@@ -6464,14 +6463,12 @@ function getPocketDeskSoundSteps(effect: SoundEffectName): SoundStep[] {
   return effects[effect];
 }
 
-function ThisPcApp({
-  desktopItems,
-  openApp,
-  trashedItems,
-}: AppContentProps) {
+function ThisPcApp({ openApp }: AppContentProps) {
   const [storageEstimate, setStorageEstimate] = useState<StorageEstimate | null>(null);
-  const folderCount = desktopItems.filter((item) => item.kind === "folder").length;
-  const totalItems = desktopItems.length;
+  const [driveSelected, setDriveSelected] = useState(false);
+  const [driveView, setDriveView] = useState<"details" | "tiles">("tiles");
+  const [devicesExpanded, setDevicesExpanded] = useState(true);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -6490,117 +6487,157 @@ function ThisPcApp({
     };
   }, []);
 
-  const folders = [
-    {
-      detail: `${desktopItems.filter((item) => item.showOnDesktop).length}개 항목`,
-      icon: Monitor,
-      label: "바탕 화면",
-      open: () => openApp("files"),
-    },
-    {
-      detail: `${trashedItems.length}개 항목`,
-      icon: Trash2,
-      label: "휴지통",
-      open: () => openApp("recycle"),
-    },
-  ];
   const quota = storageEstimate?.quota ?? 0;
   const used = storageEstimate?.usage ?? 0;
   const free = Math.max(0, quota - used);
-  const drives = [
-    {
-      free:
-        quota > 0
-          ? `${formatStorageSize(free)} 사용 가능 / ${formatStorageSize(quota)}`
-          : storageEstimate === null
-            ? "용량 확인 중"
-            : "사용량 정보 없음",
-      icon: Monitor,
-      label: "로컬 디스크 (C:)",
-      usage: quota > 0 ? clamp((used / quota) * 100, 1, 100) : 0,
-    },
-  ];
+  const drive = {
+    free:
+      quota > 0
+        ? `${formatStorageSize(free)} 사용 가능 / ${formatStorageSize(quota)}`
+        : storageEstimate === null
+          ? "용량 확인 중"
+          : "사용량 정보 없음",
+    label: "로컬 디스크 (C:)",
+    usage: quota > 0 ? clamp((used / quota) * 100, 1, 100) : 0,
+  };
+  const driveVisible = normalizeSearchText(drive.label).includes(normalizeSearchText(query));
+  const openDrive = () => openApp("files");
 
   return (
     <div className="this-pc-app app-fill">
       <aside className="this-pc-sidebar">
-        <strong>Quick access</strong>
+        <button onClick={() => openApp("files")} type="button">
+          <House aria-hidden="true" size={16} />
+          홈
+        </button>
         <button onClick={() => openApp("files")} type="button">
           <Folder aria-hidden="true" size={16} />
-          Desktop
+          바탕 화면
+        </button>
+        <button aria-current="page" className="is-selected" type="button">
+          <Monitor aria-hidden="true" size={16} />
+          내 PC
         </button>
         <button onClick={() => openApp("recycle")} type="button">
           <Trash2 aria-hidden="true" size={16} />
           휴지통
         </button>
-        <button onClick={() => openApp("settings")} type="button">
-          <Settings aria-hidden="true" size={16} />
-          설정
-        </button>
       </aside>
       <section className="this-pc-main">
-        <div className="file-address this-pc-address">
-          <House aria-hidden="true" size={15} />
-          <span>홈</span>
-          <span aria-hidden="true">›</span>
-          <strong>내 PC</strong>
+        <div className="file-tab-strip">
+          <div className="file-tab">
+            <Monitor aria-hidden="true" size={15} />
+            <span>내 PC</span>
+          </div>
         </div>
-        <section className="this-pc-section">
-          <h2>폴더</h2>
-          <div className="this-pc-folder-grid">
-            {folders.map((folder) => {
-              const FolderIcon = folder.icon;
-              return (
-                <button key={folder.label} onClick={folder.open} type="button">
-                  <FolderIcon aria-hidden="true" size={24} />
-                  <span>
-                    <strong>{folder.label}</strong>
-                    <small>{folder.detail}</small>
-                  </span>
-                </button>
-              );
-            })}
+        <div className="this-pc-explorer-top">
+          <div className="file-address-row">
+            <div className="file-address this-pc-address">
+              <House aria-hidden="true" size={15} />
+              <span>홈</span>
+              <span aria-hidden="true">›</span>
+              <strong>내 PC</strong>
+            </div>
+            <label className="file-search">
+              <Search aria-hidden="true" size={15} />
+              <input
+                aria-label="내 PC 검색"
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="내 PC 검색"
+                value={query}
+              />
+            </label>
           </div>
-        </section>
-        <section className="this-pc-section">
-          <h2>장치 및 드라이브</h2>
-          <div className="this-pc-drive-list">
-            {drives.map((drive) => {
-              const DriveIcon = drive.icon;
-              return (
-                <button key={drive.label} onClick={() => openApp("files")} type="button">
-                  <DriveIcon aria-hidden="true" size={26} />
-                  <span>
-                    <strong>{drive.label}</strong>
-                    <span className="drive-meter" aria-hidden="true">
-                      <span style={{ width: `${drive.usage}%` }} />
+          <div className="file-command-strip this-pc-command-strip">
+            <button
+              className="file-command-action"
+              disabled={!driveSelected}
+              onClick={openDrive}
+              type="button"
+            >
+              <ExternalLink aria-hidden="true" size={15} />
+              <span>열기</span>
+            </button>
+            <div aria-label="보기 방식" className="file-view-control" role="group">
+              <button
+                aria-label="타일 보기"
+                aria-pressed={driveView === "tiles"}
+                onClick={() => setDriveView("tiles")}
+                title="타일 보기"
+                type="button"
+              >
+                <LayoutGrid aria-hidden="true" size={16} />
+              </button>
+              <button
+                aria-label="자세히 보기"
+                aria-pressed={driveView === "details"}
+                onClick={() => setDriveView("details")}
+                title="자세히 보기"
+                type="button"
+              >
+                <List aria-hidden="true" size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+        <div
+          className="this-pc-content"
+          onClick={() => setDriveSelected(false)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && driveSelected) openDrive();
+          }}
+          tabIndex={0}
+        >
+          <section className="this-pc-section">
+            <button
+              aria-expanded={devicesExpanded}
+              className="this-pc-section-heading"
+              onClick={(event) => {
+                event.stopPropagation();
+                setDevicesExpanded((current) => !current);
+              }}
+              type="button"
+            >
+              <ChevronRight aria-hidden="true" className={devicesExpanded ? "is-expanded" : ""} size={15} />
+              <span>장치 및 드라이브</span>
+              <small>{driveVisible ? 1 : 0}</small>
+            </button>
+            {devicesExpanded && (
+              <div className={`this-pc-drive-list is-${driveView}`}>
+                {driveVisible ? (
+                  <button
+                    aria-selected={driveSelected}
+                    className={driveSelected ? "is-selected" : ""}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setDriveSelected(true);
+                    }}
+                    onDoubleClick={openDrive}
+                    type="button"
+                  >
+                    <HardDrive aria-hidden="true" size={driveView === "tiles" ? 34 : 20} />
+                    <span>
+                      <strong>{drive.label}</strong>
+                      <span className="drive-meter" aria-hidden="true">
+                        <span style={{ width: `${drive.usage}%` }} />
+                      </span>
+                      <small>{drive.free}</small>
                     </span>
-                    <small>{drive.free}</small>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-        <section className="this-pc-section this-pc-system">
-          <h2>시스템</h2>
-          <div>
-            <span>
-              <strong>장치 이름</strong>
-              <small>PocketDesk-PC</small>
-            </span>
-            <span>
-              <strong>항목</strong>
-              <small>
-                사용 중 {totalItems}개 · 휴지통 {trashedItems.length}개
-              </small>
-            </span>
-            <span>
-              <strong>폴더</strong>
-              <small>{folderCount}개</small>
-            </span>
-          </div>
-        </section>
+                  </button>
+                ) : (
+                  <div className="this-pc-empty">
+                    <Search aria-hidden="true" size={20} />
+                    <span>검색 결과 없음</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        </div>
+        <div className="file-statusbar">
+          <span>{driveVisible ? "1개 항목" : "0개 항목"}</span>
+          <span>{driveSelected ? "1개 선택됨" : "선택한 항목 없음"}</span>
+        </div>
       </section>
     </div>
   );
@@ -7009,7 +7046,7 @@ function FilesApp({
     } catch (error) {
       notify({
         detail: error instanceof Error ? error.message : "ZIP 파일을 읽을 수 없습니다.",
-        title: "VFS ZIP 가져오기 실패",
+        title: "ZIP 가져오기 실패",
         tone: "info",
       });
     } finally {
@@ -7073,7 +7110,7 @@ function FilesApp({
           </button>
           <input
             accept=".zip,application/zip"
-            aria-label="VFS ZIP 파일 가져오기"
+            aria-label="ZIP 파일 가져오기"
             className="file-import-input"
             onChange={importSelectedZip}
             ref={importInputRef}
@@ -7550,11 +7587,13 @@ function FilesApp({
 
 function RecycleBinApp({
   emptyRecycleBin,
+  openApp,
   permanentlyDeleteVfsEntry,
   restoreVfsEntry,
   trashedItems,
 }: AppContentProps) {
   const [confirmAction, setConfirmAction] = useState<"delete" | "empty" | null>(null);
+  const [query, setQuery] = useState("");
   const files = useMemo(
     () =>
       trashedItems.map((item) => {
@@ -7572,99 +7611,143 @@ function RecycleBinApp({
       }),
     [trashedItems],
   );
+  const visibleFiles = useMemo(() => {
+    const normalizedQuery = normalizeSearchText(query);
+    if (!normalizedQuery) return files;
+    return files.filter((file) =>
+      [file.name, file.type, file.detail].map(normalizeSearchText).some((field) => field.includes(normalizedQuery)),
+    );
+  }, [files, query]);
   const [selected, setSelected] = useState(0);
-  const selectedFile = files[Math.min(selected, files.length - 1)];
+  const selectedFile = visibleFiles[Math.min(selected, visibleFiles.length - 1)];
 
   useEffect(() => {
-    setSelected((current) => (files.length === 0 ? 0 : clamp(current, 0, files.length - 1)));
-  }, [files.length]);
+    setSelected((current) =>
+      visibleFiles.length === 0 ? 0 : clamp(current, 0, visibleFiles.length - 1),
+    );
+  }, [visibleFiles.length]);
 
   return (
     <div className="recycle-app app-fill">
-      <div className="app-toolbar recycle-toolbar">
-        <div>
-          <strong>휴지통</strong>
-          <span>{files.length}개 항목</span>
-        </div>
-        <button disabled={files.length === 0} onClick={() => setConfirmAction("empty")} type="button">
-          <Trash2 aria-hidden="true" size={16} />
-          휴지통 비우기
+      <aside className="recycle-sidebar">
+        <button onClick={() => openApp("files")} type="button">
+          <House aria-hidden="true" size={16} />
+          홈
         </button>
-      </div>
-      <section>
-        <div className="file-list recycle-list" role="list">
-          {files.map((file, index) => {
-            const FileIcon = file.icon;
-            return (
-              <button
-                className={selected === index ? "is-selected" : ""}
-                key={file.id}
-                onClick={() => setSelected(index)}
-                type="button"
-              >
-                <FileIcon aria-hidden="true" size={18} />
-                <span>{file.name}</span>
-                <small>{file.type}</small>
-                <small>{file.removed}</small>
-              </button>
-            );
-          })}
-          {files.length === 0 && (
-            <div className="recycle-empty">
-              <Trash2 aria-hidden="true" size={30} />
-              <strong>휴지통이 비어 있습니다</strong>
-              <small>파일 탐색기에서 삭제한 항목은 여기서 복원하거나 영구 삭제할 수 있습니다.</small>
+        <button onClick={() => openApp("thispc")} type="button">
+          <Monitor aria-hidden="true" size={16} />
+          내 PC
+        </button>
+        <button aria-current="page" className="is-selected" type="button">
+          <Trash2 aria-hidden="true" size={16} />
+          휴지통
+        </button>
+      </aside>
+      <section className="recycle-main">
+        <div className="file-tab-strip">
+          <div className="file-tab">
+            <Trash2 aria-hidden="true" size={15} />
+            <span>휴지통</span>
+          </div>
+        </div>
+        <div className="recycle-explorer-top">
+          <div className="file-address-row">
+            <div className="file-address">
+              <House aria-hidden="true" size={15} />
+              <span>홈</span>
+              <span aria-hidden="true">›</span>
+              <strong>휴지통</strong>
+            </div>
+            <label className="file-search">
+              <Search aria-hidden="true" size={15} />
+              <input
+                aria-label="휴지통 검색"
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="휴지통 검색"
+                value={query}
+              />
+            </label>
+          </div>
+          <div className="file-command-strip recycle-command-strip">
+            <button
+              className="file-command-action"
+              disabled={!selectedFile}
+              onClick={() => selectedFile && restoreVfsEntry(selectedFile.id)}
+              type="button"
+            >
+              <RotateCcw aria-hidden="true" size={15} />
+              <span>복원</span>
+            </button>
+            <button
+              className="file-command-action file-danger"
+              disabled={!selectedFile}
+              onClick={() => setConfirmAction("delete")}
+              type="button"
+            >
+              <Trash2 aria-hidden="true" size={15} />
+              <span>영구 삭제</span>
+            </button>
+            <span aria-hidden="true" className="file-command-separator" />
+            <button
+              className="file-command-action"
+              disabled={files.length === 0}
+              onClick={() => setConfirmAction("empty")}
+              type="button"
+            >
+              <Trash2 aria-hidden="true" size={15} />
+              <span>휴지통 비우기</span>
+            </button>
+          </div>
+        </div>
+        <div className="recycle-workspace">
+          {visibleFiles.length > 0 && (
+            <div aria-hidden="true" className="recycle-list-header">
+              <span>이름</span>
+              <span>삭제한 날짜</span>
+              <span>유형</span>
+              <span>크기</span>
             </div>
           )}
-        </div>
-        <div className="file-preview">
-          {selectedFile ? (
-            <>
-              <div className="file-preview-header">
-                <h3>{selectedFile.name}</h3>
-                <small>
-                  {selectedFile.type} · 삭제 {selectedFile.removed}
-                </small>
-              </div>
-              <div className="file-association">
-                <AppIconTile
-                  accent={selectedFile.association.accent}
-                  icon={selectedFile.association.icon}
-                  size="small"
-                />
-                <span>
-                  연결 프로그램: <strong>{selectedFile.association.appTitle}</strong>
-                </span>
-              </div>
-              <p>{selectedFile.detail}</p>
-              {selectedFile.item.kind === "canvas" && selectedFile.item.content && (
-                <img
-                  alt={`${selectedFile.name} 미리보기`}
-                  className="file-image-preview"
-                  src={selectedFile.item.content}
-                />
-              )}
-              <div className="file-actions">
-                <button onClick={() => restoreVfsEntry(selectedFile.id)} type="button">
-                  <RotateCcw aria-hidden="true" size={15} />
-                  복원
-                </button>
+          <div className="file-list recycle-list file-view-details" role="list">
+            {visibleFiles.map((file, index) => {
+              const FileIcon = file.icon;
+              return (
                 <button
-                  className="file-danger"
-                  onClick={() => setConfirmAction("delete")}
+                  aria-selected={selected === index}
+                  className={selected === index ? "is-selected" : ""}
+                  key={file.id}
+                  onClick={() => setSelected(index)}
+                  onDoubleClick={() => restoreVfsEntry(file.id)}
                   type="button"
                 >
-                  <Trash2 aria-hidden="true" size={15} />
-                  영구 삭제
+                  <FileIcon aria-hidden="true" size={18} />
+                  <span>{file.name}</span>
+                  <small>{file.removed}</small>
+                  <small>{file.type}</small>
+                  <small>{formatVfsEntrySize(file.item)}</small>
                 </button>
+              );
+            })}
+            {visibleFiles.length === 0 && (
+              <div className="recycle-empty">
+                {files.length === 0 ? (
+                  <>
+                    <Trash2 aria-hidden="true" size={30} />
+                    <strong>휴지통이 비어 있습니다</strong>
+                  </>
+                ) : (
+                  <>
+                    <Search aria-hidden="true" size={24} />
+                    <strong>검색 결과 없음</strong>
+                  </>
+                )}
               </div>
-            </>
-          ) : (
-            <>
-              <h3>휴지통</h3>
-              <p>삭제된 파일이 없습니다.</p>
-            </>
-          )}
+            )}
+          </div>
+        </div>
+        <div className="file-statusbar">
+          <span>{visibleFiles.length}개 항목</span>
+          <span>{selectedFile ? "1개 선택됨" : "선택한 항목 없음"}</span>
         </div>
       </section>
       {confirmAction && (
@@ -7759,9 +7842,9 @@ function SettingsApp({
     "personalization",
   );
   const themes: Array<{ id: ThemeName; label: string; detail: string }> = [
-    { id: "lagoon", label: "Lagoon", detail: "청록, 감청, 노란 포인트" },
-    { id: "meadow", label: "Meadow", detail: "초록, 회색, 코랄 포인트" },
-    { id: "ember", label: "Ember", detail: "먹색, 적갈, 민트 포인트" },
+    { id: "lagoon", label: "Windows 기본", detail: "파란색 강조색" },
+    { id: "meadow", label: "녹색", detail: "녹색 강조색" },
+    { id: "ember", label: "회색", detail: "청록색 강조색" },
   ];
 
   return (
@@ -7801,13 +7884,9 @@ function SettingsApp({
       </aside>
       <section className="settings-content">
         <header className="settings-hero">
-          <div>
-            <p>설정</p>
-            <h2>
-              {section === "personalization" ? "개인 설정" : section === "system" ? "시스템" : "소리"}
-            </h2>
-          </div>
-          <span className="settings-device-pill">PocketDesk OS</span>
+          <h2>
+            {section === "personalization" ? "개인 설정" : section === "system" ? "시스템" : "소리"}
+          </h2>
         </header>
         {section === "personalization" && (
           <>

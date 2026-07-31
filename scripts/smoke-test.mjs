@@ -272,6 +272,17 @@ async function runSmoke(baseUrl) {
     const thisPcText = await thisPc.innerText();
     assert(thisPcText.includes("장치 및 드라이브"), "This PC did not show drive section");
     assert(thisPcText.includes("로컬 디스크 (C:)"), "This PC did not show local disk");
+    await thisPc.getByRole("button", { name: "자세히 보기" }).click();
+    assert(
+      await thisPc.locator(".this-pc-drive-list").evaluate((node) => node.classList.contains("is-details")),
+      "This PC details view did not apply",
+    );
+    const thisPcSearch = thisPc.getByLabel("내 PC 검색");
+    await thisPcSearch.fill("없는 드라이브");
+    assert((await thisPc.innerText()).includes("검색 결과 없음"), "This PC search did not filter drives");
+    await thisPcSearch.fill("");
+    await thisPc.getByRole("button", { name: /로컬 디스크/ }).click();
+    assert(await thisPc.getByRole("button", { name: "열기" }).isEnabled(), "This PC Open command stayed disabled");
     await thisPc.getByRole("button", { name: /바탕 화면/ }).click();
     await page.locator('article[aria-label="파일 탐색기"]').waitFor({ state: "visible" });
     const files = page.locator('article[aria-label="파일 탐색기"]');
@@ -403,16 +414,18 @@ async function runSmoke(baseUrl) {
     const taskbarPreview = page.locator(".taskbar-preview-card");
     await taskbarPreview.waitFor({ state: "visible" });
     assert((await taskbarPreview.innerText()).includes("웹 브라우저"), "Taskbar preview did not show browser");
-    await page.getByRole("button", { name: "시스템 트레이 열기" }).click();
+    await page.getByRole("button", { name: "알림 센터 열기" }).click();
+    const notificationCenter = page.locator(".notification-center-panel");
+    await notificationCenter.waitFor({ state: "visible" });
+    assert((await notificationCenter.locator(".notification-item").count()) > 0, "Notification center did not keep recent alerts");
+    await notificationCenter.getByRole("button", { name: "모두 지우기" }).click();
+    assert((await notificationCenter.innerText()).includes("새 알림 없음"), "Notification center did not clear alerts");
+    await page.getByRole("button", { name: "알림 센터 열기" }).click();
+    await page.getByRole("button", { name: "빠른 설정 열기" }).click();
     const quickSettings = page.locator(".quick-settings-panel");
     await quickSettings.waitFor({ state: "visible" });
     const quickSettingsText = await quickSettings.innerText();
-    assert(quickSettingsText.includes("빠른 설정"), "Quick settings panel did not open");
-    assert(quickSettingsText.includes("알림"), "Notification center section missing");
     assert(quickSettingsText.includes("네트워크"), "Network status missing");
-    assert((await quickSettings.locator(".notification-item").count()) > 0, "Notification center did not keep recent alerts");
-    await quickSettings.getByRole("button", { name: "모두 지우기" }).click();
-    assert((await quickSettings.innerText()).includes("최근 알림 없음"), "Notification center did not clear alerts");
     await quickSettings.getByRole("button", { name: "설정", exact: true }).click();
     const settings = page.locator('article[aria-label="설정"]');
     await settings.waitFor({ state: "visible" });
