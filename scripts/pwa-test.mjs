@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
+import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const host = "127.0.0.1";
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+const viteBin = fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url));
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -145,8 +146,8 @@ async function runPwaTest(baseUrl) {
 const port = await getFreePort();
 const baseUrl = `http://${host}:${port}/`;
 const preview = spawn(
-  npmCommand,
-  ["run", "preview", "--", "--host", host, "--port", String(port), "--strictPort"],
+  process.execPath,
+  [viteBin, "preview", "--host", host, "--port", String(port), "--strictPort"],
   { shell: false, stdio: ["ignore", "pipe", "pipe"] },
 );
 

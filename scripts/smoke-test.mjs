@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
+import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const host = "127.0.0.1";
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const smokeTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 180000);
+const viteBin = fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url));
 
 function assert(condition, message) {
   if (!condition) {
@@ -930,8 +931,8 @@ async function runSmoke(baseUrl) {
 const port = await getFreePort();
 const baseUrl = `http://${host}:${port}/`;
 const preview = spawn(
-  npmCommand,
-  ["run", "preview", "--", "--host", host, "--port", String(port), "--strictPort"],
+  process.execPath,
+  [viteBin, "preview", "--host", host, "--port", String(port), "--strictPort"],
   {
     shell: false,
     stdio: ["ignore", "pipe", "pipe"],
