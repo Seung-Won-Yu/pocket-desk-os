@@ -2,6 +2,21 @@ import type { LucideIcon } from "lucide-react";
 import { appMetadata } from "../apps/metadata";
 import type { AppId, DesktopItem, VfsEntryKind } from "../types";
 
+export const VFS_ROOT_ID = "desktop";
+export const VFS_DOCUMENTS_ID = "vfs-system-documents";
+export const VFS_PICTURES_ID = "vfs-system-pictures";
+export const VFS_GAMES_ID = "vfs-system-games";
+export const VFS_SYSTEM_FOLDER_IDS = [
+  VFS_DOCUMENTS_ID,
+  VFS_PICTURES_ID,
+  VFS_GAMES_ID,
+] as const;
+
+export type VfsPathSegment = {
+  id: string;
+  name: string;
+};
+
 export type VfsEntryAssociation = {
   accent: string;
   appId: AppId;
@@ -11,8 +26,10 @@ export type VfsEntryAssociation = {
   typeLabel: string;
 };
 
-export function getUniqueTextFileName(items: DesktopItem[]) {
-  const existingNames = new Set(items.map((item) => item.name));
+export function getUniqueTextFileName(items: DesktopItem[], parentId = VFS_DOCUMENTS_ID) {
+  const existingNames = new Set(
+    items.filter((item) => item.parentId === parentId && !item.trashed).map((item) => item.name),
+  );
   const baseName = "새 텍스트 문서.txt";
   if (!existingNames.has(baseName)) return baseName;
 
@@ -35,16 +52,36 @@ export function getUniqueVfsCopyName(existingNames: Set<string>, sourceName: str
   return `${base} - 복사본 ${Date.now()}${extension}`.slice(0, 48);
 }
 
+export function getUniqueVfsEntryName(
+  items: DesktopItem[],
+  parentId: string,
+  requestedName: string,
+) {
+  const existingNames = new Set(
+    items.filter((item) => item.parentId === parentId && !item.trashed).map((item) => item.name),
+  );
+  if (!existingNames.has(requestedName)) return requestedName;
+
+  const { base, extension } = getVfsNameParts(requestedName);
+  for (let index = 2; index < 1000; index += 1) {
+    const name = `${base} (${index})${extension}`;
+    if (!existingNames.has(name)) return name.slice(0, 48);
+  }
+  return `${base} ${Date.now()}${extension}`.slice(0, 48);
+}
+
 export function getDefaultVfsEntryName(kind: VfsEntryKind) {
   if (kind === "canvas") return "새 그림.canvas";
-  if (kind === "folder") return "가져온 폴더";
+  if (kind === "folder") return "새 폴더";
   if (kind === "game") return "게임.game";
   if (kind === "shortcut") return "바로 가기.url";
   return "새 메모.txt";
 }
 
-export function getUniqueCanvasItemName(items: DesktopItem[]) {
-  const existingNames = new Set(items.map((item) => item.name));
+export function getUniqueCanvasItemName(items: DesktopItem[], parentId = VFS_PICTURES_ID) {
+  const existingNames = new Set(
+    items.filter((item) => item.parentId === parentId && !item.trashed).map((item) => item.name),
+  );
 
   for (let index = 1; index < 1000; index += 1) {
     const name = `그림 ${index}.png`;
@@ -73,9 +110,19 @@ export function getVfsNameParts(name: string) {
 }
 
 export function getUniqueRenamedVfsItemName(items: DesktopItem[], itemId: string, name: string) {
-  const currentName = items.find((item) => item.id === itemId)?.name ?? "untitled";
+  const target = items.find((item) => item.id === itemId);
+  const currentName = target?.name ?? "untitled";
   const requestedName = normalizeVfsEntryName(name) || currentName;
-  const existingNames = new Set(items.filter((item) => item.id !== itemId).map((item) => item.name));
+  const existingNames = new Set(
+    items
+      .filter(
+        (item) =>
+          item.id !== itemId &&
+          !item.trashed &&
+          item.parentId === (target?.parentId ?? VFS_ROOT_ID),
+      )
+      .map((item) => item.name),
+  );
 
   if (!existingNames.has(requestedName)) {
     return requestedName;
@@ -106,34 +153,38 @@ export function getVfsEntryAssociation(item: DesktopItem): VfsEntryAssociation {
   const extension = getVfsEntryExtension(item);
 
   if (item.kind === "folder" || extension === "folder") {
-    return createVfsEntryAssociation("files", "folder", "Folder");
+    return createVfsEntryAssociation("files", "folder", "파일 폴더");
   }
 
   if (extension === "txt") {
-    return createVfsEntryAssociation("notepad", extension, "TXT document");
+    return createVfsEntryAssociation("notepad", extension, "텍스트 문서");
   }
 
   if (extension === "md" || extension === "markdown") {
-    return createVfsEntryAssociation("notepad", extension, "Markdown document");
+    return createVfsEntryAssociation("notepad", extension, "Markdown 문서");
   }
 
   if (extension === "png") {
-    return createVfsEntryAssociation("paint", extension, "PNG image");
+    return createVfsEntryAssociation("paint", extension, "PNG 이미지");
   }
 
   if (extension === "canvas") {
-    return createVfsEntryAssociation("paint", extension, "Canvas image");
+    return createVfsEntryAssociation("paint", extension, "캔버스 이미지");
   }
 
   if (extension === "url") {
-    return createVfsEntryAssociation("browser", extension, "URL shortcut");
+    return createVfsEntryAssociation("browser", extension, "인터넷 바로 가기");
   }
 
   if (extension === "game") {
-    return createVfsEntryAssociation(item.appId ?? "minesweeper", extension, "Game file");
+    return createVfsEntryAssociation(item.appId ?? "minesweeper", extension, "게임 파일");
   }
 
-  return createVfsEntryAssociation(getVfsEntryKindDefaultApp(item), extension, `${extension.toUpperCase()} file`);
+  return createVfsEntryAssociation(
+    getVfsEntryKindDefaultApp(item),
+    extension,
+    `${extension.toUpperCase()} 파일`,
+  );
 }
 
 export function createVfsEntryAssociation(appId: AppId, extension: string, typeLabel: string): VfsEntryAssociation {
@@ -161,7 +212,7 @@ export function getVfsEntryKindDefaultApp(item: DesktopItem): AppId {
 export function getVfsEntryDetail(item: DesktopItem) {
   const association = getVfsEntryAssociation(item);
   if (item.kind === "folder") {
-    return "가져온 ZIP에 포함된 폴더 항목입니다.";
+    return "파일과 하위 폴더를 보관하는 폴더입니다.";
   }
   if (item.kind === "note") {
     return item.content?.trim() || "저장된 메모 내용이 없습니다.";
@@ -189,4 +240,97 @@ export function formatDesktopItemTime(createdAt: number) {
   if (minutes < 1) return "방금 전";
   if (minutes < 60) return `${minutes}분 전`;
   return "오늘";
+}
+
+export function isVfsSystemFolderId(itemId: string) {
+  return VFS_SYSTEM_FOLDER_IDS.includes(itemId as (typeof VFS_SYSTEM_FOLDER_IDS)[number]);
+}
+
+export function getVfsFolder(items: DesktopItem[], folderId: string) {
+  if (folderId === VFS_ROOT_ID) return null;
+  return items.find((item) => item.id === folderId && item.kind === "folder" && !item.trashed);
+}
+
+export function getVfsFolderPath(items: DesktopItem[], folderId: string): VfsPathSegment[] {
+  const path: VfsPathSegment[] = [{ id: VFS_ROOT_ID, name: "바탕 화면" }];
+  if (folderId === VFS_ROOT_ID) return path;
+
+  const visited = new Set<string>();
+  const parents: VfsPathSegment[] = [];
+  let currentId = folderId;
+
+  while (currentId !== VFS_ROOT_ID && !visited.has(currentId)) {
+    visited.add(currentId);
+    const folder = getVfsFolder(items, currentId);
+    if (!folder) return path;
+    parents.unshift({ id: folder.id, name: folder.name });
+    currentId = folder.parentId;
+  }
+
+  return currentId === VFS_ROOT_ID ? [...path, ...parents] : path;
+}
+
+export function getVfsDescendantIds(items: DesktopItem[], rootIds: string[]) {
+  const descendants = new Set(rootIds);
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    for (const item of items) {
+      if (!descendants.has(item.id) && descendants.has(item.parentId)) {
+        descendants.add(item.id);
+        changed = true;
+      }
+    }
+  }
+
+  return descendants;
+}
+
+export function getVfsTopLevelIds(items: DesktopItem[], itemIds: string[]) {
+  const selected = new Set(itemIds);
+  return itemIds.filter((itemId, index) => {
+    if (itemIds.indexOf(itemId) !== index) return false;
+    let parentId = items.find((item) => item.id === itemId)?.parentId;
+    const visited = new Set<string>();
+    while (parentId && parentId !== VFS_ROOT_ID && !visited.has(parentId)) {
+      if (selected.has(parentId)) return false;
+      visited.add(parentId);
+      parentId = items.find((item) => item.id === parentId)?.parentId;
+    }
+    return true;
+  });
+}
+
+export function canMoveVfsEntries(
+  items: DesktopItem[],
+  itemIds: string[],
+  targetParentId: string,
+) {
+  const targetIsFolder =
+    targetParentId === VFS_ROOT_ID || Boolean(getVfsFolder(items, targetParentId));
+  if (!targetIsFolder) return false;
+
+  const roots = getVfsTopLevelIds(items, itemIds);
+  if (roots.length === 0 || roots.some(isVfsSystemFolderId)) return false;
+  const movedTree = getVfsDescendantIds(items, roots);
+  return !movedTree.has(targetParentId);
+}
+
+export function createVfsSystemFolders(now = Date.now()): DesktopItem[] {
+  return [
+    [VFS_DOCUMENTS_ID, "문서"],
+    [VFS_PICTURES_ID, "사진"],
+    [VFS_GAMES_ID, "게임"],
+  ].map(([id, name], index) => ({
+    createdAt: now - (10 - index) * 1000,
+    id,
+    kind: "folder" as const,
+    name,
+    parentId: VFS_ROOT_ID,
+    showOnDesktop: false,
+    updatedAt: now - (10 - index) * 1000,
+    x: 0,
+    y: 0,
+  }));
 }

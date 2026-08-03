@@ -156,7 +156,7 @@ export default function RecycleBinApp({
                   <span>{file.name}</span>
                   <small>{file.removed}</small>
                   <small>{file.type}</small>
-                  <small>{formatVfsEntrySize(file.item)}</small>
+                  <small>{file.item.kind === "folder" ? "" : formatVfsEntrySize(file.item)}</small>
                 </button>
               );
             })}

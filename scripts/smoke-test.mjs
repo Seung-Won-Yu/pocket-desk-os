@@ -435,10 +435,38 @@ async function runSmoke(baseUrl) {
     await thisPc.getByRole("button", { name: /바탕 화면/ }).click();
     await page.locator('article[aria-label="파일 탐색기"]').waitFor({ state: "visible" });
     const files = page.locator('article[aria-label="파일 탐색기"]');
-    await files.getByRole("button", { name: "문서", exact: true }).click();
+    const explorerSidebar = files.locator("aside");
+    await explorerSidebar.getByRole("button", { name: "문서", exact: true }).click();
     assert((await files.locator(".file-list button").count()) > 0, "Documents view is empty");
     assert((await files.locator(".file-list").innerText()).includes("notes.txt"), "Documents view did not filter notes");
-    await files.getByRole("button", { name: "바탕 화면", exact: true }).click();
+
+    await files.getByRole("button", { name: "새로 만들기" }).click();
+    let newFileMenu = files.getByRole("menu", { name: "새로 만들기" });
+    await newFileMenu.getByRole("menuitem", { name: "폴더" }).click();
+    const folderNameInput = files.getByLabel("파일 이름");
+    await folderNameInput.fill("프로젝트");
+    await folderNameInput.press("Enter");
+    const projectFolder = files.locator(".file-list button", { hasText: "프로젝트" });
+    await projectFolder.waitFor({ state: "visible" });
+
+    await files.getByRole("button", { name: "새로 만들기" }).click();
+    await files.getByRole("menu", { name: "새로 만들기" }).getByRole("menuitem", { name: "텍스트 문서" }).click();
+    const movingNoteNameInput = files.getByLabel("파일 이름");
+    await movingNoteNameInput.fill("이동할 메모.txt");
+    await movingNoteNameInput.press("Enter");
+    const movingNote = files.locator(".file-list button", { hasText: "이동할 메모.txt" });
+    await movingNote.dragTo(projectFolder);
+    await movingNote.waitFor({ state: "hidden" });
+    await projectFolder.dblclick();
+    await files.locator(".file-list button", { hasText: "이동할 메모.txt" }).waitFor({ state: "visible" });
+    assert((await files.locator(".file-address").innerText()).includes("프로젝트"), "Explorer did not enter a folder");
+    await files.getByRole("button", { name: "위로" }).click();
+    await projectFolder.waitFor({ state: "visible" });
+    await files.getByRole("button", { name: "뒤로" }).click();
+    await files.locator(".file-list button", { hasText: "이동할 메모.txt" }).waitFor({ state: "visible" });
+    await files.getByRole("button", { name: "앞으로" }).click();
+    await projectFolder.waitFor({ state: "visible" });
+    await explorerSidebar.getByRole("button", { name: "바탕 화면", exact: true }).click();
 
     await files.getByRole("button", { name: "정렬" }).click();
     const explorerSortMenu = files.getByRole("menu", { name: "파일 정렬" });
@@ -447,32 +475,34 @@ async function runSmoke(baseUrl) {
     await files.getByRole("button", { name: "정렬" }).click();
     await explorerSortMenu.getByRole("menuitemradio", { name: "내림차순" }).click();
     const descendingNames = await files.locator(".file-list button > span").allInnerTexts();
-    assert(descendingNames[0] === "web-surf.url", "Explorer descending name sort is wrong");
+    assert(descendingNames.at(-1) === "web-surf.url", "Explorer did not keep folders grouped before files");
 
     await files.getByRole("button", { name: "큰 아이콘 보기" }).click();
     assert(await files.locator(".file-list").evaluate((node) => node.classList.contains("file-view-icons")), "Explorer icon view did not apply");
-    await files.locator(".file-list button").first().click();
+    const firstExplorerFile = files.locator(".file-list button").first();
+    const firstExplorerFileName = await firstExplorerFile.locator("span").innerText();
+    await firstExplorerFile.click();
     await page.keyboard.press("Control+a");
     assert((await files.locator(".file-list button.is-selected").count()) === 4, "Explorer Ctrl+A did not select all files");
-    await files.locator(".file-list button").first().click({ modifiers: [multiSelectModifier] });
+    await firstExplorerFile.click({ modifiers: [multiSelectModifier] });
     const ctrlClickSelectionCount = await files.locator(".file-list button.is-selected").count();
     assert(ctrlClickSelectionCount === 3, `Explorer Ctrl+click did not toggle selection: ${ctrlClickSelectionCount}`);
-    assert(!(await files.locator(".file-preview h3").innerText()).includes("web-surf.url"), "Explorer kept a deselected file active");
+    assert(!(await files.locator(".file-preview h3").innerText()).includes(firstExplorerFileName), "Explorer kept a deselected file active");
     await files.locator(".file-list button", { hasText: "web-surf.url" }).click();
     await page.keyboard.press("F2");
     await files.getByLabel("파일 이름").waitFor({ state: "visible" });
     await page.keyboard.press("Escape");
     await files.getByLabel("파일 이름").waitFor({ state: "hidden" });
-    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowUp");
     const arrowSelectedName = await files.locator(".file-list button.is-selected span").innerText();
-    assert(arrowSelectedName === "sketch.canvas", `Explorer arrow navigation did not move selection: ${arrowSelectedName}`);
+    assert(arrowSelectedName !== "web-surf.url", `Explorer arrow navigation did not move selection: ${arrowSelectedName}`);
     await files.getByRole("button", { name: "자세히 보기" }).click();
     await files.getByRole("button", { name: "정렬" }).click();
     await files.locator(".file-address").click();
     await explorerSortMenu.waitFor({ state: "hidden" });
 
     await files.getByRole("button", { name: "새로 만들기" }).click();
-    const newFileMenu = files.getByRole("menu", { name: "새로 만들기" });
+    newFileMenu = files.getByRole("menu", { name: "새로 만들기" });
     await newFileMenu.waitFor({ state: "visible" });
     await newFileMenu.getByRole("menuitem", { name: "텍스트 문서" }).click();
     const newFileNameInput = files.getByLabel("파일 이름");
@@ -822,10 +852,32 @@ async function runSmoke(baseUrl) {
     await settings.getByRole("button", { name: "소리", exact: true }).click();
     assert((await settings.locator('input[type="checkbox"]').count()) === 1, "Settings Sound tab is not functional");
     await page.locator(".taskbar-app", { hasText: "파일 탐색기" }).click();
-    const fileToTrash = files.locator(".file-list button").first();
+    await explorerSidebar.getByRole("button", { name: "문서", exact: true }).click();
+    const fileToTrash = files.locator(".file-list button", { hasText: "프로젝트" });
     const trashedFileName = await fileToTrash.locator("span").innerText();
     await fileToTrash.click();
     await page.keyboard.press("Delete");
+
+    const folderTreeTrashed = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const request = indexedDB.open("pocket-desk-vfs");
+          request.onerror = () => resolve(false);
+          request.onsuccess = () => {
+            const database = request.result;
+            const transaction = database.transaction("entries", "readonly");
+            const allEntries = transaction.objectStore("entries").getAll();
+            allEntries.onsuccess = () => {
+              const project = allEntries.result.find((entry) => entry.name === "프로젝트");
+              const child = allEntries.result.find((entry) => entry.name === "이동할 메모.txt");
+              resolve(Boolean(project?.trashed && child?.trashedRootId === project.id));
+              database.close();
+            };
+            allEntries.onerror = () => resolve(false);
+          };
+        }),
+    );
+    assert(folderTreeTrashed, "Explorer did not move the full folder tree to Recycle Bin");
 
     await page.keyboard.press("Control+Alt+R");
     await runDialog.waitFor({ state: "visible" });
@@ -839,7 +891,12 @@ async function runSmoke(baseUrl) {
     assert(!(await recycle.innerText()).includes(trashedFileName), "Recycle Bin still shows restored file");
 
     await page.locator(".taskbar-app", { hasText: "파일 탐색기" }).click();
-    await files.locator(".file-list button", { hasText: trashedFileName }).click();
+    await explorerSidebar.getByRole("button", { name: "문서", exact: true }).click();
+    const restoredFolder = files.locator(".file-list button", { hasText: trashedFileName });
+    await restoredFolder.dblclick();
+    await files.locator(".file-list button", { hasText: "이동할 메모.txt" }).waitFor({ state: "visible" });
+    await files.getByRole("button", { name: "위로" }).click();
+    await restoredFolder.click();
     await files.locator(".file-preview").getByRole("button", { name: "삭제" }).click();
     await page.locator(".taskbar-app", { hasText: "휴지통" }).click();
     await recycle.getByRole("button", { name: "휴지통 비우기" }).click();

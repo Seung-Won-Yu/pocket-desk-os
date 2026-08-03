@@ -1,7 +1,11 @@
 import {
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
   ArrowUpDown,
   Bomb,
   Check,
+  ChevronRight,
   ClipboardPaste,
   Copy,
   Download,
@@ -48,6 +52,13 @@ import {
   formatDesktopItemTime,
   getVfsEntryAssociation,
   getVfsEntryDetail,
+  getVfsFolderPath,
+  getVfsTopLevelIds,
+  isVfsSystemFolderId,
+  VFS_DOCUMENTS_ID,
+  VFS_GAMES_ID,
+  VFS_PICTURES_ID,
+  VFS_ROOT_ID,
 } from "../vfs/model";
 
 type FileSortDirection = "asc" | "desc";
@@ -60,13 +71,21 @@ type FileContextMenuState = {
   y: number;
 };
 
+export type FilesLaunchRequest = {
+  folderId: string;
+  id: string;
+};
+
 type FilesAppProps = {
-  createVfsTextFile: () => DesktopItem;
+  createVfsFolder: (parentId?: string) => DesktopItem;
+  createVfsTextFile: (parentId?: string) => DesktopItem;
   deleteVfsEntry: (itemId: string) => void;
   desktopItems: DesktopItem[];
   duplicateVfsEntries: (itemIds: string[], options?: VfsDuplicateOptions) => string[];
   exportVfsZip: () => void;
+  filesLaunchRequest: FilesLaunchRequest | null;
   importVfsZip: (file: File) => Promise<void>;
+  moveVfsEntries: (itemIds: string[], parentId: string) => boolean;
   notify: (toast: ToastInput) => void;
   openApp: (appId: AppId) => void;
   openVfsEntry: (item: DesktopItem) => void;
@@ -79,12 +98,15 @@ const FILE_EXPLORER_SORT_DIRECTION_KEY = "pocket-desk-explorer-sort-direction-v1
 const FILE_EXPLORER_VIEW_KEY = "pocket-desk-explorer-view-v1";
 
 export default function FilesApp({
+  createVfsFolder,
   createVfsTextFile,
   deleteVfsEntry,
   desktopItems,
   duplicateVfsEntries,
   exportVfsZip,
+  filesLaunchRequest,
   importVfsZip,
+  moveVfsEntries,
   notify,
   openApp,
   openVfsEntry,
@@ -99,9 +121,8 @@ export default function FilesApp({
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const selectionAnchorRef = useRef<string | null>(null);
   const sortControlRef = useRef<HTMLDivElement | null>(null);
-  const [location, setLocation] = useState<"desktop" | "documents" | "games" | "pictures">(
-    "desktop",
-  );
+  const [navigationHistory, setNavigationHistory] = useState([VFS_ROOT_ID]);
+  const [navigationIndex, setNavigationIndex] = useState(0);
   const [sortKey, setSortKey] = useState<FileSortKey>(() => {
     const stored = localStorage.getItem(FILE_EXPLORER_SORT_KEY);
     return stored === "type" || stored === "modified" ? stored : "name";
@@ -120,18 +141,18 @@ export default function FilesApp({
   const [fileContextMenu, setFileContextMenu] = useState<FileContextMenuState | null>(null);
   const [pendingRenameId, setPendingRenameId] = useState<string | null>(null);
   const [propertiesFileId, setPropertiesFileId] = useState<string | null>(null);
-  const locationLabel = {
-    desktop: "바탕 화면",
-    documents: "문서",
-    games: "게임",
-    pictures: "사진",
-  }[location];
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
+  const currentFolderId = navigationHistory[navigationIndex] ?? VFS_ROOT_ID;
+  const folderPath = useMemo(
+    () => getVfsFolderPath(desktopItems, currentFolderId),
+    [currentFolderId, desktopItems],
+  );
+  const locationLabel = folderPath[folderPath.length - 1]?.name ?? "바탕 화면";
   const locationItems = useMemo(() => {
-    if (location === "documents") return desktopItems.filter((item) => item.kind === "note");
-    if (location === "pictures") return desktopItems.filter((item) => item.kind === "canvas");
-    if (location === "games") return desktopItems.filter((item) => item.kind === "game");
-    return desktopItems;
-  }, [desktopItems, location]);
+    return desktopItems.filter(
+      (item) => !item.trashed && item.parentId === currentFolderId,
+    );
+  }, [currentFolderId, desktopItems]);
   const files = useMemo(
     () =>
       locationItems.map((item) => {
@@ -165,6 +186,8 @@ export default function FilesApp({
   const visibleFiles = useMemo(() => {
     const direction = sortDirection === "asc" ? 1 : -1;
     return [...filteredFiles].sort((first, second) => {
+      if (first.item.kind === "folder" && second.item.kind !== "folder") return -1;
+      if (first.item.kind !== "folder" && second.item.kind === "folder") return 1;
       let order = 0;
       if (sortKey === "modified") order = first.updatedAt - second.updatedAt;
       if (sortKey === "type") {
@@ -181,6 +204,7 @@ export default function FilesApp({
     visibleFiles.find((file) => selectedIds.includes(file.id));
   const propertiesFile = files.find((file) => file.id === propertiesFileId);
   const contextFile = files.find((file) => file.id === fileContextMenu?.fileId);
+  const selectedHasSystemFolder = selectedIds.some(isVfsSystemFolderId);
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState(selectedFile?.name ?? "");
   const [importing, setImporting] = useState(false);
@@ -192,6 +216,19 @@ export default function FilesApp({
       current && visibleIds.has(current) ? current : (visibleFiles[0]?.id ?? null),
     );
   }, [visibleFiles]);
+
+  useEffect(() => {
+    if (
+      currentFolderId === VFS_ROOT_ID ||
+      desktopItems.some(
+        (item) => item.id === currentFolderId && item.kind === "folder" && !item.trashed,
+      )
+    ) {
+      return;
+    }
+    setNavigationHistory((current) => [...current.slice(0, navigationIndex + 1), VFS_ROOT_ID]);
+    setNavigationIndex((current) => current + 1);
+  }, [currentFolderId, desktopItems, navigationIndex]);
 
   useEffect(() => {
     localStorage.setItem(FILE_EXPLORER_SORT_KEY, sortKey);
@@ -288,23 +325,81 @@ export default function FilesApp({
     window.requestAnimationFrame(() => fileListRef.current?.focus());
   };
 
+  const resetTransientState = () => {
+    setSelectedIds([]);
+    setActiveFileId(null);
+    setFileQuery("");
+    setRenaming(false);
+    setNewOpen(false);
+    setSortOpen(false);
+    setFileContextMenu(null);
+    setPropertiesFileId(null);
+    selectionAnchorRef.current = null;
+  };
+
+  const navigateToFolder = (folderId: string) => {
+    if (
+      folderId !== VFS_ROOT_ID &&
+      !desktopItems.some(
+        (item) => item.id === folderId && item.kind === "folder" && !item.trashed,
+      )
+    ) {
+      return;
+    }
+    if (folderId === currentFolderId) return;
+    setNavigationHistory((current) => [
+      ...current.slice(0, navigationIndex + 1),
+      folderId,
+    ]);
+    setNavigationIndex((current) => current + 1);
+    resetTransientState();
+  };
+
+  const visitHistory = (nextIndex: number) => {
+    if (nextIndex < 0 || nextIndex >= navigationHistory.length) return;
+    setNavigationIndex(nextIndex);
+    resetTransientState();
+  };
+
+  const navigateUp = () => {
+    const parent = folderPath[folderPath.length - 2];
+    if (parent) navigateToFolder(parent.id);
+  };
+
+  const openFile = (item: DesktopItem) => {
+    if (item.kind === "folder") {
+      navigateToFolder(item.id);
+      return;
+    }
+    openVfsEntry(item);
+  };
+
+  useEffect(() => {
+    if (!filesLaunchRequest) return;
+    navigateToFolder(filesLaunchRequest.folderId);
+  }, [filesLaunchRequest?.id]);
+
   const getSelectedCommandIds = () =>
-    selectedIds.length > 0 ? selectedIds : selectedFile ? [selectedFile.id] : [];
+    getVfsTopLevelIds(
+      desktopItems,
+      selectedIds.length > 0 ? selectedIds : selectedFile ? [selectedFile.id] : [],
+    );
 
   const copySelectedFiles = (itemIds = getSelectedCommandIds()) => {
-    if (itemIds.length === 0) return;
-    setClipboardIds(itemIds);
+    const copyableIds = itemIds.filter((itemId) => !isVfsSystemFolderId(itemId));
+    if (copyableIds.length === 0) return;
+    setClipboardIds(copyableIds);
     setFileContextMenu(null);
     notify({
       detail: "이 파일 탐색기 안에서 Ctrl+V로 붙여넣을 수 있습니다.",
-      title: `${itemIds.length}개 항목 복사됨`,
+      title: `${copyableIds.length}개 항목 복사됨`,
       tone: "success",
     });
   };
 
   const pasteCopiedFiles = () => {
     if (clipboardIds.length === 0) return;
-    const copiedIds = duplicateVfsEntries(clipboardIds);
+    const copiedIds = duplicateVfsEntries(clipboardIds, { parentId: currentFolderId });
     if (copiedIds.length === 0) return;
     setSelectedIds(copiedIds);
     setActiveFileId(copiedIds[0] ?? null);
@@ -314,7 +409,17 @@ export default function FilesApp({
   };
 
   const createTextFile = () => {
-    const item = createVfsTextFile();
+    const item = createVfsTextFile(currentFolderId);
+    setSelectedIds([item.id]);
+    setActiveFileId(item.id);
+    setPendingRenameId(item.id);
+    selectionAnchorRef.current = item.id;
+    setNewOpen(false);
+    setFileContextMenu(null);
+  };
+
+  const createFolder = () => {
+    const item = createVfsFolder(currentFolderId);
     setSelectedIds([item.id]);
     setActiveFileId(item.id);
     setPendingRenameId(item.id);
@@ -349,7 +454,7 @@ export default function FilesApp({
 
   const submitRename = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selectedFile) return;
+    if (!selectedFile || isVfsSystemFolderId(selectedFile.id)) return;
     cancelRenameRef.current = false;
     renameVfsEntry(selectedFile.id, draftName);
     setRenaming(false);
@@ -357,7 +462,7 @@ export default function FilesApp({
   };
 
   const deleteSelectedFiles = () => {
-    const ids = selectedIds.length > 0 ? selectedIds : selectedFile ? [selectedFile.id] : [];
+    const ids = getSelectedCommandIds().filter((itemId) => !isVfsSystemFolderId(itemId));
     if (ids.length === 0) return;
     ids.forEach(deleteVfsEntry);
     setRenaming(false);
@@ -368,16 +473,38 @@ export default function FilesApp({
     selectionAnchorRef.current = null;
   };
 
-  const changeLocation = (nextLocation: typeof location) => {
-    setLocation(nextLocation);
-    setSelectedIds([]);
-    setActiveFileId(null);
-    setRenaming(false);
-    setNewOpen(false);
-    setSortOpen(false);
-    setFileContextMenu(null);
-    setPropertiesFileId(null);
-    selectionAnchorRef.current = null;
+  const startFileDrag = (event: React.DragEvent<HTMLButtonElement>, fileId: string) => {
+    const draggedIds = getVfsTopLevelIds(
+      desktopItems,
+      selectedIds.includes(fileId) ? selectedIds : [fileId],
+    ).filter((itemId) => !isVfsSystemFolderId(itemId));
+    if (draggedIds.length === 0) {
+      event.preventDefault();
+      return;
+    }
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-pocketdesk-vfs", JSON.stringify(draggedIds));
+    event.dataTransfer.setData("text/plain", draggedIds.join(","));
+  };
+
+  const dropFilesIntoFolder = (event: React.DragEvent, folderId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragOverFolderId(null);
+    const payload = event.dataTransfer.getData("application/x-pocketdesk-vfs");
+    if (!payload) return;
+    try {
+      const itemIds = JSON.parse(payload);
+      if (!Array.isArray(itemIds) || !itemIds.every((itemId) => typeof itemId === "string")) {
+        return;
+      }
+      if (moveVfsEntries(itemIds, folderId)) {
+        setSelectedIds([]);
+        setActiveFileId(null);
+      }
+    } catch {
+      setDragOverFolderId(null);
+    }
   };
 
   const selectFile = (
@@ -436,7 +563,28 @@ export default function FilesApp({
       return;
     }
 
-    if (event.key === "F2" && selectedFile && selectedIds.length <= 1) {
+    if (event.altKey && event.key === "ArrowLeft") {
+      event.preventDefault();
+      visitHistory(navigationIndex - 1);
+      return;
+    }
+    if (event.altKey && event.key === "ArrowRight") {
+      event.preventDefault();
+      visitHistory(navigationIndex + 1);
+      return;
+    }
+    if (event.altKey && event.key === "ArrowUp") {
+      event.preventDefault();
+      navigateUp();
+      return;
+    }
+
+    if (
+      event.key === "F2" &&
+      selectedFile &&
+      selectedIds.length <= 1 &&
+      !isVfsSystemFolderId(selectedFile.id)
+    ) {
       event.preventDefault();
       setSelectedIds([selectedFile.id]);
       setActiveFileId(selectedFile.id);
@@ -450,7 +598,7 @@ export default function FilesApp({
     }
     if (event.key === "Enter" && selectedFile) {
       event.preventDefault();
-      openVfsEntry(selectedFile.item);
+      openFile(selectedFile.item);
       return;
     }
     if (!["ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(event.key)) return;
@@ -496,38 +644,37 @@ export default function FilesApp({
           <Monitor aria-hidden="true" size={16} />
           내 PC
         </button>
-        <button
-          className={location === "desktop" ? "is-selected" : ""}
-          onClick={() => changeLocation("desktop")}
-          type="button"
-        >
-          <Folder aria-hidden="true" size={16} />
-          바탕 화면
-        </button>
-        <button
-          className={location === "documents" ? "is-selected" : ""}
-          onClick={() => changeLocation("documents")}
-          type="button"
-        >
-          <FileText aria-hidden="true" size={16} />
-          문서
-        </button>
-        <button
-          className={location === "pictures" ? "is-selected" : ""}
-          onClick={() => changeLocation("pictures")}
-          type="button"
-        >
-          <Paintbrush aria-hidden="true" size={16} />
-          사진
-        </button>
-        <button
-          className={location === "games" ? "is-selected" : ""}
-          onClick={() => changeLocation("games")}
-          type="button"
-        >
-          <Bomb aria-hidden="true" size={16} />
-          게임
-        </button>
+        {(
+          [
+            [VFS_ROOT_ID, "바탕 화면", Folder],
+            [VFS_DOCUMENTS_ID, "문서", FileText],
+            [VFS_PICTURES_ID, "사진", Paintbrush],
+            [VFS_GAMES_ID, "게임", Bomb],
+          ] as const
+        ).map(([folderId, label, Icon]) => (
+          <button
+            className={`${currentFolderId === folderId ? "is-selected" : ""}${
+              dragOverFolderId === folderId ? " is-drop-target" : ""
+            }`}
+            key={folderId}
+            onClick={() => navigateToFolder(folderId)}
+            onDragEnter={() => setDragOverFolderId(folderId)}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setDragOverFolderId(null);
+              }
+            }}
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+            }}
+            onDrop={(event) => dropFilesIntoFolder(event, folderId)}
+            type="button"
+          >
+            <Icon aria-hidden="true" size={16} />
+            {label}
+          </button>
+        ))}
       </aside>
       <section className="file-main-pane">
         <div className="file-tab-strip">
@@ -538,11 +685,53 @@ export default function FilesApp({
         </div>
         <div className="file-explorer-top">
           <div className="file-address-row">
+            <div aria-label="탐색" className="file-nav-controls" role="group">
+              <button
+                aria-label="뒤로"
+                disabled={navigationIndex <= 0}
+                onClick={() => visitHistory(navigationIndex - 1)}
+                title="뒤로 (Alt+왼쪽 화살표)"
+                type="button"
+              >
+                <ArrowLeft aria-hidden="true" size={16} />
+              </button>
+              <button
+                aria-label="앞으로"
+                disabled={navigationIndex >= navigationHistory.length - 1}
+                onClick={() => visitHistory(navigationIndex + 1)}
+                title="앞으로 (Alt+오른쪽 화살표)"
+                type="button"
+              >
+                <ArrowRight aria-hidden="true" size={16} />
+              </button>
+              <button
+                aria-label="위로"
+                disabled={folderPath.length <= 1}
+                onClick={navigateUp}
+                title="위로 (Alt+위쪽 화살표)"
+                type="button"
+              >
+                <ArrowUp aria-hidden="true" size={16} />
+              </button>
+            </div>
             <div className="file-address">
-              <House aria-hidden="true" size={15} />
-              <span>홈</span>
-              <span aria-hidden="true">›</span>
-              <strong>{locationLabel}</strong>
+              {folderPath.map((segment, index) => (
+                <div className="file-breadcrumb" key={segment.id}>
+                  {index > 0 && <ChevronRight aria-hidden="true" size={14} />}
+                  <button
+                    aria-current={segment.id === currentFolderId ? "location" : undefined}
+                    onClick={() => navigateToFolder(segment.id)}
+                    onDragEnter={() => setDragOverFolderId(segment.id)}
+                    onDragLeave={() => setDragOverFolderId(null)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => dropFilesIntoFolder(event, segment.id)}
+                    type="button"
+                  >
+                    {index === 0 && <House aria-hidden="true" size={15} />}
+                    <span>{segment.name}</span>
+                  </button>
+                </div>
+              ))}
             </div>
             <label className="file-search">
               <Search aria-hidden="true" size={15} />
@@ -572,6 +761,10 @@ export default function FilesApp({
               </button>
               {newOpen && (
                 <div aria-label="새로 만들기" className="file-command-menu file-new-menu" role="menu">
+                  <button onClick={createFolder} role="menuitem" type="button">
+                    <Folder aria-hidden="true" size={15} />
+                    폴더
+                  </button>
                   <button onClick={createTextFile} role="menuitem" type="button">
                     <FileText aria-hidden="true" size={15} />
                     텍스트 문서
@@ -583,7 +776,7 @@ export default function FilesApp({
               aria-label="열기"
               className="file-command-action file-command-compact"
               disabled={!selectedFile}
-              onClick={() => selectedFile && openVfsEntry(selectedFile.item)}
+              onClick={() => selectedFile && openFile(selectedFile.item)}
               type="button"
             >
               <ExternalLink aria-hidden="true" size={15} />
@@ -592,7 +785,7 @@ export default function FilesApp({
             <button
               aria-label="복사"
               className="file-command-action file-command-compact"
-              disabled={!selectedFile}
+              disabled={!selectedFile || selectedHasSystemFolder}
               onClick={() => copySelectedFiles()}
               type="button"
             >
@@ -612,7 +805,7 @@ export default function FilesApp({
             <button
               aria-label="이름 바꾸기"
               className="file-command-action file-command-compact"
-              disabled={!selectedFile || selectedIds.length > 1}
+              disabled={!selectedFile || selectedIds.length > 1 || selectedHasSystemFolder}
               onClick={() => selectedFile && setRenaming(true)}
               type="button"
             >
@@ -622,7 +815,7 @@ export default function FilesApp({
             <button
               aria-label="삭제"
               className="file-command-action file-command-compact file-danger"
-              disabled={!selectedFile}
+              disabled={!selectedFile || selectedHasSystemFolder}
               onClick={deleteSelectedFiles}
               type="button"
             >
@@ -777,7 +970,22 @@ export default function FilesApp({
             <div
               aria-label={`${locationLabel} 파일`}
               aria-multiselectable="true"
-              className={`file-list file-view-${viewMode}`}
+              className={`file-list file-view-${viewMode}${
+                dragOverFolderId === currentFolderId ? " is-drop-target" : ""
+              }`}
+              onDragEnter={(event) => {
+                if (event.target === event.currentTarget) setDragOverFolderId(currentFolderId);
+              }}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                  setDragOverFolderId(null);
+                }
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+              }}
+              onDrop={(event) => dropFilesIntoFolder(event, currentFolderId)}
               onKeyDown={handleFileListKeyDown}
               onPointerDown={() => setFileContextMenu(null)}
               ref={fileListRef}
@@ -790,11 +998,31 @@ export default function FilesApp({
                   <div className="file-list-item" key={file.id}>
                     <button
                       aria-selected={selectedIds.includes(file.id)}
-                      className={selectedIds.includes(file.id) ? "is-selected" : ""}
+                      className={`${selectedIds.includes(file.id) ? "is-selected" : ""}${
+                        dragOverFolderId === file.id ? " is-drop-target" : ""
+                      }`}
                       data-file-id={file.id}
+                      draggable={!isVfsSystemFolderId(file.id)}
                       onClick={(event) => selectFile(file.id, index, event)}
                       onContextMenu={(event) => showFileContextMenu(event, file.id)}
-                      onDoubleClick={() => openVfsEntry(file.item)}
+                      onDoubleClick={() => openFile(file.item)}
+                      onDragEnd={() => setDragOverFolderId(null)}
+                      onDragStart={(event) => startFileDrag(event, file.id)}
+                      onDragEnter={() => {
+                        if (file.item.kind === "folder") setDragOverFolderId(file.id);
+                      }}
+                      onDragLeave={() => {
+                        if (dragOverFolderId === file.id) setDragOverFolderId(null);
+                      }}
+                      onDragOver={(event) => {
+                        if (file.item.kind !== "folder") return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        event.dataTransfer.dropEffect = "move";
+                      }}
+                      onDrop={(event) => {
+                        if (file.item.kind === "folder") dropFilesIntoFolder(event, file.id);
+                      }}
                       role="option"
                       type="button"
                     >
@@ -802,7 +1030,7 @@ export default function FilesApp({
                       <span>{file.name}</span>
                       <small>{file.modified}</small>
                       <small>{file.type}</small>
-                      <small>{formatVfsEntrySize(file.item)}</small>
+                      <small>{file.item.kind === "folder" ? "" : formatVfsEntrySize(file.item)}</small>
                     </button>
                     {renaming && selectedFile?.id === file.id && (
                       <form className="file-inline-rename" onSubmit={submitRename}>
@@ -835,9 +1063,9 @@ export default function FilesApp({
               })}
               {visibleFiles.length === 0 && (
                 <div className="file-empty-state">
-                  <Search aria-hidden="true" size={24} />
-                  <strong>검색 결과 없음</strong>
-                  <small>다른 이름, 확장자, 앱 이름으로 검색해보세요.</small>
+                  {fileQuery ? <Search aria-hidden="true" size={24} /> : <Folder aria-hidden="true" size={24} />}
+                  <strong>{fileQuery ? "검색 결과 없음" : "이 폴더는 비어 있습니다."}</strong>
+                  {fileQuery && <small>다른 이름이나 파일 형식으로 검색해보세요.</small>}
                 </div>
               )}
             </div>
@@ -871,11 +1099,15 @@ export default function FilesApp({
                     />
                   )}
                   <div className="file-actions">
-                    <button onClick={() => openVfsEntry(selectedFile.item)} type="button">
+                    <button onClick={() => openFile(selectedFile.item)} type="button">
                       <ExternalLink aria-hidden="true" size={15} />
                       열기
                     </button>
-                    <button onClick={() => setRenaming(true)} type="button">
+                    <button
+                      disabled={isVfsSystemFolderId(selectedFile.id)}
+                      onClick={() => setRenaming(true)}
+                      type="button"
+                    >
                       <Pencil aria-hidden="true" size={15} />
                       이름 변경
                     </button>
@@ -883,7 +1115,12 @@ export default function FilesApp({
                       <Info aria-hidden="true" size={15} />
                       속성
                     </button>
-                    <button className="file-danger" onClick={deleteSelectedFiles} type="button">
+                    <button
+                      className="file-danger"
+                      disabled={isVfsSystemFolderId(selectedFile.id)}
+                      onClick={deleteSelectedFiles}
+                      type="button"
+                    >
                       <Trash2 aria-hidden="true" size={15} />
                       삭제
                     </button>
@@ -916,7 +1153,7 @@ export default function FilesApp({
           <button
             onClick={() => {
               setFileContextMenu(null);
-              openVfsEntry(contextFile.item);
+              openFile(contextFile.item);
             }}
             role="menuitem"
             type="button"
@@ -924,12 +1161,17 @@ export default function FilesApp({
             <ExternalLink aria-hidden="true" size={16} />
             열기
           </button>
-          <button onClick={() => copySelectedFiles()} role="menuitem" type="button">
+          <button
+            disabled={selectedHasSystemFolder}
+            onClick={() => copySelectedFiles()}
+            role="menuitem"
+            type="button"
+          >
             <Copy aria-hidden="true" size={16} />
             복사
           </button>
           <button
-            disabled={selectedIds.length > 1}
+            disabled={selectedIds.length > 1 || isVfsSystemFolderId(contextFile.id)}
             onClick={() => {
               setFileContextMenu(null);
               setRenaming(true);
@@ -940,7 +1182,12 @@ export default function FilesApp({
             <Pencil aria-hidden="true" size={16} />
             이름 바꾸기
           </button>
-          <button onClick={() => deleteSelectedFiles()} role="menuitem" type="button">
+          <button
+            disabled={selectedHasSystemFolder}
+            onClick={() => deleteSelectedFiles()}
+            role="menuitem"
+            type="button"
+          >
             <Trash2 aria-hidden="true" size={16} />
             삭제
           </button>
@@ -996,7 +1243,11 @@ export default function FilesApp({
               </div>
               <div>
                 <dt>위치</dt>
-                <dd>바탕 화면</dd>
+                <dd>
+                  {getVfsFolderPath(desktopItems, propertiesFile.item.parentId)
+                    .map((segment) => segment.name)
+                    .join(" > ")}
+                </dd>
               </div>
               <div>
                 <dt>크기</dt>

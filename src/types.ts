@@ -36,16 +36,19 @@ export type DesktopItem = {
   kind: VfsEntryKind;
   name: string;
   parentId: string;
+  restoreParentId?: string;
   restoreShowOnDesktop?: boolean;
   showOnDesktop: boolean;
   trashed?: boolean;
   trashedAt?: number;
+  trashedRootId?: string;
   updatedAt: number;
   x: number;
   y: number;
 };
 
 export type VfsDuplicateOptions = {
+  parentId?: string;
   position?: IconPosition;
   showOnDesktop?: boolean;
 };

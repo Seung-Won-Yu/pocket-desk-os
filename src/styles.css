@@ -4716,6 +4716,12 @@ button {
   border-color: transparent;
 }
 
+.files-app .is-drop-target,
+.file-list.is-drop-target {
+  background: color-mix(in srgb, var(--active) 24%, rgba(255, 255, 255, 0.08));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--active) 72%, white) inset;
+}
+
 .file-main-pane {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) 25px;
@@ -4905,7 +4911,42 @@ button {
 .file-address-row {
   display: grid;
   gap: 7px;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.42fr);
+  grid-template-columns: auto minmax(0, 1fr) minmax(180px, 0.42fr);
+}
+
+.file-nav-controls {
+  align-items: center;
+  display: flex;
+  gap: 1px;
+}
+
+.file-nav-controls button,
+.file-address button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text);
+  display: inline-flex;
+  justify-content: center;
+}
+
+.file-nav-controls button {
+  height: 32px;
+  padding: 0;
+  width: 30px;
+}
+
+.file-nav-controls button:hover:not(:disabled),
+.file-nav-controls button:focus-visible,
+.file-address button:hover,
+.file-address button:focus-visible {
+  background: var(--control-hover);
+  outline: none;
+}
+
+.file-nav-controls button:disabled {
+  opacity: 0.35;
 }
 
 .file-address,
@@ -4916,10 +4957,32 @@ button {
   border-radius: 4px;
   color: var(--muted);
   display: flex;
-  gap: 8px;
+  gap: 3px;
   min-height: 32px;
   min-width: 0;
   padding: 0 10px;
+}
+
+.file-address {
+  overflow: hidden;
+  padding: 2px 4px;
+}
+
+.file-breadcrumb {
+  align-items: center;
+  display: flex;
+  min-width: 0;
+}
+
+.file-breadcrumb button {
+  gap: 6px;
+  height: 26px;
+  min-width: 0;
+  padding: 0 7px;
+}
+
+.file-breadcrumb button[aria-current="location"] {
+  color: #fff;
 }
 
 .file-address span,
@@ -6099,7 +6162,11 @@ button {
   }
 
   .file-address-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .file-search {
+    grid-column: 1 / -1;
   }
 
   .file-command-strip {

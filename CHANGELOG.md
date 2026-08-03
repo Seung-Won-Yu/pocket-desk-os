@@ -6,6 +6,8 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Changed
 
+- Replaced File Explorer's type-filtered locations with a real parent-child folder hierarchy.
+- Grouped folders before files and localized file type labels to match Korean Windows Explorer.
 - Extracted every built-in app into an independent feature module.
 - Reduced `App.tsx` to focus on the desktop shell, window management, and shared application state.
 - Moved app metadata, wallpaper data, format helpers, and shared types into owned modules.
@@ -13,6 +15,10 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- Added Documents, Pictures, and Games system folders with safe migration for existing IndexedDB data.
+- Added Explorer back, forward, up, breadcrumb navigation, folder creation, recursive copy, and drag-and-drop moves.
+- Added recursive folder deletion, Recycle Bin tree restore, and permanent tree deletion.
+- Added Playwright coverage for folder navigation, drag moves, and folder-tree restore.
 - Windows-style update prompt with controlled service worker activation.
 - Automated PWA test covering service worker control, bundle precaching, offline reload, and tray status.
 - Reader-first routing and a recovery panel for websites that block iframe embedding.

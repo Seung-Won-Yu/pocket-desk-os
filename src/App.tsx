@@ -1,6 +1,6 @@
 import BrowserApp, { type BrowserLaunchRequest } from "./apps/BrowserApp";
 import CalculatorApp from "./apps/CalculatorApp";
-import FilesApp from "./apps/FilesApp";
+import FilesApp, { type FilesLaunchRequest } from "./apps/FilesApp";
 import MinesweeperApp from "./apps/MinesweeperApp";
 import NotepadApp from "./apps/NotepadApp";
 import PaintApp from "./apps/PaintApp";
@@ -36,14 +36,24 @@ import {
 import { persistVfsEntries, readVfsEntries } from "./vfs/storage";
 import { createVfsBackupZip, readVfsBackupZip } from "./vfs/backup";
 import {
+  canMoveVfsEntries,
+  createVfsSystemFolders,
   getDefaultVfsEntryName,
   getUniqueCanvasItemName,
+  getUniqueVfsEntryName,
   getUniqueRenamedVfsItemName,
   getUniqueTextFileName,
   getUniqueVfsCopyName,
   getVfsEntryAssociation,
+  getVfsDescendantIds,
   getVfsEntryDetail,
   getVfsShortcutTarget,
+  getVfsTopLevelIds,
+  isVfsSystemFolderId,
+  VFS_DOCUMENTS_ID,
+  VFS_GAMES_ID,
+  VFS_PICTURES_ID,
+  VFS_ROOT_ID,
 } from "./vfs/model";
 import {
   Bell,
@@ -209,7 +219,8 @@ type AppContentProps = {
   activeNoteId: string;
   browserLaunchRequest: BrowserLaunchRequest | null;
   canvasEntries: DesktopItem[];
-  createVfsTextFile: () => DesktopItem;
+  createVfsFolder: (parentId?: string) => DesktopItem;
+  createVfsTextFile: (parentId?: string) => DesktopItem;
   desktopItems: DesktopItem[];
   duplicateVfsEntries: (itemIds: string[], options?: VfsDuplicateOptions) => string[];
   noteEntries: DesktopItem[];
@@ -218,7 +229,9 @@ type AppContentProps = {
   deleteVfsEntry: (itemId: string) => void;
   emptyRecycleBin: () => void;
   exportVfsZip: () => void;
+  filesLaunchRequest: FilesLaunchRequest | null;
   importVfsZip: (file: File) => Promise<void>;
+  moveVfsEntries: (itemIds: string[], parentId: string) => boolean;
   openApp: (appId: AppId) => void;
   openVfsEntry: (item: DesktopItem) => void;
   permanentlyDeleteVfsEntry: (itemId: string) => void;
@@ -258,7 +271,6 @@ const NOTE_KEY = "pocket-desk-note";
 const LEGACY_DEFAULT_NOTE_CONTENT =
   "PocketDesk 메모장\n\n여기에 내용을 적고 저장하면 브라우저 로컬 저장소와 IndexedDB 파일 시스템에 남습니다.";
 const NOTE_SAVE_EVENT = "pocket-desk-save-note";
-const VFS_ROOT_ID = "desktop";
 const VFS_PRIMARY_NOTE_ID = "vfs-notes";
 const VFS_PRIMARY_CANVAS_ID = "vfs-sketch";
 const WALLPAPER_KEY = "pocket-desk-wallpaper-v2";
@@ -393,6 +405,7 @@ export default function App() {
   const [selectedDesktopIds, setSelectedDesktopIds] = useState<string[]>([]);
   const [shellPhase, setShellPhase] = useState<ShellPhase>("booting");
   const [browserLaunchRequest, setBrowserLaunchRequest] = useState<BrowserLaunchRequest | null>(null);
+  const [filesLaunchRequest, setFilesLaunchRequest] = useState<FilesLaunchRequest | null>(null);
   const [activeCanvasId, setActiveCanvasId] = useState(VFS_PRIMARY_CANVAS_ID);
   const [activeCanvasOpenKey, setActiveCanvasOpenKey] = useState(0);
   const [activeNoteId, setActiveNoteId] = useState(VFS_PRIMARY_NOTE_ID);
@@ -744,6 +757,9 @@ export default function App() {
 
   const openVfsEntry = (item: DesktopItem) => {
     const association = getVfsEntryAssociation(item);
+    if (item.kind === "folder") {
+      setFilesLaunchRequest({ folderId: item.id, id: crypto.randomUUID() });
+    }
     if (item.kind === "note") {
       setActiveNoteId(item.id);
     }
@@ -781,7 +797,7 @@ export default function App() {
           .map((item) => ({ x: item.x, y: item.y })),
       ],
     );
-    const name = getUniqueTextFileName(activeDesktopItems);
+    const name = getUniqueTextFileName(activeDesktopItems, VFS_ROOT_ID);
     const now = Date.now();
     const item: DesktopItem = {
       content: "",
@@ -821,15 +837,39 @@ export default function App() {
     (item) => item.id === desktopPropertiesItemId,
   );
 
-  const createVfsTextFile = () => {
+  const createVfsFolder = (parentId = VFS_ROOT_ID) => {
+    const now = Date.now();
+    const item: DesktopItem = {
+      createdAt: now,
+      id: `folder-${crypto.randomUUID()}`,
+      kind: "folder",
+      name: getUniqueVfsEntryName(activeDesktopItems, parentId, "새 폴더"),
+      parentId,
+      showOnDesktop: false,
+      updatedAt: now,
+      x: 0,
+      y: 0,
+    };
+
+    setDesktopItems((current) => [...current, item]);
+    playSound("success");
+    notify({
+      detail: "현재 위치에 새 폴더를 만들었습니다.",
+      title: `${item.name} 생성됨`,
+      tone: "success",
+    });
+    return item;
+  };
+
+  const createVfsTextFile = (parentId = VFS_DOCUMENTS_ID) => {
     const now = Date.now();
     const item: DesktopItem = {
       content: "",
       createdAt: now,
       id: `note-${crypto.randomUUID()}`,
       kind: "note",
-      name: getUniqueTextFileName(activeDesktopItems),
-      parentId: VFS_ROOT_ID,
+      name: getUniqueTextFileName(activeDesktopItems, parentId),
+      parentId,
       showOnDesktop: false,
       updatedAt: now,
       x: 0,
@@ -847,16 +887,33 @@ export default function App() {
   };
 
   const duplicateVfsEntries = (itemIds: string[], options?: VfsDuplicateOptions) => {
-    const sourceIds = itemIds.filter((id, index) => itemIds.indexOf(id) === index);
-    const copyDescriptors = sourceIds
-      .filter((id) => activeDesktopItems.some((item) => item.id === id))
-      .map((sourceId) => ({ id: crypto.randomUUID(), sourceId }));
-    if (copyDescriptors.length === 0) return [];
+    const sourceIds = getVfsTopLevelIds(activeDesktopItems, itemIds).filter(
+      (id) => activeDesktopItems.some((item) => item.id === id) && !isVfsSystemFolderId(id),
+    );
+    if (sourceIds.length === 0) return [];
+
+    const treeIds = getVfsDescendantIds(activeDesktopItems, sourceIds);
+    const idMap = new Map(
+      [...treeIds].map((sourceId) => {
+        const source = activeDesktopItems.find((item) => item.id === sourceId);
+        return [sourceId, `${source?.kind ?? "note"}-${crypto.randomUUID()}`] as const;
+      }),
+    );
+    const copiedRootIds = sourceIds.map((sourceId) => idMap.get(sourceId)!);
 
     setDesktopItems((current) => {
-      const existingNames = new Set(
-        current.filter((item) => !item.trashed).map((item) => item.name),
-      );
+      const existingNamesByParent = new Map<string, Set<string>>();
+      const getExistingNames = (parentId: string) => {
+        const existing = existingNamesByParent.get(parentId);
+        if (existing) return existing;
+        const names = new Set(
+          current
+            .filter((item) => !item.trashed && item.parentId === parentId)
+            .map((item) => item.name),
+        );
+        existingNamesByParent.set(parentId, names);
+        return names;
+      };
       const occupiedDesktopPositions = options?.showOnDesktop
         ? [
             ...desktopApps.map(
@@ -868,41 +925,52 @@ export default function App() {
           ]
         : [];
       const now = Date.now();
-      const copies = copyDescriptors.flatMap((descriptor, index) => {
-        const source = current.find(
-          (item) => item.id === descriptor.sourceId && !item.trashed,
-        );
-        if (!source) return [];
-        const name = getUniqueVfsCopyName(existingNames, source.name);
+      let copyIndex = 0;
+      const copies = current.flatMap((source) => {
+        if (!treeIds.has(source.id) || source.trashed) return [];
+        const rootIndex = sourceIds.indexOf(source.id);
+        const isRootCopy = rootIndex >= 0;
+        const parentId = isRootCopy
+          ? (options?.parentId ?? source.parentId)
+          : (idMap.get(source.parentId) ?? options?.parentId ?? source.parentId);
+        const existingNames = getExistingNames(parentId);
+        const name = isRootCopy
+          ? getUniqueVfsCopyName(existingNames, source.name)
+          : source.name;
         existingNames.add(name);
         const preferredPosition =
-          options?.showOnDesktop && options.position
+          isRootCopy && options?.showOnDesktop && options.position
             ? clampIconPosition(
-                options.position.x + index * 18,
-                options.position.y + index * 18,
+                options.position.x + rootIndex * 18,
+                options.position.y + rootIndex * 18,
                 desktopViewMode,
               )
             : { x: 0, y: 0 };
         const position =
-          options?.showOnDesktop && options.position
+          isRootCopy && options?.showOnDesktop && options.position
             ? findAvailableDesktopPosition(
                 preferredPosition,
                 desktopViewMode,
                 occupiedDesktopPositions,
               )
             : preferredPosition;
-        if (options?.showOnDesktop) occupiedDesktopPositions.push(position);
+        if (isRootCopy && options?.showOnDesktop) occupiedDesktopPositions.push(position);
+        const timestamp = now + copyIndex;
+        copyIndex += 1;
         return [
           {
             ...source,
-            createdAt: now + index,
-            id: `${source.kind}-${descriptor.id}`,
+            createdAt: timestamp,
+            id: idMap.get(source.id)!,
             name,
+            parentId,
+            restoreParentId: undefined,
             restoreShowOnDesktop: false,
-            showOnDesktop: options?.showOnDesktop ?? false,
+            showOnDesktop: isRootCopy ? (options?.showOnDesktop ?? false) : false,
             trashed: false,
             trashedAt: undefined,
-            updatedAt: now + index,
+            trashedRootId: undefined,
+            updatedAt: timestamp,
             ...position,
           },
         ];
@@ -912,13 +980,66 @@ export default function App() {
     playSound("success");
     notify({
       detail: "선택한 항목의 복사본을 만들었습니다.",
-      title: `${copyDescriptors.length}개 항목 붙여넣기 완료`,
+      title: `${sourceIds.length}개 항목 붙여넣기 완료`,
       tone: "success",
     });
-    return copyDescriptors.map((descriptor) => {
-      const source = activeDesktopItems.find((item) => item.id === descriptor.sourceId);
-      return `${source?.kind ?? "note"}-${descriptor.id}`;
+    return copiedRootIds;
+  };
+
+  const moveVfsEntries = (itemIds: string[], parentId: string) => {
+    const roots = getVfsTopLevelIds(activeDesktopItems, itemIds);
+    if (!canMoveVfsEntries(activeDesktopItems, roots, parentId)) {
+      playSound("error");
+      notify({
+        detail: "폴더 자신이나 하위 폴더 안으로는 이동할 수 없습니다.",
+        title: "항목을 이동할 수 없음",
+      });
+      return false;
+    }
+
+    const moving = roots.filter((id) => {
+      const item = activeDesktopItems.find((entry) => entry.id === id);
+      return item && item.parentId !== parentId;
     });
+    if (moving.length === 0) return false;
+
+    const existingNames = new Set(
+      activeDesktopItems
+        .filter((item) => item.parentId === parentId && !moving.includes(item.id))
+        .map((item) => item.name),
+    );
+    const nextNames = new Map<string, string>();
+    moving.forEach((itemId) => {
+      const item = activeDesktopItems.find((entry) => entry.id === itemId);
+      if (!item) return;
+      const name = existingNames.has(item.name)
+        ? getUniqueVfsCopyName(existingNames, item.name)
+        : item.name;
+      existingNames.add(name);
+      nextNames.set(itemId, name);
+    });
+
+    const now = Date.now();
+    setDesktopItems((current) =>
+      current.map((item) =>
+        moving.includes(item.id)
+          ? {
+              ...item,
+              name: nextNames.get(item.id) ?? item.name,
+              parentId,
+              showOnDesktop: false,
+              updatedAt: now,
+            }
+          : item,
+      ),
+    );
+    playSound("success");
+    notify({
+      detail: "선택한 항목을 새 위치로 옮겼습니다.",
+      title: `${moving.length}개 항목 이동됨`,
+      tone: "success",
+    });
+    return true;
   };
 
   const arrangeDesktopIcons = (
@@ -982,7 +1103,9 @@ export default function App() {
 
   const trashedItems = useMemo(() => {
     return desktopItems
-      .filter((item) => item.trashed)
+      .filter(
+        (item) => item.trashed && (!item.trashedRootId || item.trashedRootId === item.id),
+      )
       .sort((a, b) => (b.trashedAt ?? b.updatedAt) - (a.trashedAt ?? a.updatedAt));
   }, [desktopItems]);
 
@@ -1008,7 +1131,7 @@ export default function App() {
         id,
         kind: "canvas",
         name,
-        parentId: VFS_ROOT_ID,
+        parentId: VFS_PICTURES_ID,
         showOnDesktop: false,
         updatedAt: now,
         x: 0,
@@ -1026,7 +1149,7 @@ export default function App() {
 
   const renameVfsEntry = (itemId: string, name: string) => {
     const target = activeDesktopItems.find((item) => item.id === itemId);
-    if (!target) return;
+    if (!target || isVfsSystemFolderId(itemId)) return;
 
     const nextName = getUniqueRenamedVfsItemName(activeDesktopItems, itemId, name);
     if (nextName === target.name) return;
@@ -1046,30 +1169,33 @@ export default function App() {
 
   const deleteVfsEntry = (itemId: string) => {
     const target = activeDesktopItems.find((item) => item.id === itemId);
-    if (!target) return;
+    if (!target || isVfsSystemFolderId(itemId)) return;
 
     playSound("close");
     const now = Date.now();
-    const remaining = activeDesktopItems.filter((item) => item.id !== itemId);
+    const deletedIds = getVfsDescendantIds(activeDesktopItems, [itemId]);
+    const remaining = activeDesktopItems.filter((item) => !deletedIds.has(item.id));
     setDesktopItems((current) =>
       current.map((item) =>
-        item.id === itemId
+        deletedIds.has(item.id)
           ? {
               ...item,
+              restoreParentId: item.id === itemId ? item.parentId : item.restoreParentId,
               restoreShowOnDesktop: item.showOnDesktop,
               showOnDesktop: false,
               trashed: true,
               trashedAt: now,
+              trashedRootId: itemId,
               updatedAt: now,
             }
           : item,
       ),
     );
 
-    if (target.kind === "note" && activeNoteId === itemId) {
+    if (deletedIds.has(activeNoteId)) {
       setActiveNoteId(remaining.find((item) => item.kind === "note")?.id ?? VFS_PRIMARY_NOTE_ID);
     }
-    if (target.kind === "canvas" && activeCanvasId === itemId) {
+    if (deletedIds.has(activeCanvasId)) {
       setActiveCanvasId(
         remaining.find((item) => item.kind === "canvas")?.id ?? VFS_PRIMARY_CANVAS_ID,
       );
@@ -1179,6 +1305,7 @@ export default function App() {
       y: 120,
     };
     const copiedIds = duplicateVfsEntries(desktopClipboardIds, {
+      parentId: VFS_ROOT_ID,
       position: clampIconPosition(origin.originX - 18, origin.originY - 10, desktopViewMode),
       showOnDesktop: true,
     });
@@ -1213,18 +1340,36 @@ export default function App() {
     const target = trashedItems.find((item) => item.id === itemId);
     if (!target) return;
 
-    const nextName = getUniqueRenamedVfsItemName(activeDesktopItems, itemId, target.name);
+    const requestedParentId = target.restoreParentId ?? target.parentId;
+    const parentId =
+      requestedParentId === VFS_ROOT_ID ||
+      activeDesktopItems.some(
+        (item) => item.id === requestedParentId && item.kind === "folder",
+      )
+        ? requestedParentId
+        : VFS_ROOT_ID;
+    const nextName = getUniqueVfsEntryName(activeDesktopItems, parentId, target.name);
+    const restoredIds = new Set(
+      desktopItems
+        .filter((item) => item.id === itemId || item.trashedRootId === itemId)
+        .map((item) => item.id),
+    );
+    const now = Date.now();
     playSound("success");
     setDesktopItems((current) =>
       current.map((item) =>
-        item.id === itemId
+        restoredIds.has(item.id)
           ? {
               ...item,
-              name: nextName,
-              showOnDesktop: Boolean(item.restoreShowOnDesktop),
+              name: item.id === itemId ? nextName : item.name,
+              parentId: item.id === itemId ? parentId : item.parentId,
+              restoreParentId: undefined,
+              showOnDesktop:
+                item.id === itemId ? Boolean(item.restoreShowOnDesktop) : false,
               trashed: false,
               trashedAt: undefined,
-              updatedAt: Date.now(),
+              trashedRootId: undefined,
+              updatedAt: now,
             }
           : item,
       ),
@@ -1240,8 +1385,13 @@ export default function App() {
     const target = trashedItems.find((item) => item.id === itemId);
     if (!target) return;
 
+    const deletedIds = new Set(
+      desktopItems
+        .filter((item) => item.id === itemId || item.trashedRootId === itemId)
+        .map((item) => item.id),
+    );
     playSound("close");
-    setDesktopItems((current) => current.filter((item) => item.id !== itemId));
+    setDesktopItems((current) => current.filter((item) => !deletedIds.has(item.id)));
     notify({
       detail: "이 항목을 완전히 삭제했습니다.",
       title: `${target.name} 영구 삭제됨`,
@@ -1292,16 +1442,17 @@ export default function App() {
     const importedItems = await readVfsBackupZip(file, (item, index) =>
       normalizePersistedDesktopItem(item as PersistedDesktopItem, index),
     );
-    const activeImportedItems = importedItems.filter((item) => !item.trashed);
+    const migratedItems = migrateVfsHierarchy(importedItems);
+    const activeImportedItems = migratedItems.filter((item) => !item.trashed);
     playSound("success");
-    setDesktopItems(importedItems);
+    setDesktopItems(migratedItems);
     setActiveNoteId(activeImportedItems.find((item) => item.kind === "note")?.id ?? VFS_PRIMARY_NOTE_ID);
     setActiveCanvasId(
       activeImportedItems.find((item) => item.kind === "canvas")?.id ?? VFS_PRIMARY_CANVAS_ID,
     );
     setActiveCanvasOpenKey((current) => current + 1);
     notify({
-      detail: `${importedItems.length}개 항목을 가져왔습니다.`,
+      detail: `${migratedItems.length}개 항목을 가져왔습니다.`,
       title: "ZIP 가져오기 완료",
       tone: "success",
     });
@@ -1328,7 +1479,7 @@ export default function App() {
           id: noteId,
           kind: "note",
           name: noteId === VFS_PRIMARY_NOTE_ID ? "notes.txt" : "새 메모.txt",
-          parentId: VFS_ROOT_ID,
+          parentId: VFS_DOCUMENTS_ID,
           showOnDesktop: false,
           updatedAt: now,
           x: 0,
@@ -1926,6 +2077,7 @@ export default function App() {
                 activeNoteId={activeNoteId}
                 browserLaunchRequest={browserLaunchRequest}
                 canvasEntries={canvasEntries}
+                createVfsFolder={createVfsFolder}
                 createVfsTextFile={createVfsTextFile}
                 desktopItems={activeDesktopItems}
                 duplicateVfsEntries={duplicateVfsEntries}
@@ -1935,7 +2087,9 @@ export default function App() {
                 deleteVfsEntry={deleteVfsEntry}
                 emptyRecycleBin={emptyRecycleBin}
                 exportVfsZip={exportVfsZip}
+                filesLaunchRequest={filesLaunchRequest}
                 importVfsZip={importVfsZip}
+                moveVfsEntries={moveVfsEntries}
                 openApp={openApp}
                 openVfsEntry={openVfsEntry}
                 permanentlyDeleteVfsEntry={permanentlyDeleteVfsEntry}
@@ -2271,25 +2425,80 @@ async function loadDesktopItemsFromVfs(): Promise<DesktopItem[]> {
     normalizePersistedDesktopItem(item as PersistedDesktopItem, index),
   );
   if (entries.length > 0) {
-    const migratedEntries = entries
-      .filter((entry) => entry.id !== "vfs-pictures")
-      .map((entry) =>
-        entry.id === VFS_PRIMARY_NOTE_ID && entry.content === LEGACY_DEFAULT_NOTE_CONTENT
-          ? { ...entry, content: "" }
-          : entry,
-      );
-    const migrationChanged =
-      migratedEntries.length !== entries.length ||
-      migratedEntries.some((entry, index) => entry !== entries[index]);
-    if (migrationChanged) {
-      await persistVfsEntries(migratedEntries);
-    }
+    const migratedEntries = migrateVfsHierarchy(entries);
+    await persistVfsEntries(migratedEntries);
     return migratedEntries;
   }
 
-  const seededEntries = [...createDefaultVfsEntries(), ...loadLegacyDesktopItems()];
+  const seededEntries = migrateVfsHierarchy([
+    ...createDefaultVfsEntries(),
+    ...loadLegacyDesktopItems(),
+  ]);
   await persistVfsEntries(seededEntries);
   return seededEntries;
+}
+
+function migrateVfsHierarchy(entries: DesktopItem[]): DesktopItem[] {
+  const withoutLegacyFolder = entries.filter((entry) => entry.id !== "vfs-pictures");
+  const hadSystemFolders = [VFS_DOCUMENTS_ID, VFS_PICTURES_ID, VFS_GAMES_ID].every(
+    (folderId) => withoutLegacyFolder.some((entry) => entry.id === folderId),
+  );
+  const systemFolders = createVfsSystemFolders();
+  const systemFolderById = new Map(systemFolders.map((folder) => [folder.id, folder]));
+  const folderIds = new Set([
+    VFS_ROOT_ID,
+    ...withoutLegacyFolder
+      .filter((entry) => entry.kind === "folder")
+      .map((entry) => entry.id),
+    ...systemFolders.map((folder) => folder.id),
+  ]);
+  const seenIds = new Set<string>();
+  const migrated = withoutLegacyFolder.flatMap((entry) => {
+    if (seenIds.has(entry.id)) return [];
+    seenIds.add(entry.id);
+
+    const systemFolder = systemFolderById.get(entry.id);
+    if (systemFolder) {
+      return [{ ...systemFolder, createdAt: entry.createdAt, updatedAt: entry.updatedAt }];
+    }
+
+    let parentId = folderIds.has(entry.parentId) ? entry.parentId : VFS_ROOT_ID;
+    if (!hadSystemFolders && parentId === VFS_ROOT_ID && !entry.showOnDesktop) {
+      if (entry.kind === "note") parentId = VFS_DOCUMENTS_ID;
+      if (entry.kind === "canvas") parentId = VFS_PICTURES_ID;
+      if (entry.kind === "game") parentId = VFS_GAMES_ID;
+    }
+
+    return [
+      {
+        ...entry,
+        content:
+          entry.id === VFS_PRIMARY_NOTE_ID && entry.content === LEGACY_DEFAULT_NOTE_CONTENT
+            ? ""
+            : entry.content,
+        parentId,
+      },
+    ];
+  });
+
+  for (const folder of systemFolders) {
+    if (!seenIds.has(folder.id)) migrated.push(folder);
+  }
+
+  const migratedById = new Map(migrated.map((entry) => [entry.id, entry]));
+  return migrated.map((entry) => {
+    if (isVfsSystemFolderId(entry.id)) return entry;
+    const visited = new Set([entry.id]);
+    let parentId = entry.parentId;
+    while (parentId !== VFS_ROOT_ID) {
+      if (visited.has(parentId)) return { ...entry, parentId: VFS_ROOT_ID };
+      visited.add(parentId);
+      const parent = migratedById.get(parentId);
+      if (!parent || parent.kind !== "folder") return { ...entry, parentId: VFS_ROOT_ID };
+      parentId = parent.parentId;
+    }
+    return entry;
+  });
 }
 
 function createDefaultVfsEntries(): DesktopItem[] {
@@ -2299,13 +2508,14 @@ function createDefaultVfsEntries(): DesktopItem[] {
     storedNoteContent && storedNoteContent !== LEGACY_DEFAULT_NOTE_CONTENT ? storedNoteContent : "";
 
   return [
+    ...createVfsSystemFolders(now),
     {
       content: noteContent,
       createdAt: now - 5000,
       id: VFS_PRIMARY_NOTE_ID,
       kind: "note",
       name: "notes.txt",
-      parentId: VFS_ROOT_ID,
+      parentId: VFS_DOCUMENTS_ID,
       showOnDesktop: false,
       updatedAt: now - 5000,
       x: 0,
@@ -2316,7 +2526,7 @@ function createDefaultVfsEntries(): DesktopItem[] {
       id: VFS_PRIMARY_CANVAS_ID,
       kind: "canvas",
       name: "sketch.canvas",
-      parentId: VFS_ROOT_ID,
+      parentId: VFS_PICTURES_ID,
       showOnDesktop: false,
       updatedAt: now - 3000,
       x: 0,
@@ -2328,7 +2538,7 @@ function createDefaultVfsEntries(): DesktopItem[] {
       id: "vfs-minefield",
       kind: "game",
       name: "minefield.game",
-      parentId: VFS_ROOT_ID,
+      parentId: VFS_GAMES_ID,
       showOnDesktop: false,
       updatedAt: now - 2000,
       x: 0,
@@ -2403,11 +2613,14 @@ function normalizePersistedDesktopItem(
         ? item.name.trim().slice(0, 48)
         : getDefaultVfsEntryName(item.kind),
     parentId: typeof item.parentId === "string" ? item.parentId : VFS_ROOT_ID,
+    restoreParentId:
+      typeof item.restoreParentId === "string" ? item.restoreParentId : undefined,
     restoreShowOnDesktop:
       typeof item.restoreShowOnDesktop === "boolean" ? item.restoreShowOnDesktop : showOnDesktop,
     showOnDesktop: trashed ? false : showOnDesktop,
     trashed,
     trashedAt: Number.isFinite(trashedAt) ? trashedAt : undefined,
+    trashedRootId: typeof item.trashedRootId === "string" ? item.trashedRootId : undefined,
     updatedAt: Number.isFinite(updatedAt) ? updatedAt : Number.isFinite(createdAt) ? createdAt : Date.now(),
     ...position,
   };
