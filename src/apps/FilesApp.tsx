@@ -21,6 +21,7 @@ import {
   Monitor,
   Paintbrush,
   Pencil,
+  Plus,
   Search,
   Trash2,
   Upload,
@@ -74,6 +75,7 @@ type FileContextMenuState = {
 export type FilesLaunchRequest = {
   folderId: string;
   id: string;
+  windowId: string;
 };
 
 type FilesAppProps = {
@@ -88,8 +90,10 @@ type FilesAppProps = {
   moveVfsEntries: (itemIds: string[], parentId: string) => boolean;
   notify: (toast: ToastInput) => void;
   openApp: (appId: AppId) => void;
+  openNewAppWindow: (appId: AppId) => string;
   openVfsEntry: (item: DesktopItem) => void;
   renameVfsEntry: (itemId: string, name: string) => void;
+  windowId: string;
 };
 
 const APP_BAR_HEIGHT = 48;
@@ -109,8 +113,10 @@ export default function FilesApp({
   moveVfsEntries,
   notify,
   openApp,
+  openNewAppWindow,
   openVfsEntry,
   renameVfsEntry,
+  windowId,
 }: FilesAppProps) {
   const fileListRef = useRef<HTMLDivElement | null>(null);
   const fileContextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -375,7 +381,7 @@ export default function FilesApp({
   };
 
   useEffect(() => {
-    if (!filesLaunchRequest) return;
+    if (!filesLaunchRequest || filesLaunchRequest.windowId !== windowId) return;
     navigateToFolder(filesLaunchRequest.folderId);
   }, [filesLaunchRequest?.id]);
 
@@ -682,6 +688,15 @@ export default function FilesApp({
             <Folder aria-hidden="true" size={15} />
             <span>{locationLabel}</span>
           </div>
+          <button
+            aria-label="새 파일 탐색기 창"
+            className="file-new-window-button"
+            onClick={() => openNewAppWindow("files")}
+            title="새 창"
+            type="button"
+          >
+            <Plus aria-hidden="true" size={16} />
+          </button>
         </div>
         <div className="file-explorer-top">
           <div className="file-address-row">

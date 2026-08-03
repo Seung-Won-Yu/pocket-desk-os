@@ -1,8 +1,8 @@
 import {
   Check,
-  Download,
   Eraser,
   FileText,
+  FolderOpen,
   Minus,
   Paintbrush,
   Palette,
@@ -15,8 +15,14 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type React from "react";
+import FileDialog from "../components/FileDialog";
+import type { DesktopItem } from "../types";
+import { VFS_PICTURES_ID } from "../vfs/model";
 
 type PaintTool = "brush" | "line" | "rect" | "ellipse";
+const PAINT_SAVE_EVENT = "pocket-desk-save-paint";
+const PAINT_OPEN_EVENT = "pocket-desk-open-paint";
+const PAINT_SAVE_AS_EVENT = "pocket-desk-save-paint-as";
 
 type CanvasEntry = {
   content?: string;
@@ -28,7 +34,13 @@ type PaintAppProps = {
   activeCanvasId: string;
   activeCanvasOpenKey: number;
   canvasEntries: CanvasEntry[];
-  savePaintImage: (content: string) => void;
+  createVfsFolder: (parentId?: string) => DesktopItem;
+  desktopItems: DesktopItem[];
+  openVfsEntry: (item: DesktopItem) => void;
+  savePaintImage: (
+    content: string,
+    options?: { existingItemId?: string; name?: string; parentId?: string },
+  ) => DesktopItem;
 };
 
 
@@ -55,6 +67,9 @@ export default function PaintApp({
   activeCanvasId,
   activeCanvasOpenKey,
   canvasEntries,
+  createVfsFolder,
+  desktopItems,
+  openVfsEntry,
   savePaintImage,
 }: PaintAppProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -73,6 +88,7 @@ export default function PaintApp({
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [zoom, setZoom] = useState(100);
   const [historyState, setHistoryState] = useState({ redo: 0, undo: 0 });
+  const [fileDialogMode, setFileDialogMode] = useState<"open" | "save" | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -204,15 +220,37 @@ export default function PaintApp({
     window.setTimeout(() => setSaved(false), 1300);
   };
 
-  const downloadPng = () => {
+  useEffect(() => {
+    const saveFromShortcut = () => save();
+    window.addEventListener(PAINT_SAVE_EVENT, saveFromShortcut);
+    return () => window.removeEventListener(PAINT_SAVE_EVENT, saveFromShortcut);
+  }, [activeCanvas?.id, savePaintImage]);
+
+  useEffect(() => {
+    const openFromShortcut = () => setFileDialogMode("open");
+    const saveAsFromShortcut = () => setFileDialogMode("save");
+    window.addEventListener(PAINT_OPEN_EVENT, openFromShortcut);
+    window.addEventListener(PAINT_SAVE_AS_EVENT, saveAsFromShortcut);
+    return () => {
+      window.removeEventListener(PAINT_OPEN_EVENT, openFromShortcut);
+      window.removeEventListener(PAINT_SAVE_AS_EVENT, saveAsFromShortcut);
+    };
+  }, []);
+
+  const saveAs = (result: {
+    existingItem?: DesktopItem;
+    name: string;
+    parentId: string;
+  }) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const link = document.createElement("a");
-    link.href = canvas.toDataURL("image/png");
-    link.download = `${activeCanvas?.name?.replace(/\.[^.]+$/, "") || "pocket-desk-sketch"}.png`;
-    document.body.append(link);
-    link.click();
-    link.remove();
+    const item = savePaintImage(canvas.toDataURL("image/png"), {
+      existingItemId: result.existingItem?.id,
+      name: result.name,
+      parentId: result.parentId,
+    });
+    openVfsEntry(item);
+    setFileDialogMode(null);
   };
 
   const undo = () => {
@@ -261,7 +299,24 @@ export default function PaintApp({
   };
 
   return (
-    <div className="paint-app app-fill">
+    <div
+      className="paint-app app-fill"
+      onKeyDown={(event) => {
+        if (!(event.ctrlKey || event.metaKey)) return;
+        const key = event.key.toLowerCase();
+        if (key === "o") {
+          event.preventDefault();
+          event.stopPropagation();
+          setFileMenuOpen(false);
+          setFileDialogMode("open");
+        } else if (key === "s" && event.shiftKey) {
+          event.preventDefault();
+          event.stopPropagation();
+          setFileMenuOpen(false);
+          setFileDialogMode("save");
+        }
+      }}
+    >
       <div className="paint-tabs">
         <button
           aria-expanded={fileMenuOpen}
@@ -301,6 +356,17 @@ export default function PaintApp({
         <div className="paint-file-menu" role="menu">
           <button
             onClick={() => {
+              setFileDialogMode("open");
+              setFileMenuOpen(false);
+            }}
+            role="menuitem"
+            type="button"
+          >
+            <FolderOpen aria-hidden="true" size={16} />
+            열기
+          </button>
+          <button
+            onClick={() => {
               save();
               setFileMenuOpen(false);
             }}
@@ -312,13 +378,13 @@ export default function PaintApp({
           </button>
           <button
             onClick={() => {
-              downloadPng();
+              setFileDialogMode("save");
               setFileMenuOpen(false);
             }}
             role="menuitem"
             type="button"
           >
-            <Download aria-hidden="true" size={16} />
+            <Save aria-hidden="true" size={16} />
             다른 이름으로 저장
           </button>
         </div>
@@ -484,6 +550,32 @@ export default function PaintApp({
         <span>1120 × 720px</span>
         <span>{zoom}%</span>
       </div>
+      {fileDialogMode && (
+        <FileDialog
+          allowedKinds={["canvas"]}
+          createVfsFolder={createVfsFolder}
+          defaultExtension="png"
+          defaultName={
+            activeCanvas?.name
+              ? activeCanvas.name.replace(/\.[^.]+$/, ".png")
+              : "새 그림.png"
+          }
+          fileTypeLabel="PNG 이미지 (*.png)"
+          initialFolderId={
+            desktopItems.find((item) => item.id === activeCanvas?.id)?.parentId ??
+            VFS_PICTURES_ID
+          }
+          items={desktopItems}
+          mode={fileDialogMode}
+          onCancel={() => setFileDialogMode(null)}
+          onOpen={(item) => {
+            openVfsEntry(item);
+            setFileDialogMode(null);
+          }}
+          onSave={saveAs}
+          title={fileDialogMode === "open" ? "열기" : "다른 이름으로 저장"}
+        />
+      )}
     </div>
   );
 }

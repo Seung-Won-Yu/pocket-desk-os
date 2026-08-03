@@ -233,6 +233,7 @@ type AppContentProps = {
   importVfsZip: (file: File) => Promise<void>;
   moveVfsEntries: (itemIds: string[], parentId: string) => boolean;
   openApp: (appId: AppId) => void;
+  openNewAppWindow: (appId: AppId) => string;
   openVfsEntry: (item: DesktopItem) => void;
   permanentlyDeleteVfsEntry: (itemId: string) => void;
   renameVfsEntry: (itemId: string, name: string) => void;
@@ -240,7 +241,16 @@ type AppContentProps = {
   resetWindowLayout: () => void;
   restoreVfsEntry: (itemId: string) => void;
   playSound: (effect: SoundEffectName) => void;
-  savePaintImage: (content: string) => void;
+  savePaintImage: (
+    content: string,
+    options?: { existingItemId?: string; name?: string; parentId?: string },
+  ) => DesktopItem;
+  saveNoteAs: (
+    parentId: string,
+    name: string,
+    content: string,
+    existingItemId?: string,
+  ) => DesktopItem;
   saveNoteContent: (noteId: string, content: string) => void;
   setSoundEnabled: (enabled: boolean) => void;
   setWallpaper: (wallpaper: WallpaperName) => void;
@@ -248,6 +258,7 @@ type AppContentProps = {
   soundEnabled: boolean;
   theme: ThemeName;
   wallpaper: WallpaperName;
+  windowId: string;
 };
 
 type AppDefinition = {
@@ -271,6 +282,11 @@ const NOTE_KEY = "pocket-desk-note";
 const LEGACY_DEFAULT_NOTE_CONTENT =
   "PocketDesk 메모장\n\n여기에 내용을 적고 저장하면 브라우저 로컬 저장소와 IndexedDB 파일 시스템에 남습니다.";
 const NOTE_SAVE_EVENT = "pocket-desk-save-note";
+const NOTE_OPEN_EVENT = "pocket-desk-open-note";
+const NOTE_SAVE_AS_EVENT = "pocket-desk-save-note-as";
+const PAINT_SAVE_EVENT = "pocket-desk-save-paint";
+const PAINT_OPEN_EVENT = "pocket-desk-open-paint";
+const PAINT_SAVE_AS_EVENT = "pocket-desk-save-paint-as";
 const VFS_PRIMARY_NOTE_ID = "vfs-notes";
 const VFS_PRIMARY_CANVAS_ID = "vfs-sketch";
 const WALLPAPER_KEY = "pocket-desk-wallpaper-v2";
@@ -670,15 +686,25 @@ export default function App() {
     });
   };
 
-  const openApp = (appId: AppId) => {
-    const existingWindow = windows.find((item) => item.appId === appId);
+  const openApp = (appId: AppId, options?: { forceNew?: boolean }) => {
+    const forceNew = Boolean(options?.forceNew);
+    const existingWindow = forceNew
+      ? undefined
+      : windows
+          .filter((item) => item.appId === appId)
+          .sort((first, second) => second.z - first.z)[0];
+    const nextWindowId = existingWindow?.id ?? `${appId}-${crypto.randomUUID()}`;
     if (existingWindow) cancelWindowMotion(existingWindow.id);
     playSound("open");
     setDesktopIconMenu(null);
     setDesktopMenu(null);
     setWindows((current) => {
       const app = getApp(appId);
-      const existing = current.find((item) => item.appId === appId);
+      const existing = forceNew
+        ? undefined
+        : current
+            .filter((item) => item.appId === appId)
+            .sort((first, second) => second.z - first.z)[0];
       const topZ = Math.max(12, ...current.map((item) => item.z));
 
       if (existing) {
@@ -699,7 +725,7 @@ export default function App() {
       return [
         ...current,
         {
-          id: `${appId}-${crypto.randomUUID()}`,
+          id: nextWindowId,
           appId,
           x: Math.min(52 + offset, maxX),
           y: Math.min(42 + offset, maxY),
@@ -714,7 +740,10 @@ export default function App() {
     setStartOpen(false);
     setRunOpen(false);
     setQuery("");
+    return nextWindowId;
   };
+
+  const openNewAppWindow = (appId: AppId) => openApp(appId, { forceNew: true });
 
   const togglePinnedApp = (appId: AppId) => {
     const app = getApp(appId);
@@ -758,7 +787,9 @@ export default function App() {
   const openVfsEntry = (item: DesktopItem) => {
     const association = getVfsEntryAssociation(item);
     if (item.kind === "folder") {
-      setFilesLaunchRequest({ folderId: item.id, id: crypto.randomUUID() });
+      const windowId = openApp("files");
+      setFilesLaunchRequest({ folderId: item.id, id: crypto.randomUUID(), windowId });
+      return;
     }
     if (item.kind === "note") {
       setActiveNoteId(item.id);
@@ -1117,27 +1148,55 @@ export default function App() {
     return activeDesktopItems.filter((item) => item.kind === "canvas");
   }, [activeDesktopItems]);
 
-  const savePaintImage = (content: string) => {
+  const savePaintImage = (
+    content: string,
+    options?: { existingItemId?: string; name?: string; parentId?: string },
+  ) => {
     playSound("success");
     const now = Date.now();
-    const id = `canvas-${crypto.randomUUID()}`;
-    const name = getUniqueCanvasItemName(activeDesktopItems);
-
-    setDesktopItems((current) => [
-      ...current,
-      {
+    const existingId = options?.existingItemId ?? (!options ? activeCanvasId : undefined);
+    const existing = existingId
+      ? activeDesktopItems.find((item) => item.id === existingId && item.kind === "canvas")
+      : undefined;
+    if (existing) {
+      const updatedItem: DesktopItem = {
+        ...existing,
         content,
-        createdAt: now,
-        id,
-        kind: "canvas",
-        name,
-        parentId: VFS_PICTURES_ID,
-        showOnDesktop: false,
+        name: options?.name ?? existing.name,
+        parentId: options?.parentId ?? existing.parentId,
         updatedAt: now,
-        x: 0,
-        y: 0,
-      },
-    ]);
+      };
+      setDesktopItems((current) =>
+        current.map((item) => (item.id === existing.id ? updatedItem : item)),
+      );
+      setActiveCanvasId(existing.id);
+      notify({
+        detail: "그림판 파일에 변경 내용을 저장했습니다.",
+        title: `${updatedItem.name} 저장됨`,
+        tone: "success",
+      });
+      return updatedItem;
+    }
+
+    const id = `canvas-${crypto.randomUUID()}`;
+    const parentId = options?.parentId ?? VFS_PICTURES_ID;
+    const name = options?.name
+      ? getUniqueVfsEntryName(activeDesktopItems, parentId, options.name)
+      : getUniqueCanvasItemName(activeDesktopItems, parentId);
+    const item: DesktopItem = {
+      content,
+      createdAt: now,
+      id,
+      kind: "canvas",
+      name,
+      parentId,
+      showOnDesktop: false,
+      updatedAt: now,
+      x: 0,
+      y: 0,
+    };
+
+    setDesktopItems((current) => [...current, item]);
     setActiveCanvasId(id);
     setActiveCanvasOpenKey((current) => current + 1);
     notify({
@@ -1145,6 +1204,7 @@ export default function App() {
       title: `${name} 저장됨`,
       tone: "success",
     });
+    return item;
   };
 
   const renameVfsEntry = (itemId: string, name: string) => {
@@ -1487,6 +1547,60 @@ export default function App() {
         },
       ];
     });
+  };
+
+  const saveNoteAs = (
+    parentId: string,
+    name: string,
+    content: string,
+    existingItemId?: string,
+  ) => {
+    const now = Date.now();
+    const existing = existingItemId
+      ? activeDesktopItems.find(
+          (item) => item.id === existingItemId && item.kind === "note",
+        )
+      : undefined;
+    if (existing) {
+      const updatedItem: DesktopItem = {
+        ...existing,
+        content,
+        name,
+        parentId,
+        updatedAt: now,
+      };
+      setDesktopItems((current) =>
+        current.map((item) => (item.id === existing.id ? updatedItem : item)),
+      );
+      setActiveNoteId(existing.id);
+      notify({
+        detail: "기존 문서의 내용을 새 내용으로 바꿨습니다.",
+        title: `${name} 저장됨`,
+        tone: "success",
+      });
+      return updatedItem;
+    }
+
+    const item: DesktopItem = {
+      content,
+      createdAt: now,
+      id: `note-${crypto.randomUUID()}`,
+      kind: "note",
+      name: getUniqueVfsEntryName(activeDesktopItems, parentId, name),
+      parentId,
+      showOnDesktop: false,
+      updatedAt: now,
+      x: 0,
+      y: 0,
+    };
+    setDesktopItems((current) => [...current, item]);
+    setActiveNoteId(item.id);
+    notify({
+      detail: "선택한 폴더에 새 문서를 저장했습니다.",
+      title: `${item.name} 저장됨`,
+      tone: "success",
+    });
+    return item;
   };
 
   const showDesktopContextMenu = (event: React.MouseEvent<HTMLElement>) => {
@@ -1886,11 +2000,45 @@ export default function App() {
         }
       }
 
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "o") {
+        const activeWindow = windows.find((item) => item.id === activeWindowId);
+        if (activeWindow?.appId === "notepad" || activeWindow?.appId === "paint") {
+          event.preventDefault();
+          window.dispatchEvent(
+            new Event(activeWindow.appId === "notepad" ? NOTE_OPEN_EVENT : PAINT_OPEN_EVENT),
+          );
+        }
+        return;
+      }
+
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === "s"
+      ) {
+        const activeWindow = windows.find((item) => item.id === activeWindowId);
+        if (activeWindow?.appId === "notepad" || activeWindow?.appId === "paint") {
+          event.preventDefault();
+          window.dispatchEvent(
+            new Event(
+              activeWindow.appId === "notepad" ? NOTE_SAVE_AS_EVENT : PAINT_SAVE_AS_EVENT,
+            ),
+          );
+        }
+        return;
+      }
+
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === "s"
+      ) {
         event.preventDefault();
         const activeWindow = windows.find((item) => item.id === activeWindowId);
         if (activeWindow?.appId === "notepad") {
           window.dispatchEvent(new Event(NOTE_SAVE_EVENT));
+        } else if (activeWindow?.appId === "paint") {
+          window.dispatchEvent(new Event(PAINT_SAVE_EVENT));
         } else if (activeWindow) {
           notify({
             detail: `${getApp(activeWindow.appId).title}는 아직 단축키 저장을 지원하지 않습니다.`,
@@ -2091,6 +2239,7 @@ export default function App() {
                 importVfsZip={importVfsZip}
                 moveVfsEntries={moveVfsEntries}
                 openApp={openApp}
+                openNewAppWindow={openNewAppWindow}
                 openVfsEntry={openVfsEntry}
                 permanentlyDeleteVfsEntry={permanentlyDeleteVfsEntry}
                 playSound={playSound}
@@ -2099,6 +2248,7 @@ export default function App() {
                 resetWindowLayout={resetWindowLayout}
                 restoreVfsEntry={restoreVfsEntry}
                 savePaintImage={savePaintImage}
+                saveNoteAs={saveNoteAs}
                 saveNoteContent={saveNoteContent}
                 setSoundEnabled={setSoundEnabled}
                 setTheme={changeTheme}
@@ -2106,6 +2256,7 @@ export default function App() {
                 soundEnabled={soundEnabled}
                 theme={theme}
                 wallpaper={wallpaper}
+                windowId={item.id}
               />
             </WindowFrame>
           );
@@ -2360,7 +2511,7 @@ function loadWindowState(): WindowInstance[] {
     const restored = parsed
       .map((item, index) => normalizePersistedWindow(item as PersistedWindow, index))
       .filter((item): item is WindowInstance => {
-        if (!item || seenApps.has(item.appId)) return false;
+        if (!item || (item.appId !== "files" && seenApps.has(item.appId))) return false;
         seenApps.add(item.appId);
         return true;
       });
@@ -4244,7 +4395,7 @@ function Taskbar({
   const [preview, setPreview] = useState<{
     app: AppDefinition;
     left: number;
-    window?: WindowInstance;
+    windows: WindowInstance[];
   } | null>(null);
   const [taskbarMenu, setTaskbarMenu] = useState<{ appId: AppId; left: number } | null>(null);
   const taskbarMenuButtonRef = useRef<HTMLButtonElement>(null);
@@ -4253,16 +4404,26 @@ function Taskbar({
   const pinnedApps = pinnedAppIds
     .filter((appId) => availableAppIds.has(appId))
     .map((appId) => getApp(appId));
-  const unpinnedWindows = windows.filter((item) => !pinnedAppIds.includes(item.appId));
+  const unpinnedAppIds = [...new Set(
+    windows
+      .filter((item) => !pinnedAppIds.includes(item.appId))
+      .map((item) => item.appId),
+  )];
   const taskbarApps = [
-    ...pinnedApps.map((app) => ({ app, window: windows.find((item) => item.appId === app.id) })),
-    ...unpinnedWindows.map((windowItem) => ({ app: getApp(windowItem.appId), window: windowItem })),
+    ...pinnedApps.map((app) => ({
+      app,
+      windows: windows.filter((item) => item.appId === app.id),
+    })),
+    ...unpinnedAppIds.map((appId) => ({
+      app: getApp(appId),
+      windows: windows.filter((item) => item.appId === appId),
+    })),
   ];
 
   const showPreview = (
     element: HTMLElement,
     app: AppDefinition,
-    windowItem?: WindowInstance,
+    windowItems: WindowInstance[],
   ) => {
     const taskbarBox = taskbarRef.current?.getBoundingClientRect();
     const buttonBox = element.getBoundingClientRect();
@@ -4271,7 +4432,7 @@ function Taskbar({
     setPreview({
       app,
       left: clamp(rawLeft, 118, maxLeft),
-      window: windowItem,
+      windows: windowItems,
     });
   };
 
@@ -4329,23 +4490,35 @@ function Taskbar({
           <StartGlyph />
         </button>
         <div className="taskbar-windows" aria-label="열린 앱">
-          {taskbarApps.map(({ app, window: windowItem }) => {
+          {taskbarApps.map(({ app, windows: appWindows }) => {
             const isPinned = pinnedAppIds.includes(app.id);
+            const orderedAppWindows = [...appWindows].sort((first, second) => second.z - first.z);
+            const activeAppWindow = orderedAppWindows.find((item) => item.id === activeWindowId);
+            const windowItem = activeAppWindow ?? orderedAppWindows[0];
+            const allMinimized = appWindows.length > 0 && appWindows.every((item) => item.minimized);
             return (
               <div
                 className="taskbar-slot"
-                key={windowItem?.id ?? `pinned-${app.id}`}
+                key={`taskbar-${app.id}`}
                 onBlur={hidePreview}
-                onFocusCapture={(event) => showPreview(event.currentTarget, app, windowItem)}
-                onMouseEnter={(event) => showPreview(event.currentTarget, app, windowItem)}
+                onFocusCapture={(event) => showPreview(event.currentTarget, app, orderedAppWindows)}
+                onMouseEnter={(event) => showPreview(event.currentTarget, app, orderedAppWindows)}
                 onMouseLeave={hidePreview}
               >
                 <button
-                  className={`taskbar-app ${windowItem && activeWindowId === windowItem.id ? "is-current" : ""} ${
-                    windowItem?.minimized ? "is-minimized" : ""
+                  aria-label={`${app.title}${appWindows.length > 1 ? `, ${appWindows.length}개 창` : ""}`}
+                  className={`taskbar-app ${activeAppWindow ? "is-current" : ""} ${
+                    allMinimized ? "is-minimized" : ""
                   } ${isPinned ? "is-pinned" : ""} ${windowItem ? "is-open" : ""}`}
                   onClick={() => {
-                    if (windowItem) {
+                    if (activeAppWindow && orderedAppWindows.length > 1) {
+                      const activeIndex = orderedAppWindows.findIndex(
+                        (item) => item.id === activeAppWindow.id,
+                      );
+                      const nextWindow =
+                        orderedAppWindows[(activeIndex + 1) % orderedAppWindows.length];
+                      onToggleWindow(nextWindow.id);
+                    } else if (windowItem) {
                       onToggleWindow(windowItem.id);
                     } else {
                       onOpenApp(app.id);
@@ -4361,6 +4534,9 @@ function Taskbar({
                 >
                   <AppIconTile accent={app.accent} icon={app.icon} size="small" />
                   <span>{app.title}</span>
+                  {appWindows.length > 1 && (
+                    <span className="taskbar-window-count">{appWindows.length}</span>
+                  )}
                   {isPinned ? (
                     <Pin aria-hidden="true" className="taskbar-pin-icon" size={11} />
                   ) : (
@@ -4656,20 +4832,23 @@ function NotificationCenterPanel({
 function TaskbarPreview({
   app,
   left,
-  window,
+  windows,
 }: {
   app: AppDefinition;
   left: number;
-  window?: WindowInstance;
+  windows: WindowInstance[];
 }) {
-  const status = window
-    ? window.minimized
-      ? "최소화됨"
-      : window.maximized
-        ? "최대화됨"
-        : "열림"
+  const primaryWindow = windows[0];
+  const status = primaryWindow
+    ? windows.length > 1
+      ? `${windows.length}개 창`
+      : primaryWindow.minimized
+        ? "최소화됨"
+        : primaryWindow.maximized
+          ? "최대화됨"
+          : "열림"
     : "고정됨";
-  const detail = window ? app.subtitle : "고정된 앱";
+  const detail = primaryWindow ? app.subtitle : "고정된 앱";
 
   return (
     <div
@@ -4685,6 +4864,15 @@ function TaskbarPreview({
       <div className="taskbar-preview-meta">
         <strong>{app.title}</strong>
         <small>{detail}</small>
+        {windows.length > 1 && (
+          <div className="taskbar-preview-window-list">
+            {windows.map((windowItem, index) => (
+              <span key={windowItem.id}>
+                창 {index + 1} · {windowItem.minimized ? "최소화됨" : "열림"}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

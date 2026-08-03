@@ -1,26 +1,41 @@
 import { FileText, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
+import FileDialog from "../components/FileDialog";
 import type { DesktopItem } from "../types";
+import { VFS_DOCUMENTS_ID } from "../vfs/model";
 
 type NoteSaveStatus = "saved" | "dirty" | "saving";
 
 type NotepadAppProps = {
   activeNoteId: string;
+  createVfsFolder: (parentId?: string) => DesktopItem;
   createVfsTextFile: () => DesktopItem;
+  desktopItems: DesktopItem[];
   noteEntries: DesktopItem[];
   openVfsEntry: (item: DesktopItem) => void;
+  saveNoteAs: (
+    parentId: string,
+    name: string,
+    content: string,
+    existingItemId?: string,
+  ) => DesktopItem;
   saveNoteContent: (noteId: string, content: string) => void;
 };
 
 const NOTE_SAVE_EVENT = "pocket-desk-save-note";
+const NOTE_OPEN_EVENT = "pocket-desk-open-note";
+const NOTE_SAVE_AS_EVENT = "pocket-desk-save-note-as";
 
 
 export default function NotepadApp({
   activeNoteId,
+  createVfsFolder,
   createVfsTextFile,
+  desktopItems,
   noteEntries,
   openVfsEntry,
+  saveNoteAs,
   saveNoteContent,
 }: NotepadAppProps) {
   const activeNote = noteEntries.find((item) => item.id === activeNoteId) ?? noteEntries[0];
@@ -31,6 +46,7 @@ export default function NotepadApp({
   const [wordWrap, setWordWrap] = useState(true);
   const [fontSize, setFontSize] = useState(15);
   const [cursorPosition, setCursorPosition] = useState({ column: 1, line: 1 });
+  const [fileDialogMode, setFileDialogMode] = useState<"open" | "save" | null>(null);
 
   const save = () => {
     if (!activeNote) return;
@@ -65,6 +81,17 @@ export default function NotepadApp({
     return () => window.removeEventListener(NOTE_SAVE_EVENT, saveFromShortcut);
   }, [activeNote?.id, text]);
 
+  useEffect(() => {
+    const openFromShortcut = () => setFileDialogMode("open");
+    const saveAsFromShortcut = () => setFileDialogMode("save");
+    window.addEventListener(NOTE_OPEN_EVENT, openFromShortcut);
+    window.addEventListener(NOTE_SAVE_AS_EVENT, saveAsFromShortcut);
+    return () => {
+      window.removeEventListener(NOTE_OPEN_EVENT, openFromShortcut);
+      window.removeEventListener(NOTE_SAVE_AS_EVENT, saveAsFromShortcut);
+    };
+  }, []);
+
   const updateCursorPosition = () => {
     const editor = noteEditorRef.current;
     if (!editor) return;
@@ -74,19 +101,6 @@ export default function NotepadApp({
       column: (lines[lines.length - 1]?.length ?? 0) + 1,
       line: lines.length,
     });
-  };
-
-  const downloadNote = () => {
-    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = activeNote?.name ?? "새 텍스트 문서.txt";
-    document.body.append(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-    setNoteMenu(null);
   };
 
   const insertDateTime = () => {
@@ -105,7 +119,28 @@ export default function NotepadApp({
   };
 
   return (
-    <div className="notepad-app app-fill">
+    <div
+      className="notepad-app app-fill"
+      onKeyDown={(event) => {
+        if (!(event.ctrlKey || event.metaKey)) return;
+        const key = event.key.toLowerCase();
+        if (key === "o") {
+          event.preventDefault();
+          event.stopPropagation();
+          setNoteMenu(null);
+          setFileDialogMode("open");
+        } else if (key === "s" && event.shiftKey) {
+          event.preventDefault();
+          event.stopPropagation();
+          setNoteMenu(null);
+          setFileDialogMode("save");
+        } else if (key === "n") {
+          event.preventDefault();
+          event.stopPropagation();
+          openVfsEntry(createVfsTextFile());
+        }
+      }}
+    >
       <div className="note-menu-bar">
         <button
           aria-expanded={noteMenu === "file"}
@@ -133,6 +168,16 @@ export default function NotepadApp({
         <div className="note-menu" role="menu">
           <button
             onClick={() => {
+              setFileDialogMode("open");
+              setNoteMenu(null);
+            }}
+            role="menuitem"
+            type="button"
+          >
+            열기 <kbd>Ctrl+O</kbd>
+          </button>
+          <button
+            onClick={() => {
               const item = createVfsTextFile();
               openVfsEntry(item);
               setNoteMenu(null);
@@ -152,8 +197,15 @@ export default function NotepadApp({
           >
             저장 <kbd>Ctrl+S</kbd>
           </button>
-          <button onClick={downloadNote} role="menuitem" type="button">
-            다른 이름으로 저장
+          <button
+            onClick={() => {
+              setFileDialogMode("save");
+              setNoteMenu(null);
+            }}
+            role="menuitem"
+            type="button"
+          >
+            다른 이름으로 저장 <kbd>Ctrl+Shift+S</kbd>
           </button>
         </div>
       )}
@@ -255,6 +307,29 @@ export default function NotepadApp({
         <span>Windows (CRLF)</span>
         <span>UTF-8</span>
       </div>
+      {fileDialogMode && (
+        <FileDialog
+          allowedKinds={["note"]}
+          createVfsFolder={createVfsFolder}
+          defaultExtension="txt"
+          defaultName={activeNote?.name ?? "새 텍스트 문서.txt"}
+          fileTypeLabel="텍스트 문서 (*.txt)"
+          initialFolderId={activeNote?.parentId ?? VFS_DOCUMENTS_ID}
+          items={desktopItems}
+          mode={fileDialogMode}
+          onCancel={() => setFileDialogMode(null)}
+          onOpen={(item) => {
+            openVfsEntry(item);
+            setFileDialogMode(null);
+          }}
+          onSave={({ existingItem, name, parentId }) => {
+            const item = saveNoteAs(parentId, name, text, existingItem?.id);
+            openVfsEntry(item);
+            setFileDialogMode(null);
+          }}
+          title={fileDialogMode === "open" ? "열기" : "다른 이름으로 저장"}
+        />
+      )}
     </div>
   );
 }
@@ -415,4 +490,3 @@ function renderMarkdownInline(value: string, keyPrefix: string): React.ReactNode
 
   return nodes;
 }
-

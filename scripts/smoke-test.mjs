@@ -351,7 +351,68 @@ async function runSmoke(baseUrl) {
       (await desktopNotepad.getByLabel("메모 내용").getAttribute("wrap")) === "off",
       "Notepad word wrap command did not apply",
     );
+    await desktopNotepad.getByLabel("메모 내용").fill("공용 파일 대화상자 저장 테스트");
+    await page.keyboard.press("Control+Shift+s");
+    const notepadSaveDialog = desktopNotepad.getByRole("dialog", {
+      name: "다른 이름으로 저장",
+    });
+    await notepadSaveDialog.waitFor({ state: "visible" });
+    await desktopNotepad.locator(".file-dialog-overlay").click({ position: { x: 2, y: 2 } });
+    assert(await notepadSaveDialog.isVisible(), "File dialog closed after a backdrop click");
+    await notepadSaveDialog.getByRole("button", { name: "취소", exact: true }).focus();
+    await page.keyboard.press("Tab");
+    assert(
+      await notepadSaveDialog
+        .getByRole("button", { name: "다른 이름으로 저장 닫기" })
+        .evaluate((button) => button === document.activeElement),
+      "File dialog did not keep keyboard focus inside the modal",
+    );
+    await notepadSaveDialog.getByRole("button", { name: "문서", exact: true }).click();
+    await notepadSaveDialog.getByLabel("파일 이름").fill("대화상자 테스트");
+    await notepadSaveDialog.getByRole("button", { name: "저장", exact: true }).click();
+    await notepadSaveDialog.waitFor({ state: "hidden" });
+    assert(
+      (await desktopNotepad.locator('[role="tab"][aria-selected="true"]').innerText()).includes(
+        "대화상자 테스트.txt",
+      ),
+      "Notepad Save As did not create and activate the text file",
+    );
+    await page.keyboard.press("Control+o");
+    const notepadOpenDialog = desktopNotepad.getByRole("dialog", { name: "열기" });
+    await notepadOpenDialog.waitFor({ state: "visible" });
+    await notepadOpenDialog.getByRole("option", { name: /notes\.txt/ }).dblclick();
+    await notepadOpenDialog.waitFor({ state: "hidden" });
+    assert(
+      (await desktopNotepad.locator('[role="tab"][aria-selected="true"]').innerText()).includes(
+        "notes.txt",
+      ),
+      "Notepad Open dialog did not activate the selected document",
+    );
     await desktopNotepad.getByRole("button", { name: "메모장 닫기" }).click();
+
+    await page.keyboard.press("Control+Alt+r");
+    const earlyRunDialog = page.locator(".run-dialog");
+    await earlyRunDialog.waitFor({ state: "visible" });
+    await earlyRunDialog.getByLabel("열기").fill("mspaint");
+    await earlyRunDialog.getByRole("button", { name: "확인" }).click();
+    const paint = page.locator('article[aria-label="그림판"]');
+    await paint.waitFor({ state: "visible" });
+    await page.keyboard.press("Control+Shift+s");
+    const paintSaveDialog = paint.getByRole("dialog", { name: "다른 이름으로 저장" });
+    await paintSaveDialog.waitFor({ state: "visible" });
+    await paintSaveDialog.getByLabel("파일 이름").fill("QA 그림");
+    await paintSaveDialog.getByRole("button", { name: "저장", exact: true }).click();
+    await paintSaveDialog.waitFor({ state: "hidden" });
+    assert(
+      (await paint.locator(".canvas-file-label").innerText()).includes("QA 그림.png"),
+      "Paint Save As did not create and activate the PNG file",
+    );
+    await page.keyboard.press("Control+o");
+    const paintOpenDialog = paint.getByRole("dialog", { name: "열기" });
+    await paintOpenDialog.waitFor({ state: "visible" });
+    await paintOpenDialog.getByRole("option", { name: /QA 그림\.png/ }).dblclick();
+    await paintOpenDialog.waitFor({ state: "hidden" });
+    await paint.getByRole("button", { name: "그림판 닫기" }).click();
 
     await desktopNote.dispatchEvent("contextmenu", {
       bubbles: true,
@@ -439,6 +500,31 @@ async function runSmoke(baseUrl) {
     await explorerSidebar.getByRole("button", { name: "문서", exact: true }).click();
     assert((await files.locator(".file-list button").count()) > 0, "Documents view is empty");
     assert((await files.locator(".file-list").innerText()).includes("notes.txt"), "Documents view did not filter notes");
+
+    await files.getByRole("button", { name: "새 파일 탐색기 창" }).click();
+    const explorerWindows = page.locator('article[aria-label="파일 탐색기"]');
+    await page.waitForFunction(
+      () => document.querySelectorAll('article[aria-label="파일 탐색기"]').length === 2,
+    );
+    const secondExplorer = explorerWindows.nth(1);
+    await secondExplorer.waitFor({ state: "visible" });
+    assert(
+      (await page.locator(".taskbar-window-count").filter({ hasText: "2" }).count()) > 0,
+      "Taskbar did not show the File Explorer window count",
+    );
+    await secondExplorer.locator("aside").getByRole("button", { name: "사진", exact: true }).click();
+    assert(
+      (await secondExplorer.locator(".file-address").innerText()).includes("사진"),
+      "Second Explorer window did not navigate independently",
+    );
+    assert(
+      (await explorerWindows.first().locator(".file-address").innerText()).includes("문서"),
+      "Second Explorer navigation changed the first Explorer window",
+    );
+    await secondExplorer.getByRole("button", { name: "파일 탐색기 닫기" }).click();
+    await page.waitForFunction(
+      () => document.querySelectorAll('article[aria-label="파일 탐색기"]').length === 1,
+    );
 
     await files.getByRole("button", { name: "새로 만들기" }).click();
     let newFileMenu = files.getByRole("menu", { name: "새로 만들기" });

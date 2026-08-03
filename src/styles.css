@@ -1644,6 +1644,20 @@ button {
   display: none;
 }
 
+.taskbar-window-count {
+  align-items: center;
+  background: var(--active);
+  border-radius: 8px;
+  color: #fff;
+  display: inline-flex;
+  font-size: 0.62rem;
+  font-weight: 700;
+  height: 16px;
+  justify-content: center;
+  min-width: 16px;
+  padding: 0 4px;
+}
+
 .taskbar-app::after {
   background: rgba(255, 255, 255, 0.34);
   border-radius: 999px;
@@ -1747,6 +1761,19 @@ button {
 
 .taskbar-preview-meta small {
   color: var(--muted);
+}
+
+.taskbar-preview-window-list {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: grid;
+  gap: 3px;
+  margin-top: 6px;
+  padding-top: 7px;
+}
+
+.taskbar-preview-window-list span {
+  color: var(--muted);
+  font-size: 0.72rem;
 }
 
 .taskbar-context-menu {
@@ -4757,6 +4784,26 @@ button {
   white-space: nowrap;
 }
 
+.file-new-window-button {
+  align-items: center;
+  align-self: center;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text);
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  margin-left: 4px;
+  width: 32px;
+}
+
+.file-new-window-button:hover,
+.file-new-window-button:focus-visible {
+  background: var(--control-hover);
+  outline: none;
+}
+
 .file-explorer-top {
   background: rgba(38, 38, 38, 0.78);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -5533,6 +5580,400 @@ button {
   opacity: 0.42;
 }
 
+.file-dialog-overlay {
+  animation: overlay-enter 140ms ease-out both;
+  background: rgba(0, 0, 0, 0.44);
+  display: grid;
+  inset: 0;
+  padding: 12px;
+  place-items: center;
+  position: absolute;
+  z-index: 70;
+}
+
+.file-dialog {
+  animation: dialog-enter 170ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  background: #202020;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 7px;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.56);
+  color: var(--text);
+  display: grid;
+  grid-template-rows: 38px auto 38px minmax(160px, 1fr) auto;
+  height: min(560px, calc(100% - 8px));
+  max-width: 100%;
+  min-height: 360px;
+  overflow: hidden;
+  position: relative;
+  width: min(760px, calc(100% - 8px));
+}
+
+.file-dialog button {
+  color: var(--text);
+}
+
+.file-dialog-titlebar {
+  align-items: center;
+  background: #1c1c1c;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  padding-left: 12px;
+}
+
+.file-dialog-titlebar strong {
+  font-size: 0.82rem;
+}
+
+.file-dialog-titlebar button,
+.file-dialog-nav-buttons button {
+  background: transparent;
+  border: 0;
+  display: grid;
+  place-items: center;
+}
+
+.file-dialog-titlebar button {
+  height: 37px;
+  width: 44px;
+}
+
+.file-dialog-titlebar button:hover,
+.file-dialog-titlebar button:focus-visible,
+.file-dialog-nav-buttons button:hover:not(:disabled),
+.file-dialog-nav-buttons button:focus-visible {
+  background: var(--control-hover);
+  outline: none;
+}
+
+.file-dialog-titlebar button:hover {
+  background: #d94c4c;
+}
+
+.file-dialog-navigation {
+  align-items: center;
+  background: #242424;
+  display: grid;
+  gap: 7px;
+  grid-template-columns: auto minmax(140px, 1fr) minmax(150px, 0.42fr);
+  padding: 7px 9px;
+}
+
+.file-dialog-nav-buttons {
+  display: flex;
+  gap: 1px;
+}
+
+.file-dialog-nav-buttons button {
+  border-radius: 4px;
+  height: 32px;
+  width: 30px;
+}
+
+.file-dialog-nav-buttons button:disabled {
+  opacity: 0.32;
+}
+
+.file-dialog-address,
+.file-dialog-search {
+  align-items: center;
+  background: #171717;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  display: flex;
+  min-height: 32px;
+  min-width: 0;
+}
+
+.file-dialog-address {
+  overflow: hidden;
+  padding: 2px 4px;
+}
+
+.file-dialog-address > div {
+  align-items: center;
+  display: flex;
+  min-width: 0;
+}
+
+.file-dialog-address button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  display: flex;
+  gap: 5px;
+  height: 26px;
+  min-width: 0;
+  padding: 0 6px;
+}
+
+.file-dialog-address button:hover,
+.file-dialog-address button:focus-visible {
+  background: var(--control-hover);
+  outline: none;
+}
+
+.file-dialog-address span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-dialog-search {
+  gap: 7px;
+  padding: 0 9px;
+}
+
+.file-dialog-search input,
+.file-dialog-name-field input {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  min-width: 0;
+  outline: none;
+  width: 100%;
+}
+
+.file-dialog-commandbar {
+  align-items: center;
+  background: #242424;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  padding: 0 9px;
+}
+
+.file-dialog-commandbar button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  display: inline-flex;
+  gap: 7px;
+  min-height: 30px;
+  padding: 0 9px;
+}
+
+.file-dialog-commandbar button:hover,
+.file-dialog-commandbar button:focus-visible {
+  background: var(--control-hover);
+  outline: none;
+}
+
+.file-dialog-workspace {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  min-height: 0;
+}
+
+.file-dialog-workspace > aside {
+  background: #1d1d1d;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px;
+}
+
+.file-dialog-workspace > aside button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  display: flex;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 8px;
+  text-align: left;
+}
+
+.file-dialog-workspace > aside button:hover,
+.file-dialog-workspace > aside button:focus-visible,
+.file-dialog-workspace > aside button.is-selected {
+  background: var(--control-hover);
+  outline: none;
+}
+
+.file-dialog-workspace > aside button.is-selected {
+  background: color-mix(in srgb, var(--active) 20%, rgba(255, 255, 255, 0.06));
+}
+
+.file-dialog-list-wrap {
+  display: grid;
+  grid-template-rows: 30px minmax(0, 1fr);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.file-dialog-list-header,
+.file-dialog-list button {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(150px, 1fr) 104px 112px;
+}
+
+.file-dialog-list-header {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.7rem;
+  padding: 0 10px 0 38px;
+}
+
+.file-dialog-list {
+  min-height: 0;
+  overflow: auto;
+  padding: 4px;
+}
+
+.file-dialog-list button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  grid-template-columns: 26px minmax(116px, 1fr) 104px 112px;
+  min-height: 32px;
+  padding: 0 6px;
+  text-align: left;
+  width: 100%;
+}
+
+.file-dialog-list button:hover,
+.file-dialog-list button:focus-visible,
+.file-dialog-list button.is-selected {
+  background: var(--control-hover);
+  outline: none;
+}
+
+.file-dialog-list button.is-selected {
+  background: color-mix(in srgb, var(--active) 22%, rgba(255, 255, 255, 0.06));
+}
+
+.file-dialog-list button > span,
+.file-dialog-list button > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-dialog-list button > span {
+  grid-column: 2;
+}
+
+.file-dialog-list button > small {
+  color: var(--muted);
+}
+
+.file-dialog-empty {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  justify-content: center;
+  min-height: 140px;
+}
+
+.file-dialog-footer {
+  background: #242424;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 7px 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 9px 11px;
+}
+
+.file-dialog-name-field,
+.file-dialog-type-row {
+  align-items: center;
+  display: grid;
+  font-size: 0.76rem;
+  gap: 8px;
+  grid-template-columns: 72px minmax(0, 1fr);
+  min-width: 0;
+}
+
+.file-dialog-name-field input,
+.file-dialog-type-row strong {
+  background: #171717;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  min-height: 31px;
+  padding: 0 9px;
+}
+
+.file-dialog-type-row strong {
+  align-items: center;
+  display: flex;
+  font-weight: 500;
+}
+
+.file-dialog-actions {
+  display: flex;
+  gap: 7px;
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.file-dialog-actions button,
+.file-dialog-replace-overlay button {
+  background: #353535;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 4px;
+  min-height: 34px;
+  min-width: 78px;
+  padding: 0 12px;
+}
+
+.file-dialog-actions button:hover:not(:disabled),
+.file-dialog-actions button:focus-visible,
+.file-dialog-replace-overlay button:hover,
+.file-dialog-replace-overlay button:focus-visible {
+  background: #414141;
+  outline: none;
+}
+
+.file-dialog-actions button.is-primary,
+.file-dialog-replace-overlay button.is-primary {
+  background: #0067c0;
+  border-color: #1473e6;
+}
+
+.file-dialog-actions button:disabled {
+  opacity: 0.38;
+}
+
+.file-dialog-replace-overlay {
+  background: rgba(0, 0, 0, 0.54);
+  display: grid;
+  inset: 0;
+  padding: 16px;
+  place-items: center;
+  position: absolute;
+  z-index: 4;
+}
+
+.file-dialog-replace-overlay > section {
+  background: #2b2b2b;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 7px;
+  box-shadow: 0 20px 64px rgba(0, 0, 0, 0.48);
+  max-width: 390px;
+  padding: 20px;
+}
+
+.file-dialog-replace-overlay p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 10px 0 18px;
+}
+
+.file-dialog-replace-overlay section > div {
+  display: flex;
+  gap: 7px;
+  justify-content: flex-end;
+}
+
 .file-properties-overlay {
   animation: overlay-enter 140ms ease-out both;
   align-items: center;
@@ -6167,6 +6608,71 @@ button {
 
   .file-search {
     grid-column: 1 / -1;
+  }
+
+  .file-dialog-overlay {
+    padding: 5px;
+  }
+
+  .file-dialog {
+    grid-template-rows: 38px auto 38px minmax(130px, 1fr) auto;
+    height: calc(100% - 2px);
+    min-height: 0;
+    width: calc(100% - 2px);
+  }
+
+  .file-dialog-navigation {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .file-dialog-search {
+    grid-column: 1 / -1;
+  }
+
+  .file-dialog-workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: 48px minmax(0, 1fr);
+  }
+
+  .file-dialog-workspace > aside {
+    align-items: center;
+    border-bottom: 1px solid var(--line);
+    border-right: 0;
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 5px;
+  }
+
+  .file-dialog-workspace > aside button {
+    flex: 0 0 auto;
+  }
+
+  .file-dialog-list-header,
+  .file-dialog-list button {
+    grid-template-columns: minmax(130px, 1fr) 90px;
+  }
+
+  .file-dialog-list-header {
+    padding-left: 38px;
+  }
+
+  .file-dialog-list-header span:last-child,
+  .file-dialog-list button small:last-child {
+    display: none;
+  }
+
+  .file-dialog-list button {
+    grid-template-columns: 26px minmax(100px, 1fr) 90px;
+  }
+
+  .file-dialog-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .file-dialog-actions {
+    grid-column: 1;
+    grid-row: auto;
+    justify-content: flex-end;
   }
 
   .file-command-strip {

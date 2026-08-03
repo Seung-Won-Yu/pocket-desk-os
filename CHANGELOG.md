@@ -15,6 +15,10 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- Added independent multi-window File Explorer instances with taskbar window counts and previews.
+- Added Windows-style common Open and Save As dialogs with folder history, breadcrumbs, search, file filtering, new folders, extension handling, and overwrite confirmation.
+- Connected Notepad and Paint to persistent VFS open/save flows and `Ctrl+O`, `Ctrl+S`, and `Ctrl+Shift+S` shortcuts.
+- Added Playwright coverage for independent Explorer windows and Notepad/Paint file dialog workflows.
 - Added Documents, Pictures, and Games system folders with safe migration for existing IndexedDB data.
 - Added Explorer back, forward, up, breadcrumb navigation, folder creation, recursive copy, and drag-and-drop moves.
 - Added recursive folder deletion, Recycle Bin tree restore, and permanent tree deletion.
