@@ -6,6 +6,8 @@ import NotepadApp from "../apps/NotepadApp";
 import PaintApp from "../apps/PaintApp";
 import RecycleBinApp from "../apps/RecycleBinApp";
 import SettingsApp from "../apps/SettingsApp";
+import TaskManagerApp from "../apps/TaskManagerApp";
+import TerminalApp from "../apps/TerminalApp";
 import ThisPcApp from "../apps/ThisPcApp";
 import { appMetadata, appOrder } from "../apps/metadata";
 import { type AppId } from "../types";
@@ -21,6 +23,8 @@ export const appComponents: Record<AppId, AppDefinition["component"]> = {
   paint: PaintApp,
   recycle: RecycleBinApp,
   settings: SettingsApp,
+  taskmanager: TaskManagerApp,
+  terminal: TerminalApp,
   thispc: ThisPcApp,
 };
 

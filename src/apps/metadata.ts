@@ -1,4 +1,5 @@
 import {
+  Activity,
   Bomb,
   Calculator,
   FileText,
@@ -7,6 +8,7 @@ import {
   Monitor,
   Paintbrush,
   Settings,
+  SquareTerminal,
   Trash2,
   type LucideIcon,
 } from "lucide-react";
@@ -29,6 +31,8 @@ export const appOrder: AppId[] = [
   "paint",
   "notepad",
   "files",
+  "terminal",
+  "taskmanager",
   "recycle",
   "settings",
 ];
@@ -89,6 +93,22 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     icon: Folder,
     accent: "#f3c64d",
     defaultSize: { width: 900, height: 600 },
+  },
+  terminal: {
+    id: "terminal",
+    title: "명령 프롬프트",
+    subtitle: "가상 파일 시스템 셸",
+    icon: SquareTerminal,
+    accent: "#5ac8b0",
+    defaultSize: { width: 780, height: 520 },
+  },
+  taskmanager: {
+    id: "taskmanager",
+    title: "작업 관리자",
+    subtitle: "실행 중인 앱과 자원 사용량",
+    icon: Activity,
+    accent: "#ff9f6b",
+    defaultSize: { width: 720, height: 560 },
   },
   recycle: {
     id: "recycle",

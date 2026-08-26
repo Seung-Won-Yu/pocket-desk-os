@@ -47,6 +47,7 @@ export default function NotepadApp({
   const [fontSize, setFontSize] = useState(15);
   const [cursorPosition, setCursorPosition] = useState({ column: 1, line: 1 });
   const [fileDialogMode, setFileDialogMode] = useState<"open" | "save" | null>(null);
+  const [showMarkdownPreview, setShowMarkdownPreview] = useState(false);
 
   const save = () => {
     if (!activeNote) return;
@@ -59,6 +60,12 @@ export default function NotepadApp({
     setText(activeNote?.content ?? "");
     setSaveStatus("saved");
   }, [activeNote?.content, activeNote?.id]);
+
+  // Markdown documents open with the preview already showing.
+  useEffect(() => {
+    const name = activeNote?.name.toLowerCase() ?? "";
+    if (name.endsWith(".md") || name.endsWith(".markdown")) setShowMarkdownPreview(true);
+  }, [activeNote?.id, activeNote?.name]);
 
   useEffect(() => {
     if (!activeNote) return;
@@ -256,6 +263,17 @@ export default function NotepadApp({
           >
             글꼴 작게
           </button>
+          <button
+            aria-checked={showMarkdownPreview}
+            onClick={() => {
+              setShowMarkdownPreview((current) => !current);
+              setNoteMenu(null);
+            }}
+            role="menuitemcheckbox"
+            type="button"
+          >
+            Markdown 미리보기 <span>{showMarkdownPreview ? "✓" : ""}</span>
+          </button>
         </div>
       )}
       <div className="note-tab-row">
@@ -286,7 +304,7 @@ export default function NotepadApp({
           <Plus aria-hidden="true" size={16} />
         </button>
       </div>
-      <div className="note-workspace">
+      <div className={`note-workspace${showMarkdownPreview ? " is-split" : ""}`}>
         <textarea
           aria-label="메모 내용"
           className="note-editor"
@@ -300,6 +318,7 @@ export default function NotepadApp({
           value={text}
           wrap={wordWrap ? "soft" : "off"}
         />
+        {showMarkdownPreview && <MarkdownPreview text={text} />}
       </div>
       <div className="note-statusbar">
         <span>Ln {cursorPosition.line}, Col {cursorPosition.column}</span>

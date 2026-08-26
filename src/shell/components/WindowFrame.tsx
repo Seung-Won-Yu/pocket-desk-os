@@ -6,6 +6,13 @@ import { getSnapPreviewStyle, getWindowSnapPatch, getWindowSnapZone } from "../w
 import { Copy, Minus, Square, X } from "lucide-react";
 import { useState, type PointerEvent } from "react";
 
+const MIN_WINDOW_WIDTH = 320;
+const MIN_WINDOW_HEIGHT = 240;
+
+type WindowResizeEdge = "e" | "n" | "ne" | "nw" | "s" | "se" | "sw" | "w";
+
+const WINDOW_RESIZE_EDGES: WindowResizeEdge[] = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
+
 export function WindowFrame({
   active,
   app,
@@ -67,6 +74,7 @@ export function WindowFrame({
       activeSnapZone = getWindowSnapZone(moveEvent.clientX, moveEvent.clientY);
       onSnapPreviewChange(activeSnapZone ? { zone: activeSnapZone } : null);
       onUpdate({
+        snapZone: undefined,
         x: clamp(nextX, 8, Math.max(8, window.innerWidth - width - 8)),
         y: clamp(nextY, 8, Math.max(8, window.innerHeight - APP_BAR_HEIGHT - height - 8)),
       });
@@ -74,7 +82,7 @@ export function WindowFrame({
 
     const onPointerUp = () => {
       if (activeSnapZone) {
-        onUpdate(getWindowSnapPatch(activeSnapZone));
+        onUpdate({ ...getWindowSnapPatch(activeSnapZone), snapZone: activeSnapZone });
       }
       onSnapPreviewChange(null);
       window.removeEventListener("pointermove", onPointerMove);
@@ -85,7 +93,7 @@ export function WindowFrame({
     window.addEventListener("pointerup", onPointerUp);
   };
 
-  const startResize = (event: PointerEvent<HTMLDivElement>) => {
+  const startResize = (event: PointerEvent<HTMLDivElement>, edge: WindowResizeEdge) => {
     if (event.button !== 0 || instance.maximized) return;
     event.preventDefault();
     event.stopPropagation();
@@ -93,16 +101,32 @@ export function WindowFrame({
     const startX = event.clientX;
     const startY = event.clientY;
     const { width, height, x, y } = instance;
+    const right = x + width;
+    const bottom = y + height;
+    const maxBottom = window.innerHeight - APP_BAR_HEIGHT - 8;
+    const grow = { east: edge.includes("e"), north: edge.includes("n"), south: edge.includes("s"), west: edge.includes("w") };
 
     const onPointerMove = (moveEvent: globalThis.PointerEvent) => {
-      onUpdate({
-        width: clamp(width + moveEvent.clientX - startX, 320, window.innerWidth - x - 8),
-        height: clamp(
-          height + moveEvent.clientY - startY,
-          240,
-          window.innerHeight - APP_BAR_HEIGHT - y - 8,
-        ),
-      });
+      const patch: Partial<WindowInstance> = {};
+
+      if (grow.east) {
+        patch.width = clamp(width + moveEvent.clientX - startX, MIN_WINDOW_WIDTH, window.innerWidth - x - 8);
+      } else if (grow.west) {
+        const nextX = clamp(x + moveEvent.clientX - startX, 8, right - MIN_WINDOW_WIDTH);
+        patch.width = right - nextX;
+        patch.x = nextX;
+      }
+
+      if (grow.south) {
+        patch.height = clamp(height + moveEvent.clientY - startY, MIN_WINDOW_HEIGHT, maxBottom - y);
+      } else if (grow.north) {
+        const nextY = clamp(y + moveEvent.clientY - startY, 8, bottom - MIN_WINDOW_HEIGHT);
+        patch.height = bottom - nextY;
+        patch.y = nextY;
+      }
+
+      // A hand-resized window is no longer in a snap layout.
+      onUpdate({ ...patch, snapZone: undefined });
     };
 
     const onPointerUp = () => {
@@ -226,9 +250,15 @@ export function WindowFrame({
         </div>
       </div>
       <div className="window-content">{children}</div>
-      {!instance.maximized && (
-        <div aria-hidden="true" className="resize-handle" onPointerDown={startResize} />
-      )}
+      {!instance.maximized &&
+        WINDOW_RESIZE_EDGES.map((edge) => (
+          <div
+            aria-hidden="true"
+            className={`resize-handle is-${edge}`}
+            key={edge}
+            onPointerDown={(event) => startResize(event, edge)}
+          />
+        ))}
     </article>
   );
 }

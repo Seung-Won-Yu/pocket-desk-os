@@ -1,6 +1,6 @@
 import { type BrowserLaunchRequest } from "../apps/BrowserApp";
 import { type FilesLaunchRequest } from "../apps/FilesApp";
-import { type AppId, type DesktopItem, type IconPosition, type SoundEffectName, type ThemeName, type ToastInput, type VfsDuplicateOptions, type WallpaperName } from "../types";
+import { type AppId, type DesktopItem, type IconPosition, type OpenWindowInfo, type SoundEffectName, type ThemeName, type ToastInput, type VfsDuplicateOptions, type WallpaperName } from "../types";
 import { type LucideIcon } from "lucide-react";
 
 export type WindowMotion = "closing" | "minimizing";
@@ -15,6 +15,10 @@ export type WindowInstance = {
   z: number;
   minimized: boolean;
   maximized: boolean;
+  /** Virtual desktop this window lives on. Index 0 is the first desktop. */
+  desktopIndex: number;
+  /** Last snap layout applied, so Win+Arrow can step between half and quarter. */
+  snapZone?: SnapZone;
 };
 
 export type PersistedWindow = Partial<Omit<WindowInstance, "id">> & {
@@ -87,7 +91,14 @@ export type ToastMessage = Required<ToastInput> & {
   id: string;
 };
 export type ShellPhase = "booting" | "locked" | "shutdown" | "unlocked";
-export type SnapZone = "left" | "right" | "top";
+export type SnapZone =
+  | "bottom-left"
+  | "bottom-right"
+  | "left"
+  | "right"
+  | "top"
+  | "top-left"
+  | "top-right";
 export type SnapPreviewState = {
   zone: SnapZone;
 };
@@ -124,6 +135,9 @@ export type AppContentProps = {
   activeNoteId: string;
   browserLaunchRequest: BrowserLaunchRequest | null;
   canvasEntries: DesktopItem[];
+  closeWindow: (windowId: string) => void;
+  focusWindow: (windowId: string) => void;
+  openWindows: OpenWindowInfo[];
   createVfsFolder: (parentId?: string) => DesktopItem;
   createVfsTextFile: (parentId?: string) => DesktopItem;
   desktopItems: DesktopItem[];

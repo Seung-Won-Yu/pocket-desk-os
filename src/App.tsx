@@ -12,20 +12,22 @@ import { Taskbar } from "./shell/components/Taskbar";
 import { ToastStack } from "./shell/components/ToastStack";
 import { SnapPreview, WindowFrame } from "./shell/components/WindowFrame";
 import { WindowSystemMenu } from "./shell/components/WindowSystemMenu";
-import { APP_BAR_HEIGHT, DESKTOP_ICON_GRID_KEY, DESKTOP_ICON_LAYOUT_KEY, DESKTOP_ICON_SORT_KEY, DESKTOP_ICON_VIEW_KEY, DISPLAY_BRIGHTNESS_KEY, NOTE_KEY, NOTE_OPEN_EVENT, NOTE_SAVE_AS_EVENT, NOTE_SAVE_EVENT, PAINT_OPEN_EVENT, PAINT_SAVE_AS_EVENT, PAINT_SAVE_EVENT, SOUND_ENABLED_KEY, TASKBAR_PINNED_APPS_KEY, VFS_PRIMARY_CANVAS_ID, VFS_PRIMARY_NOTE_ID, WALLPAPER_KEY, WINDOW_EXIT_MOTION_MS, WINDOW_STATE_KEY } from "./shell/constants";
+import { APP_BAR_HEIGHT, DESKTOP_ICON_GRID_KEY, DESKTOP_ICON_LAYOUT_KEY, DESKTOP_ICON_SORT_KEY, DESKTOP_ICON_VIEW_KEY, DISPLAY_BRIGHTNESS_KEY, MAX_VIRTUAL_DESKTOPS, NOTE_KEY, NOTE_OPEN_EVENT, NOTE_SAVE_AS_EVENT, NOTE_SAVE_EVENT, PAINT_OPEN_EVENT, PAINT_SAVE_AS_EVENT, PAINT_SAVE_EVENT, SOUND_ENABLED_KEY, TASKBAR_PINNED_APPS_KEY, VFS_PRIMARY_CANVAS_ID, VFS_PRIMARY_NOTE_ID, VIRTUAL_DESKTOPS_KEY, WALLPAPER_KEY, WINDOW_EXIT_MOTION_MS, WINDOW_STATE_KEY } from "./shell/constants";
 import { clampContextMenuPosition, clampIconPosition, clampWindowSystemMenuPosition, compareDesktopEntries, createDefaultIconLayout, createDesktopGridPositions, findAvailableDesktopPosition, getDesktopSelectionIds, getDesktopSelectionStyle, isDesktopSelectionVisible, loadDesktopIconLayout, loadDesktopSortKey, loadDesktopViewMode, persistDesktopIconLayout, snapDesktopIconPosition } from "./shell/desktopLayout";
 import { createPocketDeskAudioContext, playPocketDeskSound } from "./shell/sound";
 import { buildStartSearchResults, getThemeLabel, resolveRunCommand } from "./shell/startSearch";
 import { type CreatableDesktopItemKind, type DesktopContextMenuState, type DesktopIconContextMenuState, type DesktopIconLayout, type DesktopSelectionState, type DesktopSortKey, type DesktopViewMode, type PersistedDesktopItem, type ShellPhase, type SnapPreviewState, type SnapZone, type StartSearchResult, type ToastMessage, type WindowInstance, type WindowMotion, type WindowSystemMenuState } from "./shell/types";
 import { createDefaultVfsEntries, loadDesktopItemsFromVfs, migrateVfsHierarchy, normalizePersistedDesktopItem } from "./shell/vfsBootstrap";
 import { getWindowSnapPatch } from "./shell/windowGeometry";
-import { createDefaultWindows, fitWindowToViewport, loadWindowState, persistWindowState } from "./shell/windowState";
-import { type AppId, type DesktopItem, type IconPosition, type SoundEffectName, type ThemeName, type ToastInput, type VfsDuplicateOptions, type WallpaperName } from "./types";
+import { createDefaultWindows, fitWindowToViewport, getVirtualDesktopCount, loadVirtualDesktopCount, loadWindowState, persistWindowState } from "./shell/windowState";
+import { TaskView } from "./shell/components/TaskView";
+import { clamp } from "./utils/format";
+import { type AppId, type DesktopItem, type IconPosition, type OpenWindowInfo, type SoundEffectName, type ThemeName, type ToastInput, type VfsDuplicateOptions, type WallpaperName } from "./types";
 import { createVfsBackupZip, readVfsBackupZip } from "./vfs/backup";
 import { VFS_DOCUMENTS_ID, VFS_PICTURES_ID, VFS_ROOT_ID, canMoveVfsEntries, getUniqueCanvasItemName, getUniqueRenamedVfsItemName, getUniqueTextFileName, getUniqueVfsCopyName, getUniqueVfsEntryName, getVfsDescendantIds, getVfsEntryAssociation, getVfsShortcutTarget, getVfsTopLevelIds, isVfsSystemFolderId } from "./vfs/model";
 import { persistVfsEntries } from "./vfs/storage";
 import { getWallpaperStyle, wallpaperGallery, type WallpaperCssVars } from "./wallpapers";
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export default function App() {
   const [theme, setTheme] = useState<ThemeName>(() => {
@@ -78,6 +80,9 @@ export default function App() {
   const [notificationHistory, setNotificationHistory] = useState<ToastMessage[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [windows, setWindows] = useState<WindowInstance[]>(() => loadWindowState());
+  const [storedDesktopCount, setStoredDesktopCount] = useState(() => loadVirtualDesktopCount());
+  const [activeDesktopIndex, setActiveDesktopIndex] = useState(0);
+  const [taskViewOpen, setTaskViewOpen] = useState(false);
   const [windowMotions, setWindowMotions] = useState<Record<string, WindowMotion>>({});
   const altTabTimerRef = useRef<number | null>(null);
   const desktopRenameGuardRef = useRef(false);
@@ -148,6 +153,10 @@ export default function App() {
   useEffect(() => {
     persistWindowState(windows);
   }, [windows]);
+
+  useEffect(() => {
+    localStorage.setItem(VIRTUAL_DESKTOPS_KEY, String(storedDesktopCount));
+  }, [storedDesktopCount]);
 
   useEffect(() => {
     const fitWindowsToViewport = () => {
@@ -335,23 +344,32 @@ export default function App() {
 
   const openApp = (appId: AppId, options?: { forceNew?: boolean }) => {
     const forceNew = Boolean(options?.forceNew);
+    // Prefer a window already on this desktop; otherwise follow one to its own.
+    const candidates = windows
+      .filter((item) => item.appId === appId)
+      .sort((first, second) => second.z - first.z);
     const existingWindow = forceNew
       ? undefined
-      : windows
-          .filter((item) => item.appId === appId)
-          .sort((first, second) => second.z - first.z)[0];
+      : (candidates.find((item) => item.desktopIndex === activeDesktopIndex) ?? candidates[0]);
     const nextWindowId = existingWindow?.id ?? `${appId}-${crypto.randomUUID()}`;
-    if (existingWindow) cancelWindowMotion(existingWindow.id);
+    if (existingWindow) {
+      cancelWindowMotion(existingWindow.id);
+      if (existingWindow.desktopIndex !== activeDesktopIndex) {
+        setActiveDesktopIndex(existingWindow.desktopIndex);
+      }
+    }
     playSound("open");
+    setTaskViewOpen(false);
     setDesktopIconMenu(null);
     setDesktopMenu(null);
     setWindows((current) => {
       const app = getApp(appId);
+      const ordered = current
+        .filter((item) => item.appId === appId)
+        .sort((first, second) => second.z - first.z);
       const existing = forceNew
         ? undefined
-        : current
-            .filter((item) => item.appId === appId)
-            .sort((first, second) => second.z - first.z)[0];
+        : (ordered.find((item) => item.desktopIndex === activeDesktopIndex) ?? ordered[0]);
       const topZ = Math.max(12, ...current.map((item) => item.z));
 
       if (existing) {
@@ -381,6 +399,7 @@ export default function App() {
           z: topZ + 1,
           minimized: false,
           maximized: false,
+          desktopIndex: activeDesktopIndex,
         },
       ];
     });
@@ -1274,6 +1293,11 @@ export default function App() {
   };
 
   const focusWindow = (id: string) => {
+    // Focusing a window on another virtual desktop follows it there.
+    const target = windows.find((item) => item.id === id);
+    if (target && target.desktopIndex !== activeDesktopIndex) {
+      setActiveDesktopIndex(target.desktopIndex);
+    }
     setWindows((current) => {
       const topZ = Math.max(1, ...current.map((item) => item.z));
       return current.map((item) =>
@@ -1382,9 +1406,108 @@ export default function App() {
     focusWindow(id);
   };
 
+  const switchDesktop = (index: number) => {
+    const next = clamp(index, 0, desktopCount - 1);
+    if (next === activeDesktopIndex) return;
+    playSound("toggle");
+    setActiveDesktopIndex(next);
+    setStartOpen(false);
+    setRunOpen(false);
+    setDesktopMenu(null);
+    setDesktopIconMenu(null);
+    setWindowMenu(null);
+    setAltTabWindowId(null);
+  };
+
+  const addDesktop = () => {
+    if (desktopCount >= MAX_VIRTUAL_DESKTOPS) {
+      notify({
+        detail: `데스크톱은 최대 ${MAX_VIRTUAL_DESKTOPS}개까지 만들 수 있습니다.`,
+        title: "데스크톱을 더 만들 수 없음",
+      });
+      return;
+    }
+    playSound("success");
+    setStoredDesktopCount(desktopCount + 1);
+    setActiveDesktopIndex(desktopCount);
+  };
+
+  /** Closing a desktop hands its windows to the desktop on its left, like Windows. */
+  const closeDesktop = (index: number) => {
+    if (desktopCount <= 1) return;
+    playSound("close");
+    const fallback = Math.max(0, index - 1);
+    setWindows((current) =>
+      current.map((item) => {
+        if (item.desktopIndex === index) return { ...item, desktopIndex: fallback };
+        return item.desktopIndex > index ? { ...item, desktopIndex: item.desktopIndex - 1 } : item;
+      }),
+    );
+    setStoredDesktopCount(desktopCount - 1);
+    setActiveDesktopIndex((current) => clamp(current > index ? current - 1 : current, 0, desktopCount - 2));
+  };
+
+  const moveWindowToDesktop = (windowId: string, index: number) => {
+    const target = clamp(index, 0, desktopCount - 1);
+    playSound("toggle");
+    updateWindow(windowId, { desktopIndex: target });
+  };
+
   const snapWindow = (id: string, zone: SnapZone) => {
     playSound("toggle");
-    updateWindow(id, getWindowSnapPatch(zone));
+    updateWindow(id, { ...getWindowSnapPatch(zone), snapZone: zone });
+  };
+
+  /**
+   * Windows-style Win+Arrow stepping: a half-snapped window narrows to a
+   * quarter, an unsnapped one snaps or maximizes, and Down unwinds the chain.
+   */
+  const stepWindowSnap = (id: string, key: string) => {
+    const target = windows.find((item) => item.id === id);
+    if (!target) return;
+    const zone = target.snapZone;
+    const onLeft = zone === "left" || zone === "top-left" || zone === "bottom-left";
+    const onRight = zone === "right" || zone === "top-right" || zone === "bottom-right";
+
+    if (key === "ArrowLeft") {
+      if (zone === "top-right") return snapWindow(id, "top-left");
+      if (zone === "bottom-right") return snapWindow(id, "bottom-left");
+      return snapWindow(id, "left");
+    }
+
+    if (key === "ArrowRight") {
+      if (zone === "top-left") return snapWindow(id, "top-right");
+      if (zone === "bottom-left") return snapWindow(id, "bottom-right");
+      return snapWindow(id, "right");
+    }
+
+    if (key === "ArrowUp") {
+      if (zone === "bottom-left") return snapWindow(id, "left");
+      if (zone === "bottom-right") return snapWindow(id, "right");
+      if (onLeft) return snapWindow(id, "top-left");
+      if (onRight) return snapWindow(id, "top-right");
+      if (!target.maximized) {
+        playSound("toggle");
+        updateWindow(id, { maximized: true, minimized: false, snapZone: "top" });
+      }
+      return;
+    }
+
+    if (key !== "ArrowDown") return;
+
+    if (target.maximized) {
+      playSound("toggle");
+      updateWindow(id, { maximized: false, snapZone: undefined });
+      return;
+    }
+    if (zone === "top-left") return snapWindow(id, "bottom-left");
+    if (zone === "top-right") return snapWindow(id, "bottom-right");
+    if (onLeft || onRight) {
+      playSound("toggle");
+      updateWindow(id, { snapZone: undefined });
+      return;
+    }
+    minimizeWindow(id);
   };
 
   const toggleShowDesktop = () => {
@@ -1393,7 +1516,7 @@ export default function App() {
     setRunOpen(false);
     setDesktopIconMenu(null);
     setDesktopMenu(null);
-    const visibleIds = windows.filter((item) => !item.minimized).map((item) => item.id);
+    const visibleIds = desktopWindows.filter((item) => !item.minimized).map((item) => item.id);
     if (visibleIds.length > 0) {
       showDesktopRestoreRef.current = visibleIds;
       visibleIds.forEach((id) => {
@@ -1427,9 +1550,25 @@ export default function App() {
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, 5);
   }, [activeDesktopItems]);
-  const activeWindowId = windows
+  const desktopCount = getVirtualDesktopCount(windows, storedDesktopCount);
+  const desktopWindows = useMemo(
+    () => windows.filter((item) => item.desktopIndex === activeDesktopIndex),
+    [activeDesktopIndex, windows],
+  );
+  const activeWindowId = desktopWindows
     .filter((item) => !item.minimized)
     .sort((a, b) => b.z - a.z)[0]?.id;
+  const openWindows = useMemo<OpenWindowInfo[]>(
+    () =>
+      windows.map((item) => ({
+        appId: item.appId,
+        id: item.id,
+        maximized: item.maximized,
+        minimized: item.minimized,
+        title: getApp(item.appId).title,
+      })),
+    [windows],
+  );
   const windowMenuInstance = windowMenu
     ? windows.find((item) => item.id === windowMenu.windowId)
     : null;
@@ -1551,7 +1690,7 @@ export default function App() {
     };
 
     const cycleAltTab = (reverse: boolean) => {
-      const candidates = [...windows].sort((a, b) => b.z - a.z);
+      const candidates = [...desktopWindows].sort((a, b) => b.z - a.z);
       if (candidates.length === 0) return;
 
       const currentId = altTabWindowId ?? activeWindowId;
@@ -1576,8 +1715,22 @@ export default function App() {
         target instanceof HTMLTextAreaElement ||
         (target instanceof HTMLElement && target.isContentEditable);
 
+      if (event.metaKey && event.ctrlKey && event.key.startsWith("Arrow")) {
+        const step = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+        if (step !== 0) {
+          event.preventDefault();
+          switchDesktop(activeDesktopIndex + step);
+          return;
+        }
+      }
+
       if (event.metaKey && !event.ctrlKey && !event.altKey) {
         const key = event.key.toLowerCase();
+        if (event.key === "Tab") {
+          event.preventDefault();
+          setTaskViewOpen((current) => !current);
+          return;
+        }
         if (key === "e") {
           event.preventDefault();
           openApp("files");
@@ -1593,6 +1746,22 @@ export default function App() {
           toggleShowDesktop();
           return;
         }
+        if (key === "i") {
+          event.preventDefault();
+          openApp("settings");
+          return;
+        }
+        if (event.key.startsWith("Arrow") && activeWindowId) {
+          event.preventDefault();
+          stepWindowSnap(activeWindowId, event.key);
+          return;
+        }
+      }
+
+      if (event.ctrlKey && event.shiftKey && event.key === "Escape") {
+        event.preventDefault();
+        openApp("taskmanager");
+        return;
       }
 
       if (event.ctrlKey && event.altKey && event.key.toLowerCase() === "r") {
@@ -1847,7 +2016,7 @@ export default function App() {
       )}
 
       <section className="window-layer" aria-label="열린 창">
-        {windows.map((item) => {
+        {desktopWindows.map((item) => {
           const app = getApp(item.appId);
           const AppContent = app.component;
 
@@ -1872,6 +2041,9 @@ export default function App() {
                 activeNoteId={activeNoteId}
                 browserLaunchRequest={browserLaunchRequest}
                 canvasEntries={canvasEntries}
+                closeWindow={closeWindow}
+                focusWindow={focusWindow}
+                openWindows={openWindows}
                 createVfsFolder={createVfsFolder}
                 createVfsTextFile={createVfsTextFile}
                 desktopItems={activeDesktopItems}
@@ -1937,8 +2109,12 @@ export default function App() {
       )}
 
       <Taskbar
+        activeDesktopIndex={activeDesktopIndex}
         activeWindowId={activeWindowId}
         availableApps={availableApps}
+        desktopCount={desktopCount}
+        onToggleTaskView={() => setTaskViewOpen((current) => !current)}
+        taskViewOpen={taskViewOpen}
         notificationHistory={notificationHistory}
         brightness={displayBrightness}
         onClearNotifications={clearNotificationHistory}
@@ -1947,6 +2123,7 @@ export default function App() {
           setStartOpen((value) => !value);
         }}
         onOpenApp={openApp}
+        onOpenRunDialog={openRunDialog}
         onSetBrightness={setDisplayBrightness}
         onSetSoundEnabled={setSoundEnabled}
         onShowDesktop={toggleShowDesktop}
@@ -1955,7 +2132,7 @@ export default function App() {
         pinnedAppIds={pinnedAppIds}
         soundEnabled={soundEnabled}
         startOpen={startOpen}
-        windows={windows}
+        windows={desktopWindows}
       />
 
       {startOpen && (
@@ -2086,7 +2263,27 @@ export default function App() {
       )}
 
       {shellPhase === "unlocked" && altTabWindowId && (
-        <AltTabSwitcher selectedWindowId={altTabWindowId} windows={windows} />
+        <AltTabSwitcher selectedWindowId={altTabWindowId} windows={desktopWindows} />
+      )}
+
+      {shellPhase === "unlocked" && taskViewOpen && (
+        <TaskView
+          activeDesktopIndex={activeDesktopIndex}
+          desktopCount={desktopCount}
+          onAddDesktop={addDesktop}
+          onCloseDesktop={closeDesktop}
+          onDismiss={() => setTaskViewOpen(false)}
+          onMoveWindowToDesktop={moveWindowToDesktop}
+          onSelectDesktop={(index) => {
+            switchDesktop(index);
+            setTaskViewOpen(false);
+          }}
+          onSelectWindow={(id) => {
+            focusWindow(id);
+            setTaskViewOpen(false);
+          }}
+          windows={windows}
+        />
       )}
 
       <ToastStack onDismiss={dismissToast} toasts={toasts} />

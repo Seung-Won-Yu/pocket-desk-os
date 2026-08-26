@@ -28,13 +28,18 @@ export const DESKTOP_ITEMS_KEY = "pocket-desk-desktop-items-v1";
 export const SOUND_ENABLED_KEY = "pocket-desk-sound-enabled-v1";
 export const DISPLAY_BRIGHTNESS_KEY = "pocket-desk-display-brightness-v1";
 export const TASKBAR_PINNED_APPS_KEY = "pocket-desk-taskbar-pinned-v2";
+export const VIRTUAL_DESKTOPS_KEY = "pocket-desk-virtual-desktops-v1";
+export const MAX_VIRTUAL_DESKTOPS = 6;
 export const SNAP_EDGE_SIZE = 24;
+export const SNAP_CORNER_SIZE = 72;
 export const SNAP_GUTTER = 10;
 export const WINDOW_EXIT_MOTION_MS = 170;
 export const appSearchKeywords: Record<AppId, string[]> = {
   thispc: ["this pc", "my computer", "computer", "pc", "내 pc", "내컴퓨터", "컴퓨터", "드라이브", "disk"],
   browser: ["internet", "web", "edge", "인터넷", "웹", "브라우저", "검색", "google", "url"],
   minesweeper: ["mine", "field", "mines", "지뢰", "지뢰찾기", "게임", "폭탄"],
+  terminal: ["cmd", "command", "prompt", "shell", "terminal", "명령", "명령프롬프트", "터미널", "콘솔"],
+  taskmanager: ["task", "manager", "taskmgr", "process", "작업", "작업관리자", "프로세스", "성능", "cpu"],
   calculator: ["calc", "calculator", "계산", "계산기", "수학", "사칙연산"],
   paint: ["paint", "sketch", "draw", "그림", "그림판", "스케치", "드로잉", "캔버스"],
   notepad: ["note", "notes", "memo", "txt", "메모", "메모장", "문서", "글쓰기"],
@@ -47,6 +52,8 @@ export const runCommandAliases: Partial<Record<AppId, string[]>> = {
   thispc: ["computer", "this pc", "my computer", "내 pc", "내컴퓨터"],
   browser: ["edge", "iexplore", "msedge", "chrome", "www"],
   calculator: ["calc.exe"],
+  terminal: ["cmd", "cmd.exe", "command", "powershell", "terminal", "명령 프롬프트"],
+  taskmanager: ["taskmgr", "taskmgr.exe", "task manager", "작업 관리자"],
   files: ["explorer", "explorer.exe"],
   notepad: ["notepad.exe"],
   paint: ["mspaint", "mspaint.exe"],
@@ -58,6 +65,8 @@ export const runCommandSuggestions = [
   { command: "computer", label: "computer" },
   { command: "explorer", label: "explorer" },
   { command: "calc", label: "calc" },
+  { command: "cmd", label: "cmd" },
+  { command: "taskmgr", label: "taskmgr" },
   { command: "notepad", label: "notepad" },
   { command: "mspaint", label: "mspaint" },
   { command: "recycle", label: "recycle" },

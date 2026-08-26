@@ -6,8 +6,19 @@ export type AppId =
   | "paint"
   | "notepad"
   | "files"
+  | "terminal"
+  | "taskmanager"
   | "recycle"
   | "settings";
+
+/** Window facts an app needs to reason about other running windows. */
+export type OpenWindowInfo = {
+  appId: AppId;
+  id: string;
+  maximized: boolean;
+  minimized: boolean;
+  title: string;
+};
 
 export type ThemeName = "lagoon" | "meadow" | "ember";
 

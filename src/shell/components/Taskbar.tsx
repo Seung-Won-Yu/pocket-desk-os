@@ -6,17 +6,39 @@ import { createCalendarGrid, formatNotificationTime, getLocalDateKey } from "../
 import { type AppDefinition, type ToastMessage, type WindowInstance } from "../types";
 import { BrandMark, StartGlyph } from "./Branding";
 import { Clock } from "./Clock";
-import { Bell, ChevronLeft, ChevronRight, Pin, PinOff, Settings, Sun, Volume2, Wifi } from "lucide-react";
+import {
+  Activity,
+  Bell,
+  ChevronLeft,
+  ChevronRight,
+  FolderOpen,
+  LayoutGrid,
+  MonitorDown,
+  Pin,
+  PinOff,
+  Play,
+  Settings,
+  SquareTerminal,
+  Sun,
+  Volume2,
+  Wifi,
+  type LucideIcon,
+} from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 
 export function Taskbar({
+  activeDesktopIndex,
   activeWindowId,
   availableApps,
   brightness,
+  desktopCount,
+  onToggleTaskView,
+  taskViewOpen,
   notificationHistory,
   onClearNotifications,
   onOpenStart,
   onOpenApp,
+  onOpenRunDialog,
   onSetBrightness,
   onSetSoundEnabled,
   onShowDesktop,
@@ -27,13 +49,18 @@ export function Taskbar({
   startOpen,
   windows,
 }: {
+  activeDesktopIndex: number;
   activeWindowId?: string;
   availableApps: AppDefinition[];
   brightness: number;
+  desktopCount: number;
+  onToggleTaskView: () => void;
+  taskViewOpen: boolean;
   notificationHistory: ToastMessage[];
   onClearNotifications: () => void;
   onOpenStart: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onOpenApp: (appId: AppId) => void;
+  onOpenRunDialog: () => void;
   onSetBrightness: (brightness: number) => void;
   onSetSoundEnabled: (enabled: boolean) => void;
   onShowDesktop: () => void;
@@ -52,7 +79,9 @@ export function Taskbar({
     windows: WindowInstance[];
   } | null>(null);
   const [taskbarMenu, setTaskbarMenu] = useState<{ appId: AppId; left: number } | null>(null);
+  const [shellMenu, setShellMenu] = useState<{ left: number } | null>(null);
   const taskbarMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const shellMenuButtonRef = useRef<HTMLButtonElement>(null);
   const [trayPanel, setTrayPanel] = useState<"notifications" | "quick" | null>(null);
   const availableAppIds = new Set(availableApps.map((app) => app.id));
   const pinnedApps = pinnedAppIds
@@ -131,17 +160,61 @@ export function Taskbar({
     };
   }, [taskbarMenu]);
 
+  useEffect(() => {
+    if (!shellMenu) return;
+    const frameId = window.requestAnimationFrame(() => shellMenuButtonRef.current?.focus());
+    const closeMenu = () => setShellMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
+    window.addEventListener("pointerdown", closeMenu);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("pointerdown", closeMenu);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [shellMenu]);
+
+  const openShellMenu = (event: React.MouseEvent) => {
+    event.preventDefault();
+    setPreview(null);
+    setTaskbarMenu(null);
+    setShellMenu({ left: event.clientX });
+  };
+
+  const shellMenuItems: Array<{ icon: LucideIcon; label: string; run: () => void }> = [
+    { icon: Activity, label: "작업 관리자", run: () => onOpenApp("taskmanager") },
+    { icon: SquareTerminal, label: "명령 프롬프트", run: () => onOpenApp("terminal") },
+    { icon: FolderOpen, label: "파일 탐색기", run: () => onOpenApp("files") },
+    { icon: Play, label: "실행", run: onOpenRunDialog },
+    { icon: Settings, label: "설정", run: () => onOpenApp("settings") },
+    { icon: MonitorDown, label: "바탕 화면 보기", run: onShowDesktop },
+  ];
+
   return (
-    <footer className="taskbar" ref={taskbarRef}>
+    <footer className="taskbar" onContextMenu={openShellMenu} ref={taskbarRef}>
       <div className="taskbar-center">
         <button
           aria-expanded={startOpen}
           aria-label="시작 메뉴"
           className="start-button"
+          onContextMenu={openShellMenu}
           onPointerDown={onOpenStart}
           type="button"
         >
           <StartGlyph />
+        </button>
+        <button
+          aria-label={`작업 보기 (데스크톱 ${activeDesktopIndex + 1}/${desktopCount})`}
+          aria-pressed={taskViewOpen}
+          className={`task-view-button${taskViewOpen ? " is-active" : ""}`}
+          onClick={onToggleTaskView}
+          title="작업 보기 · Win+Tab"
+          type="button"
+        >
+          <LayoutGrid aria-hidden="true" size={17} />
+          {desktopCount > 1 && <span>{activeDesktopIndex + 1}</span>}
         </button>
         <div className="taskbar-windows" aria-label="열린 앱">
           {taskbarApps.map(({ app, windows: appWindows }) => {
@@ -180,7 +253,10 @@ export function Taskbar({
                   }}
                   onContextMenu={(event) => {
                     event.preventDefault();
+                    // Keep the taskbar's own shell menu from replacing this one.
+                    event.stopPropagation();
                     setPreview(null);
+                    setShellMenu(null);
                     setTaskbarMenu({ appId: app.id, left: event.clientX });
                   }}
                   title={`${app.title} · 우클릭으로 ${isPinned ? "고정 해제" : "작업표시줄에 고정"}`}
@@ -228,6 +304,30 @@ export function Taskbar({
               ? "작업 표시줄에서 제거"
               : "작업 표시줄에 고정"}
           </button>
+        </div>
+      )}
+      {shellMenu && (
+        <div
+          className="taskbar-context-menu is-shell-menu"
+          onPointerDown={(event) => event.stopPropagation()}
+          role="menu"
+          style={{ left: clamp(shellMenu.left, 112, window.innerWidth - 112) }}
+        >
+          {shellMenuItems.map((item, index) => (
+            <button
+              key={item.label}
+              onClick={() => {
+                setShellMenu(null);
+                item.run();
+              }}
+              ref={index === 0 ? shellMenuButtonRef : undefined}
+              role="menuitem"
+              type="button"
+            >
+              <item.icon aria-hidden="true" size={15} />
+              {item.label}
+            </button>
+          ))}
         </div>
       )}
       <div className="system-tray-wrap" ref={trayRef}>
