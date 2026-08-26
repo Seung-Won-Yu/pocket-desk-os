@@ -163,9 +163,15 @@ export function clampContextMenuPosition(x: number, y: number): IconPosition {
 }
 
 export function clampWindowSystemMenuPosition(x: number, y: number): IconPosition {
+  const safeX = Number.isFinite(x) ? x : 18;
+  const safeY = Number.isFinite(y) ? y : 18;
   return {
-    x: clamp(x, 8, Math.max(8, window.innerWidth - WINDOW_SYSTEM_MENU_WIDTH - 8)),
-    y: clamp(y, 8, Math.max(8, window.innerHeight - APP_BAR_HEIGHT - WINDOW_SYSTEM_MENU_HEIGHT - 8)),
+    x: clamp(safeX, 8, Math.max(8, window.innerWidth - WINDOW_SYSTEM_MENU_WIDTH - 8)),
+    y: clamp(
+      safeY,
+      8,
+      Math.max(8, window.innerHeight - APP_BAR_HEIGHT - WINDOW_SYSTEM_MENU_HEIGHT - 8),
+    ),
   };
 }
 

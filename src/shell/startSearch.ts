@@ -115,28 +115,32 @@ export function buildStartSearchResults(
   });
 }
 
+const START_PINNED_APP_LIMIT = 11;
+
 export function getStartPinnedApps(apps: AppDefinition[]) {
   const priority: AppId[] = [
     "thispc",
     "files",
-    "recycle",
+    "browser",
     "notepad",
+    "terminal",
+    "taskmanager",
     "paint",
     "calculator",
-    "browser",
     "minesweeper",
+    "recycle",
     "settings",
   ];
   const appMap = new Map(apps.map((app) => [app.id, app]));
   const pinned = priority
     .map((appId) => appMap.get(appId))
     .filter((app): app is AppDefinition => Boolean(app));
-  if (pinned.length >= 6) return pinned.slice(0, 9);
-
+  // Anything absent from the priority list still gets a slot, so a newly added
+  // app is never permanently unreachable from the pinned grid.
   return [
     ...pinned,
-    ...apps.filter((app) => !priority.includes(app.id)).slice(0, 9 - pinned.length),
-  ];
+    ...apps.filter((app) => !priority.includes(app.id)),
+  ].slice(0, START_PINNED_APP_LIMIT);
 }
 
 export function resolveRunCommand(command: string): RunCommandResolution {
@@ -179,10 +183,18 @@ export function normalizeRunCommand(value: string) {
     .replace(/\.exe$/i, "");
 }
 
+/**
+ * Extensions that read as a hostname suffix but always mean "a program".
+ * `.com` is deliberately absent — as a TLD it far outweighs the DOS executable.
+ */
+const PROGRAM_SUFFIX_PATTERN = /\.(bat|cmd|cpl|dll|exe|msc|msi|ps1|scr|sys|vbs)$/i;
+
 export function isBrowserRunTarget(value: string) {
   const trimmed = value.trim();
   if (/^https?:\/\//i.test(trimmed)) return true;
   if (/^www\./i.test(trimmed)) return true;
+  // `winword.exe` is a program name, not the `.exe` top-level domain.
+  if (PROGRAM_SUFFIX_PATTERN.test(trimmed)) return false;
   if (/^[a-z0-9.-]+\.[a-z]{2,}([/:?#].*)?$/i.test(trimmed) && !/\s/.test(trimmed)) {
     return true;
   }

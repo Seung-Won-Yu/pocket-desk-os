@@ -17,6 +17,34 @@ export type VfsPathSegment = {
   name: string;
 };
 
+export const MAX_VFS_NAME_LENGTH = 48;
+
+/**
+ * Truncates to a UTF-16 length budget on code-point boundaries, so an emoji is
+ * dropped whole instead of leaving a lone surrogate behind.
+ */
+export function truncateVfsName(value: string, limit = MAX_VFS_NAME_LENGTH) {
+  if (value.length <= limit) return value;
+
+  let result = "";
+  for (const character of value) {
+    if (result.length + character.length > limit) break;
+    result += character;
+  }
+  return result;
+}
+
+/**
+ * Builds `base + suffix + extension` already within the name cap. The cap has to
+ * be applied before the uniqueness check — truncating afterwards can shorten a
+ * candidate back into the very name it was meant to avoid.
+ */
+function buildCappedVfsName(base: string, suffix: string, extension: string) {
+  const budget = MAX_VFS_NAME_LENGTH - suffix.length - extension.length;
+  const trimmedBase = budget > 0 ? truncateVfsName(base, budget) : "";
+  return `${trimmedBase}${suffix}${extension}`;
+}
+
 export type VfsEntryAssociation = {
   accent: string;
   appId: AppId;
@@ -42,14 +70,14 @@ export function getUniqueTextFileName(items: DesktopItem[], parentId = VFS_DOCUM
 
 export function getUniqueVfsCopyName(existingNames: Set<string>, sourceName: string) {
   const { base, extension } = getVfsNameParts(sourceName);
-  const firstCopyName = `${base} - 복사본${extension}`;
+  const firstCopyName = buildCappedVfsName(base, " - 복사본", extension);
   if (!existingNames.has(firstCopyName)) return firstCopyName;
 
   for (let index = 2; index < 1000; index += 1) {
-    const name = `${base} - 복사본 (${index})${extension}`;
+    const name = buildCappedVfsName(base, ` - 복사본 (${index})`, extension);
     if (!existingNames.has(name)) return name;
   }
-  return `${base} - 복사본 ${Date.now()}${extension}`.slice(0, 48);
+  return buildCappedVfsName(base, ` - 복사본 ${Date.now()}`, extension);
 }
 
 export function getUniqueVfsEntryName(
@@ -60,14 +88,15 @@ export function getUniqueVfsEntryName(
   const existingNames = new Set(
     items.filter((item) => item.parentId === parentId && !item.trashed).map((item) => item.name),
   );
-  if (!existingNames.has(requestedName)) return requestedName;
+  const cappedName = truncateVfsName(requestedName);
+  if (!existingNames.has(cappedName)) return cappedName;
 
-  const { base, extension } = getVfsNameParts(requestedName);
+  const { base, extension } = getVfsNameParts(cappedName);
   for (let index = 2; index < 1000; index += 1) {
-    const name = `${base} (${index})${extension}`;
-    if (!existingNames.has(name)) return name.slice(0, 48);
+    const name = buildCappedVfsName(base, ` (${index})`, extension);
+    if (!existingNames.has(name)) return name;
   }
-  return `${base} ${Date.now()}${extension}`.slice(0, 48);
+  return buildCappedVfsName(base, ` ${Date.now()}`, extension);
 }
 
 export function getDefaultVfsEntryName(kind: VfsEntryKind) {
@@ -94,7 +123,7 @@ export function getUniqueCanvasItemName(items: DesktopItem[], parentId = VFS_PIC
 }
 
 export function normalizeVfsEntryName(name: string) {
-  return name.trim().replace(/\s+/g, " ").slice(0, 48);
+  return truncateVfsName(name.trim().replace(/\s+/g, " "));
 }
 
 export function getVfsNameParts(name: string) {
@@ -130,13 +159,13 @@ export function getUniqueRenamedVfsItemName(items: DesktopItem[], itemId: string
 
   const { base, extension } = getVfsNameParts(requestedName);
   for (let index = 2; index < 1000; index += 1) {
-    const nextName = `${base} ${index}${extension}`;
+    const nextName = buildCappedVfsName(base, ` ${index}`, extension);
     if (!existingNames.has(nextName)) {
-      return nextName.slice(0, 48);
+      return nextName;
     }
   }
 
-  return `${base} ${Date.now()}${extension}`.slice(0, 48);
+  return buildCappedVfsName(base, ` ${Date.now()}`, extension);
 }
 
 export function getVfsEntryExtension(item: DesktopItem) {
