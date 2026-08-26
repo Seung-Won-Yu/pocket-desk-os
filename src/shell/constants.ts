@@ -1,0 +1,65 @@
+import { type AppId } from "../types";
+
+export const APP_BAR_HEIGHT = 48;
+export const DESKTOP_ICON_WIDTH = 86;
+export const DESKTOP_ICON_HEIGHT = 94;
+export const CONTEXT_MENU_WIDTH = 220;
+export const CONTEXT_MENU_HEIGHT = 260;
+export const WINDOW_SYSTEM_MENU_WIDTH = 214;
+export const WINDOW_SYSTEM_MENU_HEIGHT = 220;
+export const NOTE_KEY = "pocket-desk-note";
+export const LEGACY_DEFAULT_NOTE_CONTENT =
+  "PocketDesk 메모장\n\n여기에 내용을 적고 저장하면 브라우저 로컬 저장소와 IndexedDB 파일 시스템에 남습니다.";
+export const NOTE_SAVE_EVENT = "pocket-desk-save-note";
+export const NOTE_OPEN_EVENT = "pocket-desk-open-note";
+export const NOTE_SAVE_AS_EVENT = "pocket-desk-save-note-as";
+export const PAINT_SAVE_EVENT = "pocket-desk-save-paint";
+export const PAINT_OPEN_EVENT = "pocket-desk-open-paint";
+export const PAINT_SAVE_AS_EVENT = "pocket-desk-save-paint-as";
+export const VFS_PRIMARY_NOTE_ID = "vfs-notes";
+export const VFS_PRIMARY_CANVAS_ID = "vfs-sketch";
+export const WALLPAPER_KEY = "pocket-desk-wallpaper-v2";
+export const WINDOW_STATE_KEY = "pocket-desk-windows-v1";
+export const DESKTOP_ICON_LAYOUT_KEY = "pocket-desk-icons-v2";
+export const DESKTOP_ICON_VIEW_KEY = "pocket-desk-icon-view-v1";
+export const DESKTOP_ICON_SORT_KEY = "pocket-desk-icon-sort-v1";
+export const DESKTOP_ICON_GRID_KEY = "pocket-desk-icon-grid-v1";
+export const DESKTOP_ITEMS_KEY = "pocket-desk-desktop-items-v1";
+export const SOUND_ENABLED_KEY = "pocket-desk-sound-enabled-v1";
+export const DISPLAY_BRIGHTNESS_KEY = "pocket-desk-display-brightness-v1";
+export const TASKBAR_PINNED_APPS_KEY = "pocket-desk-taskbar-pinned-v2";
+export const SNAP_EDGE_SIZE = 24;
+export const SNAP_GUTTER = 10;
+export const WINDOW_EXIT_MOTION_MS = 170;
+export const appSearchKeywords: Record<AppId, string[]> = {
+  thispc: ["this pc", "my computer", "computer", "pc", "내 pc", "내컴퓨터", "컴퓨터", "드라이브", "disk"],
+  browser: ["internet", "web", "edge", "인터넷", "웹", "브라우저", "검색", "google", "url"],
+  minesweeper: ["mine", "field", "mines", "지뢰", "지뢰찾기", "게임", "폭탄"],
+  calculator: ["calc", "calculator", "계산", "계산기", "수학", "사칙연산"],
+  paint: ["paint", "sketch", "draw", "그림", "그림판", "스케치", "드로잉", "캔버스"],
+  notepad: ["note", "notes", "memo", "txt", "메모", "메모장", "문서", "글쓰기"],
+  files: ["file", "files", "folder", "explorer", "파일", "폴더", "탐색기", "desktop"],
+  recycle: ["recycle", "trash", "bin", "deleted", "휴지통", "삭제", "복원", "비우기"],
+  settings: ["setting", "settings", "control", "theme", "wallpaper", "설정", "테마", "배경"],
+};
+
+export const runCommandAliases: Partial<Record<AppId, string[]>> = {
+  thispc: ["computer", "this pc", "my computer", "내 pc", "내컴퓨터"],
+  browser: ["edge", "iexplore", "msedge", "chrome", "www"],
+  calculator: ["calc.exe"],
+  files: ["explorer", "explorer.exe"],
+  notepad: ["notepad.exe"],
+  paint: ["mspaint", "mspaint.exe"],
+  recycle: ["recycle bin", "trash", "bin"],
+  settings: ["control", "control.exe", "control panel"],
+};
+
+export const runCommandSuggestions = [
+  { command: "computer", label: "computer" },
+  { command: "explorer", label: "explorer" },
+  { command: "calc", label: "calc" },
+  { command: "notepad", label: "notepad" },
+  { command: "mspaint", label: "mspaint" },
+  { command: "recycle", label: "recycle" },
+  { command: "https://example.com", label: "url" },
+];

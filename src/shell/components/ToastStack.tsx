@@ -1,0 +1,36 @@
+import { type ToastMessage } from "../types";
+import { BrandMark } from "./Branding";
+import { X } from "lucide-react";
+
+export function ToastStack({
+  onDismiss,
+  toasts,
+}: {
+  onDismiss: (id: string) => void;
+  toasts: ToastMessage[];
+}) {
+  return (
+    <section aria-label="알림" className="toast-stack" role="status">
+      {toasts.map((toast) => (
+        <article className={`toast toast-${toast.tone}`} key={toast.id}>
+          <header className="toast-header">
+            <BrandMark className="toast-app-mark" />
+            <strong>PocketDesk</strong>
+            <time dateTime={new Date(toast.createdAt).toISOString()}>지금</time>
+            <button
+              aria-label={`${toast.title} 알림 닫기`}
+              onClick={() => onDismiss(toast.id)}
+              type="button"
+            >
+              <X aria-hidden="true" size={14} />
+            </button>
+          </header>
+          <div className="toast-body">
+            <strong>{toast.title}</strong>
+            {toast.detail && <small>{toast.detail}</small>}
+          </div>
+        </article>
+      ))}
+    </section>
+  );
+}
