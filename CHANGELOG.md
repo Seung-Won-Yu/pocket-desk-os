@@ -4,17 +4,17 @@ All notable changes to PocketDesk OS are documented here.
 
 ## Unreleased
 
-### Changed
-
-- Replaced File Explorer's type-filtered locations with a real parent-child folder hierarchy.
-- Grouped folders before files and localized file type labels to match Korean Windows Explorer.
-- Extracted every built-in app into an independent feature module.
-- Reduced `App.tsx` to focus on the desktop shell, window management, and shared application state.
-- Moved app metadata, wallpaper data, format helpers, and shared types into owned modules.
-- Upgraded the service worker to precache production bundles and wait for user-approved updates.
-
 ### Added
 
+- Command Prompt: a working shell over the IndexedDB file system with `dir`, `cd`, `type`, `echo` redirection, `md`, `del`, `copy`, `move`, `ren`, `tree`, `find`, `start`, `tasklist`, `taskkill`, and `systeminfo`, plus command history and Tab completion.
+- Task Manager with a per-window process list, End task, and CPU and memory graphs.
+- Virtual desktops with Task View (Win+Tab), desktop switching (Win+Ctrl+Left/Right), and moving windows between desktops.
+- Quarter snap layouts and Win+Arrow stepping from half to quarter to maximized.
+- Eight-edge window resizing.
+- Right-click shell menu on the taskbar and Start button.
+- Ctrl+Shift+Esc for Task Manager and Win+I for Settings.
+- Vitest unit tests for the file system model, ZIP backup, format helpers, and shell logic.
+- ESLint and Prettier, wired into CI alongside the unit tests.
 - Added independent multi-window File Explorer instances with taskbar window counts and previews.
 - Added Windows-style common Open and Save As dialogs with folder history, breadcrumbs, search, file filtering, new folders, extension handling, and overwrite confirmation.
 - Connected Notepad and Paint to persistent VFS open/save flows and `Ctrl+O`, `Ctrl+S`, and `Ctrl+Shift+S` shortcuts.
@@ -27,11 +27,29 @@ All notable changes to PocketDesk OS are documented here.
 - Automated PWA test covering service worker control, bundle precaching, offline reload, and tray status.
 - Reader-first routing and a recovery panel for websites that block iframe embedding.
 
+### Changed
+
+- Split the desktop shell out of `App.tsx` into `src/shell/`, cutting the file from 5365 to about 2100 lines.
+- Moved `typescript`, `vite`, and `@vitejs/plugin-react` from dependencies to devDependencies.
+- Notepad's Markdown preview is now reachable from the View menu and defaults on for `.md` files.
+- Replaced File Explorer's type-filtered locations with a real parent-child folder hierarchy.
+- Grouped folders before files and localized file type labels to match Korean Windows Explorer.
+- Extracted every built-in app into an independent feature module.
+- Reduced `App.tsx` to focus on the desktop shell, window management, and shared application state.
+- Moved app metadata, wallpaper data, format helpers, and shared types into owned modules.
+- Upgraded the service worker to precache production bundles and wait for user-approved updates.
+
 ### Fixed
 
 - Serialized IndexedDB writes with atomic transactions, schema metadata, migration indexes, and failure reporting.
 - Hardened ZIP restore against malformed headers, unsupported compression, invalid UTF-8, duplicate entries, oversized data, and CRC mismatches.
 - Prevented service worker activation from deleting unrelated origin caches.
+- Applied the 48-character name cap before the uniqueness check, so a truncated candidate can no longer collapse back into the name it was avoiding, and no longer cuts into the file extension.
+- Stopped name truncation from splitting a surrogate pair and leaving a broken character.
+- Guarded `clampWindowSystemMenuPosition` against non-finite coordinates, matching its sibling clamp helpers.
+- Kept one null entry in persisted window state from discarding the whole restored session.
+- Stopped the Run dialog from treating an unregistered program name such as `winword.exe` as a web address.
+- Removed the hardcoded nine-app limit that kept newly added apps out of the Start menu's pinned grid.
 
 ## 0.1.0
 

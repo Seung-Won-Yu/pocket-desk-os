@@ -39,8 +39,9 @@ PocketDesk OS는 Windows 11의 데스크톱 사용 흐름을 웹에서 재현한
 | 데스크톱 | 아이콘 선택·이동·정렬, 그리드 맞춤, 이름 변경, 우클릭 메뉴 |
 | 시작 메뉴 | 앱 목록, 검색, 고정 앱, 전원 메뉴 |
 | 작업 표시줄 | 실행 앱 표시, 다중 창 개수·미리보기, 최소화·복원, 바탕 화면 보기 |
-| 창 관리자 | 이동, 크기 조절, 최소화, 최대화, 스냅, 포커스, 앱별 다중 창 |
-| 시스템 UI | 시스템 트레이, 달력, 알림 센터, 실행 창, 전환 효과 |
+| 창 관리자 | 이동, 8방향 크기 조절, 최소화, 최대화, 절반·사분면 스냅, 포커스, 앱별 다중 창 |
+| 가상 데스크톱 | 작업 보기, 데스크톱 최대 6개, 창 이동, 데스크톱 전환·닫기 |
+| 시스템 UI | 시스템 트레이, 달력, 알림 센터, 실행 창, 작업 표시줄 우클릭 메뉴, 전환 효과 |
 | 파일 시스템 | IndexedDB 기반 폴더 계층, 이동·복사, 연결 앱, 트리 단위 휴지통, ZIP 백업 |
 | 상태 저장 | 창, 아이콘, 테마, 설정과 파일을 브라우저에 자동 보존 |
 
@@ -54,6 +55,8 @@ PocketDesk OS는 Windows 11의 데스크톱 사용 흐름을 웹에서 재현한
 | Microsoft Edge | 주소 이동, 검색, 방문 기록, 창 안 웹 보기, 읽기 보기, 차단 페이지 복구 |
 | 메모장 | 여러 문서, 자동 저장, Windows형 열기·다른 이름으로 저장, Markdown 미리보기 |
 | 그림판 | 브러시, 지우개, 도형, 색상 선택, Windows형 PNG 열기·저장 |
+| 명령 프롬프트 | 가상 파일 시스템 위에서 동작하는 셸, 명령 기록, Tab 자동 완성 |
+| 작업 관리자 | 실행 중인 창 목록, 작업 끝내기, CPU·메모리 그래프 |
 | 계산기 | 일반·공학 계산과 키보드 입력 |
 | 지뢰찾기 | 난이도 선택, 첫 클릭 보호, 타이머, 깃발, 승패와 최고 기록 |
 | 설정 | 테마, 자체 제작 배경 화면 8종, 시스템 소리, 창 배치 초기화 |
@@ -72,6 +75,29 @@ Microsoft Edge 앱은 주소를 새 탭으로 넘기지 않고 PocketDesk OS 창
 
 사과게임은 [Apple Burst](https://seung-won-yu.github.io/apple-burst/) 데스크톱 버전을 Edge 창 안에서 바로 실행합니다.
 
+## 명령 프롬프트
+
+명령 프롬프트는 화면 흉내가 아니라 IndexedDB 가상 파일 시스템을 직접 읽고 씁니다. 여기서 만든 파일은 파일 탐색기, 휴지통, ZIP 백업에서 같은 항목으로 보입니다.
+
+```text
+C:\Users\PocketDesk\Desktop> md 프로젝트
+C:\Users\PocketDesk\Desktop> cd 프로젝트
+C:\Users\PocketDesk\Desktop\프로젝트> echo 첫 줄 > 메모.txt
+C:\Users\PocketDesk\Desktop\프로젝트> echo 둘째 줄 >> 메모.txt
+C:\Users\PocketDesk\Desktop\프로젝트> type 메모.txt
+```
+
+| 분류 | 명령 |
+| --- | --- |
+| 탐색 | `dir`(`ls`), `cd`(`chdir`), `pwd`, `tree`, `find`(`findstr`) |
+| 파일 | `type`(`cat`), `echo` + `>`·`>>`, `md`(`mkdir`), `del`(`rm`), `copy`, `move`, `ren` |
+| 실행 | `start`, `tasklist`, `taskkill /pid <번호>`, `exit` |
+| 시스템 | `systeminfo`, `ver`, `vol`, `whoami`, `hostname`, `date`, `time`, `cls` |
+
+`↑`·`↓`로 명령 기록을 넘기고 `Tab`으로 현재 폴더의 이름을 자동 완성합니다. `help`가 전체 목록을 표시합니다.
+
+명령 해석은 `src/shell/commandShell.ts`의 순수 함수가 담당합니다. 문자열과 현재 상태를 받아 출력 줄과 적용할 효과 목록만 반환하므로 UI 없이 단위 테스트할 수 있습니다.
+
 ## 주요 조작
 
 | 입력 | 동작 |
@@ -84,6 +110,11 @@ Microsoft Edge 앱은 주소를 새 탭으로 넘기지 않고 PocketDesk OS 창
 | `Win/⌘ + R` | 실행 창 열기 |
 | `Win/⌘ + D` | 바탕 화면 표시·복원 |
 | `Ctrl + Alt + ←/→/↑` | 현재 창 스냅 |
+| `Win/⌘ + ←/→/↑/↓` | 현재 창 스냅 단계 이동 (절반 → 사분면 → 최대화 → 복원) |
+| `Win/⌘ + Tab` | 작업 보기 열기·닫기 |
+| `Win/⌘ + Ctrl + ←/→` | 가상 데스크톱 전환 |
+| `Win/⌘ + I` | 설정 열기 |
+| `Ctrl + Shift + Esc` | 작업 관리자 열기 |
 | `F2` | 선택한 파일 또는 아이콘 이름 변경 |
 | `Delete` | 선택 항목을 휴지통으로 이동 |
 | `Alt + ←/→/↑` | 탐색기 뒤로·앞으로·상위 폴더 이동 |
@@ -99,7 +130,8 @@ Microsoft Edge 앱은 주소를 새 탭으로 넘기지 않고 PocketDesk OS 창
 | 인터페이스 | CSS, lucide-react |
 | 저장소 | localStorage, IndexedDB |
 | 콘텐츠 | react-markdown |
-| 테스트 | Playwright, 릴리즈 검증 스크립트 |
+| 테스트 | Vitest 단위 테스트, Playwright, 릴리즈 검증 스크립트 |
+| 코드 품질 | ESLint, Prettier |
 | 배포 | GitHub Actions, GitHub Pages |
 
 ## 로컬 실행
@@ -123,6 +155,8 @@ npm run preview
 ## 품질 확인
 
 ```bash
+npm run lint
+npm test
 npm run release:check
 npm run qa:pages
 npm run qa:smoke
@@ -131,6 +165,8 @@ npm run qa:pwa
 
 | 명령 | 확인 범위 |
 | --- | --- |
+| `lint` | ESLint 규칙과 React Hooks 의존성 |
+| `test` | 파일 시스템 모델, ZIP 백업, 셸 로직 단위 테스트 |
 | `release:check` | 배포 필수 파일, PWA 자산, workflow와 문서 |
 | `qa:pages` | `/pocket-desk-os/` 하위 경로 기준 GitHub Pages 빌드 |
 | `qa:smoke` | 시작 메뉴, 앱, 파일, 휴지통과 창 관리의 실제 브라우저 흐름 |
@@ -139,7 +175,9 @@ npm run qa:pwa
 ## 프로젝트 구조
 
 ```text
-src/App.tsx           데스크톱 셸, 창 관리자와 공통 상태 연결
+src/App.tsx           앱 상태 연결과 창 오케스트레이션
+src/shell/            셸 타입·상수, 창 상태, 명령 셸, 데스크톱 레이아웃 계산
+src/shell/components/ 작업 표시줄, 시작 메뉴, 창 프레임, 작업 보기 등 셸 UI
 src/apps/             모든 기본 앱의 독립 기능 모듈
 src/components/       열기·저장 등 Windows형 공통 UI
 src/vfs/              IndexedDB 저장소, 파일 모델과 ZIP 백업 검증
@@ -172,6 +210,12 @@ DEPLOYMENT.md         정적 호스팅과 배포 안내
 - [x] IndexedDB 원자적 저장, 스키마 마이그레이션과 손상 백업 방어
 - [x] iframe 차단 사이트 복구 UX
 - [x] 오프라인 앱 셸과 사용자 선택형 PWA 업데이트
+- [x] 데스크톱 셸 모듈 분리와 App.tsx 축소
+- [x] ESLint·Prettier·Vitest 도입과 핵심 로직 단위 테스트
+- [x] 가상 파일 시스템 위에서 동작하는 명령 프롬프트
+- [x] 작업 관리자와 작업 표시줄 우클릭 셸 메뉴
+- [x] 가상 데스크톱과 작업 보기
+- [x] 사분면 스냅과 8방향 창 크기 조절
 
 구현 과정과 설계 기준은 [개발 기록](./docs/DEVELOPMENT-NOTES.md)에 정리했습니다.
 
