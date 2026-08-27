@@ -4,12 +4,13 @@ const VFS_DB_NAME = "pocket-desk-vfs";
 const VFS_DB_VERSION = 2;
 const VFS_STORE_NAME = "entries";
 const VFS_META_STORE_NAME = "meta";
-const MAX_ENTRY_COUNT = 2000;
-const MAX_CONTENT_BYTES = 16 * 1024 * 1024;
+export const MAX_ENTRY_COUNT = 2000;
+export const MAX_CONTENT_BYTES = 16 * 1024 * 1024;
 
 type VfsItemNormalizer = (value: unknown, index: number) => DesktopItem | null;
 
 let writeQueue: Promise<void> = Promise.resolve();
+const contentEncoder = new TextEncoder();
 
 export class VfsStorageError extends Error {
   constructor(message: string, cause?: unknown) {
@@ -40,7 +41,16 @@ export async function readVfsEntries(normalize: VfsItemNormalizer): Promise<Desk
 }
 
 export function persistVfsEntries(entries: DesktopItem[]): Promise<void> {
-  const snapshot = cloneAndValidateSnapshot(entries);
+  let snapshot: DesktopItem[];
+  try {
+    // Snapshot eagerly so a later mutation cannot reach the queued write, but
+    // report the failure as a rejection: callers handle it with .catch(), and a
+    // synchronous throw would escape that entirely.
+    snapshot = cloneAndValidateSnapshot(entries);
+  } catch (error) {
+    return Promise.reject(error);
+  }
+
   const nextWrite = writeQueue.catch(() => undefined).then(() => writeVfsSnapshot(snapshot));
   writeQueue = nextWrite;
   return nextWrite;
@@ -140,7 +150,7 @@ function transactionDone(transaction: IDBTransaction, message: string): Promise<
   });
 }
 
-function cloneAndValidateSnapshot(entries: DesktopItem[]) {
+export function cloneAndValidateSnapshot(entries: DesktopItem[]) {
   if (entries.length > MAX_ENTRY_COUNT) {
     throw new VfsStorageError(`가상 파일은 최대 ${MAX_ENTRY_COUNT}개까지 저장할 수 있습니다.`);
   }
@@ -153,7 +163,7 @@ function cloneAndValidateSnapshot(entries: DesktopItem[]) {
       throw new VfsStorageError("중복되거나 비어 있는 파일 ID가 있습니다.");
     }
     ids.add(entry.id);
-    contentBytes += new Blob([entry.content ?? ""]).size;
+    contentBytes += contentEncoder.encode(entry.content ?? "").length;
   }
 
   if (contentBytes > MAX_CONTENT_BYTES) {
