@@ -2,7 +2,10 @@
 
 All notable changes to PocketDesk OS are documented here.
 
-## Unreleased
+## 0.4.0
+
+One shared clipboard, a Photos viewer, taskbar search, Settings that change real behavior, two system apps built on the desktop's own data, and the first component tests.
+
 
 ### Added
 
@@ -19,6 +22,7 @@ All notable changes to PocketDesk OS are documented here.
 
 - Paint's Save As and Open, and Notepad's tabs and Open, routed through the file-type association, so saving a PNG in Paint would have handed the user to Photos. They now select the entry in place.
 - The Start menu's pinned grid capped at nine apps, silently dropping apps as the catalog grew.
+- Photos committed a rename twice when confirmed with Enter, because moving focus blurred the still-mounted input and re-entered the commit.
 
 ## 0.3.0
 
