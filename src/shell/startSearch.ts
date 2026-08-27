@@ -118,7 +118,9 @@ export function buildStartSearchResults(
   });
 }
 
-const START_PINNED_APP_LIMIT = 11;
+// The pinned grid scrolls, so the cap only exists to stop it growing without
+// bound. Keep it above the catalog size so a newly added app still lands there.
+const START_PINNED_APP_LIMIT = 18;
 
 export function getStartPinnedApps(apps: AppDefinition[]) {
   const priority: AppId[] = [
@@ -126,6 +128,7 @@ export function getStartPinnedApps(apps: AppDefinition[]) {
     "files",
     "browser",
     "notepad",
+    "photos",
     "terminal",
     "taskmanager",
     "paint",

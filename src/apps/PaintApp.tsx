@@ -36,7 +36,7 @@ type PaintAppProps = {
   canvasEntries: CanvasEntry[];
   createVfsFolder: (parentId?: string) => DesktopItem;
   desktopItems: DesktopItem[];
-  openVfsEntry: (item: DesktopItem) => void;
+  activateVfsEntry: (item: DesktopItem) => void;
   savePaintImage: (
     content: string,
     options?: { existingItemId?: string; name?: string; parentId?: string },
@@ -67,7 +67,7 @@ export default function PaintApp({
   canvasEntries,
   createVfsFolder,
   desktopItems,
-  openVfsEntry,
+  activateVfsEntry,
   savePaintImage,
 }: PaintAppProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -244,7 +244,7 @@ export default function PaintApp({
       name: result.name,
       parentId: result.parentId,
     });
-    openVfsEntry(item);
+    activateVfsEntry(item);
     setFileDialogMode(null);
   };
 
@@ -569,7 +569,7 @@ export default function PaintApp({
           mode={fileDialogMode}
           onCancel={() => setFileDialogMode(null)}
           onOpen={(item) => {
-            openVfsEntry(item);
+            activateVfsEntry(item);
             setFileDialogMode(null);
           }}
           onSave={saveAs}

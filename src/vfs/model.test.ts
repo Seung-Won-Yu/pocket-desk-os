@@ -471,9 +471,9 @@ describe("getVfsEntryAssociation", () => {
     );
   });
 
-  it("maps images and canvases to paint with distinct labels", () => {
+  it("opens a png in the viewer and a bare canvas in the editor", () => {
     const png = getVfsEntryAssociation(makeItem({ id: "c", kind: "canvas", name: "그림.png" }));
-    expect(png.appId).toBe("paint");
+    expect(png.appId).toBe("photos");
     expect(png.typeLabel).toBe("PNG 이미지");
 
     const canvas = getVfsEntryAssociation(makeItem({ id: "c", kind: "canvas", name: "그림" }));

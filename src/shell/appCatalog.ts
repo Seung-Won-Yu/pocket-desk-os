@@ -4,6 +4,7 @@ import FilesApp from "../apps/FilesApp";
 import MinesweeperApp from "../apps/MinesweeperApp";
 import NotepadApp from "../apps/NotepadApp";
 import PaintApp from "../apps/PaintApp";
+import PhotosApp from "../apps/PhotosApp";
 import RecycleBinApp from "../apps/RecycleBinApp";
 import SettingsApp from "../apps/SettingsApp";
 import TaskManagerApp from "../apps/TaskManagerApp";
@@ -21,6 +22,7 @@ export const appComponents: Record<AppId, AppDefinition["component"]> = {
   minesweeper: MinesweeperApp,
   notepad: NotepadApp,
   paint: PaintApp,
+  photos: PhotosApp,
   recycle: RecycleBinApp,
   settings: SettingsApp,
   taskmanager: TaskManagerApp,

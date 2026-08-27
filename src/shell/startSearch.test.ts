@@ -259,6 +259,7 @@ describe("getStartPinnedApps", () => {
       "files",
       "browser",
       "notepad",
+      "photos",
       "terminal",
       "taskmanager",
       "paint",
@@ -271,7 +272,7 @@ describe("getStartPinnedApps", () => {
 
   it("pins the whole catalog while it stays under the slot limit", () => {
     expect(getStartPinnedApps(appCatalog)).toHaveLength(appCatalog.length);
-    expect(getStartPinnedApps(appCatalog).length).toBeLessThanOrEqual(11);
+    expect(getStartPinnedApps(appCatalog).length).toBeLessThanOrEqual(18);
   });
 
   it("caps the pinned grid once the catalog outgrows it", () => {
@@ -279,7 +280,7 @@ describe("getStartPinnedApps", () => {
       ...appCatalog,
       ...appCatalog.map((app, index) => ({ ...app, id: `extra-${index}` as AppId })),
     ];
-    expect(getStartPinnedApps(oversized)).toHaveLength(11);
+    expect(getStartPinnedApps(oversized)).toHaveLength(18);
   });
 
   it("reorders a small subset into priority order", () => {

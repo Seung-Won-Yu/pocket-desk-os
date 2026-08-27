@@ -200,7 +200,7 @@ export function getVfsEntryAssociation(item: DesktopItem): VfsEntryAssociation {
   }
 
   if (extension === "png") {
-    return createVfsEntryAssociation("paint", extension, "PNG 이미지");
+    return createVfsEntryAssociation("photos", extension, "PNG 이미지");
   }
 
   if (extension === "canvas") {

@@ -13,6 +13,7 @@ type NotepadAppProps = {
   createVfsTextFile: () => DesktopItem;
   desktopItems: DesktopItem[];
   noteEntries: DesktopItem[];
+  activateVfsEntry: (item: DesktopItem) => void;
   openVfsEntry: (item: DesktopItem) => void;
   saveNoteAs: (
     parentId: string,
@@ -33,6 +34,7 @@ export default function NotepadApp({
   createVfsTextFile,
   desktopItems,
   noteEntries,
+  activateVfsEntry,
   openVfsEntry,
   saveNoteAs,
   saveNoteContent,
@@ -143,7 +145,7 @@ export default function NotepadApp({
         } else if (key === "n") {
           event.preventDefault();
           event.stopPropagation();
-          openVfsEntry(createVfsTextFile());
+          activateVfsEntry(createVfsTextFile());
         }
       }}
     >
@@ -185,7 +187,7 @@ export default function NotepadApp({
           <button
             onClick={() => {
               const item = createVfsTextFile();
-              openVfsEntry(item);
+              activateVfsEntry(item);
               setNoteMenu(null);
             }}
             role="menuitem"
@@ -282,7 +284,7 @@ export default function NotepadApp({
               aria-selected={note.id === activeNote?.id}
               className={note.id === activeNote?.id ? "is-selected" : ""}
               key={note.id}
-              onClick={() => openVfsEntry(note)}
+              onClick={() => activateVfsEntry(note)}
               role="tab"
               type="button"
             >
@@ -296,7 +298,7 @@ export default function NotepadApp({
         </div>
         <button
           aria-label="새 탭"
-          onClick={() => openVfsEntry(createVfsTextFile())}
+          onClick={() => activateVfsEntry(createVfsTextFile())}
           title="새 탭"
           type="button"
         >
@@ -339,7 +341,7 @@ export default function NotepadApp({
           mode={fileDialogMode}
           onCancel={() => setFileDialogMode(null)}
           onOpen={(item) => {
-            openVfsEntry(item);
+            activateVfsEntry(item);
             setFileDialogMode(null);
           }}
           onSave={({ existingItem, name, parentId }) => {

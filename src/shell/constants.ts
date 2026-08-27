@@ -29,6 +29,10 @@ export const SOUND_ENABLED_KEY = "pocket-desk-sound-enabled-v1";
 export const DISPLAY_BRIGHTNESS_KEY = "pocket-desk-display-brightness-v1";
 export const TASKBAR_PINNED_APPS_KEY = "pocket-desk-taskbar-pinned-v2";
 export const VIRTUAL_DESKTOPS_KEY = "pocket-desk-virtual-desktops-v1";
+export const USER_NAME_KEY = "pocket-desk-user-name-v1";
+export const CLOCK_24H_KEY = "pocket-desk-clock-24h-v1";
+export const DEFAULT_APPS_KEY = "pocket-desk-default-apps-v1";
+export const DEFAULT_USER_NAME = "PocketDesk";
 export const MAX_VIRTUAL_DESKTOPS = 6;
 export const SNAP_EDGE_SIZE = 24;
 export const SNAP_CORNER_SIZE = 72;
@@ -48,6 +52,7 @@ export const appSearchKeywords: Record<AppId, string[]> = {
   ],
   browser: ["internet", "web", "edge", "인터넷", "웹", "브라우저", "검색", "google", "url"],
   minesweeper: ["mine", "field", "mines", "지뢰", "지뢰찾기", "게임", "폭탄"],
+  photos: ["photo", "photos", "image", "picture", "사진", "이미지", "그림 보기", "뷰어"],
   terminal: [
     "cmd",
     "command",
@@ -82,6 +87,7 @@ export const runCommandAliases: Partial<Record<AppId, string[]>> = {
   thispc: ["computer", "this pc", "my computer", "내 pc", "내컴퓨터"],
   browser: ["edge", "iexplore", "msedge", "chrome", "www"],
   calculator: ["calc.exe"],
+  photos: ["photo", "photos", "사진", "사진 앱"],
   terminal: ["cmd", "cmd.exe", "command", "powershell", "terminal", "명령 프롬프트"],
   taskmanager: ["taskmgr", "taskmgr.exe", "task manager", "작업 관리자"],
   files: ["explorer", "explorer.exe"],
