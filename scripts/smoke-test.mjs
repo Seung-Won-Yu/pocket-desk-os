@@ -566,6 +566,11 @@ async function runSmoke(baseUrl) {
     await page.locator('article[aria-label="파일 탐색기"]').waitFor({ state: "visible" });
     const files = page.locator('article[aria-label="파일 탐색기"]');
     const explorerSidebar = files.locator("aside");
+    // The details pane now starts closed, the way the Windows preview pane does,
+    // so the assertions below that read it open it first. That also covers the
+    // toggle itself.
+    await files.getByRole("button", { name: "세부 정보 창" }).click();
+    await files.locator(".file-preview").waitFor({ state: "visible" });
     await explorerSidebar.getByRole("button", { name: "문서", exact: true }).click();
     assert((await files.locator(".file-list button").count()) > 0, "Documents view is empty");
     assert(
@@ -1492,6 +1497,87 @@ async function runSmoke(baseUrl) {
       `Revealing a cell resized the minefield: heights ${revealedHeights.join(", ")}`,
     );
     await minesLayout.getByRole("button", { name: "지뢰찾기 닫기" }).click();
+
+    // Every close path must consult the app's guard, not just the title bar's ✕.
+    // Notepad autosaves 850ms after a keystroke, so each case re-dirties the
+    // document immediately before closing.
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("notepad");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const guardNotepad = page.locator('article[aria-label="메모장"]').first();
+    await guardNotepad.waitFor({ state: "visible" });
+    const guardEditor = guardNotepad.getByLabel("메모 내용");
+    const closePrompt = page.getByRole("alertdialog");
+
+    for (const path of ["close-button", "alt-f4", "system-menu"]) {
+      await guardEditor.fill(`GUARD ${path}`);
+      if (path === "close-button") {
+        await guardNotepad.getByRole("button", { name: "메모장 닫기" }).click();
+      } else if (path === "alt-f4") {
+        await guardEditor.click();
+        await page.keyboard.press("Alt+F4");
+      } else {
+        const titlebarBox = await guardNotepad.locator(".window-titlebar").boundingBox();
+        await guardNotepad.locator(".window-titlebar").dispatchEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: titlebarBox.x + 80,
+          clientY: titlebarBox.y + 16,
+        });
+        await page.locator(".window-system-menu").waitFor({ state: "visible" });
+        await page
+          .locator(".window-system-menu")
+          .getByRole("menuitem", { name: "닫기" })
+          .click();
+      }
+      await closePrompt.waitFor({ state: "visible" });
+      await closePrompt.getByRole("button", { name: "취소" }).click();
+      await closePrompt.waitFor({ state: "hidden" });
+      assert(
+        (await guardNotepad.count()) === 1,
+        `Cancelling the ${path} prompt still closed the window`,
+      );
+    }
+
+    await guardEditor.fill("GUARD DISCARD");
+    await guardNotepad.getByRole("button", { name: "메모장 닫기" }).click();
+    await closePrompt.waitFor({ state: "visible" });
+    await closePrompt.getByRole("button", { name: "저장 안 함" }).click();
+    await guardNotepad.waitFor({ state: "detached" });
+
+    // Settings must fit its window and scroll when it does not. Its grid used to
+    // grow past the content box, which clips, so the content pane never had a
+    // bounded track and 86px of 개인 설정 was unreachable on first open.
+    await page.keyboard.press("Meta+i");
+    const settingsWindow = page.locator('article[aria-label="설정"]');
+    await settingsWindow.waitFor({ state: "visible" });
+    const settingsFit = await settingsWindow.evaluate((frame) => {
+      const content = frame.querySelector(".window-content");
+      const app = frame.querySelector(".settings-app");
+      if (!content || !app) return null;
+      return Math.round(
+        app.getBoundingClientRect().height - content.getBoundingClientRect().height,
+      );
+    });
+    assert(
+      settingsFit !== null && settingsFit <= 1,
+      `Settings escaped its window by ${settingsFit}px`,
+    );
+    // An earlier step may have left another section showing; 개인 설정 is the one
+    // whose content exceeds the window.
+    await settingsWindow.getByRole("button", { name: "개인 설정" }).click();
+    await page.waitForTimeout(250);
+    const settingsPane = settingsWindow.locator(".settings-content");
+    await settingsPane.hover();
+    await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(250);
+    assert(
+      (await settingsPane.evaluate((el) => el.scrollTop)) > 0,
+      "Settings content did not scroll",
+    );
+    await settingsWindow.getByRole("button", { name: "설정 닫기" }).click();
+    await page.waitForTimeout(200);
 
     // Hiding a window must not throw away what the app holds. Minimizing used to
     // unmount it, so an unsaved draft, the calculator display, terminal

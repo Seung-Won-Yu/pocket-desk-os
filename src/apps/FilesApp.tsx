@@ -24,6 +24,7 @@ import {
   Paintbrush,
   Pencil,
   Plus,
+  RefreshCw,
   Scissors,
   Search,
   Trash2,
@@ -67,10 +68,15 @@ type FileSortKey = "name" | "type" | "modified";
 type FileViewMode = "details" | "list" | "icons";
 
 type FileContextMenuState = {
-  fileId: string;
+  /** `null` targets the folder background rather than one entry. */
+  fileId: string | null;
+  /** Fly submenus out to the left when the menu sits near the right edge. */
+  opensLeft?: boolean;
   x: number;
   y: number;
 };
+
+type FileFolderSubmenu = "new" | "sort" | "view";
 
 export type FilesLaunchRequest = {
   folderId: string;
@@ -103,6 +109,29 @@ const APP_BAR_HEIGHT = 48;
 const FILE_EXPLORER_SORT_KEY = "pocket-desk-explorer-sort-v1";
 const FILE_EXPLORER_SORT_DIRECTION_KEY = "pocket-desk-explorer-sort-direction-v1";
 const FILE_EXPLORER_VIEW_KEY = "pocket-desk-explorer-view-v1";
+// The command strip and the folder background menu offer the same choices, so
+// they read from one table instead of drifting apart.
+const FILE_SORT_OPTIONS: Array<[FileSortKey, string]> = [
+  ["name", "이름"],
+  ["type", "항목 유형"],
+  ["modified", "수정한 날짜"],
+];
+const FILE_SORT_DIRECTION_OPTIONS: Array<[FileSortDirection, string]> = [
+  ["asc", "오름차순"],
+  ["desc", "내림차순"],
+];
+const FILE_VIEW_OPTIONS: Array<[FileViewMode, string]> = [
+  ["details", "자세히"],
+  ["list", "목록"],
+  ["icons", "큰 아이콘"],
+];
+// What a menu needs to stay on screen: 204px of menu width plus a margin, that
+// again with its 190px submenu beside it, and the height of the rows each of the
+// two menus carries.
+const FILE_CONTEXT_MENU_RESERVE_X = 212;
+const FILE_FOLDER_MENU_RESERVE_X = 410;
+const FILE_CONTEXT_MENU_RESERVE_Y = 226;
+const FILE_FOLDER_MENU_RESERVE_Y = 214;
 
 export default function FilesApp({
   clipboard,
@@ -148,8 +177,11 @@ export default function FilesApp({
   });
   const [sortOpen, setSortOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
-  const [detailsPaneOpen, setDetailsPaneOpen] = useState(true);
+  // Off by default, like the Windows preview pane: it costs 248px of a 900px
+  // window, which is width the file list needs more than the summary does.
+  const [detailsPaneOpen, setDetailsPaneOpen] = useState(false);
   const [fileContextMenu, setFileContextMenu] = useState<FileContextMenuState | null>(null);
+  const [folderSubmenu, setFolderSubmenu] = useState<FileFolderSubmenu | null>(null);
   const [pendingRenameId, setPendingRenameId] = useState<string | null>(null);
   const [propertiesFileId, setPropertiesFileId] = useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
@@ -446,6 +478,29 @@ export default function FilesApp({
     setFileContextMenu(null);
   };
 
+  /**
+   * Both menus are `position: fixed`, but the window frame's `backdrop-filter`
+   * makes the frame their containing block, so `left`/`top` are frame-relative:
+   * feeding them a viewport `clientX`/`clientY` put the menu one window offset
+   * away from the pointer, and clamping against `window.innerHeight` measured a
+   * box the menu does not live in — a window dragged down the screen could send
+   * the whole menu below the viewport. Clamp in viewport space, where those
+   * numbers mean something, then convert to the frame.
+   */
+  const getContextMenuPosition = (event: React.MouseEvent<HTMLElement>, menuHeight: number) => {
+    const origin = event.currentTarget
+      .closest<HTMLElement>(".window-frame")
+      ?.getBoundingClientRect();
+    return {
+      x:
+        clamp(event.clientX, 8, Math.max(8, window.innerWidth - FILE_CONTEXT_MENU_RESERVE_X)) -
+        (origin?.left ?? 0),
+      y:
+        clamp(event.clientY, 8, Math.max(8, window.innerHeight - APP_BAR_HEIGHT - menuHeight)) -
+        (origin?.top ?? 0),
+    };
+  };
+
   const showFileContextMenu = (event: React.MouseEvent<HTMLButtonElement>, fileId: string) => {
     event.preventDefault();
     event.stopPropagation();
@@ -457,9 +512,42 @@ export default function FilesApp({
     setRenaming(false);
     setFileContextMenu({
       fileId,
-      x: clamp(event.clientX, 8, Math.max(8, window.innerWidth - 212)),
-      y: clamp(event.clientY, 8, Math.max(8, window.innerHeight - APP_BAR_HEIGHT - 226)),
+      ...getContextMenuPosition(event, FILE_CONTEXT_MENU_RESERVE_Y),
     });
+  };
+
+  /**
+   * The folder background menu. Entry rows stop propagation in
+   * `showFileContextMenu`, so anything that reaches here is background: the
+   * empty area under the rows, the empty-folder placeholder, or the column
+   * header. Without this the browser's own Reload / Inspect menu opened on top
+   * of the desktop illusion.
+   */
+  const showFolderContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+    // A rename box is a real text field, so it keeps the browser's editing menu.
+    if (event.target instanceof HTMLInputElement) return;
+    event.preventDefault();
+    setRenaming(false);
+    setFolderSubmenu(null);
+    setFileContextMenu({
+      fileId: null,
+      // The same edge test the desktop background menu makes, on the viewport
+      // coordinate the pointer actually reported.
+      opensLeft: event.clientX > window.innerWidth - FILE_FOLDER_MENU_RESERVE_X,
+      ...getContextMenuPosition(event, FILE_FOLDER_MENU_RESERVE_Y),
+    });
+  };
+
+  /**
+   * Windows re-reads the folder here. This VFS is reactive, so the listing is
+   * never stale; what is left of a refresh is the observable half — re-list the
+   * location from scratch, which is the same transient-state reset navigation
+   * does, then scroll back to the top and hand focus to the list.
+   */
+  const refreshFileList = () => {
+    resetTransientState();
+    if (fileListRef.current) fileListRef.current.scrollTop = 0;
+    focusFileList();
   };
 
   const openFileProperties = (fileId: string) => {
@@ -594,6 +682,13 @@ export default function FilesApp({
       return;
     }
     if (event.altKey && event.key === "ArrowUp") {
+      event.preventDefault();
+      navigateUp();
+      return;
+    }
+    // Windows takes Backspace as "up one level" too, whenever the list has focus
+    // and no rename box is open — the text-field guard above already returned.
+    if (event.key === "Backspace") {
       event.preventDefault();
       navigateUp();
       return;
@@ -985,13 +1080,7 @@ export default function FilesApp({
                   role="menu"
                   onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
                 >
-                  {(
-                    [
-                      ["name", "이름"],
-                      ["type", "항목 유형"],
-                      ["modified", "수정한 날짜"],
-                    ] as Array<[FileSortKey, string]>
-                  ).map(([nextSortKey, label]) => (
+                  {FILE_SORT_OPTIONS.map(([nextSortKey, label]) => (
                     <button
                       aria-checked={sortKey === nextSortKey}
                       key={nextSortKey}
@@ -1011,12 +1100,7 @@ export default function FilesApp({
                     </button>
                   ))}
                   <span aria-hidden="true" className="menu-separator" />
-                  {(
-                    [
-                      ["asc", "오름차순"],
-                      ["desc", "내림차순"],
-                    ] as Array<[FileSortDirection, string]>
-                  ).map(([direction, label]) => (
+                  {FILE_SORT_DIRECTION_OPTIONS.map(([direction, label]) => (
                     <button
                       aria-checked={sortDirection === direction}
                       key={direction}
@@ -1080,7 +1164,19 @@ export default function FilesApp({
           </div>
         </div>
         <div className={`file-workspace${detailsPaneOpen ? " has-details" : ""}`}>
-          <div className="file-list-surface">
+          {/* The context menu lives on the surface so the empty area under the
+              rows, the empty-folder placeholder and the column header all reach
+              one handler; entry rows stop propagation before it. */}
+          <div className="file-list-surface" onContextMenu={showFolderContextMenu}>
+            {/* The header stays a sibling of the scroller rather than moving
+                inside it. Windows auto-fits the columns so a normal window has
+                nothing to scroll sideways, and the details columns now flex the
+                same way in styles.css (`minmax(0, …)` instead of a flat 520px
+                floor): with horizontal overflow gone, a header that cannot
+                scroll can no longer drift off its columns, and the rows stop
+                being sliced. Syncing the two scroll positions instead would
+                have kept the sideways scrolling that Explorer does not have at
+                this size. */}
             {viewMode === "details" && (
               <div aria-hidden="true" className="file-list-header">
                 <span>이름</span>
@@ -1267,7 +1363,9 @@ export default function FilesApp({
             </section>
           )}
         </div>
-        <div className="file-statusbar">
+        {/* Windows offers no status-bar menu, but it does not hand out the
+            browser's either. */}
+        <div className="file-statusbar" onContextMenu={(event) => event.preventDefault()}>
           <span>{visibleFiles.length}개 항목</span>
           <span>
             {selectedIds.length > 0 ? `${selectedIds.length}개 선택됨` : "선택한 항목 없음"}
@@ -1353,6 +1451,178 @@ export default function FilesApp({
             <Info aria-hidden="true" size={16} />
             속성
           </button>
+        </div>
+      )}
+      {fileContextMenu && fileContextMenu.fileId === null && (
+        // Same rows Windows shows on a folder background, wired to the commands
+        // the app already has. The submenu shell is the shared one from the
+        // desktop background menu, so both widgets behave identically.
+        <div
+          aria-label="폴더 메뉴"
+          className={`file-context-menu${fileContextMenu.opensLeft ? " opens-left" : ""}`}
+          onContextMenu={(event) => event.preventDefault()}
+          onPointerDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+          ref={fileContextMenuRef}
+          role="menu"
+          style={{ left: fileContextMenu.x, top: fileContextMenu.y }}
+        >
+          <div className="desktop-menu-row" onMouseEnter={() => setFolderSubmenu("view")}>
+            <button
+              aria-expanded={folderSubmenu === "view"}
+              aria-haspopup="menu"
+              onClick={() =>
+                setFolderSubmenu((current) => (current === "view" ? null : "view"))
+              }
+              role="menuitem"
+              type="button"
+            >
+              <LayoutGrid aria-hidden="true" size={16} />
+              <span>보기</span>
+              <ChevronRight aria-hidden="true" className="menu-chevron" size={15} />
+            </button>
+            {folderSubmenu === "view" && (
+              <div
+                aria-label="보기"
+                className="desktop-context-submenu"
+                onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+                role="menu"
+              >
+                {FILE_VIEW_OPTIONS.map(([nextViewMode, label]) => (
+                  <button
+                    aria-checked={viewMode === nextViewMode}
+                    key={nextViewMode}
+                    onClick={() => {
+                      setViewMode(nextViewMode);
+                      setFileContextMenu(null);
+                    }}
+                    role="menuitemradio"
+                    type="button"
+                  >
+                    {viewMode === nextViewMode ? (
+                      <Check aria-hidden="true" size={15} />
+                    ) : (
+                      <span />
+                    )}
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="desktop-menu-row" onMouseEnter={() => setFolderSubmenu("sort")}>
+            <button
+              aria-expanded={folderSubmenu === "sort"}
+              aria-haspopup="menu"
+              onClick={() =>
+                setFolderSubmenu((current) => (current === "sort" ? null : "sort"))
+              }
+              role="menuitem"
+              type="button"
+            >
+              <ArrowUpDown aria-hidden="true" size={16} />
+              <span>정렬 기준</span>
+              <ChevronRight aria-hidden="true" className="menu-chevron" size={15} />
+            </button>
+            {folderSubmenu === "sort" && (
+              <div
+                aria-label="정렬 기준"
+                className="desktop-context-submenu"
+                onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+                role="menu"
+              >
+                {FILE_SORT_OPTIONS.map(([nextSortKey, label]) => (
+                  <button
+                    aria-checked={sortKey === nextSortKey}
+                    key={nextSortKey}
+                    onClick={() => {
+                      setSortKey(nextSortKey);
+                      setFileContextMenu(null);
+                    }}
+                    role="menuitemradio"
+                    type="button"
+                  >
+                    {sortKey === nextSortKey ? (
+                      <Check aria-hidden="true" size={15} />
+                    ) : (
+                      <span />
+                    )}
+                    {label}
+                  </button>
+                ))}
+                <span aria-hidden="true" className="menu-separator" />
+                {FILE_SORT_DIRECTION_OPTIONS.map(([direction, label]) => (
+                  <button
+                    aria-checked={sortDirection === direction}
+                    key={direction}
+                    onClick={() => {
+                      setSortDirection(direction);
+                      setFileContextMenu(null);
+                    }}
+                    role="menuitemradio"
+                    type="button"
+                  >
+                    {sortDirection === direction ? (
+                      <Check aria-hidden="true" size={15} />
+                    ) : (
+                      <span />
+                    )}
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={refreshFileList}
+            onMouseEnter={() => setFolderSubmenu(null)}
+            role="menuitem"
+            type="button"
+          >
+            <RefreshCw aria-hidden="true" size={16} />
+            새로 고침
+          </button>
+          <span aria-hidden="true" className="menu-separator" />
+          <button
+            disabled={clipboard.itemIds.length === 0}
+            onClick={pasteCopiedFiles}
+            onMouseEnter={() => setFolderSubmenu(null)}
+            role="menuitem"
+            type="button"
+          >
+            <ClipboardPaste aria-hidden="true" size={16} />
+            붙여넣기
+          </button>
+          <div className="desktop-menu-row" onMouseEnter={() => setFolderSubmenu("new")}>
+            <button
+              aria-expanded={folderSubmenu === "new"}
+              aria-haspopup="menu"
+              onClick={() => setFolderSubmenu((current) => (current === "new" ? null : "new"))}
+              role="menuitem"
+              type="button"
+            >
+              <FilePlus2 aria-hidden="true" size={16} />
+              <span>새로 만들기</span>
+              <ChevronRight aria-hidden="true" className="menu-chevron" size={15} />
+            </button>
+            {folderSubmenu === "new" && (
+              <div
+                aria-label="새로 만들기"
+                className="desktop-context-submenu"
+                onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+                role="menu"
+              >
+                <button onClick={createFolder} role="menuitem" type="button">
+                  <Folder aria-hidden="true" size={15} />
+                  폴더
+                </button>
+                <button onClick={createTextFile} role="menuitem" type="button">
+                  <FileText aria-hidden="true" size={15} />
+                  텍스트 문서
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
       {propertiesFile && (

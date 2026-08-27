@@ -6187,8 +6187,18 @@ button {
 
 .settings-app {
   display: grid;
+  /*
+   * `min-height: 100%` let this grid grow past the window's content box, which
+   * clips. The content pane's own `overflow: auto` then never had a bounded
+   * track to scroll inside, so 86px of 개인 설정 was simply unreachable on first
+   * open — wallpaper tiles sliced through the middle, wheel doing nothing.
+   * Pinning the height and giving the row a minmax(0, 1fr) track makes the pane
+   * scroll instead.
+   */
   grid-template-columns: 190px minmax(0, 1fr);
-  min-height: 100%;
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
 }
 
 .settings-sidebar {
@@ -6197,6 +6207,8 @@ button {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-height: 0;
+  overflow: auto;
   padding: 10px 8px;
 }
 
@@ -6296,6 +6308,7 @@ button {
   background: #202020;
   display: grid;
   gap: 18px;
+  min-height: 0;
   overflow: auto;
   padding: 22px 24px;
 }
@@ -8836,4 +8849,241 @@ button {
   pointer-events: none;
   visibility: hidden;
   width: 0;
+}
+
+/*
+ * The 찾기 bar sits between the document tabs and the editor, in the same flat
+ * dark chrome as the menu bar above it.
+ */
+.note-find-bar {
+  align-items: center;
+  background: #252525;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 7px;
+}
+
+.note-find-field {
+  align-items: center;
+  background: #1b1b1b;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  color: var(--muted);
+  display: flex;
+  flex: 1;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.note-find-field:focus-within {
+  border-color: var(--active);
+}
+
+.note-find-field input {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  flex: 1;
+  font-family: inherit;
+  font-size: 0.8rem;
+  height: 28px;
+  min-width: 0;
+  outline: none;
+  padding: 0;
+}
+
+.note-find-count {
+  color: var(--muted);
+  font-size: 0.72rem;
+  min-width: 58px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.note-find-bar button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text);
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  width: 30px;
+}
+
+.note-find-bar button:hover:not(:disabled),
+.note-find-bar button:focus-visible {
+  background: var(--control-hover);
+}
+
+.note-find-bar button:disabled {
+  opacity: 0.42;
+}
+
+/*
+ * The editor's context menu opens wherever the pointer is, so it is placed
+ * against the viewport instead of the app's own top-left corner.
+ */
+.note-context-menu {
+  position: fixed;
+  z-index: 9800;
+}
+
+/*
+ * Windows asks before it drops text you typed. Same shape as the file dialog's
+ * replace confirmation, over the app rather than over a dialog, and above the
+ * file dialog so Alt+F4 during a save still gets an answer first.
+ */
+.note-close-overlay {
+  animation: overlay-enter 140ms ease-out both;
+  background: rgba(0, 0, 0, 0.54);
+  display: grid;
+  inset: 0;
+  padding: 16px;
+  place-items: center;
+  position: absolute;
+  z-index: 80;
+}
+
+.note-close-overlay > section {
+  animation: dialog-enter 170ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  background: #2b2b2b;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 7px;
+  box-shadow: 0 20px 64px rgba(0, 0, 0, 0.48);
+  max-width: 400px;
+  padding: 20px;
+}
+
+.note-close-overlay p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 10px 0 18px;
+}
+
+.note-close-overlay section > div {
+  display: flex;
+  gap: 7px;
+  justify-content: flex-end;
+}
+
+.note-close-overlay button {
+  background: #353535;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 4px;
+  min-height: 34px;
+  min-width: 78px;
+  padding: 0 12px;
+}
+
+.note-close-overlay button:hover,
+.note-close-overlay button:focus-visible {
+  background: #414141;
+}
+
+.note-close-overlay button.is-primary {
+  background: #0067c0;
+  border-color: #1473e6;
+}
+
+/*
+ * Explorer details columns. Both the header and the rows used to be pinned to a
+ * 520px floor, so even the default 900px window hid 55px of every row, and the
+ * header — a sibling of the scroller, inside `overflow: hidden` — could not
+ * follow that scroll, leaving the labels standing over the wrong columns. The
+ * columns now fit the space they get, the way Explorer sizes them: the 이름
+ * column absorbs the slack and the other three never exceed their own width, so
+ * no window this app can open scrolls sideways and the header cannot drift.
+ * The 96px floor on 이름 keeps a name legible at the narrowest reachable pane
+ * (a 620px window with the 248px details pane open leaves 190px).
+ * Viewports under 741px keep the collapsed two-column layout from the
+ * `max-width: 740px` block above.
+ */
+@media (min-width: 741px) {
+  /*
+   * The header repeats the rows' whole track list, icon column included with
+   * 이름 spanning it, because the two boxes are exactly as wide as each other:
+   * 13px of inset on both sides (the header's own padding; 5px of list padding
+   * plus 8px of button padding for a row). Same tracks in same-width boxes is
+   * what keeps every label over its column at every pane width — a shorter
+   * track list drifts as soon as the columns start giving up space.
+   */
+  .file-list-header {
+    grid-template-columns:
+      26px minmax(96px, 1fr) minmax(0, 116px) minmax(0, 106px)
+      minmax(0, 64px);
+    min-width: 0;
+    padding-right: 13px;
+  }
+
+  .file-list-header > span:first-child {
+    grid-column: 1 / 3;
+  }
+
+  .file-list.file-view-details button {
+    grid-template-columns:
+      26px minmax(96px, 1fr) minmax(0, 116px) minmax(0, 106px)
+      minmax(0, 64px);
+    min-width: 0;
+  }
+
+  /*
+   * A squeezed cell has to clip rather than wrap: wrapping would grow the row
+   * height, and a label stacked one glyph per line is worse than a clipped one.
+   */
+  .file-list.file-view-details button > small,
+  .file-list-header > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /*
+   * Past a point the three trailing columns are too thin to say anything, and
+   * the pane is only that narrow when the details pane is open in a window at
+   * its 620px minimum. Drop to the name alone there — the same shape the
+   * `max-width: 740px` block uses — instead of three columns of ellipses. The
+   * query measures the pane, not the viewport, because that is what the details
+   * pane takes 248px out of.
+   */
+  @container file-list-pane (max-width: 320px) {
+    .file-list-header {
+      display: none;
+    }
+
+    .file-list.file-view-details button {
+      grid-template-columns: 24px minmax(0, 1fr);
+    }
+
+    .file-list.file-view-details button > small {
+      display: none;
+    }
+  }
+}
+
+/* Named so only the details columns above answer to this pane's width. */
+.file-list-surface {
+  container: file-list-pane / inline-size;
+}
+
+/*
+ * The Explorer folder menu reuses the desktop background menu's submenu shell,
+ * so it also needs the desktop menu's flip when it opens near the right edge.
+ */
+.file-context-menu.opens-left .desktop-context-submenu {
+  left: auto;
+  right: calc(100% + 4px);
+}
+
+/*
+ * Windows greys out a command it cannot run. The notepad menus had nothing
+ * disabled until 실행 취소 and the clipboard commands arrived, so they had no
+ * disabled state to show; the rest of the menus in the shell use this opacity.
+ */
+.note-menu button:disabled {
+  opacity: 0.42;
 }
