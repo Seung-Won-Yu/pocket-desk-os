@@ -2,7 +2,10 @@
 
 All notable changes to PocketDesk OS are documented here.
 
-## Unreleased
+## 0.7.0
+
+Closes two real security holes in the deployed site, and brings actual local files into Explorer on the developer's own machine.
+
 
 ### Added
 
