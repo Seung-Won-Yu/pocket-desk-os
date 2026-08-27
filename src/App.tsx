@@ -2389,6 +2389,9 @@ export default function App() {
                 focusWindow={focusWindow}
                 openWindows={openWindows}
                 createVfsFolder={createVfsFolder}
+                onImportLocalEntries={(imported) =>
+                  setDesktopItems((current) => [...current, ...imported])
+                }
                 createVfsTextFile={createVfsTextFile}
                 desktopItems={activeDesktopItems}
                 duplicateVfsEntries={duplicateVfsEntries}

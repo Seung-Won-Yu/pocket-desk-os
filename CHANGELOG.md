@@ -2,6 +2,17 @@
 
 All notable changes to PocketDesk OS are documented here.
 
+## Unreleased
+
+### Added
+
+- Import a real folder from the machine into Explorer, and write a folder's contents back out to disk. Gated to `localhost` — the deployed site never offers it, because the browser's permission prompt protects a granted handle from other sites but not from this app being compromised. The import skips credential-looking names, key stores and build directories, and caps item count, bytes and depth.
+- A Content Security Policy on the production build. The deployed site previously had none.
+
+### Fixed
+
+- The Edge frame could escape its sandbox. `allow-scripts allow-same-origin` is safe for a cross-origin site, but GitHub Pages puts every repo of an account on one origin, and the Edge start page links to a sibling project there — a same-origin frame holding both flags can reach `parent.document`, delete its own sandbox attribute and take over this app's origin, files and permissions. Same-origin targets are no longer framed.
+
 ## 0.6.0
 
 Completes the accessibility pass: every menu, grid and tab strip now behaves the way its ARIA role promises.

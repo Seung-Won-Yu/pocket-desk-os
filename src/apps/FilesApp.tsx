@@ -13,6 +13,8 @@ import {
   FilePlus2,
   FileText,
   Folder,
+  FolderOutput,
+  FolderSymlink,
   Grid2X2,
   House,
   Info,
@@ -32,6 +34,12 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent 
 import type React from "react";
 import AppIconTile from "../components/AppIconTile";
 import { VFS_DRAG_MIME } from "../shell/constants";
+import {
+  isLocalFolderAccessAvailable,
+  pickLocalDirectory,
+  readLocalFolder,
+  writeLocalFolder,
+} from "../vfs/localFolder";
 import { trapDialogFocus } from "../shell/dialogFocus";
 import type { AppId, ClipboardMode, DesktopItem, SystemClipboard, ToastInput } from "../types";
 import {
@@ -74,7 +82,8 @@ type FilesAppProps = {
   clipboard: SystemClipboard;
   copyToClipboard: (itemIds: string[], mode?: ClipboardMode) => void;
   pasteFromClipboard: (parentId: string) => string[];
-  createVfsFolder: (parentId?: string) => DesktopItem;
+  createVfsFolder: (parentId?: string, name?: string) => DesktopItem;
+  onImportLocalEntries: (entries: DesktopItem[]) => void;
   createVfsTextFile: (parentId?: string) => DesktopItem;
   deleteVfsEntry: (itemId: string) => void;
   desktopItems: DesktopItem[];
@@ -100,6 +109,7 @@ export default function FilesApp({
   copyToClipboard,
   pasteFromClipboard,
   createVfsFolder,
+  onImportLocalEntries,
   createVfsTextFile,
   deleteVfsEntry,
   desktopItems,
@@ -213,6 +223,9 @@ export default function FilesApp({
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState(selectedFile?.name ?? "");
   const [importing, setImporting] = useState(false);
+  const [localFolderBusy, setLocalFolderBusy] = useState(false);
+  // Local-only: the deployed origin never offers this.
+  const localFolderAvailable = useMemo(() => isLocalFolderAccessAvailable(), []);
 
   useEffect(() => {
     const visibleIds = new Set(visibleFiles.map((file) => file.id));
@@ -623,6 +636,55 @@ export default function FilesApp({
     selectionAnchorRef.current = nextFile.id;
   };
 
+  const importLocalFolder = async () => {
+    setLocalFolderBusy(true);
+    try {
+      const handle = await pickLocalDirectory("read");
+      const parent = createVfsFolder(currentFolderId, handle.name);
+      const result = await readLocalFolder(handle, parent.id);
+      if (result.entries.length > 0) onImportLocalEntries(result.entries);
+
+      const detail = [
+        `${result.entries.length}개 항목을 읽었습니다.`,
+        result.skipped.length > 0 && `${result.skipped.length}개는 건너뜀`,
+        result.truncated && "한도에 걸려 일부만 읽음",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      notify({ detail, title: `${handle.name} 가져옴`, tone: "success" });
+    } catch (error) {
+      // An empty picker is a cancel, not a failure.
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      notify({
+        detail: error instanceof Error ? error.message : "폴더를 읽지 못했습니다.",
+        title: "실제 폴더 가져오기 실패",
+      });
+    } finally {
+      setLocalFolderBusy(false);
+    }
+  };
+
+  const exportLocalFolder = async () => {
+    setLocalFolderBusy(true);
+    try {
+      const handle = await pickLocalDirectory("readwrite");
+      const written = await writeLocalFolder(handle, desktopItems, currentFolderId);
+      notify({
+        detail: `${written}개 파일을 ${handle.name} 폴더에 썼습니다.`,
+        title: "폴더로 저장 완료",
+        tone: "success",
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      notify({
+        detail: error instanceof Error ? error.message : "폴더에 쓰지 못했습니다.",
+        title: "폴더로 저장 실패",
+      });
+    } finally {
+      setLocalFolderBusy(false);
+    }
+  };
+
   const importSelectedZip = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -873,6 +935,33 @@ export default function FilesApp({
               ref={importInputRef}
               type="file"
             />
+            {localFolderAvailable && (
+              <>
+                <span aria-hidden="true" className="file-command-separator" />
+                <button
+                  aria-label="실제 폴더 가져오기"
+                  className="file-command-action file-command-compact"
+                  disabled={localFolderBusy}
+                  onClick={importLocalFolder}
+                  title="이 컴퓨터의 폴더를 읽어 옵니다 (로컬 실행 전용)"
+                  type="button"
+                >
+                  <FolderSymlink aria-hidden="true" size={15} />
+                  <span>{localFolderBusy ? "읽는 중" : "실제 폴더"}</span>
+                </button>
+                <button
+                  aria-label="실제 폴더로 내보내기"
+                  className="file-command-action file-command-compact"
+                  disabled={localFolderBusy}
+                  onClick={exportLocalFolder}
+                  title="현재 폴더의 내용을 이 컴퓨터의 폴더에 씁니다"
+                  type="button"
+                >
+                  <FolderOutput aria-hidden="true" size={15} />
+                  <span>폴더로 저장</span>
+                </button>
+              </>
+            )}
             <span aria-hidden="true" className="file-command-separator" />
             <div className="file-sort-control" ref={sortControlRef}>
               <button
