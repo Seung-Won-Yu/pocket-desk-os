@@ -29,6 +29,11 @@ export function buildContentSecurityPolicy({ dev = false, header = false } = {})
     "manifest-src 'self'",
     "media-src 'self' blob:",
     "object-src 'none'",
+    // Turns every DOM sink that takes a string — innerHTML, outerHTML, script
+    // src assignment — into a runtime error unless it goes through a policy.
+    // The app has no such sinks, so this makes that a guarantee rather than a
+    // property that a future edit could quietly lose.
+    "require-trusted-types-for 'script'",
     "base-uri 'self'",
     "form-action 'none'",
     // A meta tag cannot express frame-ancestors, so it is header-only. Where it

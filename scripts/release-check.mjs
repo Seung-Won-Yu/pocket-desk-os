@@ -60,8 +60,8 @@ const textChecks = [
   [".github/workflows/ci.yml", "npm run qa:pages"],
   [".github/workflows/ci.yml", "npm run qa:pwa"],
   [".github/workflows/ci.yml", "npm run qa:smoke"],
-  [".github/workflows/pages.yml", "actions/deploy-pages@v4"],
-  [".github/workflows/pages.yml", "actions/upload-pages-artifact@v4"],
+  [".github/workflows/pages.yml", "actions/deploy-pages@"],
+  [".github/workflows/pages.yml", "actions/upload-pages-artifact@"],
   [".github/workflows/pages.yml", "enablement: true"],
   [".github/workflows/pages.yml", "npm run qa:pages"],
   [".github/workflows/pages.yml", "VITE_BASE_PATH"],
@@ -126,6 +126,25 @@ async function assertSecurityHeadersMatchPolicy() {
   }
 }
 
+/**
+ * Every `uses:` must name a commit, not a tag. A tag moves, so a compromised
+ * action release would run inside the Pages job — which can publish to the live
+ * origin — after the build has already been verified.
+ */
+async function assertActionsPinnedToCommits() {
+  for (const path of [".github/workflows/ci.yml", ".github/workflows/pages.yml"]) {
+    const text = await readFile(path, "utf8");
+    for (const line of text.split("\n")) {
+      const match = /^\s*uses:\s*(\S+)/.exec(line);
+      if (!match) continue;
+      const ref = match[1].split("@")[1] ?? "";
+      if (!/^[0-9a-f]{40}$/.test(ref)) {
+        throw new Error(`${path} uses a mutable action ref: ${match[1]}`);
+      }
+    }
+  }
+}
+
 async function runReleaseCheck() {
   const files = [...requiredFiles, ...requiredWallpapers];
 
@@ -134,6 +153,7 @@ async function runReleaseCheck() {
     await assertFileContains(path, expected);
   }
   await assertSecurityHeadersMatchPolicy();
+  await assertActionsPinnedToCommits();
 
   console.log(
     `PocketDesk release check passed (${files.length} files, ${textChecks.length} text checks, ` +
