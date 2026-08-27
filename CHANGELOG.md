@@ -2,6 +2,24 @@
 
 All notable changes to PocketDesk OS are documented here.
 
+## Unreleased
+
+### Added
+
+- One system clipboard shared by every window, replacing the separate Explorer and desktop clipboards, plus cut alongside copy and `Ctrl+C` / `Ctrl+X` / `Ctrl+V` / `Ctrl+A` on the desktop.
+- Photos, a viewer for image files, with prev/next, zoom and fit-to-window, rotation, rename, and delete. Double-clicking a PNG opens it instead of Paint.
+- A taskbar search field driving the same query as the Start menu.
+- Settings sections that change real behavior: 계정 sets the user name the lock screen and `%USERNAME%` read, 시간 및 언어 switches the clock to 24-hour, and 앱 assigns the default app per file extension.
+- Event Viewer, building its log from the VFS's own timestamps and the open-window list.
+- Registry Editor, reading and writing the real `localStorage` the desktop stores its settings in.
+- `Win+M` to minimize every window and `Win+L` to lock.
+- jsdom and Testing Library, so components can be rendered in tests.
+
+### Fixed
+
+- Paint's Save As and Open, and Notepad's tabs and Open, routed through the file-type association, so saving a PNG in Paint would have handed the user to Photos. They now select the entry in place.
+- The Start menu's pinned grid capped at nine apps, silently dropping apps as the catalog grew.
+
 ## 0.3.0
 
 Shell scripting over the virtual file system — variables, wildcards, pipes, and batch files — and the last untested module brought under test.
