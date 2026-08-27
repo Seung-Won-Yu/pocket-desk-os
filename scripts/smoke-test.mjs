@@ -105,6 +105,20 @@ async function unlockPocketDesk(page) {
   );
 }
 
+/**
+ * Types one line into the Command Prompt and returns only the output that line
+ * produced, so each assertion reads the fresh result instead of the whole buffer.
+ */
+async function runTerminalCommand(terminal, command) {
+  const lines = terminal.locator(".terminal-line");
+  const lineCountBefore = await lines.count();
+  const input = terminal.getByLabel("명령 입력");
+  await input.fill(command);
+  await input.press("Enter");
+  await lines.nth(lineCountBefore).waitFor({ state: "attached" });
+  return (await lines.allInnerTexts()).slice(lineCountBefore + 1).join("\n");
+}
+
 function withTimeout(promise, timeoutMs, label) {
   let timeoutId;
   const timeout = new Promise((_, reject) => {
@@ -1043,6 +1057,142 @@ async function runSmoke(baseUrl) {
     await page.locator('[aria-label="부팅 화면"]').waitFor({ state: "visible" });
     await unlockPocketDesk(page);
     await page.waitForTimeout(250);
+
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("cmd");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const terminal = page.locator('article[aria-label="명령 프롬프트"]');
+    await terminal.waitFor({ state: "visible" });
+    const terminalPrompt = terminal.locator(".terminal-path");
+    assert(
+      (await terminalPrompt.innerText()).startsWith("C:\\Users\\PocketDesk\\Desktop"),
+      "Command Prompt did not start at the desktop path",
+    );
+
+    const helpOutput = await runTerminalCommand(terminal, "help");
+    assert(helpOutput.includes("tasklist"), "Command Prompt help did not list commands");
+
+    const madeFolder = await runTerminalCommand(terminal, "md 스모크폴더");
+    assert(madeFolder.includes("스모크폴더"), "md did not confirm folder creation");
+    const listedFolder = await runTerminalCommand(terminal, "dir");
+    assert(listedFolder.includes("스모크폴더"), "dir did not list the new folder");
+    assert(listedFolder.includes("<DIR>"), "dir output is missing the directory column");
+
+    await runTerminalCommand(terminal, "cd 스모크폴더");
+    assert(
+      (await terminalPrompt.innerText()).endsWith("스모크폴더>"),
+      "cd did not move the prompt into the new folder",
+    );
+
+    await runTerminalCommand(terminal, "echo 첫 줄 > 스모크.txt");
+    await runTerminalCommand(terminal, "echo 둘째 줄 >> 스모크.txt");
+    const fileContent = await runTerminalCommand(terminal, "type 스모크.txt");
+    assert(fileContent.includes("첫 줄"), "type did not read back the written line");
+    assert(fileContent.includes("둘째 줄"), "Append redirection did not keep both lines");
+
+    await runTerminalCommand(terminal, "cd ..");
+    assert(
+      (await terminalPrompt.innerText()).endsWith("Desktop>"),
+      "cd .. did not return to the desktop root",
+    );
+    const foundPath = await runTerminalCommand(terminal, "find 스모크.txt");
+    assert(foundPath.includes("스모크폴더"), "find did not report the containing folder");
+
+    await terminal.getByLabel("명령 입력").press("ArrowUp");
+    assert(
+      (await terminal.getByLabel("명령 입력").inputValue()) === "find 스모크.txt",
+      "Command history did not recall the previous command",
+    );
+    await terminal.getByLabel("명령 입력").fill("");
+
+    const unknownOutput = await runTerminalCommand(terminal, "frobnicate");
+    assert(unknownOutput.includes("frobnicate"), "Unknown command was not reported");
+    assert(
+      (await terminal.locator(".terminal-line.is-error").count()) > 0,
+      "Unknown command was not styled as an error",
+    );
+
+    // cls empties the buffer, so runTerminalCommand's "wait for a new line" contract
+    // cannot apply here.
+    await terminal.getByLabel("명령 입력").fill("cls");
+    await terminal.getByLabel("명령 입력").press("Enter");
+    await terminal.locator(".terminal-line").first().waitFor({ state: "detached" });
+    assert(
+      (await terminal.locator(".terminal-line").count()) === 0,
+      "cls did not clear the Command Prompt buffer",
+    );
+
+    const explorerAfterShell = page.locator('article[aria-label="파일 탐색기"]').first();
+    if (await explorerAfterShell.isVisible()) {
+      await explorerAfterShell.getByRole("button", { name: "새로 고침" }).click().catch(() => {});
+    }
+
+    await page.keyboard.press("Control+Shift+Escape");
+    const taskManager = page.locator('article[aria-label="작업 관리자"]');
+    await taskManager.waitFor({ state: "visible" });
+    const terminalRow = taskManager.locator(".taskmgr-row", { hasText: "명령 프롬프트" }).first();
+    await terminalRow.waitFor({ state: "visible" });
+    const endTaskButton = taskManager.getByRole("button", { name: "작업 끝내기" });
+    assert(await endTaskButton.isDisabled(), "End task is enabled before a process is selected");
+    await terminalRow.click();
+    assert(!(await endTaskButton.isDisabled()), "End task stayed disabled after selecting a process");
+    await endTaskButton.click();
+    await terminal.waitFor({ state: "hidden" });
+
+    await taskManager.getByRole("tab", { name: "성능" }).click();
+    const cpuGraph = taskManager.locator(".taskmgr-graph").first();
+    await cpuGraph.waitFor({ state: "visible" });
+    // A flat sparkline has a zero-height box, so assert on the plotted points.
+    const cpuPoints = await cpuGraph.locator("polyline").getAttribute("points");
+    assert(
+      typeof cpuPoints === "string" && cpuPoints.split(" ").length > 10,
+      "Task Manager performance graph plotted no samples",
+    );
+    assert(
+      (await taskManager.locator(".taskmgr-stats dd").count()) >= 3,
+      "Task Manager performance stats are missing",
+    );
+    await taskManager.getByRole("tab", { name: "프로세스" }).click();
+
+    const taskViewButton = page.getByRole("button", { name: /작업 보기/ });
+    await taskViewButton.click();
+    const taskView = page.locator(".task-view");
+    await taskView.waitFor({ state: "visible" });
+    assert(
+      (await taskView.locator(".task-view-desktop").count()) === 1,
+      "Task View started with more than one desktop",
+    );
+    await taskView.getByRole("button", { name: "새 데스크톱" }).click();
+    await taskView.locator(".task-view-desktop").nth(1).waitFor({ state: "visible" });
+    assert(
+      (await taskView.locator(".task-view-desktop").count()) === 2,
+      "New desktop button did not add a desktop",
+    );
+    await taskView.locator(".task-view-desktop").nth(1).click();
+    await taskView.waitFor({ state: "hidden" });
+    assert(
+      !(await taskManager.isVisible()),
+      "A window from desktop 1 is still rendered on desktop 2",
+    );
+
+    await page.keyboard.press("Meta+Control+ArrowLeft");
+    await taskManager.waitFor({ state: "visible" });
+    assert(
+      await taskManager.isVisible(),
+      "Switching back to desktop 1 did not restore its windows",
+    );
+
+    await taskViewButton.click();
+    await taskView.waitFor({ state: "visible" });
+    await taskView.getByRole("button", { name: "데스크톱 2 닫기" }).click();
+    await taskView.locator(".task-view-desktop").nth(1).waitFor({ state: "detached" });
+    assert(
+      (await taskView.locator(".task-view-desktop").count()) === 1,
+      "Closing a desktop did not remove it",
+    );
+    await taskView.locator(".task-view-desktop").first().click();
+    await taskView.waitFor({ state: "hidden" });
 
     await page.setViewportSize({ width: 390, height: 780 });
     await page.waitForTimeout(250);
