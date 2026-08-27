@@ -2,7 +2,10 @@
 
 All notable changes to PocketDesk OS are documented here.
 
-## Unreleased
+## 0.2.0
+
+Desktop shell split into modules, a working command prompt, task manager, and virtual desktops, plus the project's first automated unit tests.
+
 
 ### Added
 
@@ -50,6 +53,10 @@ All notable changes to PocketDesk OS are documented here.
 - Kept one null entry in persisted window state from discarding the whole restored session.
 - Stopped the Run dialog from treating an unregistered program name such as `winword.exe` as a web address.
 - Removed the hardcoded nine-app limit that kept newly added apps out of the Start menu's pinned grid.
+- Made `echo text > sub\file.txt` and `md a\b` honour the folder part of the path instead of writing into the current directory.
+- Let `rd` and `rmdir` delete a folder tree; they previously refused every folder, while `del` keeps cmd's file-only behaviour.
+- Fixed folders created from the shell keeping the name "새 폴더", because the follow-up rename could not see the entry it had just created.
+- Fixed Task View swallowing its own clicks: the desktop's rubber-band selection captured the pointer before the button received it.
 
 ## 0.1.0
 
