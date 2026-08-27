@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  Check,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -14,8 +15,20 @@ import {
   Star,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type RefObject,
+} from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
+import { useReturnFocus } from "../shell/dialogFocus";
+import { handleMenuKeyboard } from "../shell/keyboardNav";
 
 type BrowserSearchEngineId = "duckduckgo" | "google" | "bing";
 type BrowserViewMode = "reader" | "web";
@@ -88,6 +101,38 @@ const browserSearchEngines: Array<{
   },
 ];
 
+/**
+ * A live region is announced by its contents, not by its label, so the spinners
+ * below need real text. styles.css owns no visually-hidden utility class and
+ * this file may not add one, so the recipe lives here as an inline style.
+ */
+const browserVisuallyHiddenStyle: CSSProperties = {
+  border: 0,
+  clipPath: "inset(50%)",
+  height: 1,
+  margin: -1,
+  overflow: "hidden",
+  padding: 0,
+  position: "absolute",
+  whiteSpace: "nowrap",
+  width: 1,
+};
+
+// The `select` this replaced carried its own label and box; a menuitemradio row
+// borrows `.browser-menu button`, so the caption needs the muted look back.
+const browserMenuGroupLabelStyle: CSSProperties = {
+  color: "var(--muted)",
+  fontSize: "0.78rem",
+  padding: "5px 6px 3px",
+};
+
+// `.browser-menu` is the grid that spaces the rows; a `role="group"` inserts a
+// box between it and the rows, so the group has to space its own children.
+const browserMenuGroupStyle: CSSProperties = { display: "grid", gap: 4 };
+
+// Keeps every row's label in one column whether or not its check mark is shown.
+const browserMenuCheckSlotStyle: CSSProperties = { flex: "0 0 auto", width: 16 };
+
 const browserReaderPreferredHosts = [
   "bing.com",
   "developer.mozilla.org",
@@ -120,7 +165,9 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
   const [navigationIndex, setNavigationIndex] = useState(0);
   const [browserMenuOpen, setBrowserMenuOpen] = useState(false);
   const [frameIssue, setFrameIssue] = useState<BrowserFrameIssue | null>(null);
+  const browserMenuButtonRef = useRef<HTMLButtonElement>(null);
   const isBookmarked = Boolean(url && bookmarks.some((bookmark) => bookmark.url === url));
+  const closeBrowserMenu = useCallback(() => setBrowserMenuOpen(false), []);
 
   useEffect(() => {
     localStorage.setItem(BROWSER_SEARCH_ENGINE_KEY, searchEngine);
@@ -350,8 +397,10 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
         )}
         <button
           aria-expanded={browserMenuOpen}
+          aria-haspopup="menu"
           aria-label="설정 및 기타"
           onClick={() => setBrowserMenuOpen((current) => !current)}
+          ref={browserMenuButtonRef}
           title="설정 및 기타"
           type="button"
         >
@@ -359,65 +408,25 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
         </button>
       </form>
       {browserMenuOpen && (
-        <div className="browser-menu" role="menu">
-          <label>
-            검색 엔진
-            <select
-              aria-label="검색 엔진"
-              onChange={(event) => setSearchEngine(event.target.value as BrowserSearchEngineId)}
-              value={searchEngine}
-            >
-              {browserSearchEngines.map((engine) => (
-                <option key={engine.id} value={engine.id}>
-                  {engine.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            aria-pressed={viewMode === "web"}
-            disabled={!url}
-            onClick={() => changeViewMode("web")}
-            role="menuitem"
-            type="button"
-          >
-            <Globe2 aria-hidden="true" size={16} />웹 보기
-          </button>
-          <button
-            aria-pressed={viewMode === "reader"}
-            disabled={!url}
-            onClick={() => changeViewMode("reader")}
-            role="menuitem"
-            type="button"
-          >
-            <BookOpen aria-hidden="true" size={16} />
-            읽기 보기
-          </button>
-          <button
-            disabled={!url || viewMode !== "web"}
-            onClick={() => {
-              setFrameIssue("manual");
-              setBrowserMenuOpen(false);
-            }}
-            role="menuitem"
-            type="button"
-          >
-            <ShieldAlert aria-hidden="true" size={16} />
-            페이지 표시 문제
-          </button>
-          <button
-            disabled={history.length === 0}
-            onClick={() => {
-              clearHistory();
-              setBrowserMenuOpen(false);
-            }}
-            role="menuitem"
-            type="button"
-          >
-            <History aria-hidden="true" size={16} />
-            방문 기록 지우기
-          </button>
-        </div>
+        <BrowserSettingsMenu
+          canClearHistory={history.length > 0}
+          canReportFrameIssue={Boolean(url) && viewMode === "web"}
+          canSwitchViewMode={Boolean(url)}
+          onClearHistory={() => {
+            clearHistory();
+            setBrowserMenuOpen(false);
+          }}
+          onClose={closeBrowserMenu}
+          onReportFrameIssue={() => {
+            setFrameIssue("manual");
+            setBrowserMenuOpen(false);
+          }}
+          onSearchEngineChange={setSearchEngine}
+          onViewModeChange={changeViewMode}
+          searchEngine={searchEngine}
+          triggerRef={browserMenuButtonRef}
+          viewMode={viewMode}
+        />
       )}
       {url ? (
         <section
@@ -425,8 +434,10 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
           className={`browser-viewport is-${viewMode}`}
         >
           {pageLoading && viewMode === "web" && (
-            <div aria-label="페이지 불러오는 중" className="browser-loading" role="status">
+            <div className="browser-loading" role="status">
               <span aria-hidden="true" />
+              {/* `.browser-loading span` is the spinner ring, so the text is a <p>. */}
+              <p style={browserVisuallyHiddenStyle}>페이지 불러오는 중</p>
             </div>
           )}
           {viewMode === "reader" ? (
@@ -490,6 +501,164 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
           searchEngine={getBrowserSearchEngine(searchEngine).label}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * The Edge "설정 및 기타" flyout. It is its own component so that mounting and
+ * unmounting bracket the menu's lifetime: `useReturnFocus` can then capture the
+ * trigger on open and hand focus back on close, however the menu was dismissed.
+ */
+function BrowserSettingsMenu({
+  canClearHistory,
+  canReportFrameIssue,
+  canSwitchViewMode,
+  onClearHistory,
+  onClose,
+  onReportFrameIssue,
+  onSearchEngineChange,
+  onViewModeChange,
+  searchEngine,
+  triggerRef,
+  viewMode,
+}: {
+  canClearHistory: boolean;
+  canReportFrameIssue: boolean;
+  canSwitchViewMode: boolean;
+  onClearHistory: () => void;
+  onClose: () => void;
+  onReportFrameIssue: () => void;
+  onSearchEngineChange: (searchEngineId: BrowserSearchEngineId) => void;
+  onViewModeChange: (nextViewMode: BrowserViewMode) => void;
+  searchEngine: BrowserSearchEngineId;
+  triggerRef: RefObject<HTMLButtonElement>;
+  viewMode: BrowserViewMode;
+}) {
+  useReturnFocus();
+
+  const firstItemRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const searchEngineLabelId = useId();
+
+  // A menu takes focus when it opens, which is also where the arrow keys start.
+  // The move waits a frame so it happens after `useReturnFocus` has noted the
+  // trigger; taking focus inside the effect itself would let StrictMode's double
+  // mount record a menu row as the element to return to, and that row is gone by
+  // the time the menu closes.
+  useEffect(() => {
+    const focusFrame = window.requestAnimationFrame(() => firstItemRef.current?.focus());
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, []);
+
+  useEffect(() => {
+    const closeOnOutsidePointer = (event: Event) => {
+      if (!(event.target instanceof Node)) return;
+      if (menuRef.current?.contains(event.target)) return;
+      // The trigger toggles the menu on click, so treating its own pointerdown
+      // as an outside click would close the flyout and immediately reopen it.
+      if (triggerRef.current?.contains(event.target)) return;
+      onClose();
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [onClose, triggerRef]);
+
+  return (
+    <div
+      aria-label="설정 및 기타"
+      className="browser-menu"
+      onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+      ref={menuRef}
+      role="menu"
+    >
+      {/*
+        The engine picker was a `<label>` around a `<select>`, which is not a
+        valid child of `role="menu"` and so was skipped in menu context. Rather
+        than lift it out of the menu, it became `menuitemradio` rows: choosing
+        one of three engines is exactly the one-of-many choice that role models,
+        it keeps the flyout a single arrow-navigable list instead of a menu with
+        a stray form control, and it matches how ContextMenus.tsx and FilesApp
+        express the same kind of choice. The rows sit in a labelled `group` so
+        they read as their own set, separate from the view-mode radios below.
+      */}
+      <div aria-labelledby={searchEngineLabelId} role="group" style={browserMenuGroupStyle}>
+        <span id={searchEngineLabelId} style={browserMenuGroupLabelStyle}>
+          검색 엔진
+        </span>
+        {browserSearchEngines.map((engine, index) => (
+          <button
+            aria-checked={searchEngine === engine.id}
+            key={engine.id}
+            onClick={() => onSearchEngineChange(engine.id)}
+            ref={index === 0 ? firstItemRef : undefined}
+            role="menuitemradio"
+            type="button"
+          >
+            {searchEngine === engine.id ? (
+              <Check aria-hidden="true" size={16} style={browserMenuCheckSlotStyle} />
+            ) : (
+              <span aria-hidden="true" style={browserMenuCheckSlotStyle} />
+            )}
+            {engine.label}
+          </button>
+        ))}
+      </div>
+      {/*
+        Web and reader are two states of one setting rather than two independent
+        toggles, so they are `menuitemradio` with `aria-checked`; `menuitem` does
+        not support the `aria-pressed` they used to carry.
+      */}
+      <div aria-label="페이지 보기 방식" role="group" style={browserMenuGroupStyle}>
+        <button
+          aria-checked={viewMode === "web"}
+          disabled={!canSwitchViewMode}
+          onClick={() => onViewModeChange("web")}
+          role="menuitemradio"
+          type="button"
+        >
+          <Globe2 aria-hidden="true" size={16} />웹 보기
+          {viewMode === "web" && <Check aria-hidden="true" size={16} />}
+        </button>
+        <button
+          aria-checked={viewMode === "reader"}
+          disabled={!canSwitchViewMode}
+          onClick={() => onViewModeChange("reader")}
+          role="menuitemradio"
+          type="button"
+        >
+          <BookOpen aria-hidden="true" size={16} />
+          읽기 보기
+          {viewMode === "reader" && <Check aria-hidden="true" size={16} />}
+        </button>
+      </div>
+      {/* These two run an action once and hold no state, so they stay menuitems. */}
+      <button
+        disabled={!canReportFrameIssue}
+        onClick={onReportFrameIssue}
+        role="menuitem"
+        type="button"
+      >
+        <ShieldAlert aria-hidden="true" size={16} />
+        페이지 표시 문제
+      </button>
+      <button
+        disabled={!canClearHistory}
+        onClick={onClearHistory}
+        role="menuitem"
+        type="button"
+      >
+        <History aria-hidden="true" size={16} />
+        방문 기록 지우기
+      </button>
     </div>
   );
 }
@@ -579,8 +748,9 @@ function BrowserReader({
 
   if (!document) {
     return (
-      <div aria-label="읽기 보기 불러오는 중" className="browser-reader-state" role="status">
+      <div className="browser-reader-state" role="status">
         <span aria-hidden="true" className="browser-reader-spinner" />
+        <p style={browserVisuallyHiddenStyle}>읽기 보기 불러오는 중</p>
       </div>
     );
   }
