@@ -2,7 +2,9 @@
 
 All notable changes to PocketDesk OS are documented here.
 
-## Unreleased
+## 0.3.0
+
+Shell scripting over the virtual file system — variables, wildcards, pipes, and batch files — and the last untested module brought under test.
 
 ### Added
 
