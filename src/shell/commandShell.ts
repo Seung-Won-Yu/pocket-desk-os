@@ -1,5 +1,10 @@
 import type { AppId, DesktopItem } from "../types";
-import { getVfsFolder, getVfsFolderPath, VFS_ROOT_ID } from "../vfs/model";
+import {
+  getVfsFolder,
+  getVfsFolderPath,
+  isVfsSystemFolderId,
+  VFS_ROOT_ID,
+} from "../vfs/model";
 
 export const SHELL_VERSION = "PocketDesk OS [Version 10.0.19045.1]";
 export const SHELL_VOLUME_SERIAL = "1A2B-3C4D";
@@ -85,7 +90,8 @@ const COMMAND_HELP: Array<[string, string]> = [
   ["type (cat)", "텍스트 파일 내용을 표시합니다."],
   ["echo", "텍스트를 표시합니다. echo 내용 > 파일.txt 로 저장합니다."],
   ["md (mkdir)", "새 폴더를 만듭니다."],
-  ["del (rm, erase)", "파일이나 폴더를 휴지통으로 보냅니다."],
+  ["del (erase)", "파일을 휴지통으로 보냅니다."],
+  ["rd (rmdir, rm)", "폴더와 하위 항목을 휴지통으로 보냅니다."],
   ["copy", "파일이나 폴더를 복사합니다."],
   ["move", "파일이나 폴더를 다른 폴더로 옮깁니다."],
   ["ren (rename)", "이름을 바꿉니다."],
@@ -178,6 +184,28 @@ export function resolveShellTarget(
   }
 
   return { folderId: cursor, kind: "folder" };
+}
+
+/**
+ * Splits a path into the folder that would hold it and the final segment, so
+ * `md docs\\2026` and `echo x > docs\\note.txt` land in `docs` rather than
+ * creating an entry whose name contains a separator. Returns null when the
+ * parent folder does not exist.
+ */
+export function resolveShellParent(entries: DesktopItem[], cwdId: string, raw: string) {
+  const normalized = raw.trim().replace(/\//g, "\\");
+  const segments = splitPathSegments(normalized);
+  const name = segments[segments.length - 1];
+  if (!name || name === "." || name === "..") return null;
+
+  const parentPath = normalized.slice(0, normalized.lastIndexOf(name));
+  const parent =
+    segments.length === 1
+      ? { folderId: cwdId, kind: "folder" as const }
+      : resolveShellTarget(entries, cwdId, parentPath);
+  if (!parent || parent.kind !== "folder") return null;
+
+  return { name, parentId: parent.folderId };
 }
 
 function tokenize(input: string) {
@@ -506,15 +534,13 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
       if (existing?.kind === "folder") {
         return { effects: [], lines: [err("액세스가 거부되었습니다. 폴더에는 쓸 수 없습니다.")] };
       }
+      const destination = resolveShellParent(context.entries, context.cwdId, redirection.target);
+      if (!destination) {
+        return { effects: [], lines: [err("지정된 경로를 찾을 수 없습니다.")] };
+      }
       const previous = existing?.kind === "entry" ? (existing.entry.content ?? "") : "";
       const nextContent = redirection.append && previous ? `${previous}\n${text}` : text;
-      const name =
-        existing?.kind === "entry"
-          ? existing.entry.name
-          : splitPathSegments(redirection.target).slice(-1)[0];
-      if (!name) {
-        return { effects: [], lines: [err("파일 이름이 잘못되었습니다.")] };
-      }
+      const name = existing?.kind === "entry" ? existing.entry.name : destination.name;
       return {
         effects: [
           {
@@ -522,7 +548,7 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
             existingItemId: existing?.kind === "entry" ? existing.entry.id : undefined,
             kind: "writeFile",
             name,
-            parentId: context.cwdId,
+            parentId: existing?.kind === "entry" ? existing.entry.parentId : destination.parentId,
           },
         ],
         lines: [out(`${name}에 ${redirection.append ? "추가" : "저장"}했습니다.`)],
@@ -538,9 +564,13 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
       if (existing) {
         return { effects: [], lines: [err(`하위 디렉터리 또는 파일 ${argText}이(가) 이미 있습니다.`)] };
       }
+      const destination = resolveShellParent(context.entries, context.cwdId, argText);
+      if (!destination) {
+        return { effects: [], lines: [err("지정된 경로를 찾을 수 없습니다.")] };
+      }
       return {
-        effects: [{ kind: "mkdir", name: argText, parentId: context.cwdId }],
-        lines: [out(`${argText} 폴더를 만들었습니다.`)],
+        effects: [{ kind: "mkdir", name: destination.name, parentId: destination.parentId }],
+        lines: [out(`${destination.name} 폴더를 만들었습니다.`)],
       };
     }
 
@@ -557,7 +587,27 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
         return { effects: [], lines: [err(`${argText}을(를) 찾을 수 없습니다.`)] };
       }
       if (target.kind === "folder") {
-        return { effects: [], lines: [err("이 폴더는 삭제할 수 없습니다.")] };
+        // cmd keeps folders out of `del`; `rd` is the folder command.
+        if (command === "del" || command === "erase") {
+          return { effects: [], lines: [err(`${argText}은(는) 폴더입니다. rd 명령을 사용하세요.`)] };
+        }
+        if (target.folderId === VFS_ROOT_ID) {
+          return { effects: [], lines: [err("바탕 화면은 삭제할 수 없습니다.")] };
+        }
+        const folder = getVfsFolder(context.entries, target.folderId);
+        if (!folder) {
+          return { effects: [], lines: [err(`${argText}을(를) 찾을 수 없습니다.`)] };
+        }
+        if (isVfsSystemFolderId(folder.id)) {
+          return { effects: [], lines: [err(`${folder.name}은(는) 시스템 폴더라 삭제할 수 없습니다.`)] };
+        }
+        if (target.folderId === context.cwdId) {
+          return { effects: [], lines: [err("현재 디렉터리는 삭제할 수 없습니다.")] };
+        }
+        return {
+          effects: [{ itemIds: [folder.id], kind: "delete" }],
+          lines: [out(`${folder.name} 폴더와 하위 항목을 휴지통으로 보냈습니다.`)],
+        };
       }
       return {
         effects: [{ itemIds: [target.entry.id], kind: "delete" }],

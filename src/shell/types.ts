@@ -138,7 +138,7 @@ export type AppContentProps = {
   closeWindow: (windowId: string) => void;
   focusWindow: (windowId: string) => void;
   openWindows: OpenWindowInfo[];
-  createVfsFolder: (parentId?: string) => DesktopItem;
+  createVfsFolder: (parentId?: string, name?: string) => DesktopItem;
   createVfsTextFile: (parentId?: string) => DesktopItem;
   desktopItems: DesktopItem[];
   duplicateVfsEntries: (itemIds: string[], options?: VfsDuplicateOptions) => string[];

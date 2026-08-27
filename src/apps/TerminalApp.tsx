@@ -15,7 +15,7 @@ type TerminalAppProps = {
   deleteVfsEntry: (itemId: string) => void;
   desktopItems: DesktopItem[];
   duplicateVfsEntries: (itemIds: string[], options?: { parentId?: string }) => string[];
-  createVfsFolder: (parentId?: string) => DesktopItem;
+  createVfsFolder: (parentId?: string, name?: string) => DesktopItem;
   moveVfsEntries: (itemIds: string[], parentId: string) => boolean;
   openApp: (appId: AppId) => void;
   openVfsEntry: (item: DesktopItem) => void;
@@ -126,11 +126,11 @@ export default function TerminalApp({
         case "launch":
           openApp(effect.appId);
           break;
-        case "mkdir": {
-          const folder = createVfsFolder(effect.parentId);
-          renameVfsEntry(folder.id, effect.name);
+        case "mkdir":
+          // Name it on creation: a follow-up rename would not see this folder,
+          // because the callback still reads the pre-update entry list.
+          createVfsFolder(effect.parentId, effect.name);
           break;
-        }
         case "move":
           moveVfsEntries(effect.itemIds, effect.parentId);
           break;

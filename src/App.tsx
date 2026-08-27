@@ -534,13 +534,13 @@ export default function App() {
     (item) => item.id === desktopPropertiesItemId,
   );
 
-  const createVfsFolder = (parentId = VFS_ROOT_ID) => {
+  const createVfsFolder = (parentId = VFS_ROOT_ID, requestedName = "새 폴더") => {
     const now = Date.now();
     const item: DesktopItem = {
       createdAt: now,
       id: `folder-${crypto.randomUUID()}`,
       kind: "folder",
-      name: getUniqueVfsEntryName(activeDesktopItems, parentId, "새 폴더"),
+      name: getUniqueVfsEntryName(activeDesktopItems, parentId, requestedName),
       parentId,
       showOnDesktop: false,
       updatedAt: now,
@@ -1585,7 +1585,7 @@ export default function App() {
     const target = event.target as HTMLElement;
     if (
       target.closest(
-        ".desktop-icon, .desktop-context-menu, .window-system-menu, .window-frame, .start-menu, .taskbar, .shell-gate, .toast-stack, .pwa-update-prompt",
+        ".desktop-icon, .desktop-context-menu, .window-system-menu, .window-frame, .start-menu, .taskbar, .shell-gate, .toast-stack, .pwa-update-prompt, .task-view, .alt-tab-switcher",
       )
     ) {
       return;
