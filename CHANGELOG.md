@@ -2,6 +2,23 @@
 
 All notable changes to PocketDesk OS are documented here.
 
+## 0.9.0
+
+Everything GitHub Pages can still enforce, plus two visible bugs.
+
+### Fixed
+
+- The minefield resized as cells were revealed. The grid declared columns but left rows implicit, so a row showing a number grew taller than an empty one; measured before the fix, revealing a cell split cell heights into 25.3px and 47.7px.
+- Reader mode replaced a page silently. A site that sends `X-Frame-Options` cannot be shown in a window by anyone, so the text-only fallback read as a broken render. It now says the page could not be framed and offers the original in a real tab.
+- Every GitHub Actions `uses:` named a moving tag. A compromised action release would have run inside the Pages job, which can publish to the live origin, and could have rewritten the bundle after it was verified. All are pinned to commits, and the release check fails on any mutable ref.
+- The Pages workflow granted `pages: write` and `id-token: write` workflow-wide, so the build job — which runs npm lifecycle scripts and third-party actions — held a token that can publish. Those scopes now belong to the deploy job alone.
+
+### Added
+
+- `require-trusted-types-for 'script'` in the CSP, which turns every string-to-DOM sink into a runtime error. Verified across all fourteen apps with no violations.
+- A CI gate on runtime dependency advisories, with dev-toolchain advisories reported but not blocking, since a build-tool finding never reaches the browser.
+- `<meta name="referrer">` for parity with the header hosts get.
+
 ## 0.8.0
 
 A security pass over the whole app, from an adversarial audit.
