@@ -2,11 +2,16 @@ import { describe, expect, it } from "vitest";
 import type { DesktopItem } from "../types";
 import { VFS_DOCUMENTS_ID, VFS_ROOT_ID } from "../vfs/model";
 import {
+  expandShellVars,
+  expandShellWildcard,
   formatShellPath,
+  getShellBuiltinVars,
+  isWildcardPattern,
   getShellEntryByteSize,
   resolveShellParent,
   resolveShellTarget,
   runShellCommand,
+  unescapeShellCarets,
   SHELL_ROOT_PATH,
   type ShellContext,
   type ShellProcess,
@@ -57,6 +62,7 @@ function makeContext(overrides: Partial<ShellContext> = {}): ShellContext {
   return {
     cwdId: VFS_ROOT_ID,
     entries,
+    env: {},
     hostName: "POCKETDESK",
     now: Date.UTC(2026, 7, 27, 3, 0, 0),
     processes,
@@ -418,5 +424,269 @@ describe("runShellCommand: processes and system", () => {
     expect(runShellCommand("CD 문서", makeContext()).effects).toEqual([
       { folderId: VFS_DOCUMENTS_ID, kind: "chdir" },
     ]);
+  });
+});
+
+describe("environment variables", () => {
+  it("exposes the built-ins cmd resolves without a user setting them", () => {
+    const vars = getShellBuiltinVars(makeContext({ cwdId: projects.id }));
+    expect(vars.CD).toBe(`${SHELL_ROOT_PATH}\\문서\\프로젝트`);
+    expect(vars.USERNAME).toBe("PocketDesk");
+    expect(vars.COMPUTERNAME).toBe("POCKETDESK");
+    expect(vars.USERPROFILE).toBe("C:\\Users\\PocketDesk");
+  });
+
+  it("substitutes %NAME% from the environment and the built-ins", () => {
+    const context = makeContext({ env: { GREETING: "안녕" } });
+    expect(expandShellVars("echo %GREETING%", context)).toBe("echo 안녕");
+    expect(expandShellVars("echo %USERNAME%", context)).toBe("echo PocketDesk");
+  });
+
+  it("lets a user variable shadow a built-in", () => {
+    const context = makeContext({ env: { USERNAME: "다른사람" } });
+    expect(expandShellVars("echo %USERNAME%", context)).toBe("echo 다른사람");
+  });
+
+  it("matches names case-insensitively", () => {
+    const context = makeContext({ env: { GREETING: "안녕" } });
+    expect(expandShellVars("echo %greeting%", context)).toBe("echo 안녕");
+  });
+
+  it("leaves an unknown name untouched instead of blanking it", () => {
+    expect(expandShellVars("echo %NOPE% 100%", makeContext())).toBe("echo %NOPE% 100%");
+  });
+
+  it("expands before the command runs", () => {
+    const context = makeContext({ env: { TARGET: "문서" } });
+    expect(runShellCommand("cd %TARGET%", context).effects).toEqual([
+      { folderId: VFS_DOCUMENTS_ID, kind: "chdir" },
+    ]);
+  });
+
+  it("lists every variable for a bare set", () => {
+    const text = textOf(runShellCommand("set", makeContext({ env: { GREETING: "안녕" } })));
+    expect(text).toContain("GREETING=안녕");
+    expect(text).toContain("USERNAME=PocketDesk");
+  });
+
+  it("prints a single variable by name", () => {
+    const context = makeContext({ env: { GREETING: "안녕" } });
+    expect(textOf(runShellCommand("set GREETING", context))).toBe("GREETING=안녕");
+    expect(textOf(runShellCommand("set greeting", context))).toBe("GREETING=안녕");
+  });
+
+  it("reports an unknown variable as an error", () => {
+    const result = runShellCommand("set NOPE", makeContext());
+    expect(result.effects).toEqual([]);
+    expect(result.lines[0].kind).toBe("error");
+  });
+
+  it("assigns and clears through effects", () => {
+    expect(runShellCommand("set GREETING=안녕", makeContext()).effects).toEqual([
+      { kind: "setEnv", name: "GREETING", value: "안녕" },
+    ]);
+    expect(runShellCommand("set GREETING=", makeContext()).effects).toEqual([
+      { kind: "clearEnv", name: "GREETING" },
+    ]);
+  });
+
+  it("rejects a name that is not a valid identifier", () => {
+    const result = runShellCommand("set 1BAD=x", makeContext());
+    expect(result.effects).toEqual([]);
+    expect(result.lines[0].kind).toBe("error");
+  });
+});
+
+describe("wildcards", () => {
+  it("recognises only patterns that contain * or ?", () => {
+    expect(isWildcardPattern("*.txt")).toBe(true);
+    expect(isWildcardPattern("memo?.txt")).toBe(true);
+    expect(isWildcardPattern("메모.txt")).toBe(false);
+  });
+
+  it("matches by extension within one folder", () => {
+    const matches = expandShellWildcard(entries, VFS_DOCUMENTS_ID, "*.txt");
+    expect(matches.map((entry) => entry.id)).toEqual([memo.id]);
+  });
+
+  it("resolves a pattern under an explicit folder path", () => {
+    const matches = expandShellWildcard(entries, VFS_ROOT_ID, "문서\\*.txt");
+    expect(matches.map((entry) => entry.id)).toEqual([memo.id]);
+  });
+
+  it("treats ? as exactly one character", () => {
+    expect(expandShellWildcard(entries, VFS_ROOT_ID, "그림 ?.png").map((e) => e.id)).toEqual([
+      picture.id,
+    ]);
+    expect(expandShellWildcard(entries, VFS_ROOT_ID, "그림 ??.png")).toEqual([]);
+  });
+
+  it("does not let a regex metacharacter in the name act as a pattern", () => {
+    const odd = makeItem({ id: "odd", name: "a+b.txt" });
+    const withOdd = [...entries, odd];
+    expect(expandShellWildcard(withOdd, VFS_ROOT_ID, "a+b.txt").map((e) => e.id)).toEqual([
+      "odd",
+    ]);
+    expect(expandShellWildcard(withOdd, VFS_ROOT_ID, "aab.txt")).toEqual([]);
+  });
+
+  it("returns nothing when the folder in the pattern does not exist", () => {
+    expect(expandShellWildcard(entries, VFS_ROOT_ID, "없는폴더\\*.txt")).toEqual([]);
+  });
+
+  it("deletes every matching file in one effect", () => {
+    const result = runShellCommand("del *.txt", makeContext({ cwdId: VFS_DOCUMENTS_ID }));
+    expect(result.effects).toEqual([{ itemIds: [memo.id], kind: "delete" }]);
+  });
+
+  it("never sweeps a folder into a file wildcard", () => {
+    const result = runShellCommand("del *", makeContext());
+    expect(result.effects).toEqual([{ itemIds: [picture.id], kind: "delete" }]);
+  });
+
+  it("reports a pattern that matches nothing", () => {
+    const result = runShellCommand("del *.zip", makeContext());
+    expect(result.effects).toEqual([]);
+    expect(result.lines[0].kind).toBe("error");
+  });
+
+  it("copies and moves every match into the target folder", () => {
+    expect(runShellCommand("copy *.png 문서", makeContext()).effects).toEqual([
+      { itemIds: [picture.id], kind: "copy", parentId: VFS_DOCUMENTS_ID },
+    ]);
+    expect(runShellCommand("move *.png 문서", makeContext()).effects).toEqual([
+      { itemIds: [picture.id], kind: "move", parentId: VFS_DOCUMENTS_ID },
+    ]);
+  });
+
+  it("narrows a dir listing to the matching rows", () => {
+    const text = textOf(runShellCommand("dir *.txt", makeContext({ cwdId: VFS_DOCUMENTS_ID })));
+    expect(text).toContain("메모.txt");
+    expect(text).not.toContain("프로젝트");
+  });
+});
+
+describe("pipelines", () => {
+  it("filters the previous stage's output with find", () => {
+    const text = textOf(
+      runShellCommand("dir | find 메모", makeContext({ cwdId: VFS_DOCUMENTS_ID })),
+    );
+    expect(text).toContain("메모.txt");
+    expect(text).not.toContain("프로젝트");
+    expect(text).not.toContain("드라이브의 볼륨");
+  });
+
+  it("matches case-insensitively", () => {
+    const text = textOf(runShellCommand("help | find TASKKILL", makeContext()));
+    expect(text).toContain("taskkill");
+  });
+
+  it("chains more than one filter", () => {
+    const text = textOf(
+      runShellCommand("dir | find 메모 | find txt", makeContext({ cwdId: VFS_DOCUMENTS_ID })),
+    );
+    expect(text).toContain("메모.txt");
+  });
+
+  it("sorts the previous stage's lines", () => {
+    const lines = runShellCommand(
+      "type 메모.txt | sort",
+      makeContext({ cwdId: VFS_DOCUMENTS_ID }),
+    ).lines.map((line) => line.text);
+    expect(lines).toEqual(["둘째 줄", "첫 줄"]);
+  });
+
+  it("passes lines straight through more", () => {
+    const lines = runShellCommand(
+      "type 메모.txt | more",
+      makeContext({ cwdId: VFS_DOCUMENTS_ID }),
+    ).lines.map((line) => line.text);
+    expect(lines).toEqual(["첫 줄", "둘째 줄"]);
+  });
+
+  it("keeps the first stage's side effects", () => {
+    expect(runShellCommand("md 새 폴더 | find 폴더", makeContext()).effects).toEqual([
+      { kind: "mkdir", name: "새 폴더", parentId: VFS_ROOT_ID },
+    ]);
+  });
+
+  it("rejects a filter that does not read standard input", () => {
+    const result = runShellCommand("dir | del x", makeContext());
+    expect(result.lines[0].kind).toBe("error");
+  });
+
+  it("rejects an empty pipeline stage", () => {
+    expect(runShellCommand("dir |", makeContext()).lines[0].kind).toBe("error");
+    expect(runShellCommand("| find x", makeContext()).lines[0].kind).toBe("error");
+  });
+
+  it("does not split on a pipe inside quotes", () => {
+    const result = runShellCommand('echo "a | b"', makeContext());
+    expect(textOf(result)).toBe('"a | b"');
+  });
+});
+
+describe("batch files", () => {
+  const script = makeItem({
+    content: "rem 주석\nmd 보관\n\n:: 다른 주석\necho 완료 > 보관\\로그.txt",
+    id: "note-bat",
+    name: "설치.bat",
+  });
+  const withScript = [...entries, script];
+
+  it("queues the script body for a bare .bat name", () => {
+    const result = runShellCommand("설치.bat", makeContext({ entries: withScript }));
+    expect(result.effects).toEqual([
+      { kind: "runScript", lines: ["md 보관", "echo 완료 > 보관\\로그.txt"] },
+    ]);
+  });
+
+  it("queues the same body through call", () => {
+    expect(
+      runShellCommand("call 설치.bat", makeContext({ entries: withScript })).effects,
+    ).toEqual([{ kind: "runScript", lines: ["md 보관", "echo 완료 > 보관\\로그.txt"] }]);
+  });
+
+  it("refuses call on a file that is not a batch file", () => {
+    const result = runShellCommand("call 메모.txt", makeContext({ cwdId: VFS_DOCUMENTS_ID }));
+    expect(result.effects).toEqual([]);
+    expect(result.lines[0].kind).toBe("error");
+  });
+
+  it("still reports an unknown command that is not a batch file", () => {
+    const result = runShellCommand("frobnicate", makeContext({ entries: withScript }));
+    expect(result.effects).toEqual([]);
+    expect(result.lines[0].kind).toBe("error");
+  });
+});
+
+describe("caret escaping", () => {
+  it("drops the escape and keeps the character", () => {
+    expect(unescapeShellCarets("echo a ^> b")).toBe("echo a > b");
+    expect(unescapeShellCarets("echo a ^| b")).toBe("echo a | b");
+    expect(unescapeShellCarets("echo a ^^ b")).toBe("echo a ^ b");
+  });
+
+  it("treats ^> as text rather than a redirection", () => {
+    const result = runShellCommand("echo md 보관 ^> 로그.txt", makeContext());
+    expect(result.effects).toEqual([]);
+    expect(textOf(result)).toBe("md 보관 > 로그.txt");
+  });
+
+  it("still redirects on an unescaped > later in the same line", () => {
+    const result = runShellCommand("echo md 보관 ^> 로그.txt > 설치.bat", makeContext());
+    expect(result.effects).toEqual([
+      {
+        content: "md 보관 > 로그.txt",
+        existingItemId: undefined,
+        kind: "writeFile",
+        name: "설치.bat",
+        parentId: VFS_ROOT_ID,
+      },
+    ]);
+  });
+
+  it("treats ^| as text rather than a pipe", () => {
+    expect(textOf(runShellCommand("echo a ^| b", makeContext()))).toBe("a | b");
   });
 });

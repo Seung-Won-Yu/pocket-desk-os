@@ -1363,6 +1363,42 @@ async function runSmoke(baseUrl) {
       "Unknown command was not styled as an error",
     );
 
+    await runTerminalCommand(terminal, "set GREETING=안녕하세요");
+    const expandedVar = await runTerminalCommand(terminal, "echo %GREETING%");
+    assert(expandedVar.includes("안녕하세요"), "Environment variable was not expanded");
+    const expandedCwd = await runTerminalCommand(terminal, "echo %CD%");
+    assert(
+      expandedCwd.includes("C:\\Users\\PocketDesk\\Desktop"),
+      "Built-in %CD% was not expanded",
+    );
+
+    await runTerminalCommand(terminal, "echo 하나 > 스모크폴더\\a.txt");
+    await runTerminalCommand(terminal, "echo 둘 > 스모크폴더\\b.txt");
+    const wildcardList = await runTerminalCommand(terminal, "dir 스모크폴더\\*.txt");
+    assert(
+      wildcardList.includes("a.txt") && wildcardList.includes("b.txt"),
+      "Wildcard dir did not list both matches",
+    );
+    const piped = await runTerminalCommand(terminal, "dir 스모크폴더 | find a.txt");
+    assert(piped.includes("a.txt"), "Pipe did not keep the matching line");
+    assert(!piped.includes("b.txt"), "Pipe did not filter out the other line");
+
+    await runTerminalCommand(terminal, "echo md 배치결과 > 설치.bat");
+    await runTerminalCommand(terminal, "echo echo 배치 성공 ^> 배치결과\\결과.txt >> 설치.bat");
+    await terminal.getByLabel("명령 입력").fill("설치.bat");
+    await terminal.getByLabel("명령 입력").press("Enter");
+    // Each batch line runs on its own commit, so wait for the file the last one writes.
+    await terminal
+      .locator(".terminal-line", { hasText: "결과.txt에 저장했습니다." })
+      .first()
+      .waitFor({ state: "attached" });
+    const batchOutput = await runTerminalCommand(terminal, "type 배치결과\\결과.txt");
+    assert(batchOutput.includes("배치 성공"), "Batch file did not write its output file");
+
+    await runTerminalCommand(terminal, "del 스모크폴더\\*.txt");
+    const afterDelete = await runTerminalCommand(terminal, "dir 스모크폴더");
+    assert(!afterDelete.includes("a.txt"), "Wildcard delete left a matching file behind");
+
     // cls empties the buffer, so runTerminalCommand's "wait for a new line" contract
     // cannot apply here.
     await terminal.getByLabel("명령 입력").fill("cls");

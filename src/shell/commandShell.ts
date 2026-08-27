@@ -24,7 +24,10 @@ export type ShellEffect =
   | { kind: "mkdir"; name: string; parentId: string }
   | { kind: "move"; itemIds: string[]; parentId: string }
   | { kind: "open"; itemId: string }
+  | { kind: "clearEnv"; name: string }
   | { kind: "rename"; itemId: string; name: string }
+  | { kind: "runScript"; lines: string[] }
+  | { kind: "setEnv"; name: string; value: string }
   | {
       kind: "writeFile";
       content: string;
@@ -43,6 +46,8 @@ export type ShellProcess = {
 export type ShellContext = {
   cwdId: string;
   entries: DesktopItem[];
+  /** User-defined variables, expanded as %NAME% before a command is parsed. */
+  env: Record<string, string>;
   hostName: string;
   now: number;
   processes: ShellProcess[];
@@ -95,6 +100,10 @@ const COMMAND_HELP: Array<[string, string]> = [
   ["move", "파일이나 폴더를 다른 폴더로 옮깁니다."],
   ["ren (rename)", "이름을 바꿉니다."],
   ["find (findstr)", "이름에 문자열이 포함된 항목을 찾습니다."],
+  ["set", "환경 변수를 보거나 지정합니다. set NAME=값, set NAME= 로 삭제."],
+  ["| (파이프)", "출력에 find, findstr, sort, more 를 연결합니다."],
+  ["* ?", "dir, del, copy, move 에서 이름 패턴으로 여러 파일을 다룹니다."],
+  ["call", "저장된 .bat 파일의 명령을 한 줄씩 실행합니다."],
   ["start", "앱이나 파일을 실행합니다. start notepad"],
   ["tasklist", "실행 중인 창 목록을 표시합니다."],
   ["taskkill", "창을 닫습니다. taskkill /pid <번호>"],
@@ -207,6 +216,145 @@ export function resolveShellParent(entries: DesktopItem[], cwdId: string, raw: s
   return { name, parentId: parent.folderId };
 }
 
+/** Built-in variables cmd resolves without the user ever setting them. */
+export function getShellBuiltinVars(context: ShellContext): Record<string, string> {
+  const stamp = new Date(context.now);
+  return {
+    CD: formatShellPath(context.entries, context.cwdId),
+    COMPUTERNAME: context.hostName,
+    DATE: stamp.toLocaleDateString("ko-KR"),
+    TIME: stamp.toLocaleTimeString("ko-KR"),
+    USERNAME: context.userName,
+    USERPROFILE: SHELL_ROOT_PATH.replace(/\\Desktop$/i, ""),
+  };
+}
+
+/**
+ * Substitutes %NAME% before parsing, the way cmd does. An unknown name is left
+ * alone rather than blanked, so a stray percent sign still reads back literally.
+ */
+export function expandShellVars(input: string, context: ShellContext) {
+  const vars = { ...getShellBuiltinVars(context), ...context.env };
+  const lookup = new Map(
+    Object.entries(vars).map(([key, value]) => [key.toUpperCase(), value]),
+  );
+  return input.replace(/%([A-Za-z_][A-Za-z0-9_]*)%/g, (whole, name: string) => {
+    const value = lookup.get(name.toUpperCase());
+    return value === undefined ? whole : value;
+  });
+}
+
+export function isWildcardPattern(value: string) {
+  return value.includes("*") || value.includes("?");
+}
+
+function wildcardToRegExp(pattern: string) {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${escaped.replace(/\*/g, ".*").replace(/\?/g, ".")}$`, "i");
+}
+
+/**
+ * Resolves `*.txt`-style arguments against one folder. A pattern with no match
+ * returns an empty list, which each command reports in its own words.
+ */
+export function expandShellWildcard(entries: DesktopItem[], cwdId: string, pattern: string) {
+  const normalized = pattern.trim().replace(/\//g, "\\");
+  const separator = normalized.lastIndexOf("\\");
+  const leaf = separator >= 0 ? normalized.slice(separator + 1) : normalized;
+  const parentPath = separator >= 0 ? normalized.slice(0, separator) : "";
+  const parent = parentPath
+    ? resolveShellTarget(entries, cwdId, parentPath)
+    : { folderId: cwdId, kind: "folder" as const };
+  if (!parent || parent.kind !== "folder") return [];
+
+  const matcher = wildcardToRegExp(leaf);
+  return listChildren(entries, parent.folderId).filter((entry) => matcher.test(entry.name));
+}
+
+function splitPipeline(input: string) {
+  const segments: string[] = [];
+  let current = "";
+  let quoted = false;
+
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index];
+    if (char === '"') quoted = !quoted;
+    if (input[index - 1] === "^") {
+      current += char;
+      continue;
+    }
+    if (!quoted && char === "|") {
+      segments.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+
+  segments.push(current.trim());
+  return segments;
+}
+
+/**
+ * Applies a downstream pipeline stage to the previous stage's output. Only the
+ * filters that read standard input in cmd are supported.
+ */
+function applyPipelineFilter(lines: ShellLine[], segment: string): ShellResult {
+  const tokens = tokenize(segment);
+  const command = (tokens[0] ?? "").toLowerCase();
+  const argument = tokens.slice(1).join(" ");
+  const text = lines.filter((line) => line.kind !== "input");
+
+  if (command === "find" || command === "findstr") {
+    if (!argument) {
+      return { effects: [], lines: [err(`사용법: ... | ${command} <찾을 문자열>`)] };
+    }
+    const needle = argument.toLowerCase();
+    return {
+      effects: [],
+      lines: text.filter((line) => line.text.toLowerCase().includes(needle)),
+    };
+  }
+
+  if (command === "sort") {
+    return {
+      effects: [],
+      lines: [...text].sort((first, second) => first.text.localeCompare(second.text, "ko")),
+    };
+  }
+
+  if (command === "more") {
+    return { effects: [], lines: text };
+  }
+
+  return {
+    effects: [],
+    lines: [
+      err(
+        `'${tokens[0] ?? ""}'은(는) 파이프에서 사용할 수 없습니다. find, findstr, sort, more 를 지원합니다.`,
+      ),
+    ],
+  };
+}
+
+export function runShellCommand(input: string, context: ShellContext): ShellResult {
+  const expanded = expandShellVars(input, context);
+  const segments = splitPipeline(expanded);
+  const first = runSingleCommand(segments[0], context);
+  if (segments.length === 1) return first;
+
+  if (segments.some((segment) => !segment)) {
+    return { effects: [], lines: [err("파이프 양쪽에 명령이 있어야 합니다.")] };
+  }
+
+  // Downstream stages only reshape text; the first stage owns every side effect.
+  let lines = first.lines;
+  for (const segment of segments.slice(1)) {
+    lines = applyPipelineFilter(lines, segment).lines;
+  }
+  return { effects: first.effects, lines };
+}
+
 function tokenize(input: string) {
   const tokens: string[] = [];
   let current = "";
@@ -231,11 +379,18 @@ function tokenize(input: string) {
   return tokens;
 }
 
+/** Drops cmd's `^` escape so `^>` reads back as a literal character. */
+export function unescapeShellCarets(input: string) {
+  return input.replace(/\^(.)/g, "$1");
+}
+
 function splitRedirection(input: string) {
   let quoted = false;
   for (let index = 0; index < input.length; index += 1) {
     const char = input[index];
     if (char === '"') quoted = !quoted;
+    // `^>` is an escaped character, not a redirection.
+    if (input[index - 1] === "^") continue;
     if (quoted || char !== ">") continue;
     const append = input[index + 1] === ">";
     return {
@@ -265,6 +420,33 @@ function formatDirTimestamp(timestamp: number) {
   const meridiem = hours < 12 ? "오전" : "오후";
   const hour12 = hours % 12 === 0 ? 12 : hours % 12;
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}  ${meridiem} ${pad(hour12)}:${pad(date.getMinutes())}`;
+}
+
+/** The row body of a `dir` listing, reused when a wildcard narrows the results. */
+function renderDirRows(context: ShellContext, entries: DesktopItem[]): ShellLine[] {
+  let fileCount = 0;
+  let byteTotal = 0;
+  let dirCount = 0;
+  const rows = entries.map((entry) => {
+    if (entry.kind === "folder") {
+      dirCount += 1;
+      return out(`${formatDirTimestamp(entry.updatedAt)}    <DIR>          ${entry.name}`);
+    }
+    const size = getShellEntryByteSize(entry);
+    fileCount += 1;
+    byteTotal += size;
+    return out(
+      `${formatDirTimestamp(entry.updatedAt)}    ${padStart(formatCount(size), 14)} ${entry.name}`,
+    );
+  });
+
+  return [
+    ...rows,
+    out(
+      `${padStart(`${formatCount(fileCount)}개 파일`, 22)}${padStart(`${formatCount(byteTotal)} 바이트`, 22)}`,
+    ),
+    out(`${padStart(`${formatCount(dirCount)}개 디렉터리`, 22)}`),
+  ];
 }
 
 function renderDir(context: ShellContext, folderId: string): ShellLine[] {
@@ -351,12 +533,12 @@ function collectSearchMatches(entries: DesktopItem[], rootId: string, needle: st
   return matches;
 }
 
-export function runShellCommand(input: string, context: ShellContext): ShellResult {
+function runSingleCommand(input: string, context: ShellContext): ShellResult {
   const trimmed = input.trim();
   if (!trimmed) return { effects: [], lines: [] };
 
   const redirection = splitRedirection(trimmed);
-  const commandText = redirection ? redirection.command : trimmed;
+  const commandText = unescapeShellCarets(redirection ? redirection.command : trimmed);
   const tokens = tokenize(commandText);
   const command = (tokens[0] ?? "").toLowerCase();
   const args = tokens.slice(1);
@@ -383,6 +565,39 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
           ),
         ],
       };
+    }
+
+    case "set": {
+      if (args.length === 0) {
+        const all = { ...getShellBuiltinVars(context), ...context.env };
+        return {
+          effects: [],
+          lines: Object.keys(all)
+            .sort()
+            .map((name) => out(`${name}=${all[name]}`)),
+        };
+      }
+
+      const assignment = argText.indexOf("=");
+      if (assignment < 0) {
+        const name = argText.trim();
+        const all = { ...getShellBuiltinVars(context), ...context.env };
+        const match = Object.keys(all).find((key) => key.toUpperCase() === name.toUpperCase());
+        if (!match) {
+          return { effects: [], lines: [err(`환경 변수 ${name}을(를) 찾을 수 없습니다.`)] };
+        }
+        return { effects: [], lines: [out(`${match}=${all[match]}`)] };
+      }
+
+      const name = argText.slice(0, assignment).trim();
+      const value = argText.slice(assignment + 1).trim();
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+        return { effects: [], lines: [err("환경 변수 이름이 잘못되었습니다.")] };
+      }
+      if (!value) {
+        return { effects: [{ kind: "clearEnv", name }], lines: [] };
+      }
+      return { effects: [{ kind: "setEnv", name, value }], lines: [] };
     }
 
     case "cls":
@@ -496,6 +711,13 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
 
     case "dir":
     case "ls": {
+      if (isWildcardPattern(argText)) {
+        const matches = expandShellWildcard(context.entries, context.cwdId, argText);
+        if (matches.length === 0) {
+          return { effects: [], lines: [err("파일을 찾을 수 없습니다.")] };
+        }
+        return { effects: [], lines: renderDirRows(context, matches) };
+      }
       const target = resolveShellTarget(context.entries, context.cwdId, argText);
       if (!target || target.kind === "entry") {
         return { effects: [], lines: [err("파일을 찾을 수 없습니다.")] };
@@ -610,6 +832,19 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
       if (args.length === 0) {
         return { effects: [], lines: [err(`사용법: ${command} <이름>`)] };
       }
+      if (isWildcardPattern(argText)) {
+        const matches = expandShellWildcard(context.entries, context.cwdId, argText).filter(
+          (entry) => entry.kind !== "folder",
+        );
+        if (matches.length === 0) {
+          return { effects: [], lines: [err(`${argText}과(와) 일치하는 파일이 없습니다.`)] };
+        }
+        return {
+          effects: [{ itemIds: matches.map((entry) => entry.id), kind: "delete" }],
+          lines: [out(`${matches.length}개 파일을 휴지통으로 보냈습니다.`)],
+        };
+      }
+
       const target = resolveShellTarget(context.entries, context.cwdId, argText);
       if (!target) {
         return { effects: [], lines: [err(`${argText}을(를) 찾을 수 없습니다.`)] };
@@ -653,17 +888,37 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
       if (args.length < 2) {
         return { effects: [], lines: [err("사용법: copy <원본> <대상 폴더>")] };
       }
-      const source = resolveShellTarget(context.entries, context.cwdId, args[0]);
       const destination = resolveShellTarget(
         context.entries,
         context.cwdId,
         args.slice(1).join(" "),
       );
-      if (!source || source.kind === "folder") {
-        return { effects: [], lines: [err("원본 파일을 찾을 수 없습니다.")] };
-      }
       if (!destination || destination.kind === "entry") {
         return { effects: [], lines: [err("대상 폴더를 찾을 수 없습니다.")] };
+      }
+
+      if (isWildcardPattern(args[0])) {
+        const matches = expandShellWildcard(context.entries, context.cwdId, args[0]).filter(
+          (entry) => entry.kind !== "folder",
+        );
+        if (matches.length === 0) {
+          return { effects: [], lines: [err(`${args[0]}과(와) 일치하는 파일이 없습니다.`)] };
+        }
+        return {
+          effects: [
+            {
+              itemIds: matches.map((entry) => entry.id),
+              kind: "copy",
+              parentId: destination.folderId,
+            },
+          ],
+          lines: [out(`        ${matches.length}개 파일이 복사되었습니다.`)],
+        };
+      }
+
+      const source = resolveShellTarget(context.entries, context.cwdId, args[0]);
+      if (!source || source.kind === "folder") {
+        return { effects: [], lines: [err("원본 파일을 찾을 수 없습니다.")] };
       }
       return {
         effects: [{ itemIds: [source.entry.id], kind: "copy", parentId: destination.folderId }],
@@ -675,17 +930,37 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
       if (args.length < 2) {
         return { effects: [], lines: [err("사용법: move <원본> <대상 폴더>")] };
       }
-      const source = resolveShellTarget(context.entries, context.cwdId, args[0]);
       const destination = resolveShellTarget(
         context.entries,
         context.cwdId,
         args.slice(1).join(" "),
       );
-      if (!source || source.kind === "folder") {
-        return { effects: [], lines: [err("원본 파일을 찾을 수 없습니다.")] };
-      }
       if (!destination || destination.kind === "entry") {
         return { effects: [], lines: [err("대상 폴더를 찾을 수 없습니다.")] };
+      }
+
+      if (isWildcardPattern(args[0])) {
+        const matches = expandShellWildcard(context.entries, context.cwdId, args[0]).filter(
+          (entry) => entry.kind !== "folder",
+        );
+        if (matches.length === 0) {
+          return { effects: [], lines: [err(`${args[0]}과(와) 일치하는 파일이 없습니다.`)] };
+        }
+        return {
+          effects: [
+            {
+              itemIds: matches.map((entry) => entry.id),
+              kind: "move",
+              parentId: destination.folderId,
+            },
+          ],
+          lines: [out(`        ${matches.length}개 파일이 이동되었습니다.`)],
+        };
+      }
+
+      const source = resolveShellTarget(context.entries, context.cwdId, args[0]);
+      if (!source || source.kind === "folder") {
+        return { effects: [], lines: [err("원본 파일을 찾을 수 없습니다.")] };
       }
       return {
         effects: [{ itemIds: [source.entry.id], kind: "move", parentId: destination.folderId }],
@@ -727,6 +1002,26 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
       };
     }
 
+    case "call": {
+      if (args.length === 0) {
+        return { effects: [], lines: [err("사용법: call <배치 파일.bat>")] };
+      }
+      const target = resolveShellTarget(context.entries, context.cwdId, argText);
+      if (!target || target.kind === "folder") {
+        return { effects: [], lines: [err(`${argText} 배치 파일을 찾을 수 없습니다.`)] };
+      }
+      if (!/\.bat$/i.test(target.entry.name)) {
+        return {
+          effects: [],
+          lines: [err(`${target.entry.name}은(는) 배치 파일이 아닙니다.`)],
+        };
+      }
+      return {
+        effects: [{ kind: "runScript", lines: readScriptLines(target.entry) }],
+        lines: [],
+      };
+    }
+
     case "start": {
       if (args.length === 0) {
         return { effects: [], lines: [err("사용법: start <앱 이름 또는 파일>")] };
@@ -751,7 +1046,14 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
       return { effects: [], lines: [err(`${argText}을(를) 찾을 수 없습니다.`)] };
     }
 
-    default:
+    default: {
+      const script = resolveShellTarget(context.entries, context.cwdId, commandText.trim());
+      if (script?.kind === "entry" && /\.bat$/i.test(script.entry.name)) {
+        return {
+          effects: [{ kind: "runScript", lines: readScriptLines(script.entry) }],
+          lines: [],
+        };
+      }
       return {
         effects: [],
         lines: [
@@ -760,5 +1062,14 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
           ),
         ],
       };
+    }
   }
+}
+
+/** Batch bodies drop blank lines and `rem` comments before they are queued. */
+function readScriptLines(entry: DesktopItem) {
+  return (entry.content ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !/^(rem\b|::)/i.test(line));
 }

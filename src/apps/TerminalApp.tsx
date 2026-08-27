@@ -62,6 +62,8 @@ export default function TerminalApp({
   const [draft, setDraft] = useState("");
   const [cwdId, setCwdId] = useState(VFS_ROOT_ID);
   const [history, setHistory] = useState<string[]>([]);
+  const [env, setEnv] = useState<Record<string, string>>({});
+  const [scriptQueue, setScriptQueue] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -96,6 +98,7 @@ export default function TerminalApp({
     const result = runShellCommand(raw, {
       cwdId,
       entries: desktopItems,
+      env,
       hostName: "POCKETDESK",
       now: Date.now(),
       processes,
@@ -139,8 +142,21 @@ export default function TerminalApp({
           if (entry) openVfsEntry(entry);
           break;
         }
+        case "clearEnv":
+          setEnv((current) => {
+            const next = { ...current };
+            delete next[effect.name.toUpperCase()];
+            return next;
+          });
+          break;
         case "rename":
           renameVfsEntry(effect.itemId, effect.name);
+          break;
+        case "runScript":
+          setScriptQueue((current) => [...current, ...effect.lines]);
+          break;
+        case "setEnv":
+          setEnv((current) => ({ ...current, [effect.name.toUpperCase()]: effect.value }));
           break;
         case "writeFile":
           saveNoteAs(effect.parentId, effect.name, effect.content, effect.existingItemId);
@@ -157,6 +173,19 @@ export default function TerminalApp({
     }
     setHistoryIndex(null);
   };
+
+  // Batch lines run one per commit, so each command sees what the line before it
+  // wrote to the file system instead of a stale entry list.
+  useEffect(() => {
+    if (scriptQueue.length === 0) return;
+    const [next, ...rest] = scriptQueue;
+    const timer = window.setTimeout(() => {
+      setScriptQueue(rest);
+      submit(next);
+    }, 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scriptQueue]);
 
   const completeDraft = () => {
     const match = /(\S*)$/.exec(draft);
