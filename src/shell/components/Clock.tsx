@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-export function Clock() {
+export function Clock({ hour24 }: { hour24: boolean }) {
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -10,7 +10,13 @@ export function Clock() {
 
   return (
     <time className="tray-clock" dateTime={now.toISOString()}>
-      <span>{now.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
+      <span>
+        {now.toLocaleTimeString("ko-KR", {
+          hour: "2-digit",
+          hour12: !hour24,
+          minute: "2-digit",
+        })}
+      </span>
       <span>{now.toLocaleDateString("ko-KR", { day: "2-digit", month: "2-digit" })}</span>
     </time>
   );

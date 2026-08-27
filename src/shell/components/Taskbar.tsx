@@ -16,6 +16,7 @@ import {
   MonitorDown,
   Pin,
   PinOff,
+  Search,
   Play,
   Settings,
   SquareTerminal,
@@ -39,6 +40,9 @@ export function Taskbar({
   onOpenStart,
   onOpenApp,
   onOpenRunDialog,
+  clock24h,
+  onSearch,
+  searchQuery,
   onSetBrightness,
   onSetSoundEnabled,
   onShowDesktop,
@@ -61,6 +65,9 @@ export function Taskbar({
   onOpenStart: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onOpenApp: (appId: AppId) => void;
   onOpenRunDialog: () => void;
+  clock24h: boolean;
+  onSearch: (query: string) => void;
+  searchQuery: string;
   onSetBrightness: (brightness: number) => void;
   onSetSoundEnabled: (enabled: boolean) => void;
   onShowDesktop: () => void;
@@ -205,6 +212,19 @@ export function Taskbar({
         >
           <StartGlyph />
         </button>
+        <div className="taskbar-search">
+          <Search aria-hidden="true" size={15} />
+          <input
+            aria-label="검색"
+            autoComplete="off"
+            onChange={(event) => onSearch(event.target.value)}
+            onFocus={() => onSearch(searchQuery)}
+            placeholder="검색하려면 여기에 입력하십시오"
+            spellCheck={false}
+            type="search"
+            value={searchQuery}
+          />
+        </div>
         <button
           aria-label={`작업 보기 (데스크톱 ${activeDesktopIndex + 1}/${desktopCount})`}
           aria-pressed={taskViewOpen}
@@ -360,7 +380,7 @@ export function Taskbar({
             }
             type="button"
           >
-            <Clock />
+            <Clock hour24={clock24h} />
           </button>
         </div>
         {trayPanel === "quick" && (

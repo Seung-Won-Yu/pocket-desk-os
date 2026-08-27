@@ -20,6 +20,7 @@ type TerminalAppProps = {
   openApp: (appId: AppId) => void;
   openVfsEntry: (item: DesktopItem) => void;
   openWindows: OpenWindowInfo[];
+  userName: string;
   playSound: (effect: SoundEffectName) => void;
   renameVfsEntry: (itemId: string, name: string) => void;
   saveNoteAs: (
@@ -56,6 +57,7 @@ export default function TerminalApp({
   playSound,
   renameVfsEntry,
   saveNoteAs,
+  userName,
   windowId,
 }: TerminalAppProps) {
   const [lines, setLines] = useState<ShellLine[]>(() => createBanner());
@@ -102,7 +104,7 @@ export default function TerminalApp({
       hostName: "POCKETDESK",
       now: Date.now(),
       processes,
-      userName: "PocketDesk",
+      userName,
     });
 
     let cleared = false;

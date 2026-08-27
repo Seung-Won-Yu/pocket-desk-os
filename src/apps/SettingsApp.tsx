@@ -1,10 +1,27 @@
-import { Monitor, Palette, RotateCcw, Search, Volume2 } from "lucide-react";
+import {
+  Clock3,
+  LayoutGrid,
+  Monitor,
+  Palette,
+  RotateCcw,
+  Search,
+  UserRound,
+  Volume2,
+} from "lucide-react";
 import { useState } from "react";
-import type { SoundEffectName, ThemeName, WallpaperName } from "../types";
+import { appMetadata } from "./metadata";
+import { DEFAULT_APP_CHOICES, type DefaultAppMap } from "../shell/preferences";
+import type { AppId, SoundEffectName, ThemeName, WallpaperName } from "../types";
 import { normalizeSearchText } from "../utils/format";
 import { getWallpaperPreviewStyle, wallpaperGallery } from "../wallpapers";
 
 type SettingsAppProps = {
+  clock24h: boolean;
+  defaultApps: DefaultAppMap;
+  setClock24h: (enabled: boolean) => void;
+  setDefaultApp: (extension: string, appId: AppId) => void;
+  setUserName: (name: string) => void;
+  userName: string;
   playSound: (effect: SoundEffectName) => void;
   resetDesktopIconLayout: () => void;
   resetWindowLayout: () => void;
@@ -17,6 +34,12 @@ type SettingsAppProps = {
 };
 
 export default function SettingsApp({
+  clock24h,
+  defaultApps,
+  setClock24h,
+  setDefaultApp,
+  setUserName,
+  userName,
   playSound,
   resetDesktopIconLayout,
   resetWindowLayout,
@@ -27,9 +50,10 @@ export default function SettingsApp({
   theme,
   wallpaper,
 }: SettingsAppProps) {
-  const [section, setSection] = useState<"personalization" | "sound" | "system">(
-    "personalization",
-  );
+  const [section, setSection] = useState<
+    "accounts" | "apps" | "personalization" | "sound" | "system" | "time"
+  >("personalization");
+  const [nameDraft, setNameDraft] = useState(userName);
   const [settingsQuery, setSettingsQuery] = useState("");
   const themes: Array<{ id: ThemeName; label: string; detail: string }> = [
     { id: "lagoon", label: "Windows 기본", detail: "파란색 강조색" },
@@ -45,6 +69,14 @@ export default function SettingsApp({
       keywords: "테마 배경 화면",
     },
     { id: "sound" as const, icon: Volume2, label: "소리", keywords: "시스템 소리" },
+    { id: "apps" as const, icon: LayoutGrid, label: "앱", keywords: "기본 앱 연결 프로그램" },
+    { id: "accounts" as const, icon: UserRound, label: "계정", keywords: "사용자 이름 로컬" },
+    {
+      id: "time" as const,
+      icon: Clock3,
+      label: "시간 및 언어",
+      keywords: "시계 24시간 표시 형식",
+    },
   ];
   const filteredSettingsSections = settingsSections.filter((item) =>
     normalizeSearchText(`${item.label} ${item.keywords}`).includes(
@@ -58,7 +90,7 @@ export default function SettingsApp({
         <div className="settings-profile">
           <Monitor aria-hidden="true" size={24} />
           <span>
-            <strong>Seung-Won</strong>
+            <strong>{userName}</strong>
             <small>로컬 계정</small>
           </span>
         </div>
@@ -93,13 +125,7 @@ export default function SettingsApp({
       </aside>
       <section className="settings-content">
         <header className="settings-hero">
-          <h2>
-            {section === "personalization"
-              ? "개인 설정"
-              : section === "system"
-                ? "시스템"
-                : "소리"}
-          </h2>
+          <h2>{settingsSections.find((item) => item.id === section)?.label ?? "설정"}</h2>
         </header>
         {section === "personalization" && (
           <>
@@ -178,6 +204,108 @@ export default function SettingsApp({
               <span>
                 <strong>시스템 소리 재생</strong>
                 <small>{soundEnabled ? "켜짐" : "꺼짐"}</small>
+              </span>
+            </label>
+          </section>
+        )}
+
+        {section === "apps" && (
+          <section className="settings-section">
+            <h3>기본 앱</h3>
+            <p className="settings-note">
+              파일 형식별로 두 번 클릭했을 때 열리는 앱을 정합니다.
+            </p>
+            <div className="settings-default-apps">
+              {DEFAULT_APP_CHOICES.map((choice) => {
+                const current = defaultApps[choice.extension] ?? choice.apps[0];
+                const CurrentIcon = appMetadata[current].icon;
+                return (
+                  <div className="settings-default-app" key={choice.extension}>
+                    <span>
+                      <strong>.{choice.extension}</strong>
+                      <small>{choice.label}</small>
+                    </span>
+                    <label>
+                      <CurrentIcon
+                        aria-hidden="true"
+                        size={16}
+                        style={{ color: appMetadata[current].accent }}
+                      />
+                      <select
+                        aria-label={`.${choice.extension} 기본 앱`}
+                        disabled={choice.apps.length < 2}
+                        onChange={(event) => {
+                          playSound("toggle");
+                          setDefaultApp(choice.extension, event.target.value as AppId);
+                        }}
+                        value={current}
+                      >
+                        {choice.apps.map((appId) => (
+                          <option key={appId} value={appId}>
+                            {appMetadata[appId].title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {section === "accounts" && (
+          <section className="settings-section">
+            <h3>사용자 정보</h3>
+            <p className="settings-note">
+              여기서 정한 이름은 잠금 화면과 명령 프롬프트의 <code>%USERNAME%</code>에 함께
+              반영됩니다.
+            </p>
+            <form
+              className="settings-name-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const trimmed = nameDraft.trim().slice(0, 20);
+                if (!trimmed) return;
+                playSound("success");
+                setUserName(trimmed);
+              }}
+            >
+              <label>
+                사용자 이름
+                <input
+                  maxLength={20}
+                  onChange={(event) => setNameDraft(event.target.value)}
+                  value={nameDraft}
+                />
+              </label>
+              <button
+                disabled={!nameDraft.trim() || nameDraft.trim() === userName}
+                type="submit"
+              >
+                저장
+              </button>
+            </form>
+          </section>
+        )}
+
+        {section === "time" && (
+          <section className="settings-section">
+            <h3>날짜 및 시간 형식</h3>
+            <label className="settings-toggle">
+              <input
+                checked={clock24h}
+                onChange={(event) => {
+                  playSound("toggle");
+                  setClock24h(event.target.checked);
+                }}
+                type="checkbox"
+              />
+              <span>
+                <strong>24시간제 시계 사용</strong>
+                <small>
+                  {clock24h ? "작업 표시줄에 13:45로 표시" : "작업 표시줄에 오후 1:45로 표시"}
+                </small>
               </span>
             </label>
           </section>
