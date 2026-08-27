@@ -30,7 +30,17 @@ export default tseslint.config(
     },
   },
   {
-    files: ["scripts/**/*.mjs", "*.config.{js,ts}"],
+    // The Vite and Vitest configs are TypeScript, so they need the TS parser
+    // rather than the plain-JS one used for the .mjs scripts.
+    files: ["*.config.ts"],
+    extends: [js.configs.recommended, ...tseslint.configs.recommended],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: globals.node,
+    },
+  },
+  {
+    files: ["scripts/**/*.mjs", "*.config.js"],
     extends: [js.configs.recommended],
     languageOptions: {
       ecmaVersion: 2022,
