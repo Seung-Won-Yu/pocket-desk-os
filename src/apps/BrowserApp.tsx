@@ -28,6 +28,7 @@ import {
 } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { useReturnFocus } from "../shell/dialogFocus";
+import { isSafeHttpUrl, toSafeHttpUrl } from "../utils/safeUrl";
 import { handleMenuKeyboard } from "../shell/keyboardNav";
 
 type BrowserSearchEngineId = "duckduckgo" | "google" | "bing";
@@ -480,7 +481,11 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
             />
           ) : (
             <iframe
-              allow="clipboard-read; clipboard-write; fullscreen"
+              /*
+               * No `allow` list. A framed site needs none of it, and even
+               * `fullscreen` would let it paint a full-screen imitation of this
+               * desktop.
+               */
               key={`${pageLoadKey}-${url}`}
               onError={() => {
                 setPageLoading(false);
@@ -488,7 +493,23 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
               }}
               onLoad={() => setPageLoading(false)}
               referrerPolicy="strict-origin-when-cross-origin"
-              sandbox="allow-downloads allow-forms allow-modals allow-same-origin allow-scripts"
+              /*
+               * `allow-same-origin` is deliberately absent. With it, a framed
+               * document that reaches this origin — by navigating itself there,
+               * or through a redirect — becomes same-origin with the parent and
+               * can read parent.document, this app's storage, and remove its own
+               * sandbox attribute. The load-time origin check above cannot see
+               * that: the app can never read a cross-origin frame's current
+               * location. Without the flag the frame is an opaque origin, so the
+               * escape is impossible regardless of where it navigates.
+               *
+               * The cost is real — sites that need their own cookies or storage
+               * will not render — and that is what the reader view and the
+               * "페이지 표시 문제" recovery panel exist for. `allow-downloads`
+               * and `allow-modals` are gone too: a drive-by download and an
+               * alert() the browser attributes to this window are not worth it.
+               */
+              sandbox="allow-forms allow-scripts"
               src={url}
               title={`${getBrowserPageTitle(url)} 웹 보기`}
             />
@@ -712,7 +733,13 @@ function BrowserReader({
     setDocument(null);
     setError("");
 
-    fetch(getBrowserReaderUrl(url), {
+    const readerUrl = getBrowserReaderUrl(url);
+    if (!readerUrl) {
+      setError("이 주소는 읽기 보기로 변환할 수 없습니다.");
+      return;
+    }
+
+    fetch(readerUrl, {
       headers: {
         Accept: "text/plain",
         "X-Retain-Images": "none",
@@ -736,23 +763,31 @@ function BrowserReader({
 
   const markdownComponents = useMemo<Components>(
     () => ({
-      a: ({ children, href }) => (
-        <a
-          href={href}
-          onClick={(event) => {
-            if (!href || href.startsWith("#")) return;
-            event.preventDefault();
-            if (href.startsWith("javascript:")) return;
-            const nextUrl = getBrowserReaderLinkUrl(href, url);
-            if (nextUrl) onNavigate(nextUrl);
-          }}
-        >
-          {children}
-        </a>
-      ),
+      a: ({ children, href }) => {
+        const isAnchor = Boolean(href?.startsWith("#"));
+        const safeHref = isAnchor ? href : toSafeHttpUrl(href, url);
+        return (
+          <a
+            href={safeHref ?? undefined}
+            onClick={(event) => {
+              if (isAnchor) return;
+              event.preventDefault();
+              if (!safeHref) return;
+              const nextUrl = getBrowserReaderLinkUrl(safeHref, url);
+              if (nextUrl) onNavigate(nextUrl);
+            }}
+            rel="noreferrer"
+          >
+            {children}
+          </a>
+        );
+      },
       img: ({ alt, src }) => {
-        if (!src || src.startsWith("blob:") || src.startsWith("data:")) return null;
-        return <img alt={alt ?? ""} loading="lazy" referrerPolicy="no-referrer" src={src} />;
+        const safeSrc = toSafeHttpUrl(src, url);
+        if (!safeSrc) return null;
+        return (
+          <img alt={alt ?? ""} loading="lazy" referrerPolicy="no-referrer" src={safeSrc} />
+        );
       },
     }),
     [onNavigate, url],
@@ -882,11 +917,27 @@ function BrowserHome({
   );
 }
 
-function normalizeUrl(value: string, searchEngine: BrowserSearchEngineId = "bing") {
+export function normalizeUrl(value: string, searchEngine: BrowserSearchEngineId = "bing") {
   const trimmed = value.trim();
   if (trimmed.length === 0) return "https://example.com";
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  if (trimmed.includes(".") && !trimmed.includes(" ")) return `https://${trimmed}`;
+
+  // Anything carrying a scheme has to survive the http(s) check on its own.
+  // Without this, a scheme like javascript: would only be neutralized by the
+  // accident of being prefixed with https:// further down.
+  // Validate the scheme without canonicalizing, so the address bar keeps showing
+  // exactly what the user typed.
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    return isSafeHttpUrl(trimmed)
+      ? trimmed
+      : getBrowserSearchEngine(searchEngine).searchUrl(trimmed);
+  }
+
+  if (trimmed.includes(".") && !trimmed.includes(" ")) {
+    const candidate = `https://${trimmed}`;
+    return isSafeHttpUrl(candidate)
+      ? candidate
+      : getBrowserSearchEngine(searchEngine).searchUrl(trimmed);
+  }
   return getBrowserSearchEngine(searchEngine).searchUrl(trimmed);
 }
 
@@ -911,6 +962,11 @@ function getPreferredBrowserViewMode(input: string, url: string): BrowserViewMod
   if (looksLikeSearch) return "reader";
 
   try {
+    // A query string can carry an invite or reset token. Reader mode would send
+    // it to a third party, so it is never chosen automatically for such a URL —
+    // the user has to ask for it.
+    if (readerWouldLeakQuery(url)) return "web";
+
     const hostname = new URL(url).hostname.toLowerCase();
     return browserReaderPreferredHosts.some(
       (blockedHost) => hostname === blockedHost || hostname.endsWith(`.${blockedHost}`),
@@ -922,18 +978,37 @@ function getPreferredBrowserViewMode(input: string, url: string): BrowserViewMod
   }
 }
 
-function getBrowserReaderUrl(url: string) {
-  try {
-    const readerTarget = new URL(url);
-    readerTarget.hash = "";
-    const searchQuery = getBrowserSearchQuery(readerTarget);
-    if (searchQuery) {
-      return `https://r.jina.ai/https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`;
-    }
-    return `https://r.jina.ai/${readerTarget.toString()}`;
-  } catch {
-    return `https://r.jina.ai/${url}`;
+/**
+ * Reader mode hands the target address to a third-party service that fetches it
+ * server-side, so whatever is in that address leaves the machine. Strip the
+ * parts that carry secrets: userinfo, the query string, and the fragment. A
+ * search page is the one exception — its query *is* the content — and that
+ * branch already rebuilds the URL from the single `q` parameter.
+ */
+export function getBrowserReaderUrl(url: string) {
+  const safe = toSafeHttpUrl(url);
+  if (!safe) return null;
+
+  const readerTarget = new URL(safe);
+  const searchQuery = getBrowserSearchQuery(readerTarget);
+  if (searchQuery) {
+    return `https://r.jina.ai/https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`;
   }
+
+  readerTarget.hash = "";
+  readerTarget.username = "";
+  readerTarget.password = "";
+  readerTarget.search = "";
+  return `https://r.jina.ai/${readerTarget.toString()}`;
+}
+
+/** True when reading the page would send a query string to the reader service. */
+export function readerWouldLeakQuery(url: string) {
+  const safe = toSafeHttpUrl(url);
+  if (!safe) return false;
+  const target = new URL(safe);
+  if (getBrowserSearchQuery(target)) return false;
+  return target.search.length > 0 || target.username.length > 0;
 }
 
 function parseBrowserReaderResponse(content: string, url: string): BrowserReaderDocument {
@@ -974,8 +1049,9 @@ function getBrowserSearchQuery(url: URL) {
 }
 
 function getBrowserReaderLinkUrl(href: string, baseUrl: string) {
-  const resolved = new URL(href, baseUrl);
-  if (!["http:", "https:"].includes(resolved.protocol)) return null;
+  const safe = toSafeHttpUrl(href, baseUrl);
+  if (!safe) return null;
+  const resolved = new URL(safe);
   if (resolved.hostname.endsWith("duckduckgo.com") && resolved.pathname === "/l/") {
     const destination = resolved.searchParams.get("uddg");
     if (destination && /^https?:\/\//i.test(destination)) return destination;
@@ -999,28 +1075,39 @@ function getBrowserPageTitle(url: string) {
   }
 }
 
-function normalizeBrowserBookmark(item: unknown): BrowserBookmark | null {
+export function normalizeBrowserBookmark(item: unknown): BrowserBookmark | null {
   if (!item || typeof item !== "object") return null;
   const value = item as Partial<BrowserBookmark>;
   if (typeof value.url !== "string" || typeof value.title !== "string") return null;
+
+  // Stored entries are attacker-controlled: the Registry Editor exposes this key
+  // for editing, and a ZIP backup can carry one. Drop anything that is not
+  // http(s) rather than restoring a URL that could execute on this origin.
+  const url = toSafeHttpUrl(value.url);
+  if (!url) return null;
+
   const createdAt = Number(value.createdAt);
   return {
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
     id: typeof value.id === "string" ? value.id : `bookmark-${crypto.randomUUID()}`,
     title: value.title.slice(0, 80),
-    url: value.url,
+    url,
   };
 }
 
-function normalizeBrowserHistoryEntry(item: unknown): BrowserHistoryEntry | null {
+export function normalizeBrowserHistoryEntry(item: unknown): BrowserHistoryEntry | null {
   if (!item || typeof item !== "object") return null;
   const value = item as Partial<BrowserHistoryEntry>;
   if (typeof value.url !== "string" || typeof value.title !== "string") return null;
+
+  const url = toSafeHttpUrl(value.url);
+  if (!url) return null;
+
   const visitedAt = Number(value.visitedAt);
   return {
     id: typeof value.id === "string" ? value.id : `history-${crypto.randomUUID()}`,
     title: value.title.slice(0, 80),
-    url: value.url,
+    url,
     visitedAt: Number.isFinite(visitedAt) ? visitedAt : Date.now(),
   };
 }
