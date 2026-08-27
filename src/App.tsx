@@ -41,6 +41,8 @@ import {
   TASKBAR_PINNED_APPS_KEY,
   VFS_PRIMARY_CANVAS_ID,
   VFS_PRIMARY_NOTE_ID,
+  CLOCK_24H_KEY,
+  USER_NAME_KEY,
   VIRTUAL_DESKTOPS_KEY,
   WALLPAPER_KEY,
   WINDOW_EXIT_MOTION_MS,
@@ -99,13 +101,22 @@ import {
   persistWindowState,
 } from "./shell/windowState";
 import { TaskView } from "./shell/components/TaskView";
+import {
+  loadClock24h,
+  loadDefaultApps,
+  loadUserName,
+  persistDefaultApps,
+  type DefaultAppMap,
+} from "./shell/preferences";
 import { clamp } from "./utils/format";
 import {
   type AppId,
+  type ClipboardMode,
   type DesktopItem,
   type IconPosition,
   type OpenWindowInfo,
   type SoundEffectName,
+  type SystemClipboard,
   type ThemeName,
   type ToastInput,
   type VfsDuplicateOptions,
@@ -124,6 +135,7 @@ import {
   getUniqueVfsEntryName,
   getVfsDescendantIds,
   getVfsEntryAssociation,
+  getVfsEntryExtension,
   getVfsShortcutTarget,
   getVfsTopLevelIds,
   isVfsSystemFolderId,
@@ -164,7 +176,10 @@ export default function App() {
   const [desktopIconMenu, setDesktopIconMenu] = useState<DesktopIconContextMenuState | null>(
     null,
   );
-  const [desktopClipboardIds, setDesktopClipboardIds] = useState<string[]>([]);
+  const [clipboard, setClipboard] = useState<SystemClipboard>({ itemIds: [], mode: "copy" });
+  const [userName, setUserName] = useState(() => loadUserName());
+  const [clock24h, setClock24h] = useState(() => loadClock24h());
+  const [defaultApps, setDefaultApps] = useState<DefaultAppMap>(() => loadDefaultApps());
   const [desktopRenamingItemId, setDesktopRenamingItemId] = useState<string | null>(null);
   const [desktopRenameDraft, setDesktopRenameDraft] = useState("");
   const [desktopPropertiesItemId, setDesktopPropertiesItemId] = useState<string | null>(null);
@@ -265,6 +280,18 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(VIRTUAL_DESKTOPS_KEY, String(storedDesktopCount));
   }, [storedDesktopCount]);
+
+  useEffect(() => {
+    localStorage.setItem(USER_NAME_KEY, userName);
+  }, [userName]);
+
+  useEffect(() => {
+    localStorage.setItem(CLOCK_24H_KEY, clock24h ? "on" : "off");
+  }, [clock24h]);
+
+  useEffect(() => {
+    persistDefaultApps(defaultApps);
+  }, [defaultApps]);
 
   useEffect(() => {
     const fitWindowsToViewport = () => {
@@ -560,6 +587,8 @@ export default function App() {
 
   const openVfsEntry = (item: DesktopItem) => {
     const association = getVfsEntryAssociation(item);
+    const override = defaultApps[getVfsEntryExtension(item)];
+    const targetAppId = override ?? association.appId;
     if (item.kind === "folder") {
       const windowId = openApp("files");
       setFilesLaunchRequest({ folderId: item.id, id: crypto.randomUUID(), windowId });
@@ -572,10 +601,22 @@ export default function App() {
       setActiveCanvasId(item.id);
       setActiveCanvasOpenKey((current) => current + 1);
     }
-    if (association.appId === "browser" && item.kind === "shortcut") {
+    if (targetAppId === "browser" && item.kind === "shortcut") {
       setBrowserLaunchRequest({ id: crypto.randomUUID(), value: getVfsShortcutTarget(item) });
     }
-    openApp(association.appId);
+    openApp(targetAppId);
+  };
+
+  /**
+   * Makes an entry current inside the app that is already showing it. Saving in
+   * Paint must not bounce the user to whichever app owns the file type.
+   */
+  const activateVfsEntry = (item: DesktopItem) => {
+    if (item.kind === "note") setActiveNoteId(item.id);
+    if (item.kind === "canvas") {
+      setActiveCanvasId(item.id);
+      setActiveCanvasOpenKey((current) => current + 1);
+    }
   };
 
   const openDesktopItem = (item: DesktopItem) => {
@@ -1118,32 +1159,100 @@ export default function App() {
     return selectedItemIds;
   };
 
-  const copyDesktopItems = (fallbackItemId?: string) => {
-    const itemIds = getSelectedDesktopItemIds(fallbackItemId);
-    if (itemIds.length === 0) return;
-    setDesktopClipboardIds(itemIds);
-    setDesktopIconMenu(null);
+  /** Every window shares this clipboard, so a copy in Explorer pastes on the desktop. */
+  const copyToClipboard = (itemIds: string[], mode: ClipboardMode = "copy") => {
+    const roots = getVfsTopLevelIds(activeDesktopItems, itemIds).filter(
+      (id) => !isVfsSystemFolderId(id),
+    );
+    if (roots.length === 0) return;
+
+    setClipboard({ itemIds: roots, mode });
+    playSound("click");
     notify({
-      detail: "바탕 화면에서 붙여넣을 수 있습니다.",
-      title: `${itemIds.length}개 항목 복사됨`,
+      detail:
+        mode === "cut"
+          ? "붙여넣으면 이 위치에서 사라집니다."
+          : "다른 창이나 바탕 화면에도 붙여넣을 수 있습니다.",
+      title: `${roots.length}개 항목 ${mode === "cut" ? "잘라내기" : "복사"}됨`,
       tone: "success",
     });
   };
 
+  const pasteFromClipboard = (parentId: string) => {
+    if (clipboard.itemIds.length === 0) return [];
+
+    if (clipboard.mode === "cut") {
+      const moved = moveVfsEntries(clipboard.itemIds, parentId);
+      if (!moved) return [];
+      const movedIds = clipboard.itemIds;
+      setClipboard({ itemIds: [], mode: "copy" });
+      return movedIds;
+    }
+
+    return duplicateVfsEntries(clipboard.itemIds, { parentId });
+  };
+
+  const selectAllDesktopItems = () => {
+    setSelectedDesktopIds([
+      ...desktopApps.map((app) => `app:${app.id}`),
+      ...activeDesktopItems
+        .filter((item) => item.showOnDesktop)
+        .map((item) => `item:${item.id}`),
+    ]);
+  };
+
+  /** Win+M minimizes every window on this desktop without toggling back. */
+  const minimizeAllWindows = () => {
+    const visibleIds = desktopWindows.filter((item) => !item.minimized).map((item) => item.id);
+    if (visibleIds.length === 0) return;
+    playSound("minimize");
+    showDesktopRestoreRef.current = visibleIds;
+    visibleIds.forEach((id) => {
+      scheduleWindowMotion(id, "minimizing", () => updateWindow(id, { minimized: true }));
+    });
+  };
+
+  const copyDesktopItems = (fallbackItemId?: string, mode: ClipboardMode = "copy") => {
+    const itemIds = getSelectedDesktopItemIds(fallbackItemId);
+    if (itemIds.length === 0) return;
+    copyToClipboard(itemIds, mode);
+    setDesktopIconMenu(null);
+  };
+
   const pasteDesktopItems = () => {
-    if (desktopClipboardIds.length === 0) return;
+    if (clipboard.itemIds.length === 0) return;
     const origin = desktopMenu ?? {
       originX: 120,
       originY: 120,
       x: 120,
       y: 120,
     };
-    const copiedIds = duplicateVfsEntries(desktopClipboardIds, {
-      parentId: VFS_ROOT_ID,
-      position: clampIconPosition(origin.originX - 18, origin.originY - 10, desktopViewMode),
-      showOnDesktop: true,
-    });
-    setSelectedDesktopIds(copiedIds.map((id) => `item:${id}`));
+    const position = clampIconPosition(
+      origin.originX - 18,
+      origin.originY - 10,
+      desktopViewMode,
+    );
+
+    if (clipboard.mode === "cut") {
+      const movedIds = clipboard.itemIds;
+      if (!moveVfsEntries(movedIds, VFS_ROOT_ID)) return;
+      // moveVfsEntries clears showOnDesktop; a desktop paste has to put it back.
+      setDesktopItems((current) =>
+        current.map((item) =>
+          movedIds.includes(item.id) ? { ...item, showOnDesktop: true, ...position } : item,
+        ),
+      );
+      setSelectedDesktopIds(movedIds.map((id) => `item:${id}`));
+      setClipboard({ itemIds: [], mode: "copy" });
+    } else {
+      const copiedIds = duplicateVfsEntries(clipboard.itemIds, {
+        parentId: VFS_ROOT_ID,
+        position,
+        showOnDesktop: true,
+      });
+      setSelectedDesktopIds(copiedIds.map((id) => `item:${id}`));
+    }
+
     setDesktopMenu(null);
     setDesktopIconMenu(null);
   };
@@ -1868,6 +1977,16 @@ export default function App() {
           openApp("settings");
           return;
         }
+        if (key === "m") {
+          event.preventDefault();
+          minimizeAllWindows();
+          return;
+        }
+        if (key === "l") {
+          event.preventDefault();
+          lockDesktop();
+          return;
+        }
         if (event.key.startsWith("Arrow") && activeWindowId) {
           event.preventDefault();
           stepWindowSnap(activeWindowId, event.key);
@@ -1910,6 +2029,27 @@ export default function App() {
           event.preventDefault();
           openSelectedDesktopTarget();
           return;
+        }
+        if (event.ctrlKey || event.metaKey) {
+          const key = event.key.toLowerCase();
+          if (key === "c" || key === "x") {
+            const itemIds = getSelectedDesktopItemIds();
+            if (itemIds.length > 0) {
+              event.preventDefault();
+              copyDesktopItems(undefined, key === "x" ? "cut" : "copy");
+              return;
+            }
+          }
+          if (key === "v" && clipboard.itemIds.length > 0) {
+            event.preventDefault();
+            pasteDesktopItems();
+            return;
+          }
+          if (key === "a") {
+            event.preventDefault();
+            selectAllDesktopItems();
+            return;
+          }
         }
         if (event.key === "Delete") {
           const itemIds = getSelectedDesktopItemIds();
@@ -2166,6 +2306,9 @@ export default function App() {
                 activeNoteId={activeNoteId}
                 browserLaunchRequest={browserLaunchRequest}
                 canvasEntries={canvasEntries}
+                clipboard={clipboard}
+                copyToClipboard={copyToClipboard}
+                pasteFromClipboard={pasteFromClipboard}
                 closeWindow={closeWindow}
                 focusWindow={focusWindow}
                 openWindows={openWindows}
@@ -2184,6 +2327,7 @@ export default function App() {
                 moveVfsEntries={moveVfsEntries}
                 openApp={openApp}
                 openNewAppWindow={openNewAppWindow}
+                activateVfsEntry={activateVfsEntry}
                 openVfsEntry={openVfsEntry}
                 permanentlyDeleteVfsEntry={permanentlyDeleteVfsEntry}
                 playSound={playSound}
@@ -2198,7 +2342,15 @@ export default function App() {
                 setTheme={changeTheme}
                 setWallpaper={changeWallpaper}
                 soundEnabled={soundEnabled}
+                clock24h={clock24h}
+                defaultApps={defaultApps}
+                setClock24h={setClock24h}
+                setDefaultApp={(extension, appId) =>
+                  setDefaultApps((current) => ({ ...current, [extension]: appId }))
+                }
+                setUserName={setUserName}
                 theme={theme}
+                userName={userName}
                 wallpaper={wallpaper}
                 windowId={item.id}
               />
@@ -2249,6 +2401,13 @@ export default function App() {
         }}
         onOpenApp={openApp}
         onOpenRunDialog={openRunDialog}
+        clock24h={clock24h}
+        onSearch={(nextQuery) => {
+          // The taskbar field and the Start menu field drive one search.
+          setQuery(nextQuery);
+          setStartOpen(true);
+        }}
+        searchQuery={query}
         onSetBrightness={setDisplayBrightness}
         onSetSoundEnabled={setSoundEnabled}
         onShowDesktop={toggleShowDesktop}
@@ -2298,7 +2457,7 @@ export default function App() {
           onSort={arrangeDesktopIcons}
           onToggleGrid={toggleDesktopGrid}
           onViewChange={changeDesktopView}
-          pasteEnabled={desktopClipboardIds.length > 0}
+          pasteEnabled={clipboard.itemIds.length > 0}
           x={desktopMenu.x}
           y={desktopMenu.y}
         />
@@ -2312,6 +2471,11 @@ export default function App() {
           itemSelectionCount={getSelectedDesktopItemIds(desktopContextItem?.id).length}
           onCopy={
             desktopContextItem ? () => copyDesktopItems(desktopContextItem.id) : undefined
+          }
+          onCut={
+            desktopContextItem
+              ? () => copyDesktopItems(desktopContextItem.id, "cut")
+              : undefined
           }
           onDelete={
             desktopContextItem

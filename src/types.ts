@@ -6,6 +6,7 @@ export type AppId =
   | "paint"
   | "notepad"
   | "files"
+  | "photos"
   | "terminal"
   | "taskmanager"
   | "recycle"
@@ -49,6 +50,14 @@ export type DesktopItem = {
   updatedAt: number;
   x: number;
   y: number;
+};
+
+export type ClipboardMode = "copy" | "cut";
+
+/** One shared clipboard, the way Windows has one — not one per window. */
+export type SystemClipboard = {
+  itemIds: string[];
+  mode: ClipboardMode;
 };
 
 export type VfsDuplicateOptions = {

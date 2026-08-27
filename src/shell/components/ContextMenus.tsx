@@ -18,6 +18,7 @@ import {
   LayoutGrid,
   Palette,
   Pencil,
+  Scissors,
   Pin,
   PinOff,
   RefreshCw,
@@ -213,6 +214,7 @@ export function DesktopIconContextMenu({
   appPinned,
   itemSelectionCount,
   onCopy,
+  onCut,
   onDelete,
   onOpen,
   onProperties,
@@ -225,6 +227,7 @@ export function DesktopIconContextMenu({
   appPinned?: boolean;
   itemSelectionCount: number;
   onCopy?: () => void;
+  onCut?: () => void;
   onDelete?: () => void;
   onOpen: () => void;
   onProperties?: () => void;
@@ -272,6 +275,12 @@ export function DesktopIconContextMenu({
         <button onClick={onCopy} role="menuitem" type="button">
           <Copy aria-hidden="true" size={16} />
           복사
+        </button>
+      )}
+      {onCut && (
+        <button onClick={onCut} role="menuitem" type="button">
+          <Scissors aria-hidden="true" size={16} />
+          잘라내기
         </button>
       )}
       {onRename && (

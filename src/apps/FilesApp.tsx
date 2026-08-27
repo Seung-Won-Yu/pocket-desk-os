@@ -22,6 +22,7 @@ import {
   Paintbrush,
   Pencil,
   Plus,
+  Scissors,
   Search,
   Trash2,
   Upload,
@@ -30,7 +31,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import type React from "react";
 import AppIconTile from "../components/AppIconTile";
-import type { AppId, DesktopItem, ToastInput, VfsDuplicateOptions } from "../types";
+import type { AppId, ClipboardMode, DesktopItem, SystemClipboard, ToastInput } from "../types";
 import {
   clamp,
   formatVfsEntrySize,
@@ -67,11 +68,13 @@ export type FilesLaunchRequest = {
 };
 
 type FilesAppProps = {
+  clipboard: SystemClipboard;
+  copyToClipboard: (itemIds: string[], mode?: ClipboardMode) => void;
+  pasteFromClipboard: (parentId: string) => string[];
   createVfsFolder: (parentId?: string) => DesktopItem;
   createVfsTextFile: (parentId?: string) => DesktopItem;
   deleteVfsEntry: (itemId: string) => void;
   desktopItems: DesktopItem[];
-  duplicateVfsEntries: (itemIds: string[], options?: VfsDuplicateOptions) => string[];
   exportVfsZip: () => void;
   filesLaunchRequest: FilesLaunchRequest | null;
   importVfsZip: (file: File) => Promise<void>;
@@ -90,11 +93,13 @@ const FILE_EXPLORER_SORT_DIRECTION_KEY = "pocket-desk-explorer-sort-direction-v1
 const FILE_EXPLORER_VIEW_KEY = "pocket-desk-explorer-view-v1";
 
 export default function FilesApp({
+  clipboard,
+  copyToClipboard,
+  pasteFromClipboard,
   createVfsFolder,
   createVfsTextFile,
   deleteVfsEntry,
   desktopItems,
-  duplicateVfsEntries,
   exportVfsZip,
   filesLaunchRequest,
   importVfsZip,
@@ -131,7 +136,6 @@ export default function FilesApp({
   const [sortOpen, setSortOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [detailsPaneOpen, setDetailsPaneOpen] = useState(true);
-  const [clipboardIds, setClipboardIds] = useState<string[]>([]);
   const [fileContextMenu, setFileContextMenu] = useState<FileContextMenuState | null>(null);
   const [pendingRenameId, setPendingRenameId] = useState<string | null>(null);
   const [propertiesFileId, setPropertiesFileId] = useState<string | null>(null);
@@ -380,25 +384,22 @@ export default function FilesApp({
       selectedIds.length > 0 ? selectedIds : selectedFile ? [selectedFile.id] : [],
     );
 
-  const copySelectedFiles = (itemIds = getSelectedCommandIds()) => {
+  const copySelectedFiles = (
+    itemIds = getSelectedCommandIds(),
+    mode: ClipboardMode = "copy",
+  ) => {
     const copyableIds = itemIds.filter((itemId) => !isVfsSystemFolderId(itemId));
     if (copyableIds.length === 0) return;
-    setClipboardIds(copyableIds);
+    copyToClipboard(copyableIds, mode);
     setFileContextMenu(null);
-    notify({
-      detail: "이 파일 탐색기 안에서 Ctrl+V로 붙여넣을 수 있습니다.",
-      title: `${copyableIds.length}개 항목 복사됨`,
-      tone: "success",
-    });
   };
 
   const pasteCopiedFiles = () => {
-    if (clipboardIds.length === 0) return;
-    const copiedIds = duplicateVfsEntries(clipboardIds, { parentId: currentFolderId });
-    if (copiedIds.length === 0) return;
-    setSelectedIds(copiedIds);
-    setActiveFileId(copiedIds[0] ?? null);
-    selectionAnchorRef.current = copiedIds[0] ?? null;
+    const pastedIds = pasteFromClipboard(currentFolderId);
+    if (pastedIds.length === 0) return;
+    setSelectedIds(pastedIds);
+    setActiveFileId(pastedIds[0] ?? null);
+    selectionAnchorRef.current = pastedIds[0] ?? null;
     setFileContextMenu(null);
     focusFileList();
   };
@@ -544,6 +545,9 @@ export default function FilesApp({
       if (key === "c") {
         event.preventDefault();
         copySelectedFiles();
+      } else if (key === "x") {
+        event.preventDefault();
+        copySelectedFiles(undefined, "cut");
       } else if (key === "v") {
         event.preventDefault();
         pasteCopiedFiles();
@@ -801,7 +805,7 @@ export default function FilesApp({
             <button
               aria-label="붙여넣기"
               className="file-command-action file-command-compact"
-              disabled={clipboardIds.length === 0}
+              disabled={clipboard.itemIds.length === 0}
               onClick={pasteCopiedFiles}
               type="button"
             >
@@ -1191,6 +1195,24 @@ export default function FilesApp({
           >
             <Copy aria-hidden="true" size={16} />
             복사
+          </button>
+          <button
+            disabled={selectedHasSystemFolder}
+            onClick={() => copySelectedFiles(undefined, "cut")}
+            role="menuitem"
+            type="button"
+          >
+            <Scissors aria-hidden="true" size={16} />
+            잘라내기
+          </button>
+          <button
+            disabled={clipboard.itemIds.length === 0}
+            onClick={pasteCopiedFiles}
+            role="menuitem"
+            type="button"
+          >
+            <ClipboardPaste aria-hidden="true" size={16} />
+            붙여넣기
           </button>
           <button
             disabled={selectedIds.length > 1 || isVfsSystemFolderId(contextFile.id)}

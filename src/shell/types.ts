@@ -2,16 +2,19 @@ import { type BrowserLaunchRequest } from "../apps/BrowserApp";
 import { type FilesLaunchRequest } from "../apps/FilesApp";
 import {
   type AppId,
+  type ClipboardMode,
   type DesktopItem,
   type IconPosition,
   type OpenWindowInfo,
   type SoundEffectName,
+  type SystemClipboard,
   type ThemeName,
   type ToastInput,
   type VfsDuplicateOptions,
   type WallpaperName,
 } from "../types";
 import { type LucideIcon } from "lucide-react";
+import { type DefaultAppMap } from "./preferences";
 
 export type WindowMotion = "closing" | "minimizing";
 
@@ -139,6 +142,9 @@ export type AppContentProps = {
   activeNoteId: string;
   browserLaunchRequest: BrowserLaunchRequest | null;
   canvasEntries: DesktopItem[];
+  clipboard: SystemClipboard;
+  copyToClipboard: (itemIds: string[], mode?: ClipboardMode) => void;
+  pasteFromClipboard: (parentId: string) => string[];
   closeWindow: (windowId: string) => void;
   focusWindow: (windowId: string) => void;
   openWindows: OpenWindowInfo[];
@@ -157,6 +163,7 @@ export type AppContentProps = {
   moveVfsEntries: (itemIds: string[], parentId: string) => boolean;
   openApp: (appId: AppId) => void;
   openNewAppWindow: (appId: AppId) => string;
+  activateVfsEntry: (item: DesktopItem) => void;
   openVfsEntry: (item: DesktopItem) => void;
   permanentlyDeleteVfsEntry: (itemId: string) => void;
   renameVfsEntry: (itemId: string, name: string) => void;
@@ -179,7 +186,13 @@ export type AppContentProps = {
   setWallpaper: (wallpaper: WallpaperName) => void;
   setTheme: (theme: ThemeName) => void;
   soundEnabled: boolean;
+  clock24h: boolean;
+  defaultApps: DefaultAppMap;
+  setClock24h: (enabled: boolean) => void;
+  setDefaultApp: (extension: string, appId: AppId) => void;
+  setUserName: (name: string) => void;
   theme: ThemeName;
+  userName: string;
   wallpaper: WallpaperName;
   windowId: string;
 };
