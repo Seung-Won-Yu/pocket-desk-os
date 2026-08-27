@@ -193,6 +193,11 @@ export default function PhotosApp({
   };
 
   const commitRename = () => {
+    // setRenaming(false) has not flushed yet, so focusViewer() blurs the still
+    // mounted input and re-enters through its onBlur. Claim the commit first.
+    if (cancelRenameRef.current) return;
+    cancelRenameRef.current = true;
+
     setRenaming(false);
     focusViewer();
     if (!currentEntry) return;
