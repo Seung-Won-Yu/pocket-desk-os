@@ -110,7 +110,9 @@ describe("fitWindowToViewport", () => {
   });
 
   it("pulls offscreen windows back so they stay reachable", () => {
-    const fitted = fitWindowToViewport(createWindow({ height: 400, width: 600, x: 4000, y: 4000 }));
+    const fitted = fitWindowToViewport(
+      createWindow({ height: 400, width: 600, x: 4000, y: 4000 }),
+    );
     expect(fitted.x).toBe(672);
     expect(fitted.y).toBe(344);
   });
@@ -130,7 +132,9 @@ describe("fitWindowToViewport", () => {
 
   it("keeps the minimum size on viewports too small to hold it", () => {
     setViewport(200, 200);
-    expect(fitWindowToViewport(createWindow({ height: 400, width: 600, x: 100, y: 100 }))).toEqual({
+    expect(
+      fitWindowToViewport(createWindow({ height: 400, width: 600, x: 100, y: 100 })),
+    ).toEqual({
       ...createWindow(),
       height: 240,
       width: 288,
@@ -241,7 +245,9 @@ describe("normalizePersistedWindow", () => {
   });
 
   it("keeps a persisted string id and generates one otherwise", () => {
-    expect(normalizePersistedWindow({ appId: "notepad", id: "kept-id" }, 0)?.id).toBe("kept-id");
+    expect(normalizePersistedWindow({ appId: "notepad", id: "kept-id" }, 0)?.id).toBe(
+      "kept-id",
+    );
     const generated = normalizePersistedWindow({ appId: "notepad", id: 7 }, 0);
     expect(generated?.id.startsWith("notepad-")).toBe(true);
   });
@@ -261,7 +267,9 @@ describe("normalizePersistedWindow", () => {
   });
 
   it("raises persisted sizes below the minimum window size", () => {
-    expect(normalizePersistedWindow({ appId: "notepad", height: 10, width: 10 }, 0)).toMatchObject({
+    expect(
+      normalizePersistedWindow({ appId: "notepad", height: 10, width: 10 }, 0),
+    ).toMatchObject({
       height: 240,
       width: 320,
     });
@@ -281,9 +289,9 @@ describe("normalizePersistedWindow", () => {
   });
 
   it("restores a valid snap zone", () => {
-    expect(normalizePersistedWindow({ appId: "notepad", snapZone: "bottom-left" }, 0)?.snapZone).toBe(
-      "bottom-left",
-    );
+    expect(
+      normalizePersistedWindow({ appId: "notepad", snapZone: "bottom-left" }, 0)?.snapZone,
+    ).toBe("bottom-left");
   });
 
   it("accepts every app in the catalog", () => {
@@ -292,19 +300,25 @@ describe("normalizePersistedWindow", () => {
   });
 
   it("restores the virtual desktop the window lived on", () => {
-    expect(normalizePersistedWindow({ appId: "notepad", desktopIndex: 3 }, 0)?.desktopIndex).toBe(3);
+    expect(
+      normalizePersistedWindow({ appId: "notepad", desktopIndex: 3 }, 0)?.desktopIndex,
+    ).toBe(3);
   });
 
   it("defaults to the first virtual desktop when the index is missing or fractional", () => {
     expect(normalizePersistedWindow({ appId: "notepad" }, 0)?.desktopIndex).toBe(0);
-    expect(normalizePersistedWindow({ appId: "notepad", desktopIndex: 1.5 }, 0)?.desktopIndex).toBe(0);
+    expect(
+      normalizePersistedWindow({ appId: "notepad", desktopIndex: 1.5 }, 0)?.desktopIndex,
+    ).toBe(0);
   });
 
   it("clamps the virtual desktop index into the supported range", () => {
-    expect(normalizePersistedWindow({ appId: "notepad", desktopIndex: 999 }, 0)?.desktopIndex).toBe(
-      MAX_VIRTUAL_DESKTOPS - 1,
-    );
-    expect(normalizePersistedWindow({ appId: "notepad", desktopIndex: -4 }, 0)?.desktopIndex).toBe(0);
+    expect(
+      normalizePersistedWindow({ appId: "notepad", desktopIndex: 999 }, 0)?.desktopIndex,
+    ).toBe(MAX_VIRTUAL_DESKTOPS - 1);
+    expect(
+      normalizePersistedWindow({ appId: "notepad", desktopIndex: -4 }, 0)?.desktopIndex,
+    ).toBe(0);
   });
 });
 
@@ -511,7 +525,16 @@ describe("persistWindowState", () => {
   it("round-trips window identity, stacking and flags", () => {
     persistWindowState([
       createWindow({ height: 300, id: "w1", maximized: true, width: 500, x: 40, y: 50, z: 30 }),
-      createWindow({ appId: "files", height: 620, id: "w2", minimized: true, width: 800, x: 60, y: 70, z: 31 }),
+      createWindow({
+        appId: "files",
+        height: 620,
+        id: "w2",
+        minimized: true,
+        width: 800,
+        x: 60,
+        y: 70,
+        z: 31,
+      }),
     ]);
 
     expect(loadWindowState()).toEqual([

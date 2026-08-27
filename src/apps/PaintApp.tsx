@@ -43,7 +43,6 @@ type PaintAppProps = {
   ) => DesktopItem;
 };
 
-
 const paintPalette = [
   "#0f6c81",
   "#111827",
@@ -62,7 +61,6 @@ const paintTools: Array<{ id: PaintTool; label: string }> = [
   { id: "ellipse", label: "타원" },
 ];
 
-
 export default function PaintApp({
   activeCanvasId,
   activeCanvasOpenKey,
@@ -79,7 +77,8 @@ export default function PaintApp({
   const shapeSnapshot = useRef<ImageData | null>(null);
   const undoStack = useRef<string[]>([]);
   const redoStack = useRef<string[]>([]);
-  const activeCanvas = canvasEntries.find((item) => item.id === activeCanvasId) ?? canvasEntries[0];
+  const activeCanvas =
+    canvasEntries.find((item) => item.id === activeCanvasId) ?? canvasEntries[0];
   const [tool, setTool] = useState<PaintTool>("brush");
   const [color, setColor] = useState("#0f6c81");
   const [size, setSize] = useState(5);
@@ -237,11 +236,7 @@ export default function PaintApp({
     };
   }, []);
 
-  const saveAs = (result: {
-    existingItem?: DesktopItem;
-    name: string;
-    parentId: string;
-  }) => {
+  const saveAs = (result: { existingItem?: DesktopItem; name: string; parentId: string }) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const item = savePaintImage(canvas.toDataURL("image/png"), {
@@ -415,7 +410,12 @@ export default function PaintApp({
                 >
                   <Redo2 aria-hidden="true" size={18} />
                 </button>
-                <button aria-label="모두 지우기" onClick={clear} title="모두 지우기" type="button">
+                <button
+                  aria-label="모두 지우기"
+                  onClick={clear}
+                  title="모두 지우기"
+                  type="button"
+                >
                   <Eraser aria-hidden="true" size={18} />
                 </button>
               </div>
@@ -435,7 +435,9 @@ export default function PaintApp({
                     {option.id === "brush" && <Paintbrush aria-hidden="true" size={18} />}
                     {option.id === "line" && <Minus aria-hidden="true" size={18} />}
                     {option.id === "rect" && <Square aria-hidden="true" size={17} />}
-                    {option.id === "ellipse" && <span aria-hidden="true" className="ellipse-tool-icon" />}
+                    {option.id === "ellipse" && (
+                      <span aria-hidden="true" className="ellipse-tool-icon" />
+                    )}
                     <span>{option.label}</span>
                   </button>
                 ))}
@@ -556,9 +558,7 @@ export default function PaintApp({
           createVfsFolder={createVfsFolder}
           defaultExtension="png"
           defaultName={
-            activeCanvas?.name
-              ? activeCanvas.name.replace(/\.[^.]+$/, ".png")
-              : "새 그림.png"
+            activeCanvas?.name ? activeCanvas.name.replace(/\.[^.]+$/, ".png") : "새 그림.png"
           }
           fileTypeLabel="PNG 이미지 (*.png)"
           initialFolderId={

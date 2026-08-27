@@ -1,7 +1,13 @@
 import AppIconTile from "../../components/AppIconTile";
 import { clamp } from "../../utils/format";
 import { APP_BAR_HEIGHT } from "../constants";
-import { type AppDefinition, type SnapPreviewState, type SnapZone, type WindowInstance, type WindowMotion } from "../types";
+import {
+  type AppDefinition,
+  type SnapPreviewState,
+  type SnapZone,
+  type WindowInstance,
+  type WindowMotion,
+} from "../types";
 import { getSnapPreviewStyle, getWindowSnapPatch, getWindowSnapZone } from "../windowGeometry";
 import { Copy, Minus, Square, X } from "lucide-react";
 import { useState, type PointerEvent } from "react";
@@ -104,13 +110,22 @@ export function WindowFrame({
     const right = x + width;
     const bottom = y + height;
     const maxBottom = window.innerHeight - APP_BAR_HEIGHT - 8;
-    const grow = { east: edge.includes("e"), north: edge.includes("n"), south: edge.includes("s"), west: edge.includes("w") };
+    const grow = {
+      east: edge.includes("e"),
+      north: edge.includes("n"),
+      south: edge.includes("s"),
+      west: edge.includes("w"),
+    };
 
     const onPointerMove = (moveEvent: globalThis.PointerEvent) => {
       const patch: Partial<WindowInstance> = {};
 
       if (grow.east) {
-        patch.width = clamp(width + moveEvent.clientX - startX, MIN_WINDOW_WIDTH, window.innerWidth - x - 8);
+        patch.width = clamp(
+          width + moveEvent.clientX - startX,
+          MIN_WINDOW_WIDTH,
+          window.innerWidth - x - 8,
+        );
       } else if (grow.west) {
         const nextX = clamp(x + moveEvent.clientX - startX, 8, right - MIN_WINDOW_WIDTH);
         patch.width = right - nextX;
@@ -118,7 +133,11 @@ export function WindowFrame({
       }
 
       if (grow.south) {
-        patch.height = clamp(height + moveEvent.clientY - startY, MIN_WINDOW_HEIGHT, maxBottom - y);
+        patch.height = clamp(
+          height + moveEvent.clientY - startY,
+          MIN_WINDOW_HEIGHT,
+          maxBottom - y,
+        );
       } else if (grow.north) {
         const nextY = clamp(y + moveEvent.clientY - startY, 8, bottom - MIN_WINDOW_HEIGHT);
         patch.height = bottom - nextY;
@@ -169,7 +188,12 @@ export function WindowFrame({
           <span>{app.title}</span>
         </div>
         <div className="window-controls">
-          <button aria-label={`${app.title} 최소화`} onClick={onMinimize} title="최소화" type="button">
+          <button
+            aria-label={`${app.title} 최소화`}
+            onClick={onMinimize}
+            title="최소화"
+            type="button"
+          >
             <Minus aria-hidden="true" size={14} />
           </button>
           <div
@@ -182,7 +206,9 @@ export function WindowFrame({
             onKeyDown={(event) => {
               if (event.key === "Escape") {
                 setSnapFlyoutOpen(false);
-                event.currentTarget.querySelector<HTMLButtonElement>(":scope > button")?.focus();
+                event.currentTarget
+                  .querySelector<HTMLButtonElement>(":scope > button")
+                  ?.focus();
               }
             }}
             onMouseEnter={() => !instance.maximized && setSnapFlyoutOpen(true)}

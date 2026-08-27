@@ -1,8 +1,22 @@
 import { type AppId, type DesktopItem } from "../types";
-import { VFS_DOCUMENTS_ID, VFS_GAMES_ID, VFS_PICTURES_ID, VFS_ROOT_ID, createVfsSystemFolders, getDefaultVfsEntryName, isVfsSystemFolderId } from "../vfs/model";
+import {
+  VFS_DOCUMENTS_ID,
+  VFS_GAMES_ID,
+  VFS_PICTURES_ID,
+  VFS_ROOT_ID,
+  createVfsSystemFolders,
+  getDefaultVfsEntryName,
+  isVfsSystemFolderId,
+} from "../vfs/model";
 import { persistVfsEntries, readVfsEntries } from "../vfs/storage";
 import { appsById } from "./appCatalog";
-import { DESKTOP_ITEMS_KEY, LEGACY_DEFAULT_NOTE_CONTENT, NOTE_KEY, VFS_PRIMARY_CANVAS_ID, VFS_PRIMARY_NOTE_ID } from "./constants";
+import {
+  DESKTOP_ITEMS_KEY,
+  LEGACY_DEFAULT_NOTE_CONTENT,
+  NOTE_KEY,
+  VFS_PRIMARY_CANVAS_ID,
+  VFS_PRIMARY_NOTE_ID,
+} from "./constants";
 import { clampIconPosition } from "./desktopLayout";
 import { type PersistedDesktopItem } from "./types";
 
@@ -26,16 +40,14 @@ export async function loadDesktopItemsFromVfs(): Promise<DesktopItem[]> {
 
 export function migrateVfsHierarchy(entries: DesktopItem[]): DesktopItem[] {
   const withoutLegacyFolder = entries.filter((entry) => entry.id !== "vfs-pictures");
-  const hadSystemFolders = [VFS_DOCUMENTS_ID, VFS_PICTURES_ID, VFS_GAMES_ID].every(
-    (folderId) => withoutLegacyFolder.some((entry) => entry.id === folderId),
+  const hadSystemFolders = [VFS_DOCUMENTS_ID, VFS_PICTURES_ID, VFS_GAMES_ID].every((folderId) =>
+    withoutLegacyFolder.some((entry) => entry.id === folderId),
   );
   const systemFolders = createVfsSystemFolders();
   const systemFolderById = new Map(systemFolders.map((folder) => [folder.id, folder]));
   const folderIds = new Set([
     VFS_ROOT_ID,
-    ...withoutLegacyFolder
-      .filter((entry) => entry.kind === "folder")
-      .map((entry) => entry.id),
+    ...withoutLegacyFolder.filter((entry) => entry.kind === "folder").map((entry) => entry.id),
     ...systemFolders.map((folder) => folder.id),
   ]);
   const seenIds = new Set<string>();
@@ -91,7 +103,9 @@ export function createDefaultVfsEntries(): DesktopItem[] {
   const now = Date.now();
   const storedNoteContent = localStorage.getItem(NOTE_KEY);
   const noteContent =
-    storedNoteContent && storedNoteContent !== LEGACY_DEFAULT_NOTE_CONTENT ? storedNoteContent : "";
+    storedNoteContent && storedNoteContent !== LEGACY_DEFAULT_NOTE_CONTENT
+      ? storedNoteContent
+      : "";
 
   return [
     ...createVfsSystemFolders(now),
@@ -189,7 +203,10 @@ export function normalizePersistedDesktopItem(
   const showOnDesktop = Boolean(item.showOnDesktop ?? true);
 
   return {
-    appId: typeof item.appId === "string" && appsById.has(item.appId as AppId) ? (item.appId as AppId) : undefined,
+    appId:
+      typeof item.appId === "string" && appsById.has(item.appId as AppId)
+        ? (item.appId as AppId)
+        : undefined,
     content: typeof item.content === "string" ? item.content : undefined,
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now() - index * 1000,
     id: typeof item.id === "string" ? item.id : `${item.kind}-${crypto.randomUUID()}`,
@@ -202,12 +219,18 @@ export function normalizePersistedDesktopItem(
     restoreParentId:
       typeof item.restoreParentId === "string" ? item.restoreParentId : undefined,
     restoreShowOnDesktop:
-      typeof item.restoreShowOnDesktop === "boolean" ? item.restoreShowOnDesktop : showOnDesktop,
+      typeof item.restoreShowOnDesktop === "boolean"
+        ? item.restoreShowOnDesktop
+        : showOnDesktop,
     showOnDesktop: trashed ? false : showOnDesktop,
     trashed,
     trashedAt: Number.isFinite(trashedAt) ? trashedAt : undefined,
     trashedRootId: typeof item.trashedRootId === "string" ? item.trashedRootId : undefined,
-    updatedAt: Number.isFinite(updatedAt) ? updatedAt : Number.isFinite(createdAt) ? createdAt : Date.now(),
+    updatedAt: Number.isFinite(updatedAt)
+      ? updatedAt
+      : Number.isFinite(createdAt)
+        ? createdAt
+        : Date.now(),
     ...position,
   };
 }

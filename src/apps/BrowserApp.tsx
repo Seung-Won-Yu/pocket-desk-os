@@ -66,7 +66,6 @@ const BROWSER_HISTORY_KEY = "pocket-desk-browser-history-v1";
 const BROWSER_SEARCH_ENGINE_KEY = "pocket-desk-browser-search-engine-v1";
 const APPLE_BURST_URL = "https://seung-won-yu.github.io/apple-burst/";
 
-
 const browserSearchEngines: Array<{
   id: BrowserSearchEngineId;
   label: string;
@@ -104,9 +103,10 @@ const browserReaderPreferredHosts = [
   "youtube.com",
 ];
 
-
 export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppProps) {
-  const [searchEngine, setSearchEngine] = useState<BrowserSearchEngineId>(() => loadBrowserSearchEngine());
+  const [searchEngine, setSearchEngine] = useState<BrowserSearchEngineId>(() =>
+    loadBrowserSearchEngine(),
+  );
   const [bookmarks, setBookmarks] = useState<BrowserBookmark[]>(() => loadBrowserBookmarks());
   const [history, setHistory] = useState<BrowserHistoryEntry[]>(() => loadBrowserHistory());
   const [draft, setDraft] = useState("");
@@ -151,10 +151,12 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
         { url: nextUrl, viewMode: nextViewMode },
       ]);
       setNavigationIndex((current) => current + 1);
-      setHistory((current) => [
-        { id: `history-${crypto.randomUUID()}`, title, url: nextUrl, visitedAt: now },
-        ...current.filter((entry) => entry.url !== nextUrl),
-      ].slice(0, 20));
+      setHistory((current) =>
+        [
+          { id: `history-${crypto.randomUUID()}`, title, url: nextUrl, visitedAt: now },
+          ...current.filter((entry) => entry.url !== nextUrl),
+        ].slice(0, 20),
+      );
       return nextUrl;
     },
     [navigationIndex, searchEngine],
@@ -242,7 +244,9 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
       title: getBrowserPageTitle(url),
       url,
     };
-    setBookmarks((current) => [bookmark, ...current.filter((item) => item.url !== url)].slice(0, 16));
+    setBookmarks((current) =>
+      [bookmark, ...current.filter((item) => item.url !== url)].slice(0, 16),
+    );
     notify({
       detail: bookmark.url,
       title: "즐겨찾기 추가됨",
@@ -377,8 +381,7 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
             role="menuitem"
             type="button"
           >
-            <Globe2 aria-hidden="true" size={16} />
-            웹 보기
+            <Globe2 aria-hidden="true" size={16} />웹 보기
           </button>
           <button
             aria-pressed={viewMode === "reader"}
@@ -455,13 +458,16 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
                 <strong>이 사이트를 창 안에 표시할 수 없습니다</strong>
                 <small>사이트 보안 정책이 iframe 표시를 차단했을 수 있습니다.</small>
               </span>
-              <button className="is-primary" onClick={() => changeViewMode("reader")} type="button">
+              <button
+                className="is-primary"
+                onClick={() => changeViewMode("reader")}
+                type="button"
+              >
                 <BookOpen aria-hidden="true" size={15} />
                 읽기 보기
               </button>
               <a href={url} rel="noreferrer" target="_blank">
-                <ExternalLink aria-hidden="true" size={15} />
-                새 탭
+                <ExternalLink aria-hidden="true" size={15} />새 탭
               </a>
               <button
                 aria-label="표시 문제 안내 닫기"
@@ -562,12 +568,10 @@ function BrowserReader({
           다시 시도
         </button>
         <button onClick={onOpenWeb} type="button">
-          <Globe2 aria-hidden="true" size={15} />
-          웹 보기
+          <Globe2 aria-hidden="true" size={15} />웹 보기
         </button>
         <a href={url} rel="noreferrer" target="_blank">
-          <ExternalLink aria-hidden="true" size={15} />
-          새 탭
+          <ExternalLink aria-hidden="true" size={15} />새 탭
         </a>
       </div>
     );
@@ -677,7 +681,6 @@ function BrowserHome({
   );
 }
 
-
 function normalizeUrl(value: string, searchEngine: BrowserSearchEngineId = "bing") {
   const trimmed = value.trim();
   if (trimmed.length === 0) return "https://example.com";
@@ -694,7 +697,9 @@ function getBrowserSearchEngine(searchEngineId: BrowserSearchEngineId) {
 }
 
 function loadBrowserSearchEngine() {
-  const stored = localStorage.getItem(BROWSER_SEARCH_ENGINE_KEY) as BrowserSearchEngineId | null;
+  const stored = localStorage.getItem(
+    BROWSER_SEARCH_ENGINE_KEY,
+  ) as BrowserSearchEngineId | null;
   return browserSearchEngines.some((engine) => engine.id === stored) ? stored! : "bing";
 }
 
@@ -780,7 +785,11 @@ function getBrowserReaderLinkUrl(href: string, baseUrl: string) {
 function getBrowserPageTitle(url: string) {
   try {
     const parsed = new URL(url);
-    if (parsed.hostname.includes("duckduckgo.com") || parsed.hostname.includes("google.com") || parsed.hostname.includes("bing.com")) {
+    if (
+      parsed.hostname.includes("duckduckgo.com") ||
+      parsed.hostname.includes("google.com") ||
+      parsed.hostname.includes("bing.com")
+    ) {
       return parsed.searchParams.get("q") || parsed.hostname.replace(/^www\./, "");
     }
     return parsed.hostname.replace(/^www\./, "");

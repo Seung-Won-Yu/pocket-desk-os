@@ -5,7 +5,26 @@ import { getVfsEntryAssociation } from "../../vfs/model";
 import { CONTEXT_MENU_WIDTH } from "../constants";
 import { trapDialogFocus } from "../dialogFocus";
 import { type DesktopSortKey, type DesktopViewMode } from "../types";
-import { Check, ChevronRight, ClipboardPaste, Copy, ExternalLink, FilePlus2, FileText, Grid2X2, Info, LayoutGrid, Palette, Pencil, Pin, PinOff, RefreshCw, Trash2, X, type LucideIcon } from "lucide-react";
+import {
+  Check,
+  ChevronRight,
+  ClipboardPaste,
+  Copy,
+  ExternalLink,
+  FilePlus2,
+  FileText,
+  Grid2X2,
+  Info,
+  LayoutGrid,
+  Palette,
+  Pencil,
+  Pin,
+  PinOff,
+  RefreshCw,
+  Trash2,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export function DesktopContextMenu({
@@ -135,7 +154,12 @@ export function DesktopContextMenu({
           </div>
         )}
       </div>
-      <button onClick={onRefresh} onMouseEnter={() => setSubmenu(null)} role="menuitem" type="button">
+      <button
+        onClick={onRefresh}
+        onMouseEnter={() => setSubmenu(null)}
+        role="menuitem"
+        type="button"
+      >
         <RefreshCw aria-hidden="true" size={16} />
         새로 고침
       </button>
@@ -172,7 +196,12 @@ export function DesktopContextMenu({
         )}
       </div>
       <span aria-hidden="true" className="menu-separator" />
-      <button onClick={onChangeWallpaper} onMouseEnter={() => setSubmenu(null)} role="menuitem" type="button">
+      <button
+        onClick={onChangeWallpaper}
+        onMouseEnter={() => setSubmenu(null)}
+        role="menuitem"
+        type="button"
+      >
         <Palette aria-hidden="true" size={16} />
         개인 설정
       </button>
@@ -227,7 +256,12 @@ export function DesktopIconContextMenu({
       style={{ left: x, top: y }}
     >
       <div className="desktop-context-title">
-        <AppIconTile accent={target.accent} icon={target.icon} size="tiny" tone={target.kind === "item" ? "file" : "app"} />
+        <AppIconTile
+          accent={target.accent}
+          icon={target.icon}
+          size="tiny"
+          tone={target.kind === "item" ? "file" : "app"}
+        />
         <strong>{target.title}</strong>
       </div>
       <button onClick={onOpen} ref={firstItemRef} role="menuitem" type="button">
@@ -253,12 +287,21 @@ export function DesktopIconContextMenu({
       )}
       {onTogglePin && (
         <button onClick={onTogglePin} role="menuitem" type="button">
-          {appPinned ? <PinOff aria-hidden="true" size={16} /> : <Pin aria-hidden="true" size={16} />}
+          {appPinned ? (
+            <PinOff aria-hidden="true" size={16} />
+          ) : (
+            <Pin aria-hidden="true" size={16} />
+          )}
           {appPinned ? "작업 표시줄에서 제거" : "작업 표시줄에 고정"}
         </button>
       )}
       {onDelete && (
-        <button className="desktop-context-danger" onClick={onDelete} role="menuitem" type="button">
+        <button
+          className="desktop-context-danger"
+          onClick={onDelete}
+          role="menuitem"
+          type="button"
+        >
           <Trash2 aria-hidden="true" size={16} />
           삭제
         </button>
@@ -314,7 +357,12 @@ export function DesktopItemPropertiesDialog({
         role="dialog"
       >
         <header>
-          <AppIconTile accent={association.accent} icon={association.icon} size="medium" tone="file" />
+          <AppIconTile
+            accent={association.accent}
+            icon={association.icon}
+            size="medium"
+            tone="file"
+          />
           <div>
             <h2>{item.name}</h2>
             <span>{association.typeLabel}</span>

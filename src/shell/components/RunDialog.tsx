@@ -15,7 +15,8 @@ export function RunDialog({
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousFocus =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const frameId = window.requestAnimationFrame(() => {
       inputRef.current?.focus();
       inputRef.current?.select();

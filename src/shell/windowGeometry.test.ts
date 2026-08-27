@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getDesktopWorkArea, getSnapPreviewStyle, getWindowSnapPatch, getWindowSnapZone } from "./windowGeometry";
+import {
+  getDesktopWorkArea,
+  getSnapPreviewStyle,
+  getWindowSnapPatch,
+  getWindowSnapZone,
+} from "./windowGeometry";
 
 // These helpers read `window.innerWidth` / `window.innerHeight` directly and the vitest
 // environment is `node`, so every test installs a minimal viewport stub of its own.
@@ -203,7 +208,14 @@ describe("getWindowSnapPatch", () => {
 
   it("always clears the maximized and minimized flags for geometry zones", () => {
     setViewport(1280, 800);
-    for (const zone of ["left", "right", "top-left", "top-right", "bottom-left", "bottom-right"] as const) {
+    for (const zone of [
+      "left",
+      "right",
+      "top-left",
+      "top-right",
+      "bottom-left",
+      "bottom-right",
+    ] as const) {
       expect(getWindowSnapPatch(zone).maximized).toBe(false);
       expect(getWindowSnapPatch(zone).minimized).toBe(false);
     }
@@ -259,7 +271,12 @@ describe("getSnapPreviewStyle", () => {
   it("mirrors the half and quarter patches", () => {
     setViewport(1280, 800);
     expect(getSnapPreviewStyle("left")).toEqual({ height: 732, left: 10, top: 10, width: 625 });
-    expect(getSnapPreviewStyle("right")).toEqual({ height: 732, left: 645, top: 10, width: 625 });
+    expect(getSnapPreviewStyle("right")).toEqual({
+      height: 732,
+      left: 645,
+      top: 10,
+      width: 625,
+    });
     expect(getSnapPreviewStyle("bottom-right")).toEqual({
       height: 361,
       left: 645,
@@ -270,7 +287,14 @@ describe("getSnapPreviewStyle", () => {
 
   it("stays in sync with the patch geometry for every non-top zone", () => {
     setViewport(1024, 768);
-    for (const zone of ["left", "right", "top-left", "top-right", "bottom-left", "bottom-right"] as const) {
+    for (const zone of [
+      "left",
+      "right",
+      "top-left",
+      "top-right",
+      "bottom-left",
+      "bottom-right",
+    ] as const) {
       const patch = getWindowSnapPatch(zone);
       expect(getSnapPreviewStyle(zone)).toEqual({
         height: patch.height,

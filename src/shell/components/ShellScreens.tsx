@@ -108,7 +108,10 @@ export function LockScreen({
       return;
     }
 
-    if (!signInVisible && (event.key === "Enter" || event.key === " " || event.key === "ArrowUp")) {
+    if (
+      !signInVisible &&
+      (event.key === "Enter" || event.key === " " || event.key === "ArrowUp")
+    ) {
       event.preventDefault();
       setSignInVisible(true);
     }
@@ -136,7 +139,12 @@ export function LockScreen({
               <UserRound aria-hidden="true" size={48} strokeWidth={1.45} />
             </span>
             <strong>Seung-Won</strong>
-            <button disabled={unlocking} onClick={beginUnlock} ref={signInButtonRef} type="button">
+            <button
+              disabled={unlocking}
+              onClick={beginUnlock}
+              ref={signInButtonRef}
+              type="button"
+            >
               로그인
             </button>
           </div>

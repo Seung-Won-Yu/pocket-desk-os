@@ -88,7 +88,17 @@ function fillRoundedRect(buffer, width, height, rect, color, opacity = 1) {
 
   for (let y = Math.max(0, top); y < Math.min(height, bottom); y += 1) {
     for (let x = Math.max(0, left); x < Math.min(width, right); x += 1) {
-      if (roundedRectDistance(x + 0.5, y + 0.5, rect.x, rect.y, rect.width, rect.height, rect.radius) <= 0) {
+      if (
+        roundedRectDistance(
+          x + 0.5,
+          y + 0.5,
+          rect.x,
+          rect.y,
+          rect.width,
+          rect.height,
+          rect.radius,
+        ) <= 0
+      ) {
         setPixel(buffer, width, x, y, blend(alphaColor, getPixel(buffer, width, x, y)));
       }
     }
@@ -115,12 +125,86 @@ function createIcon(size) {
     }
   }
 
-  fillRoundedRect(pixels, size, size, { x: 126 * scale, y: 136 * scale, width: 260 * scale, height: 176 * scale, radius: 26 * scale }, [11, 37, 54]);
-  fillRoundedRect(pixels, size, size, { x: 146 * scale, y: 156 * scale, width: 220 * scale, height: 126 * scale, radius: 18 * scale }, [123, 226, 255]);
-  fillRoundedRect(pixels, size, size, { x: 158 * scale, y: 179 * scale, width: 84 * scale, height: 80 * scale, radius: 4 * scale }, [234, 255, 255], 0.3);
-  fillRoundedRect(pixels, size, size, { x: 270 * scale, y: 179 * scale, width: 84 * scale, height: 80 * scale, radius: 4 * scale }, [234, 255, 255], 0.3);
-  fillRoundedRect(pixels, size, size, { x: 202 * scale, y: 326 * scale, width: 108 * scale, height: 47 * scale, radius: 7 * scale }, [11, 37, 54]);
-  fillRoundedRect(pixels, size, size, { x: 166 * scale, y: 369 * scale, width: 180 * scale, height: 30 * scale, radius: 15 * scale }, [247, 200, 115]);
+  fillRoundedRect(
+    pixels,
+    size,
+    size,
+    {
+      x: 126 * scale,
+      y: 136 * scale,
+      width: 260 * scale,
+      height: 176 * scale,
+      radius: 26 * scale,
+    },
+    [11, 37, 54],
+  );
+  fillRoundedRect(
+    pixels,
+    size,
+    size,
+    {
+      x: 146 * scale,
+      y: 156 * scale,
+      width: 220 * scale,
+      height: 126 * scale,
+      radius: 18 * scale,
+    },
+    [123, 226, 255],
+  );
+  fillRoundedRect(
+    pixels,
+    size,
+    size,
+    {
+      x: 158 * scale,
+      y: 179 * scale,
+      width: 84 * scale,
+      height: 80 * scale,
+      radius: 4 * scale,
+    },
+    [234, 255, 255],
+    0.3,
+  );
+  fillRoundedRect(
+    pixels,
+    size,
+    size,
+    {
+      x: 270 * scale,
+      y: 179 * scale,
+      width: 84 * scale,
+      height: 80 * scale,
+      radius: 4 * scale,
+    },
+    [234, 255, 255],
+    0.3,
+  );
+  fillRoundedRect(
+    pixels,
+    size,
+    size,
+    {
+      x: 202 * scale,
+      y: 326 * scale,
+      width: 108 * scale,
+      height: 47 * scale,
+      radius: 7 * scale,
+    },
+    [11, 37, 54],
+  );
+  fillRoundedRect(
+    pixels,
+    size,
+    size,
+    {
+      x: 166 * scale,
+      y: 369 * scale,
+      width: 180 * scale,
+      height: 30 * scale,
+      radius: 15 * scale,
+    },
+    [247, 200, 115],
+  );
 
   const rawRows = Buffer.alloc((size * 4 + 1) * size);
   for (let y = 0; y < size; y += 1) {

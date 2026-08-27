@@ -27,7 +27,6 @@ const NOTE_SAVE_EVENT = "pocket-desk-save-note";
 const NOTE_OPEN_EVENT = "pocket-desk-open-note";
 const NOTE_SAVE_AS_EVENT = "pocket-desk-save-note-as";
 
-
 export default function NotepadApp({
   activeNoteId,
   createVfsFolder,
@@ -151,21 +150,21 @@ export default function NotepadApp({
       <div className="note-menu-bar">
         <button
           aria-expanded={noteMenu === "file"}
-          onClick={() => setNoteMenu((current) => current === "file" ? null : "file")}
+          onClick={() => setNoteMenu((current) => (current === "file" ? null : "file"))}
           type="button"
         >
           파일
         </button>
         <button
           aria-expanded={noteMenu === "edit"}
-          onClick={() => setNoteMenu((current) => current === "edit" ? null : "edit")}
+          onClick={() => setNoteMenu((current) => (current === "edit" ? null : "edit"))}
           type="button"
         >
           편집
         </button>
         <button
           aria-expanded={noteMenu === "view"}
-          onClick={() => setNoteMenu((current) => current === "view" ? null : "view")}
+          onClick={() => setNoteMenu((current) => (current === "view" ? null : "view"))}
           type="button"
         >
           보기
@@ -321,7 +320,9 @@ export default function NotepadApp({
         {showMarkdownPreview && <MarkdownPreview text={text} />}
       </div>
       <div className="note-statusbar">
-        <span>Ln {cursorPosition.line}, Col {cursorPosition.column}</span>
+        <span>
+          Ln {cursorPosition.line}, Col {cursorPosition.column}
+        </span>
         <span>100%</span>
         <span>Windows (CRLF)</span>
         <span>UTF-8</span>
@@ -358,7 +359,11 @@ function MarkdownPreview({ text }: { text: string }) {
 
   return (
     <div className="markdown-preview" aria-label="Markdown 미리보기">
-      {blocks.length > 0 ? blocks : <p className="markdown-empty">미리볼 Markdown 내용이 없습니다.</p>}
+      {blocks.length > 0 ? (
+        blocks
+      ) : (
+        <p className="markdown-empty">미리볼 Markdown 내용이 없습니다.</p>
+      )}
     </div>
   );
 }
@@ -408,7 +413,9 @@ function renderMarkdownBlocks(markdown: string) {
       const items: JSX.Element[] = [];
       while (index < lines.length && /^[-*]\s+/.test(lines[index].trim())) {
         items.push(
-          <li key={`ul-${index}`}>{renderMarkdownInline(lines[index].trim().replace(/^[-*]\s+/, ""), `ul-${index}`)}</li>,
+          <li key={`ul-${index}`}>
+            {renderMarkdownInline(lines[index].trim().replace(/^[-*]\s+/, ""), `ul-${index}`)}
+          </li>,
         );
         index += 1;
       }

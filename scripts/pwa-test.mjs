@@ -103,8 +103,14 @@ async function runPwaTest(baseUrl) {
       return { names, urls };
     });
     assert(cacheState.names.includes("pocketdesk-os-v4"), "PWA cache was not created");
-    assert(cacheState.urls.some((url) => url.includes("/assets/") && url.endsWith(".js")), "JS bundle was not precached");
-    assert(cacheState.urls.some((url) => url.includes("/assets/") && url.endsWith(".css")), "CSS bundle was not precached");
+    assert(
+      cacheState.urls.some((url) => url.includes("/assets/") && url.endsWith(".js")),
+      "JS bundle was not precached",
+    );
+    assert(
+      cacheState.urls.some((url) => url.includes("/assets/") && url.endsWith(".css")),
+      "CSS bundle was not precached",
+    );
 
     await context.setOffline(true);
     const offlineResponse = await page.reload({ waitUntil: "domcontentloaded" });
@@ -124,14 +130,23 @@ async function runPwaTest(baseUrl) {
       `Offline app did not render: ${JSON.stringify({ consoleErrors, diagnostics: offlineDiagnostics })}`,
     );
     await page.locator(".desktop").waitFor({ state: "visible" });
-    assert((await page.title()).includes("PocketDesk"), "Offline shell did not restore the document");
-    assert(!(await page.evaluate(() => navigator.onLine)), "Browser did not enter offline state");
+    assert(
+      (await page.title()).includes("PocketDesk"),
+      "Offline shell did not restore the document",
+    );
+    assert(
+      !(await page.evaluate(() => navigator.onLine)),
+      "Browser did not enter offline state",
+    );
 
     await unlockPocketDesk(page);
     await page.getByRole("button", { name: "빠른 설정 열기" }).click();
     const quickSettings = page.locator('[aria-label="빠른 설정"]');
     await quickSettings.waitFor({ state: "visible" });
-    assert((await quickSettings.innerText()).includes("오프라인"), "System tray did not report offline state");
+    assert(
+      (await quickSettings.innerText()).includes("오프라인"),
+      "System tray did not report offline state",
+    );
 
     await context.setOffline(false);
     await page.waitForFunction(() => navigator.onLine);

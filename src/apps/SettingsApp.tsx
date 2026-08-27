@@ -16,7 +16,6 @@ type SettingsAppProps = {
   wallpaper: WallpaperName;
 };
 
-
 export default function SettingsApp({
   playSound,
   resetDesktopIconLayout,
@@ -39,11 +38,18 @@ export default function SettingsApp({
   ];
   const settingsSections = [
     { id: "system" as const, icon: Monitor, label: "시스템", keywords: "창 바탕 화면 배치" },
-    { id: "personalization" as const, icon: Palette, label: "개인 설정", keywords: "테마 배경 화면" },
+    {
+      id: "personalization" as const,
+      icon: Palette,
+      label: "개인 설정",
+      keywords: "테마 배경 화면",
+    },
     { id: "sound" as const, icon: Volume2, label: "소리", keywords: "시스템 소리" },
   ];
   const filteredSettingsSections = settingsSections.filter((item) =>
-    normalizeSearchText(`${item.label} ${item.keywords}`).includes(normalizeSearchText(settingsQuery)),
+    normalizeSearchText(`${item.label} ${item.keywords}`).includes(
+      normalizeSearchText(settingsQuery),
+    ),
   );
 
   return (
@@ -80,13 +86,19 @@ export default function SettingsApp({
               </button>
             );
           })}
-          {filteredSettingsSections.length === 0 && <span className="settings-no-results">결과 없음</span>}
+          {filteredSettingsSections.length === 0 && (
+            <span className="settings-no-results">결과 없음</span>
+          )}
         </nav>
       </aside>
       <section className="settings-content">
         <header className="settings-hero">
           <h2>
-            {section === "personalization" ? "개인 설정" : section === "system" ? "시스템" : "소리"}
+            {section === "personalization"
+              ? "개인 설정"
+              : section === "system"
+                ? "시스템"
+                : "소리"}
           </h2>
         </header>
         {section === "personalization" && (
@@ -118,7 +130,10 @@ export default function SettingsApp({
                     onClick={() => setWallpaper(option.id)}
                     type="button"
                   >
-                    <span className="wallpaper-preview" style={getWallpaperPreviewStyle(option.id)} />
+                    <span
+                      className="wallpaper-preview"
+                      style={getWallpaperPreviewStyle(option.id)}
+                    />
                     <strong>{option.label}</strong>
                     <small>{option.detail}</small>
                   </button>
@@ -133,10 +148,13 @@ export default function SettingsApp({
             <p>창 위치와 크기, 아이콘 위치를 기본값으로 되돌립니다.</p>
             <div className="settings-action-row">
               <button className="settings-action" onClick={resetWindowLayout} type="button">
-                <RotateCcw aria-hidden="true" size={16} />
-                창 배치 초기화
+                <RotateCcw aria-hidden="true" size={16} />창 배치 초기화
               </button>
-              <button className="settings-action" onClick={resetDesktopIconLayout} type="button">
+              <button
+                className="settings-action"
+                onClick={resetDesktopIconLayout}
+                type="button"
+              >
                 <RotateCcw aria-hidden="true" size={16} />
                 아이콘 배치 초기화
               </button>
@@ -168,4 +186,3 @@ export default function SettingsApp({
     </div>
   );
 }
-

@@ -264,7 +264,10 @@ describe("runShellCommand: files", () => {
   });
 
   it("overwrites an existing file on single redirection", () => {
-    const result = runShellCommand("echo 새 내용 > 메모.txt", makeContext({ cwdId: VFS_DOCUMENTS_ID }));
+    const result = runShellCommand(
+      "echo 새 내용 > 메모.txt",
+      makeContext({ cwdId: VFS_DOCUMENTS_ID }),
+    );
     expect(result.effects[0]).toMatchObject({ content: "새 내용", existingItemId: memo.id });
   });
 
@@ -299,9 +302,9 @@ describe("runShellCommand: files", () => {
   });
 
   it("deletes a file with del", () => {
-    expect(runShellCommand("del 메모.txt", makeContext({ cwdId: VFS_DOCUMENTS_ID })).effects).toEqual([
-      { itemIds: [memo.id], kind: "delete" },
-    ]);
+    expect(
+      runShellCommand("del 메모.txt", makeContext({ cwdId: VFS_DOCUMENTS_ID })).effects,
+    ).toEqual([{ itemIds: [memo.id], kind: "delete" }]);
   });
 
   it("sends the user to rd when del targets a folder", () => {
@@ -334,7 +337,8 @@ describe("runShellCommand: files", () => {
 
   it("renames a file", () => {
     expect(
-      runShellCommand("ren 메모.txt 일지.txt", makeContext({ cwdId: VFS_DOCUMENTS_ID })).effects,
+      runShellCommand("ren 메모.txt 일지.txt", makeContext({ cwdId: VFS_DOCUMENTS_ID }))
+        .effects,
     ).toEqual([{ itemId: memo.id, kind: "rename", name: "일지.txt" }]);
   });
 });
@@ -392,7 +396,9 @@ describe("runShellCommand: processes and system", () => {
   it("reports identity and system details", () => {
     expect(textOf(runShellCommand("whoami", makeContext()))).toBe("POCKETDESK\\PocketDesk");
     expect(textOf(runShellCommand("hostname", makeContext()))).toBe("POCKETDESK");
-    expect(textOf(runShellCommand("systeminfo", makeContext()))).toContain("실행 중인 창:           2개");
+    expect(textOf(runShellCommand("systeminfo", makeContext()))).toContain(
+      "실행 중인 창:           2개",
+    );
   });
 
   it("lists the available commands for help", () => {

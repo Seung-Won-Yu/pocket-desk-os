@@ -28,7 +28,6 @@ type CalculatorButton = {
   value?: string;
 };
 
-
 const calculatorStandardButtons: CalculatorButton[] = [
   { action: "percent", className: "is-utility", label: "%" },
   { action: "clear-entry", className: "is-utility", label: "CE" },
@@ -68,13 +67,14 @@ const calculatorScientificButtons: CalculatorButton[] = [
   { action: "pi", label: "π" },
 ];
 
-
 export default function CalculatorApp() {
   const [display, setDisplay] = useState("0");
   const [mode, setMode] = useState<CalculatorMode>("standard");
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [calculationHistory, setCalculationHistory] = useState<Array<{ expression: string; result: string }>>([]);
+  const [calculationHistory, setCalculationHistory] = useState<
+    Array<{ expression: string; result: string }>
+  >([]);
   const [memory, setMemory] = useState<number | null>(null);
   const calculatorRef = useRef<HTMLDivElement | null>(null);
 
@@ -105,10 +105,9 @@ export default function CalculatorApp() {
       setDisplay((current) => {
         const result = evaluateExpression(current);
         const formatted = formatCalculatorResult(result);
-        setCalculationHistory((historyItems) => [
-          { expression: current, result: formatted },
-          ...historyItems,
-        ].slice(0, 20));
+        setCalculationHistory((historyItems) =>
+          [{ expression: current, result: formatted }, ...historyItems].slice(0, 20),
+        );
         return formatted;
       });
       return;
@@ -208,7 +207,9 @@ export default function CalculatorApp() {
     <button
       className={button.className ?? ""}
       key={button.label}
-      onClick={() => (button.action ? runAction(button.action) : appendValue(button.value ?? ""))}
+      onClick={() =>
+        button.action ? runAction(button.action) : appendValue(button.value ?? "")
+      }
       type="button"
     >
       {button.label}
@@ -305,11 +306,29 @@ export default function CalculatorApp() {
       )}
       <output aria-label="계산기 표시창">{display}</output>
       <div className="calc-memory-row" aria-label="메모리">
-        <button disabled={memory === null} onClick={() => runMemoryAction("clear")} type="button">MC</button>
-        <button disabled={memory === null} onClick={() => runMemoryAction("recall")} type="button">MR</button>
-        <button onClick={() => runMemoryAction("add")} type="button">M+</button>
-        <button onClick={() => runMemoryAction("subtract")} type="button">M−</button>
-        <button onClick={() => runMemoryAction("store")} type="button">MS</button>
+        <button
+          disabled={memory === null}
+          onClick={() => runMemoryAction("clear")}
+          type="button"
+        >
+          MC
+        </button>
+        <button
+          disabled={memory === null}
+          onClick={() => runMemoryAction("recall")}
+          type="button"
+        >
+          MR
+        </button>
+        <button onClick={() => runMemoryAction("add")} type="button">
+          M+
+        </button>
+        <button onClick={() => runMemoryAction("subtract")} type="button">
+          M−
+        </button>
+        <button onClick={() => runMemoryAction("store")} type="button">
+          MS
+        </button>
       </div>
       {mode === "scientific" && (
         <div className="calc-grid calc-scientific-grid" aria-label="공학용 함수">
@@ -322,7 +341,6 @@ export default function CalculatorApp() {
     </div>
   );
 }
-
 
 function evaluateExpression(expression: string) {
   const tokens = tokenizeExpression(expression);
@@ -462,4 +480,3 @@ function degreesToRadians(value: number) {
 function trimNumber(value: number) {
   return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(8)));
 }
-

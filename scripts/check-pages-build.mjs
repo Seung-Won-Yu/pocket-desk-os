@@ -2,7 +2,9 @@ import { spawn } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+const packageJson = JSON.parse(
+  await readFile(new URL("../package.json", import.meta.url), "utf8"),
+);
 const defaultBasePath = `/${packageJson.name}/`;
 const basePath = normalizeBasePath(process.env.VITE_BASE_PATH ?? defaultBasePath);
 

@@ -49,7 +49,13 @@ export function WindowSystemMenu({
         <AppIconTile accent={app.accent} icon={app.icon} size="tiny" />
         <strong>{app.title}</strong>
       </div>
-      <button disabled={!instance.maximized} onClick={onRestore} ref={firstItemRef} role="menuitem" type="button">
+      <button
+        disabled={!instance.maximized}
+        onClick={onRestore}
+        ref={firstItemRef}
+        role="menuitem"
+        type="button"
+      >
         <Square aria-hidden="true" size={15} />
         복원
       </button>

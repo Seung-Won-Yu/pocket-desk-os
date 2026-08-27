@@ -1,9 +1,19 @@
 import { type BrowserLaunchRequest } from "./apps/BrowserApp";
 import { type FilesLaunchRequest } from "./apps/FilesApp";
 import PwaUpdatePrompt from "./components/PwaUpdatePrompt";
-import { appCatalog, desktopApps, getApp, isAppId, loadPinnedTaskbarApps } from "./shell/appCatalog";
+import {
+  appCatalog,
+  desktopApps,
+  getApp,
+  isAppId,
+  loadPinnedTaskbarApps,
+} from "./shell/appCatalog";
 import { AltTabSwitcher } from "./shell/components/AltTabSwitcher";
-import { DesktopContextMenu, DesktopIconContextMenu, DesktopItemPropertiesDialog } from "./shell/components/ContextMenus";
+import {
+  DesktopContextMenu,
+  DesktopIconContextMenu,
+  DesktopItemPropertiesDialog,
+} from "./shell/components/ContextMenus";
 import { DesktopIcon, DesktopItemIcon } from "./shell/components/DesktopIcons";
 import { RunDialog } from "./shell/components/RunDialog";
 import { ShellGate } from "./shell/components/ShellScreens";
@@ -12,19 +22,112 @@ import { Taskbar } from "./shell/components/Taskbar";
 import { ToastStack } from "./shell/components/ToastStack";
 import { SnapPreview, WindowFrame } from "./shell/components/WindowFrame";
 import { WindowSystemMenu } from "./shell/components/WindowSystemMenu";
-import { APP_BAR_HEIGHT, DESKTOP_ICON_GRID_KEY, DESKTOP_ICON_LAYOUT_KEY, DESKTOP_ICON_SORT_KEY, DESKTOP_ICON_VIEW_KEY, DISPLAY_BRIGHTNESS_KEY, MAX_VIRTUAL_DESKTOPS, NOTE_KEY, NOTE_OPEN_EVENT, NOTE_SAVE_AS_EVENT, NOTE_SAVE_EVENT, PAINT_OPEN_EVENT, PAINT_SAVE_AS_EVENT, PAINT_SAVE_EVENT, SOUND_ENABLED_KEY, TASKBAR_PINNED_APPS_KEY, VFS_PRIMARY_CANVAS_ID, VFS_PRIMARY_NOTE_ID, VIRTUAL_DESKTOPS_KEY, WALLPAPER_KEY, WINDOW_EXIT_MOTION_MS, WINDOW_STATE_KEY } from "./shell/constants";
-import { clampContextMenuPosition, clampIconPosition, clampWindowSystemMenuPosition, compareDesktopEntries, createDefaultIconLayout, createDesktopGridPositions, findAvailableDesktopPosition, getDesktopSelectionIds, getDesktopSelectionStyle, isDesktopSelectionVisible, loadDesktopIconLayout, loadDesktopSortKey, loadDesktopViewMode, persistDesktopIconLayout, snapDesktopIconPosition } from "./shell/desktopLayout";
+import {
+  APP_BAR_HEIGHT,
+  DESKTOP_ICON_GRID_KEY,
+  DESKTOP_ICON_LAYOUT_KEY,
+  DESKTOP_ICON_SORT_KEY,
+  DESKTOP_ICON_VIEW_KEY,
+  DISPLAY_BRIGHTNESS_KEY,
+  MAX_VIRTUAL_DESKTOPS,
+  NOTE_KEY,
+  NOTE_OPEN_EVENT,
+  NOTE_SAVE_AS_EVENT,
+  NOTE_SAVE_EVENT,
+  PAINT_OPEN_EVENT,
+  PAINT_SAVE_AS_EVENT,
+  PAINT_SAVE_EVENT,
+  SOUND_ENABLED_KEY,
+  TASKBAR_PINNED_APPS_KEY,
+  VFS_PRIMARY_CANVAS_ID,
+  VFS_PRIMARY_NOTE_ID,
+  VIRTUAL_DESKTOPS_KEY,
+  WALLPAPER_KEY,
+  WINDOW_EXIT_MOTION_MS,
+  WINDOW_STATE_KEY,
+} from "./shell/constants";
+import {
+  clampContextMenuPosition,
+  clampIconPosition,
+  clampWindowSystemMenuPosition,
+  compareDesktopEntries,
+  createDefaultIconLayout,
+  createDesktopGridPositions,
+  findAvailableDesktopPosition,
+  getDesktopSelectionIds,
+  getDesktopSelectionStyle,
+  isDesktopSelectionVisible,
+  loadDesktopIconLayout,
+  loadDesktopSortKey,
+  loadDesktopViewMode,
+  persistDesktopIconLayout,
+  snapDesktopIconPosition,
+} from "./shell/desktopLayout";
 import { createPocketDeskAudioContext, playPocketDeskSound } from "./shell/sound";
 import { buildStartSearchResults, getThemeLabel, resolveRunCommand } from "./shell/startSearch";
-import { type CreatableDesktopItemKind, type DesktopContextMenuState, type DesktopIconContextMenuState, type DesktopIconLayout, type DesktopSelectionState, type DesktopSortKey, type DesktopViewMode, type PersistedDesktopItem, type ShellPhase, type SnapPreviewState, type SnapZone, type StartSearchResult, type ToastMessage, type WindowInstance, type WindowMotion, type WindowSystemMenuState } from "./shell/types";
-import { createDefaultVfsEntries, loadDesktopItemsFromVfs, migrateVfsHierarchy, normalizePersistedDesktopItem } from "./shell/vfsBootstrap";
+import {
+  type CreatableDesktopItemKind,
+  type DesktopContextMenuState,
+  type DesktopIconContextMenuState,
+  type DesktopIconLayout,
+  type DesktopSelectionState,
+  type DesktopSortKey,
+  type DesktopViewMode,
+  type PersistedDesktopItem,
+  type ShellPhase,
+  type SnapPreviewState,
+  type SnapZone,
+  type StartSearchResult,
+  type ToastMessage,
+  type WindowInstance,
+  type WindowMotion,
+  type WindowSystemMenuState,
+} from "./shell/types";
+import {
+  createDefaultVfsEntries,
+  loadDesktopItemsFromVfs,
+  migrateVfsHierarchy,
+  normalizePersistedDesktopItem,
+} from "./shell/vfsBootstrap";
 import { getWindowSnapPatch } from "./shell/windowGeometry";
-import { createDefaultWindows, fitWindowToViewport, getVirtualDesktopCount, loadVirtualDesktopCount, loadWindowState, persistWindowState } from "./shell/windowState";
+import {
+  createDefaultWindows,
+  fitWindowToViewport,
+  getVirtualDesktopCount,
+  loadVirtualDesktopCount,
+  loadWindowState,
+  persistWindowState,
+} from "./shell/windowState";
 import { TaskView } from "./shell/components/TaskView";
 import { clamp } from "./utils/format";
-import { type AppId, type DesktopItem, type IconPosition, type OpenWindowInfo, type SoundEffectName, type ThemeName, type ToastInput, type VfsDuplicateOptions, type WallpaperName } from "./types";
+import {
+  type AppId,
+  type DesktopItem,
+  type IconPosition,
+  type OpenWindowInfo,
+  type SoundEffectName,
+  type ThemeName,
+  type ToastInput,
+  type VfsDuplicateOptions,
+  type WallpaperName,
+} from "./types";
 import { createVfsBackupZip, readVfsBackupZip } from "./vfs/backup";
-import { VFS_DOCUMENTS_ID, VFS_PICTURES_ID, VFS_ROOT_ID, canMoveVfsEntries, getUniqueCanvasItemName, getUniqueRenamedVfsItemName, getUniqueTextFileName, getUniqueVfsCopyName, getUniqueVfsEntryName, getVfsDescendantIds, getVfsEntryAssociation, getVfsShortcutTarget, getVfsTopLevelIds, isVfsSystemFolderId } from "./vfs/model";
+import {
+  VFS_DOCUMENTS_ID,
+  VFS_PICTURES_ID,
+  VFS_ROOT_ID,
+  canMoveVfsEntries,
+  getUniqueCanvasItemName,
+  getUniqueRenamedVfsItemName,
+  getUniqueTextFileName,
+  getUniqueVfsCopyName,
+  getUniqueVfsEntryName,
+  getVfsDescendantIds,
+  getVfsEntryAssociation,
+  getVfsShortcutTarget,
+  getVfsTopLevelIds,
+  isVfsSystemFolderId,
+} from "./vfs/model";
 import { persistVfsEntries } from "./vfs/storage";
 import { getWallpaperStyle, wallpaperGallery, type WallpaperCssVars } from "./wallpapers";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -45,7 +148,9 @@ export default function App() {
   });
   const [desktopItems, setDesktopItems] = useState<DesktopItem[]>([]);
   const [vfsReady, setVfsReady] = useState(false);
-  const [iconLayout, setIconLayout] = useState<DesktopIconLayout>(() => loadDesktopIconLayout());
+  const [iconLayout, setIconLayout] = useState<DesktopIconLayout>(() =>
+    loadDesktopIconLayout(),
+  );
   const [desktopViewMode, setDesktopViewMode] = useState<DesktopViewMode>(() =>
     loadDesktopViewMode(),
   );
@@ -56,8 +161,9 @@ export default function App() {
     () => localStorage.getItem(DESKTOP_ICON_GRID_KEY) !== "off",
   );
   const [desktopMenu, setDesktopMenu] = useState<DesktopContextMenuState | null>(null);
-  const [desktopIconMenu, setDesktopIconMenu] =
-    useState<DesktopIconContextMenuState | null>(null);
+  const [desktopIconMenu, setDesktopIconMenu] = useState<DesktopIconContextMenuState | null>(
+    null,
+  );
   const [desktopClipboardIds, setDesktopClipboardIds] = useState<string[]>([]);
   const [desktopRenamingItemId, setDesktopRenamingItemId] = useState<string | null>(null);
   const [desktopRenameDraft, setDesktopRenameDraft] = useState("");
@@ -69,7 +175,9 @@ export default function App() {
   const [desktopSelection, setDesktopSelection] = useState<DesktopSelectionState | null>(null);
   const [selectedDesktopIds, setSelectedDesktopIds] = useState<string[]>([]);
   const [shellPhase, setShellPhase] = useState<ShellPhase>("booting");
-  const [browserLaunchRequest, setBrowserLaunchRequest] = useState<BrowserLaunchRequest | null>(null);
+  const [browserLaunchRequest, setBrowserLaunchRequest] = useState<BrowserLaunchRequest | null>(
+    null,
+  );
   const [filesLaunchRequest, setFilesLaunchRequest] = useState<FilesLaunchRequest | null>(null);
   const [activeCanvasId, setActiveCanvasId] = useState(VFS_PRIMARY_CANVAS_ID);
   const [activeCanvasOpenKey, setActiveCanvasOpenKey] = useState(0);
@@ -486,9 +594,7 @@ export default function App() {
       clampIconPosition(origin.originX - 18, origin.originY - 10, desktopViewMode),
       desktopViewMode,
       [
-        ...desktopApps.map(
-          (app) => iconLayout[app.id] ?? createDefaultIconLayout()[app.id]!,
-        ),
+        ...desktopApps.map((app) => iconLayout[app.id] ?? createDefaultIconLayout()[app.id]!),
         ...activeDesktopItems
           .filter((item) => item.showOnDesktop)
           .map((item) => ({ x: item.x, y: item.y })),
@@ -773,7 +879,9 @@ export default function App() {
     });
     setDesktopItems((current) =>
       current.map((item) => {
-        const index = entries.findIndex((entry) => entry.kind === "item" && entry.id === item.id);
+        const index = entries.findIndex(
+          (entry) => entry.kind === "item" && entry.id === item.id,
+        );
         return index >= 0 ? { ...item, ...positions[index] } : item;
       }),
     );
@@ -800,9 +908,7 @@ export default function App() {
 
   const trashedItems = useMemo(() => {
     return desktopItems
-      .filter(
-        (item) => item.trashed && (!item.trashedRootId || item.trashedRootId === item.id),
-      )
+      .filter((item) => item.trashed && (!item.trashedRootId || item.trashedRootId === item.id))
       .sort((a, b) => (b.trashedAt ?? b.updatedAt) - (a.trashedAt ?? a.updatedAt));
   }, [desktopItems]);
 
@@ -919,7 +1025,9 @@ export default function App() {
     );
 
     if (deletedIds.has(activeNoteId)) {
-      setActiveNoteId(remaining.find((item) => item.kind === "note")?.id ?? VFS_PRIMARY_NOTE_ID);
+      setActiveNoteId(
+        remaining.find((item) => item.kind === "note")?.id ?? VFS_PRIMARY_NOTE_ID,
+      );
     }
     if (deletedIds.has(activeCanvasId)) {
       setActiveCanvasId(
@@ -1069,9 +1177,7 @@ export default function App() {
     const requestedParentId = target.restoreParentId ?? target.parentId;
     const parentId =
       requestedParentId === VFS_ROOT_ID ||
-      activeDesktopItems.some(
-        (item) => item.id === requestedParentId && item.kind === "folder",
-      )
+      activeDesktopItems.some((item) => item.id === requestedParentId && item.kind === "folder")
         ? requestedParentId
         : VFS_ROOT_ID;
     const nextName = getUniqueVfsEntryName(activeDesktopItems, parentId, target.name);
@@ -1090,8 +1196,7 @@ export default function App() {
               name: item.id === itemId ? nextName : item.name,
               parentId: item.id === itemId ? parentId : item.parentId,
               restoreParentId: undefined,
-              showOnDesktop:
-                item.id === itemId ? Boolean(item.restoreShowOnDesktop) : false,
+              showOnDesktop: item.id === itemId ? Boolean(item.restoreShowOnDesktop) : false,
               trashed: false,
               trashedAt: undefined,
               trashedRootId: undefined,
@@ -1101,7 +1206,10 @@ export default function App() {
       ),
     );
     notify({
-      detail: nextName === target.name ? "원래 위치로 되돌렸습니다." : `${nextName} 이름으로 복원했습니다.`,
+      detail:
+        nextName === target.name
+          ? "원래 위치로 되돌렸습니다."
+          : `${nextName} 이름으로 복원했습니다.`,
       title: `${target.name} 복원됨`,
       tone: "success",
     });
@@ -1172,7 +1280,9 @@ export default function App() {
     const activeImportedItems = migratedItems.filter((item) => !item.trashed);
     playSound("success");
     setDesktopItems(migratedItems);
-    setActiveNoteId(activeImportedItems.find((item) => item.kind === "note")?.id ?? VFS_PRIMARY_NOTE_ID);
+    setActiveNoteId(
+      activeImportedItems.find((item) => item.kind === "note")?.id ?? VFS_PRIMARY_NOTE_ID,
+    );
     setActiveCanvasId(
       activeImportedItems.find((item) => item.kind === "canvas")?.id ?? VFS_PRIMARY_CANVAS_ID,
     );
@@ -1223,9 +1333,7 @@ export default function App() {
   ) => {
     const now = Date.now();
     const existing = existingItemId
-      ? activeDesktopItems.find(
-          (item) => item.id === existingItemId && item.kind === "note",
-        )
+      ? activeDesktopItems.find((item) => item.id === existingItemId && item.kind === "note")
       : undefined;
     if (existing) {
       const updatedItem: DesktopItem = {
@@ -1307,7 +1415,9 @@ export default function App() {
   };
 
   const updateWindow = (id: string, patch: Partial<WindowInstance>) => {
-    setWindows((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+    setWindows((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    );
   };
 
   const openWindowSystemMenu = (event: React.MouseEvent<HTMLDivElement>, windowId: string) => {
@@ -1343,26 +1453,25 @@ export default function App() {
     });
   };
 
-  const scheduleWindowMotion = (
-    id: string,
-    motion: WindowMotion,
-    complete: () => void,
-  ) => {
+  const scheduleWindowMotion = (id: string, motion: WindowMotion, complete: () => void) => {
     const activeTimer = windowMotionTimersRef.current.get(id);
     if (activeTimer !== undefined) window.clearTimeout(activeTimer);
 
     setWindowMotions((current) => ({ ...current, [id]: motion }));
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const timer = window.setTimeout(() => {
-      windowMotionTimersRef.current.delete(id);
-      complete();
-      setWindowMotions((current) => {
-        if (!current[id]) return current;
-        const next = { ...current };
-        delete next[id];
-        return next;
-      });
-    }, reduceMotion ? 0 : WINDOW_EXIT_MOTION_MS);
+    const timer = window.setTimeout(
+      () => {
+        windowMotionTimersRef.current.delete(id);
+        complete();
+        setWindowMotions((current) => {
+          if (!current[id]) return current;
+          const next = { ...current };
+          delete next[id];
+          return next;
+        });
+      },
+      reduceMotion ? 0 : WINDOW_EXIT_MOTION_MS,
+    );
     windowMotionTimersRef.current.set(id, timer);
   };
 
@@ -1440,11 +1549,15 @@ export default function App() {
     setWindows((current) =>
       current.map((item) => {
         if (item.desktopIndex === index) return { ...item, desktopIndex: fallback };
-        return item.desktopIndex > index ? { ...item, desktopIndex: item.desktopIndex - 1 } : item;
+        return item.desktopIndex > index
+          ? { ...item, desktopIndex: item.desktopIndex - 1 }
+          : item;
       }),
     );
     setStoredDesktopCount(desktopCount - 1);
-    setActiveDesktopIndex((current) => clamp(current > index ? current - 1 : current, 0, desktopCount - 2));
+    setActiveDesktopIndex((current) =>
+      clamp(current > index ? current - 1 : current, 0, desktopCount - 2),
+    );
   };
 
   const moveWindowToDesktop = (windowId: string, index: number) => {
@@ -1531,9 +1644,7 @@ export default function App() {
     setWindows((current) => {
       let nextZ = Math.max(12, ...current.map((item) => item.z));
       return current.map((item) =>
-        restoreIds.has(item.id)
-          ? { ...item, minimized: false, z: (nextZ += 1) }
-          : item,
+        restoreIds.has(item.id) ? { ...item, minimized: false, z: (nextZ += 1) } : item,
       );
     });
     showDesktopRestoreRef.current = [];
@@ -1546,7 +1657,9 @@ export default function App() {
   );
   const recentStartItems = useMemo(() => {
     return activeDesktopItems
-      .filter((item) => item.kind === "note" || item.kind === "canvas" || item.kind === "folder")
+      .filter(
+        (item) => item.kind === "note" || item.kind === "canvas" || item.kind === "folder",
+      )
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, 5);
   }, [activeDesktopItems]);
@@ -1648,7 +1761,9 @@ export default function App() {
     if (resolution.kind === "unknown") {
       playSound("close");
       notify({
-        detail: resolution.value ? `"${resolution.value}" 명령을 찾을 수 없습니다.` : "실행할 명령을 입력하세요.",
+        detail: resolution.value
+          ? `"${resolution.value}" 명령을 찾을 수 없습니다.`
+          : "실행할 명령을 입력하세요.",
         title: "Run 명령 실패",
       });
       return;
@@ -1694,7 +1809,9 @@ export default function App() {
       if (candidates.length === 0) return;
 
       const currentId = altTabWindowId ?? activeWindowId;
-      const currentIndex = currentId ? candidates.findIndex((item) => item.id === currentId) : -1;
+      const currentIndex = currentId
+        ? candidates.findIndex((item) => item.id === currentId)
+        : -1;
       const direction = reverse ? -1 : 1;
       const nextIndex =
         currentIndex === -1
@@ -1866,7 +1983,13 @@ export default function App() {
 
       if (event.ctrlKey && event.altKey && activeWindowId) {
         const snapZone =
-          event.key === "ArrowLeft" ? "left" : event.key === "ArrowRight" ? "right" : event.key === "ArrowUp" ? "top" : null;
+          event.key === "ArrowLeft"
+            ? "left"
+            : event.key === "ArrowRight"
+              ? "right"
+              : event.key === "ArrowUp"
+                ? "top"
+                : null;
         if (snapZone) {
           event.preventDefault();
           snapWindow(activeWindowId, snapZone);
@@ -1986,25 +2109,27 @@ export default function App() {
             selected={selectedDesktopIds.includes(`app:${app.id}`)}
           />
         ))}
-        {activeDesktopItems.filter((item) => item.showOnDesktop).map((item) => (
-          <DesktopItemIcon
-            draftName={desktopRenameDraft}
-            item={item}
-            key={item.id}
-            onCancelRename={cancelDesktopRename}
-            onChangeDraftName={setDesktopRenameDraft}
-            onCommitRename={commitDesktopRename}
-            onContextMenu={(event) =>
-              showDesktopIconContextMenu(event, { itemId: item.id, kind: "item" })
-            }
-            onMove={(position) => moveDesktopItem(item.id, position)}
-            onOpen={() => openDesktopItem(item)}
-            onSelect={(event) => selectDesktopTarget(`item:${item.id}`, event)}
-            renaming={desktopRenamingItemId === item.id}
-            selected={selectedDesktopIds.includes(`item:${item.id}`)}
-            viewMode={desktopViewMode}
-          />
-        ))}
+        {activeDesktopItems
+          .filter((item) => item.showOnDesktop)
+          .map((item) => (
+            <DesktopItemIcon
+              draftName={desktopRenameDraft}
+              item={item}
+              key={item.id}
+              onCancelRename={cancelDesktopRename}
+              onChangeDraftName={setDesktopRenameDraft}
+              onCommitRename={commitDesktopRename}
+              onContextMenu={(event) =>
+                showDesktopIconContextMenu(event, { itemId: item.id, kind: "item" })
+              }
+              onMove={(position) => moveDesktopItem(item.id, position)}
+              onOpen={() => openDesktopItem(item)}
+              onSelect={(event) => selectDesktopTarget(`item:${item.id}`, event)}
+              renaming={desktopRenamingItemId === item.id}
+              selected={selectedDesktopIds.includes(`item:${item.id}`)}
+              viewMode={desktopViewMode}
+            />
+          ))}
       </section>
 
       {desktopSelection && isDesktopSelectionVisible(desktopSelection) && (
@@ -2156,12 +2281,7 @@ export default function App() {
         />
       )}
 
-      {runOpen && (
-        <RunDialog
-          onClose={() => setRunOpen(false)}
-          onExecute={executeRunCommand}
-        />
-      )}
+      {runOpen && <RunDialog onClose={() => setRunOpen(false)} onExecute={executeRunCommand} />}
 
       {desktopMenu && (
         <DesktopContextMenu
@@ -2191,9 +2311,7 @@ export default function App() {
           }
           itemSelectionCount={getSelectedDesktopItemIds(desktopContextItem?.id).length}
           onCopy={
-            desktopContextItem
-              ? () => copyDesktopItems(desktopContextItem.id)
-              : undefined
+            desktopContextItem ? () => copyDesktopItems(desktopContextItem.id) : undefined
           }
           onDelete={
             desktopContextItem
@@ -2214,9 +2332,7 @@ export default function App() {
               : undefined
           }
           onRename={
-            desktopContextItem
-              ? () => beginDesktopRename(desktopContextItem)
-              : undefined
+            desktopContextItem ? () => beginDesktopRename(desktopContextItem) : undefined
           }
           onTogglePin={
             desktopContextApp

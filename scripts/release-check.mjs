@@ -107,7 +107,9 @@ async function runReleaseCheck() {
     await assertFileContains(path, expected);
   }
 
-  console.log(`PocketDesk release check passed (${files.length} files, ${textChecks.length} text checks)`);
+  console.log(
+    `PocketDesk release check passed (${files.length} files, ${textChecks.length} text checks)`,
+  );
 }
 
 runReleaseCheck().catch((error) => {

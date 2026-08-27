@@ -118,7 +118,11 @@ export function normalizePersistedWindow(
     Math.max(240, window.innerHeight - APP_BAR_HEIGHT - 16),
   );
   const x = clamp(Number(item.x) || 8, 8, Math.max(8, window.innerWidth - width - 8));
-  const y = clamp(Number(item.y) || 8, 8, Math.max(8, window.innerHeight - APP_BAR_HEIGHT - height - 8));
+  const y = clamp(
+    Number(item.y) || 8,
+    8,
+    Math.max(8, window.innerHeight - APP_BAR_HEIGHT - height - 8),
+  );
   const z = Number.isFinite(Number(item.z)) ? Number(item.z) : 12 + index;
 
   return {

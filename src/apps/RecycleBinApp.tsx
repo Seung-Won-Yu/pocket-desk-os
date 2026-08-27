@@ -3,11 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import type { AppId, DesktopItem } from "../types";
 import { clamp, formatVfsEntrySize, normalizeSearchText } from "../utils/format";
-import {
-  formatDesktopItemTime,
-  getVfsEntryAssociation,
-  getVfsEntryDetail,
-} from "../vfs/model";
+import { formatDesktopItemTime, getVfsEntryAssociation, getVfsEntryDetail } from "../vfs/model";
 
 type RecycleBinAppProps = {
   emptyRecycleBin: () => void;
@@ -47,7 +43,9 @@ export default function RecycleBinApp({
     const normalizedQuery = normalizeSearchText(query);
     if (!normalizedQuery) return files;
     return files.filter((file) =>
-      [file.name, file.type, file.detail].map(normalizeSearchText).some((field) => field.includes(normalizedQuery)),
+      [file.name, file.type, file.detail]
+        .map(normalizeSearchText)
+        .some((field) => field.includes(normalizedQuery)),
     );
   }, [files, query]);
   const [selected, setSelected] = useState(0);
@@ -63,12 +61,10 @@ export default function RecycleBinApp({
     <div className="recycle-app app-fill">
       <aside className="recycle-sidebar">
         <button onClick={() => openApp("files")} type="button">
-          <House aria-hidden="true" size={16} />
-          홈
+          <House aria-hidden="true" size={16} />홈
         </button>
         <button onClick={() => openApp("thispc")} type="button">
-          <Monitor aria-hidden="true" size={16} />
-          내 PC
+          <Monitor aria-hidden="true" size={16} />내 PC
         </button>
         <button aria-current="page" className="is-selected" type="button">
           <Trash2 aria-hidden="true" size={16} />
@@ -156,7 +152,9 @@ export default function RecycleBinApp({
                   <span>{file.name}</span>
                   <small>{file.removed}</small>
                   <small>{file.type}</small>
-                  <small>{file.item.kind === "folder" ? "" : formatVfsEntrySize(file.item)}</small>
+                  <small>
+                    {file.item.kind === "folder" ? "" : formatVfsEntrySize(file.item)}
+                  </small>
                 </button>
               );
             })}
@@ -222,7 +220,8 @@ function ConfirmDialog({
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousFocus =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     cancelRef.current?.focus();
     return () => previousFocus?.focus();
   }, []);
@@ -258,7 +257,6 @@ function ConfirmDialog({
     </div>
   );
 }
-
 
 function trapDialogFocus(event: React.KeyboardEvent, container: HTMLElement) {
   if (event.key !== "Tab") return;

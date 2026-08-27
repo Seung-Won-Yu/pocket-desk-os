@@ -107,7 +107,9 @@ export default function FileDialog({
   useEffect(() => {
     if (
       currentFolderId === VFS_ROOT_ID ||
-      items.some((item) => item.id === currentFolderId && item.kind === "folder" && !item.trashed)
+      items.some(
+        (item) => item.id === currentFolderId && item.kind === "folder" && !item.trashed,
+      )
     ) {
       return;
     }
@@ -229,7 +231,11 @@ export default function FileDialog({
       else onCancel();
       return;
     }
-    if (event.key === "Enter" && event.target instanceof HTMLInputElement && event.target.type === "search") {
+    if (
+      event.key === "Enter" &&
+      event.target instanceof HTMLInputElement &&
+      event.target.type === "search"
+    ) {
       return;
     }
     if (event.key === "Enter") {
@@ -322,8 +328,7 @@ export default function FileDialog({
             }}
             type="button"
           >
-            <FilePlus2 aria-hidden="true" size={15} />
-            새 폴더
+            <FilePlus2 aria-hidden="true" size={15} />새 폴더
           </button>
         </div>
 
@@ -354,7 +359,11 @@ export default function FileDialog({
               <span>수정한 날짜</span>
               <span>유형</span>
             </div>
-            <div aria-label={`${currentFolderName} 항목`} className="file-dialog-list" role="listbox">
+            <div
+              aria-label={`${currentFolderName} 항목`}
+              className="file-dialog-list"
+              role="listbox"
+            >
               {visibleItems.map((item) => {
                 const association = getVfsEntryAssociation(item);
                 const ItemIcon = association.icon;
@@ -416,7 +425,9 @@ export default function FileDialog({
             >
               {mode === "open" ? "열기" : "저장"}
             </button>
-            <button onClick={onCancel} type="button">취소</button>
+            <button onClick={onCancel} type="button">
+              취소
+            </button>
           </div>
         </footer>
 
@@ -434,7 +445,9 @@ export default function FileDialog({
                 >
                   바꾸기
                 </button>
-                <button onClick={() => setReplaceCandidate(null)} type="button">취소</button>
+                <button onClick={() => setReplaceCandidate(null)} type="button">
+                  취소
+                </button>
               </div>
             </section>
           </div>

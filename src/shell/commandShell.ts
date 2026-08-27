@@ -1,10 +1,5 @@
 import type { AppId, DesktopItem } from "../types";
-import {
-  getVfsFolder,
-  getVfsFolderPath,
-  isVfsSystemFolderId,
-  VFS_ROOT_ID,
-} from "../vfs/model";
+import { getVfsFolder, getVfsFolderPath, isVfsSystemFolderId, VFS_ROOT_ID } from "../vfs/model";
 
 export const SHELL_VERSION = "PocketDesk OS [Version 10.0.19045.1]";
 export const SHELL_VOLUME_SERIAL = "1A2B-3C4D";
@@ -30,7 +25,13 @@ export type ShellEffect =
   | { kind: "move"; itemIds: string[]; parentId: string }
   | { kind: "open"; itemId: string }
   | { kind: "rename"; itemId: string; name: string }
-  | { kind: "writeFile"; content: string; existingItemId?: string; name: string; parentId: string };
+  | {
+      kind: "writeFile";
+      content: string;
+      existingItemId?: string;
+      name: string;
+      parentId: string;
+    };
 
 export type ShellProcess = {
   appId: AppId;
@@ -53,9 +54,7 @@ export type ShellResult = {
   lines: ShellLine[];
 };
 
-type ShellTarget =
-  | { entry: DesktopItem; kind: "entry" }
-  | { folderId: string; kind: "folder" };
+type ShellTarget = { entry: DesktopItem; kind: "entry" } | { folderId: string; kind: "folder" };
 
 const APP_LAUNCH_ALIASES: Record<string, AppId> = {
   calc: "calculator",
@@ -281,7 +280,9 @@ function renderDir(context: ShellContext, folderId: string): ShellLine[] {
   ];
 
   if (folderId !== VFS_ROOT_ID) {
-    lines.push(out(`${formatDirTimestamp(folder?.createdAt ?? context.now)}    <DIR>          ..`));
+    lines.push(
+      out(`${formatDirTimestamp(folder?.createdAt ?? context.now)}    <DIR>          ..`),
+    );
   }
 
   let fileCount = 0;
@@ -298,12 +299,16 @@ function renderDir(context: ShellContext, folderId: string): ShellLine[] {
     fileCount += 1;
     byteTotal += size;
     lines.push(
-      out(`${formatDirTimestamp(entry.updatedAt)}    ${padStart(formatCount(size), 14)} ${entry.name}`),
+      out(
+        `${formatDirTimestamp(entry.updatedAt)}    ${padStart(formatCount(size), 14)} ${entry.name}`,
+      ),
     );
   }
 
   lines.push(
-    out(`${padStart(`${formatCount(fileCount)}개 파일`, 22)}${padStart(`${formatCount(byteTotal)} 바이트`, 22)}`),
+    out(
+      `${padStart(`${formatCount(fileCount)}개 파일`, 22)}${padStart(`${formatCount(byteTotal)} 바이트`, 22)}`,
+    ),
     out(`${padStart(`${formatCount(dirCount)}개 디렉터리`, 22)}`),
   );
   return lines;
@@ -358,7 +363,10 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
   const argText = tokens.slice(1).join(" ");
 
   if (redirection && command !== "echo" && command !== "type") {
-    return { effects: [], lines: [err(`${command} 명령은 파일 리디렉션을 지원하지 않습니다.`)] };
+    return {
+      effects: [],
+      lines: [err(`${command} 명령은 파일 리디렉션을 지원하지 않습니다.`)],
+    };
   }
 
   switch (command) {
@@ -370,7 +378,9 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
         lines: [
           out("PocketDesk 명령 프롬프트에서 사용할 수 있는 명령입니다."),
           out(""),
-          ...COMMAND_HELP.map(([name, detail]) => out(`${name.padEnd(width + 3, " ")}${detail}`)),
+          ...COMMAND_HELP.map(([name, detail]) =>
+            out(`${name.padEnd(width + 3, " ")}${detail}`),
+          ),
         ],
       };
     }
@@ -440,7 +450,9 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
       return {
         effects: [],
         lines: [
-          out(`${"이미지 이름".padEnd(nameWidth + 2)}${padStart("PID", 6)}${padStart("메모리 사용", 14)}`),
+          out(
+            `${"이미지 이름".padEnd(nameWidth + 2)}${padStart("PID", 6)}${padStart("메모리 사용", 14)}`,
+          ),
           out(`${"=".repeat(nameWidth + 2)}${"=".repeat(6)}${"=".repeat(14)}`),
           ...context.processes.map((item, index) =>
             out(
@@ -509,13 +521,18 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
         return { effects: [], lines: [err(`${argText} 파일을 찾을 수 없습니다.`)] };
       }
       if (target.kind === "folder") {
-        return { effects: [], lines: [err("액세스가 거부되었습니다. 폴더는 표시할 수 없습니다.")] };
+        return {
+          effects: [],
+          lines: [err("액세스가 거부되었습니다. 폴더는 표시할 수 없습니다.")],
+        };
       }
       const content = target.entry.content ?? "";
       if (content.startsWith("data:")) {
         return {
           effects: [],
-          lines: [err(`${target.entry.name}은 이진 이미지 파일입니다. 그림판에서 열어 주세요.`)],
+          lines: [
+            err(`${target.entry.name}은 이진 이미지 파일입니다. 그림판에서 열어 주세요.`),
+          ],
         };
       }
       if (!content) return { effects: [], lines: [out("")] };
@@ -532,9 +549,16 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
       }
       const existing = resolveShellTarget(context.entries, context.cwdId, redirection.target);
       if (existing?.kind === "folder") {
-        return { effects: [], lines: [err("액세스가 거부되었습니다. 폴더에는 쓸 수 없습니다.")] };
+        return {
+          effects: [],
+          lines: [err("액세스가 거부되었습니다. 폴더에는 쓸 수 없습니다.")],
+        };
       }
-      const destination = resolveShellParent(context.entries, context.cwdId, redirection.target);
+      const destination = resolveShellParent(
+        context.entries,
+        context.cwdId,
+        redirection.target,
+      );
       if (!destination) {
         return { effects: [], lines: [err("지정된 경로를 찾을 수 없습니다.")] };
       }
@@ -548,7 +572,8 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
             existingItemId: existing?.kind === "entry" ? existing.entry.id : undefined,
             kind: "writeFile",
             name,
-            parentId: existing?.kind === "entry" ? existing.entry.parentId : destination.parentId,
+            parentId:
+              existing?.kind === "entry" ? existing.entry.parentId : destination.parentId,
           },
         ],
         lines: [out(`${name}에 ${redirection.append ? "추가" : "저장"}했습니다.`)],
@@ -562,7 +587,10 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
       }
       const existing = resolveShellTarget(context.entries, context.cwdId, argText);
       if (existing) {
-        return { effects: [], lines: [err(`하위 디렉터리 또는 파일 ${argText}이(가) 이미 있습니다.`)] };
+        return {
+          effects: [],
+          lines: [err(`하위 디렉터리 또는 파일 ${argText}이(가) 이미 있습니다.`)],
+        };
       }
       const destination = resolveShellParent(context.entries, context.cwdId, argText);
       if (!destination) {
@@ -589,7 +617,10 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
       if (target.kind === "folder") {
         // cmd keeps folders out of `del`; `rd` is the folder command.
         if (command === "del" || command === "erase") {
-          return { effects: [], lines: [err(`${argText}은(는) 폴더입니다. rd 명령을 사용하세요.`)] };
+          return {
+            effects: [],
+            lines: [err(`${argText}은(는) 폴더입니다. rd 명령을 사용하세요.`)],
+          };
         }
         if (target.folderId === VFS_ROOT_ID) {
           return { effects: [], lines: [err("바탕 화면은 삭제할 수 없습니다.")] };
@@ -599,7 +630,10 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
           return { effects: [], lines: [err(`${argText}을(를) 찾을 수 없습니다.`)] };
         }
         if (isVfsSystemFolderId(folder.id)) {
-          return { effects: [], lines: [err(`${folder.name}은(는) 시스템 폴더라 삭제할 수 없습니다.`)] };
+          return {
+            effects: [],
+            lines: [err(`${folder.name}은(는) 시스템 폴더라 삭제할 수 없습니다.`)],
+          };
         }
         if (target.folderId === context.cwdId) {
           return { effects: [], lines: [err("현재 디렉터리는 삭제할 수 없습니다.")] };
@@ -620,7 +654,11 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
         return { effects: [], lines: [err("사용법: copy <원본> <대상 폴더>")] };
       }
       const source = resolveShellTarget(context.entries, context.cwdId, args[0]);
-      const destination = resolveShellTarget(context.entries, context.cwdId, args.slice(1).join(" "));
+      const destination = resolveShellTarget(
+        context.entries,
+        context.cwdId,
+        args.slice(1).join(" "),
+      );
       if (!source || source.kind === "folder") {
         return { effects: [], lines: [err("원본 파일을 찾을 수 없습니다.")] };
       }
@@ -638,7 +676,11 @@ export function runShellCommand(input: string, context: ShellContext): ShellResu
         return { effects: [], lines: [err("사용법: move <원본> <대상 폴더>")] };
       }
       const source = resolveShellTarget(context.entries, context.cwdId, args[0]);
-      const destination = resolveShellTarget(context.entries, context.cwdId, args.slice(1).join(" "));
+      const destination = resolveShellTarget(
+        context.entries,
+        context.cwdId,
+        args.slice(1).join(" "),
+      );
       if (!source || source.kind === "folder") {
         return { effects: [], lines: [err("원본 파일을 찾을 수 없습니다.")] };
       }

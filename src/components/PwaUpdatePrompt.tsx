@@ -65,7 +65,12 @@ export default function PwaUpdatePrompt() {
         </button>
       </header>
       <p>새 버전을 사용할 준비가 되었습니다.</p>
-      <button className="pwa-update-apply" disabled={applying} onClick={installUpdate} type="button">
+      <button
+        className="pwa-update-apply"
+        disabled={applying}
+        onClick={installUpdate}
+        type="button"
+      >
         <RotateCw aria-hidden="true" size={15} />
         {applying ? "다시 시작하는 중..." : "지금 다시 시작"}
       </button>

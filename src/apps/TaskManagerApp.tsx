@@ -31,7 +31,15 @@ function getWindowLoad(windowId: string, maximized: boolean, minimized: boolean)
   return { cpu, diskMbPerSecond: Number(((base % 13) / 10).toFixed(1)), memoryMb };
 }
 
-function Sparkline({ label, samples, unit }: { label: string; samples: number[]; unit: string }) {
+function Sparkline({
+  label,
+  samples,
+  unit,
+}: {
+  label: string;
+  samples: number[];
+  unit: string;
+}) {
   const points = samples
     .map((value, index) => {
       const x = (index / Math.max(1, SAMPLE_COUNT - 1)) * 100;
@@ -84,7 +92,9 @@ export default function TaskManagerApp({
     () =>
       openWindows
         .map((item) => ({ ...item, ...getWindowLoad(item.id, item.maximized, item.minimized) }))
-        .sort((first, second) => second.cpu - first.cpu || first.title.localeCompare(second.title)),
+        .sort(
+          (first, second) => second.cpu - first.cpu || first.title.localeCompare(second.title),
+        ),
     [openWindows],
   );
 

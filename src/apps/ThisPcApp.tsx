@@ -18,7 +18,6 @@ type ThisPcAppProps = {
   openApp: (appId: AppId) => void;
 };
 
-
 export default function ThisPcApp({ openApp }: ThisPcAppProps) {
   const [storageEstimate, setStorageEstimate] = useState<StorageEstimate | null>(null);
   const [driveSelected, setDriveSelected] = useState(false);
@@ -33,11 +32,14 @@ export default function ThisPcApp({ openApp }: ThisPcAppProps) {
       return;
     }
 
-    navigator.storage.estimate().then((estimate) => {
-      if (!cancelled) setStorageEstimate(estimate);
-    }).catch(() => {
-      if (!cancelled) setStorageEstimate({});
-    });
+    navigator.storage
+      .estimate()
+      .then((estimate) => {
+        if (!cancelled) setStorageEstimate(estimate);
+      })
+      .catch(() => {
+        if (!cancelled) setStorageEstimate({});
+      });
     return () => {
       cancelled = true;
     };
@@ -63,16 +65,14 @@ export default function ThisPcApp({ openApp }: ThisPcAppProps) {
     <div className="this-pc-app app-fill">
       <aside className="this-pc-sidebar">
         <button onClick={() => openApp("files")} type="button">
-          <House aria-hidden="true" size={16} />
-          홈
+          <House aria-hidden="true" size={16} />홈
         </button>
         <button onClick={() => openApp("files")} type="button">
           <Folder aria-hidden="true" size={16} />
           바탕 화면
         </button>
         <button aria-current="page" className="is-selected" type="button">
-          <Monitor aria-hidden="true" size={16} />
-          내 PC
+          <Monitor aria-hidden="true" size={16} />내 PC
         </button>
         <button onClick={() => openApp("recycle")} type="button">
           <Trash2 aria-hidden="true" size={16} />
@@ -154,7 +154,11 @@ export default function ThisPcApp({ openApp }: ThisPcAppProps) {
               }}
               type="button"
             >
-              <ChevronRight aria-hidden="true" className={devicesExpanded ? "is-expanded" : ""} size={15} />
+              <ChevronRight
+                aria-hidden="true"
+                className={devicesExpanded ? "is-expanded" : ""}
+                size={15}
+              />
               <span>장치 및 드라이브</span>
               <small>{driveVisible ? 1 : 0}</small>
             </button>
@@ -198,4 +202,3 @@ export default function ThisPcApp({ openApp }: ThisPcAppProps) {
     </div>
   );
 }
-

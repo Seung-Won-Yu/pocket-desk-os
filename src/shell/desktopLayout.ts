@@ -1,8 +1,25 @@
 import { type DesktopItem, type IconPosition } from "../types";
 import { clamp } from "../utils/format";
 import { desktopApps } from "./appCatalog";
-import { APP_BAR_HEIGHT, CONTEXT_MENU_HEIGHT, CONTEXT_MENU_WIDTH, DESKTOP_ICON_HEIGHT, DESKTOP_ICON_LAYOUT_KEY, DESKTOP_ICON_SORT_KEY, DESKTOP_ICON_VIEW_KEY, DESKTOP_ICON_WIDTH, WINDOW_SYSTEM_MENU_HEIGHT, WINDOW_SYSTEM_MENU_WIDTH } from "./constants";
-import { type DesktopIconLayout, type DesktopSelectionState, type DesktopSortKey, type DesktopViewMode, type PersistedIconPosition } from "./types";
+import {
+  APP_BAR_HEIGHT,
+  CONTEXT_MENU_HEIGHT,
+  CONTEXT_MENU_WIDTH,
+  DESKTOP_ICON_HEIGHT,
+  DESKTOP_ICON_LAYOUT_KEY,
+  DESKTOP_ICON_SORT_KEY,
+  DESKTOP_ICON_VIEW_KEY,
+  DESKTOP_ICON_WIDTH,
+  WINDOW_SYSTEM_MENU_HEIGHT,
+  WINDOW_SYSTEM_MENU_WIDTH,
+} from "./constants";
+import {
+  type DesktopIconLayout,
+  type DesktopSelectionState,
+  type DesktopSortKey,
+  type DesktopViewMode,
+  type PersistedIconPosition,
+} from "./types";
 
 export function createDefaultIconLayout(): DesktopIconLayout {
   return desktopApps.reduce<DesktopIconLayout>((layout, app, index) => {
@@ -27,7 +44,10 @@ export function getDesktopIconMetrics(viewMode: DesktopViewMode) {
   return { height: DESKTOP_ICON_HEIGHT, width: DESKTOP_ICON_WIDTH };
 }
 
-export function createDesktopGridPositions(count: number, viewMode: DesktopViewMode): IconPosition[] {
+export function createDesktopGridPositions(
+  count: number,
+  viewMode: DesktopViewMode,
+): IconPosition[] {
   const metrics = getDesktopIconMetrics(viewMode);
   const gapX = 18;
   const gapY = 10;
@@ -144,8 +164,10 @@ export function clampIconPosition(
 export function snapDesktopIconPosition(position: IconPosition, viewMode: DesktopViewMode) {
   const metrics = getDesktopIconMetrics(viewMode);
   const origin = 18;
-  const x = origin + Math.round((position.x - origin) / (metrics.width + 18)) * (metrics.width + 18);
-  const y = origin + Math.round((position.y - origin) / (metrics.height + 10)) * (metrics.height + 10);
+  const x =
+    origin + Math.round((position.x - origin) / (metrics.width + 18)) * (metrics.width + 18);
+  const y =
+    origin + Math.round((position.y - origin) / (metrics.height + 10)) * (metrics.height + 10);
   return clampIconPosition(x, y, viewMode);
 }
 
@@ -190,7 +212,9 @@ export function getDesktopSelectionBounds(selection: DesktopSelectionState) {
   };
 }
 
-export function getDesktopSelectionStyle(selection: DesktopSelectionState): React.CSSProperties {
+export function getDesktopSelectionStyle(
+  selection: DesktopSelectionState,
+): React.CSSProperties {
   const bounds = getDesktopSelectionBounds(selection);
   return {
     height: bounds.height,

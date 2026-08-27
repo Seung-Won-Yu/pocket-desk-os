@@ -75,7 +75,10 @@ describe("rankSearchCandidate", () => {
 
   it("does not use the scattered-token rule for a single-token query", () => {
     // "car" is present, but only as a substring, so it stays at the substring score.
-    expect(rankSearchCandidate("car", ["a scarf"])).toEqual({ matchLabel: "a scarf", score: 78 });
+    expect(rankSearchCandidate("car", ["a scarf"])).toEqual({
+      matchLabel: "a scarf",
+      score: 78,
+    });
   });
 
   it("requires every query token for the scattered-token rule", () => {
@@ -99,13 +102,19 @@ describe("rankSearchCandidate", () => {
   it("prefers a weaker match in an earlier field over a stronger one far down the list", () => {
     const fields = ["calculator", ...Array.from({ length: 20 }, () => "nope"), "calc"];
     // The exact match sits at index 21, so its 130 falls below the leading prefix match.
-    expect(rankSearchCandidate("calc", fields)).toEqual({ matchLabel: "calculator", score: 112 });
+    expect(rankSearchCandidate("calc", fields)).toEqual({
+      matchLabel: "calculator",
+      score: 112,
+    });
   });
 
   it("keeps the earliest field when two fields tie after the position penalty", () => {
     const fields = ["calculator", ...Array.from({ length: 17 }, () => ""), "calc"];
     // 112 - 0 ties with 130 - 18, and the earlier field wins.
-    expect(rankSearchCandidate("calc", fields)).toEqual({ matchLabel: "calculator", score: 112 });
+    expect(rankSearchCandidate("calc", fields)).toEqual({
+      matchLabel: "calculator",
+      score: 112,
+    });
   });
 
   it("skips blank fields without shifting the position penalty", () => {
@@ -274,16 +283,16 @@ describe("getStartPinnedApps", () => {
   });
 
   it("reorders a small subset into priority order", () => {
-    expect(getStartPinnedApps(appsWithIds(["browser", "calculator", "files"])).map((a) => a.id)).toEqual([
-      "files",
-      "browser",
-      "calculator",
-    ]);
+    expect(
+      getStartPinnedApps(appsWithIds(["browser", "calculator", "files"])).map((a) => a.id),
+    ).toEqual(["files", "browser", "calculator"]);
   });
 
   it("deduplicates repeated apps", () => {
     const notepad = appsWithIds(["notepad"]);
-    expect(getStartPinnedApps([...notepad, ...notepad]).map((app) => app.id)).toEqual(["notepad"]);
+    expect(getStartPinnedApps([...notepad, ...notepad]).map((app) => app.id)).toEqual([
+      "notepad",
+    ]);
   });
 
   it("returns nothing for an empty catalog", () => {

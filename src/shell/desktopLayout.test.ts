@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type DesktopItem } from "../types";
-import { DESKTOP_ICON_LAYOUT_KEY, DESKTOP_ICON_SORT_KEY, DESKTOP_ICON_VIEW_KEY } from "./constants";
+import {
+  DESKTOP_ICON_LAYOUT_KEY,
+  DESKTOP_ICON_SORT_KEY,
+  DESKTOP_ICON_VIEW_KEY,
+} from "./constants";
 import {
   clampContextMenuPosition,
   clampIconPosition,
@@ -82,7 +86,9 @@ function createDesktopItem(overrides: Partial<DesktopItem> = {}): DesktopItem {
   };
 }
 
-function createSortEntry(overrides: Partial<{ name: string; type: string; updatedAt: number }> = {}) {
+function createSortEntry(
+  overrides: Partial<{ name: string; type: string; updatedAt: number }> = {},
+) {
   return { name: "entry", type: "txt", updatedAt: 0, ...overrides };
 }
 
@@ -225,7 +231,10 @@ describe("snapDesktopIconPosition", () => {
 
   it("clamps the snapped cell back inside the desktop", () => {
     expect(snapDesktopIconPosition({ x: -500, y: -500 }, "medium")).toEqual({ x: 8, y: 8 });
-    expect(snapDesktopIconPosition({ x: 9999, y: 9999 }, "medium")).toEqual({ x: 1186, y: 650 });
+    expect(snapDesktopIconPosition({ x: 9999, y: 9999 }, "medium")).toEqual({
+      x: 1186,
+      y: 650,
+    });
   });
 });
 
@@ -338,35 +347,38 @@ describe("getDesktopSelectionIds", () => {
   ];
 
   it("returns nothing while the marquee is below the drag threshold", () => {
-    expect(getDesktopSelectionIds(createSelection(0, 0, 4, 4), layout, items, "medium")).toEqual([]);
+    expect(
+      getDesktopSelectionIds(createSelection(0, 0, 4, 4), layout, items, "medium"),
+    ).toEqual([]);
   });
 
   it("selects the icons the marquee touches, apps before files", () => {
-    expect(getDesktopSelectionIds(createSelection(0, 0, 60, 60), layout, items, "medium")).toEqual([
-      "app:thispc",
-      "item:near",
-    ]);
+    expect(
+      getDesktopSelectionIds(createSelection(0, 0, 60, 60), layout, items, "medium"),
+    ).toEqual(["app:thispc", "item:near"]);
   });
 
   it("selects everything under a full-desktop marquee", () => {
-    expect(getDesktopSelectionIds(createSelection(0, 0, 1200, 700), layout, items, "medium")).toEqual([
-      "app:thispc",
-      "app:recycle",
-      "item:near",
-      "item:far",
-    ]);
+    expect(
+      getDesktopSelectionIds(createSelection(0, 0, 1200, 700), layout, items, "medium"),
+    ).toEqual(["app:thispc", "app:recycle", "item:near", "item:far"]);
   });
 
   it("ignores items that are not shown on the desktop", () => {
-    const ids = getDesktopSelectionIds(createSelection(0, 0, 1200, 700), layout, items, "medium");
+    const ids = getDesktopSelectionIds(
+      createSelection(0, 0, 1200, 700),
+      layout,
+      items,
+      "medium",
+    );
     expect(ids).not.toContain("item:hidden");
   });
 
   it("falls back to the default layout for apps with no stored position", () => {
     // The band below the default thispc tile only reaches the default recycle tile.
-    expect(getDesktopSelectionIds(createSelection(0, 120, 200, 300), {}, [], "medium")).toEqual([
-      "app:recycle",
-    ]);
+    expect(getDesktopSelectionIds(createSelection(0, 120, 200, 300), {}, [], "medium")).toEqual(
+      ["app:recycle"],
+    );
   });
 
   it("mixes stored and default positions", () => {
@@ -431,7 +443,9 @@ describe("rectsIntersect", () => {
 
 describe("findAvailableDesktopPosition", () => {
   it("keeps the preferred position when nothing is in the way", () => {
-    expect(findAvailableDesktopPosition({ x: 600, y: 400 }, "medium", [{ x: 18, y: 18 }])).toEqual({
+    expect(
+      findAvailableDesktopPosition({ x: 600, y: 400 }, "medium", [{ x: 18, y: 18 }]),
+    ).toEqual({
       x: 600,
       y: 400,
     });
@@ -445,7 +459,9 @@ describe("findAvailableDesktopPosition", () => {
   });
 
   it("falls back to the next free grid cell when the preferred spot overlaps", () => {
-    expect(findAvailableDesktopPosition({ x: 20, y: 20 }, "medium", [{ x: 18, y: 18 }])).toEqual({
+    expect(
+      findAvailableDesktopPosition({ x: 20, y: 20 }, "medium", [{ x: 18, y: 18 }]),
+    ).toEqual({
       x: 18,
       y: 122,
     });
@@ -466,7 +482,9 @@ describe("findAvailableDesktopPosition", () => {
   it("returns the clamped preferred position when the whole grid is blocked", () => {
     setViewport(100, 200);
     // Every grid cell collapses onto (8, 18) on this viewport, so nothing is free.
-    expect(findAvailableDesktopPosition({ x: 500, y: 500 }, "medium", [{ x: 8, y: 18 }])).toEqual({
+    expect(
+      findAvailableDesktopPosition({ x: 500, y: 500 }, "medium", [{ x: 8, y: 18 }]),
+    ).toEqual({
       x: 8,
       y: 50,
     });
@@ -475,24 +493,29 @@ describe("findAvailableDesktopPosition", () => {
 
 describe("compareDesktopEntries", () => {
   it("sorts by name using Korean collation", () => {
-    const entries = [createSortEntry({ name: "나무.txt" }), createSortEntry({ name: "가방.txt" })];
-    expect(entries.sort((a, b) => compareDesktopEntries(a, b, "name")).map((e) => e.name)).toEqual([
-      "가방.txt",
-      "나무.txt",
-    ]);
+    const entries = [
+      createSortEntry({ name: "나무.txt" }),
+      createSortEntry({ name: "가방.txt" }),
+    ];
+    expect(
+      entries.sort((a, b) => compareDesktopEntries(a, b, "name")).map((e) => e.name),
+    ).toEqual(["가방.txt", "나무.txt"]);
   });
 
   it("sorts names with embedded numbers naturally", () => {
     const entries = [createSortEntry({ name: "파일 10" }), createSortEntry({ name: "파일 2" })];
-    expect(entries.sort((a, b) => compareDesktopEntries(a, b, "name")).map((e) => e.name)).toEqual([
-      "파일 2",
-      "파일 10",
-    ]);
+    expect(
+      entries.sort((a, b) => compareDesktopEntries(a, b, "name")).map((e) => e.name),
+    ).toEqual(["파일 2", "파일 10"]);
   });
 
   it("treats names differing only in case as equal", () => {
     expect(
-      compareDesktopEntries(createSortEntry({ name: "abc" }), createSortEntry({ name: "ABC" }), "name"),
+      compareDesktopEntries(
+        createSortEntry({ name: "abc" }),
+        createSortEntry({ name: "ABC" }),
+        "name",
+      ),
     ).toBe(0);
   });
 
@@ -501,10 +524,9 @@ describe("compareDesktopEntries", () => {
       createSortEntry({ name: "a", type: "txt" }),
       createSortEntry({ name: "z", type: "folder" }),
     ];
-    expect(entries.sort((a, b) => compareDesktopEntries(a, b, "type")).map((e) => e.name)).toEqual([
-      "z",
-      "a",
-    ]);
+    expect(
+      entries.sort((a, b) => compareDesktopEntries(a, b, "type")).map((e) => e.name),
+    ).toEqual(["z", "a"]);
   });
 
   it("falls back to the name within one type", () => {
@@ -512,10 +534,9 @@ describe("compareDesktopEntries", () => {
       createSortEntry({ name: "b", type: "txt" }),
       createSortEntry({ name: "a", type: "txt" }),
     ];
-    expect(entries.sort((a, b) => compareDesktopEntries(a, b, "type")).map((e) => e.name)).toEqual([
-      "a",
-      "b",
-    ]);
+    expect(
+      entries.sort((a, b) => compareDesktopEntries(a, b, "type")).map((e) => e.name),
+    ).toEqual(["a", "b"]);
   });
 
   it("puts the most recently modified entry first", () => {
@@ -523,9 +544,9 @@ describe("compareDesktopEntries", () => {
       createSortEntry({ name: "old", updatedAt: 100 }),
       createSortEntry({ name: "new", updatedAt: 900 }),
     ];
-    expect(entries.sort((a, b) => compareDesktopEntries(a, b, "modified")).map((e) => e.name)).toEqual(
-      ["new", "old"],
-    );
+    expect(
+      entries.sort((a, b) => compareDesktopEntries(a, b, "modified")).map((e) => e.name),
+    ).toEqual(["new", "old"]);
   });
 
   it("ignores the type when sorting equally recent entries by date", () => {
@@ -533,9 +554,9 @@ describe("compareDesktopEntries", () => {
       createSortEntry({ name: "z", type: "aaa", updatedAt: 500 }),
       createSortEntry({ name: "a", type: "zzz", updatedAt: 500 }),
     ];
-    expect(entries.sort((a, b) => compareDesktopEntries(a, b, "modified")).map((e) => e.name)).toEqual(
-      ["a", "z"],
-    );
+    expect(
+      entries.sort((a, b) => compareDesktopEntries(a, b, "modified")).map((e) => e.name),
+    ).toEqual(["a", "z"]);
   });
 
   it("ignores the modified date when sorting by name", () => {
@@ -543,10 +564,9 @@ describe("compareDesktopEntries", () => {
       createSortEntry({ name: "b", updatedAt: 900 }),
       createSortEntry({ name: "a", updatedAt: 100 }),
     ];
-    expect(entries.sort((a, b) => compareDesktopEntries(a, b, "name")).map((e) => e.name)).toEqual([
-      "a",
-      "b",
-    ]);
+    expect(
+      entries.sort((a, b) => compareDesktopEntries(a, b, "name")).map((e) => e.name),
+    ).toEqual(["a", "b"]);
   });
 });
 

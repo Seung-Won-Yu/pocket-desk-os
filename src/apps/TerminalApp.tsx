@@ -151,7 +151,9 @@ export default function TerminalApp({
     if (result.lines.some((line) => line.kind === "error")) playSound("error");
     setLines((current) => (cleared ? [] : [...current, echoed, ...result.lines]));
     if (raw.trim()) {
-      setHistory((current) => [...current.filter((item) => item !== raw), raw].slice(-HISTORY_LIMIT));
+      setHistory((current) =>
+        [...current.filter((item) => item !== raw), raw].slice(-HISTORY_LIMIT),
+      );
     }
     setHistoryIndex(null);
   };
@@ -165,7 +167,9 @@ export default function TerminalApp({
     const candidates = desktopItems
       .filter(
         (item) =>
-          !item.trashed && item.parentId === parentId && item.name.toLowerCase().startsWith(leaf),
+          !item.trashed &&
+          item.parentId === parentId &&
+          item.name.toLowerCase().startsWith(leaf),
       )
       .map((item) => item.name)
       .sort((first, second) => first.localeCompare(second, "ko"));
@@ -199,7 +203,8 @@ export default function TerminalApp({
     if (event.key === "ArrowUp") {
       event.preventDefault();
       if (history.length === 0) return;
-      const nextIndex = historyIndex === null ? history.length - 1 : Math.max(0, historyIndex - 1);
+      const nextIndex =
+        historyIndex === null ? history.length - 1 : Math.max(0, historyIndex - 1);
       setHistoryIndex(nextIndex);
       setDraft(history[nextIndex]);
       return;

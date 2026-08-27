@@ -23,14 +23,7 @@ export type OpenWindowInfo = {
 export type ThemeName = "lagoon" | "meadow" | "ember";
 
 export type WallpaperName =
-  | "ribbon"
-  | "meadow"
-  | "aurora"
-  | "dawn"
-  | "sunny"
-  | "glass"
-  | "mist"
-  | "coast";
+  "ribbon" | "meadow" | "aurora" | "dawn" | "sunny" | "glass" | "mist" | "coast";
 
 export type IconPosition = {
   x: number;
@@ -73,11 +66,4 @@ export type ToastInput = {
 };
 
 export type SoundEffectName =
-  | "click"
-  | "close"
-  | "error"
-  | "minimize"
-  | "open"
-  | "success"
-  | "toggle"
-  | "unlock";
+  "click" | "close" | "error" | "minimize" | "open" | "success" | "toggle" | "unlock";

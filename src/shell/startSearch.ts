@@ -20,7 +20,10 @@ export function formatNotificationTime(createdAt: number) {
   if (seconds < 45) return "방금 전";
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return `${minutes}분 전`;
-  return new Date(createdAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  return new Date(createdAt).toLocaleTimeString("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export function createCalendarGrid(month: Date) {
@@ -137,10 +140,10 @@ export function getStartPinnedApps(apps: AppDefinition[]) {
     .filter((app): app is AppDefinition => Boolean(app));
   // Anything absent from the priority list still gets a slot, so a newly added
   // app is never permanently unreachable from the pinned grid.
-  return [
-    ...pinned,
-    ...apps.filter((app) => !priority.includes(app.id)),
-  ].slice(0, START_PINNED_APP_LIMIT);
+  return [...pinned, ...apps.filter((app) => !priority.includes(app.id))].slice(
+    0,
+    START_PINNED_APP_LIMIT,
+  );
 }
 
 export function resolveRunCommand(command: string): RunCommandResolution {
@@ -151,7 +154,9 @@ export function resolveRunCommand(command: string): RunCommandResolution {
 
   const normalizedCommand = normalizeRunCommand(trimmed);
   const matchedApp = appCatalog.find((app) =>
-    getRunCommandCandidates(app).some((candidate) => normalizeRunCommand(candidate) === normalizedCommand),
+    getRunCommandCandidates(app).some(
+      (candidate) => normalizeRunCommand(candidate) === normalizedCommand,
+    ),
   );
 
   if (matchedApp) {

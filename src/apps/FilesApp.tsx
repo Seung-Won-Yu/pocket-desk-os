@@ -27,22 +27,10 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type FormEvent,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import type React from "react";
 import AppIconTile from "../components/AppIconTile";
-import type {
-  AppId,
-  DesktopItem,
-  ToastInput,
-  VfsDuplicateOptions,
-} from "../types";
+import type { AppId, DesktopItem, ToastInput, VfsDuplicateOptions } from "../types";
 import {
   clamp,
   formatVfsEntrySize,
@@ -155,9 +143,7 @@ export default function FilesApp({
   );
   const locationLabel = folderPath[folderPath.length - 1]?.name ?? "바탕 화면";
   const locationItems = useMemo(() => {
-    return desktopItems.filter(
-      (item) => !item.trashed && item.parentId === currentFolderId,
-    );
+    return desktopItems.filter((item) => !item.trashed && item.parentId === currentFolderId);
   }, [currentFolderId, desktopItems]);
   const files = useMemo(
     () =>
@@ -197,10 +183,16 @@ export default function FilesApp({
       let order = 0;
       if (sortKey === "modified") order = first.updatedAt - second.updatedAt;
       if (sortKey === "type") {
-        order = first.type.localeCompare(second.type, "ko", { numeric: true, sensitivity: "base" });
+        order = first.type.localeCompare(second.type, "ko", {
+          numeric: true,
+          sensitivity: "base",
+        });
       }
       if (sortKey === "name" || order === 0) {
-        order = first.name.localeCompare(second.name, "ko", { numeric: true, sensitivity: "base" });
+        order = first.name.localeCompare(second.name, "ko", {
+          numeric: true,
+          sensitivity: "base",
+        });
       }
       return order * direction;
     });
@@ -353,10 +345,7 @@ export default function FilesApp({
       return;
     }
     if (folderId === currentFolderId) return;
-    setNavigationHistory((current) => [
-      ...current.slice(0, navigationIndex + 1),
-      folderId,
-    ]);
+    setNavigationHistory((current) => [...current.slice(0, navigationIndex + 1), folderId]);
     setNavigationIndex((current) => current + 1);
     resetTransientState();
   };
@@ -434,10 +423,7 @@ export default function FilesApp({
     setFileContextMenu(null);
   };
 
-  const showFileContextMenu = (
-    event: React.MouseEvent<HTMLButtonElement>,
-    fileId: string,
-  ) => {
+  const showFileContextMenu = (event: React.MouseEvent<HTMLButtonElement>, fileId: string) => {
     event.preventDefault();
     event.stopPropagation();
     if (!selectedIds.includes(fileId)) {
@@ -519,7 +505,9 @@ export default function FilesApp({
     event: React.MouseEvent<HTMLButtonElement>,
   ) => {
     if (event.shiftKey && selectionAnchorRef.current) {
-      const anchorIndex = visibleFiles.findIndex((file) => file.id === selectionAnchorRef.current);
+      const anchorIndex = visibleFiles.findIndex(
+        (file) => file.id === selectionAnchorRef.current,
+      );
       if (anchorIndex >= 0) {
         const start = Math.min(anchorIndex, index);
         const end = Math.max(anchorIndex, index);
@@ -647,8 +635,7 @@ export default function FilesApp({
     <div className="files-app app-fill">
       <aside>
         <button onClick={() => openApp("thispc")} type="button">
-          <Monitor aria-hidden="true" size={16} />
-          내 PC
+          <Monitor aria-hidden="true" size={16} />내 PC
         </button>
         {(
           [
@@ -775,7 +762,11 @@ export default function FilesApp({
                 <span>새로 만들기</span>
               </button>
               {newOpen && (
-                <div aria-label="새로 만들기" className="file-command-menu file-new-menu" role="menu">
+                <div
+                  aria-label="새로 만들기"
+                  className="file-command-menu file-new-menu"
+                  role="menu"
+                >
                   <button onClick={createFolder} role="menuitem" type="button">
                     <Folder aria-hidden="true" size={15} />
                     폴더
@@ -903,7 +894,11 @@ export default function FilesApp({
                       role="menuitemradio"
                       type="button"
                     >
-                      {sortKey === nextSortKey ? <Check aria-hidden="true" size={15} /> : <span />}
+                      {sortKey === nextSortKey ? (
+                        <Check aria-hidden="true" size={15} />
+                      ) : (
+                        <span />
+                      )}
                       {label}
                     </button>
                   ))}
@@ -924,7 +919,11 @@ export default function FilesApp({
                       role="menuitemradio"
                       type="button"
                     >
-                      {sortDirection === direction ? <Check aria-hidden="true" size={15} /> : <span />}
+                      {sortDirection === direction ? (
+                        <Check aria-hidden="true" size={15} />
+                      ) : (
+                        <span />
+                      )}
                       {label}
                     </button>
                   ))}
@@ -1045,7 +1044,9 @@ export default function FilesApp({
                       <span>{file.name}</span>
                       <small>{file.modified}</small>
                       <small>{file.type}</small>
-                      <small>{file.item.kind === "folder" ? "" : formatVfsEntrySize(file.item)}</small>
+                      <small>
+                        {file.item.kind === "folder" ? "" : formatVfsEntrySize(file.item)}
+                      </small>
                     </button>
                     {renaming && selectedFile?.id === file.id && (
                       <form className="file-inline-rename" onSubmit={submitRename}>
@@ -1078,7 +1079,11 @@ export default function FilesApp({
               })}
               {visibleFiles.length === 0 && (
                 <div className="file-empty-state">
-                  {fileQuery ? <Search aria-hidden="true" size={24} /> : <Folder aria-hidden="true" size={24} />}
+                  {fileQuery ? (
+                    <Search aria-hidden="true" size={24} />
+                  ) : (
+                    <Folder aria-hidden="true" size={24} />
+                  )}
                   <strong>{fileQuery ? "검색 결과 없음" : "이 폴더는 비어 있습니다."}</strong>
                   {fileQuery && <small>다른 이름이나 파일 형식으로 검색해보세요.</small>}
                 </div>
@@ -1152,7 +1157,9 @@ export default function FilesApp({
         </div>
         <div className="file-statusbar">
           <span>{visibleFiles.length}개 항목</span>
-          <span>{selectedIds.length > 0 ? `${selectedIds.length}개 선택됨` : "선택한 항목 없음"}</span>
+          <span>
+            {selectedIds.length > 0 ? `${selectedIds.length}개 선택됨` : "선택한 항목 없음"}
+          </span>
         </div>
       </section>
       {fileContextMenu && contextFile && (

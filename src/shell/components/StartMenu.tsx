@@ -3,7 +3,17 @@ import { type AppId, type DesktopItem } from "../../types";
 import { getVfsEntryAssociation } from "../../vfs/model";
 import { getResultIconTileTone, getStartPinnedApps } from "../startSearch";
 import { type AppDefinition, type StartSearchResult } from "../types";
-import { ChevronLeft, ChevronRight, FileText, Lock, Power, RotateCcw, Search, UserRound, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  Lock,
+  Power,
+  RotateCcw,
+  Search,
+  UserRound,
+  X,
+} from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 
 export function StartMenu({
@@ -89,7 +99,11 @@ export function StartMenu({
         {hasQuery ? (
           <small>{results.length}개</small>
         ) : (
-          <button className="start-all-apps-toggle" onClick={() => setAllAppsOpen((value) => !value)} type="button">
+          <button
+            className="start-all-apps-toggle"
+            onClick={() => setAllAppsOpen((value) => !value)}
+            type="button"
+          >
             {allAppsOpen ? <ChevronLeft aria-hidden="true" size={14} /> : null}
             {allAppsOpen ? "뒤로" : "모든 앱"}
             {!allAppsOpen ? <ChevronRight aria-hidden="true" size={14} /> : null}
@@ -160,7 +174,11 @@ export function StartMenu({
                     {recentItems.map((item) => {
                       const association = getVfsEntryAssociation(item);
                       return (
-                        <button key={item.id} onClick={() => onRecentItemOpen(item)} type="button">
+                        <button
+                          key={item.id}
+                          onClick={() => onRecentItemOpen(item)}
+                          type="button"
+                        >
                           <AppIconTile
                             accent={association.accent}
                             icon={association.icon}
@@ -219,7 +237,11 @@ export function StartMenu({
                   <RotateCcw aria-hidden="true" size={15} />
                   다시 시작
                 </button>
-                <button onClick={() => runPowerAction(onShutdown)} role="menuitem" type="button">
+                <button
+                  onClick={() => runPowerAction(onShutdown)}
+                  role="menuitem"
+                  type="button"
+                >
                   <Power aria-hidden="true" size={15} />
                   시스템 종료
                 </button>

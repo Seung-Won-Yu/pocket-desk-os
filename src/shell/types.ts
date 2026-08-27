@@ -1,6 +1,16 @@
 import { type BrowserLaunchRequest } from "../apps/BrowserApp";
 import { type FilesLaunchRequest } from "../apps/FilesApp";
-import { type AppId, type DesktopItem, type IconPosition, type OpenWindowInfo, type SoundEffectName, type ThemeName, type ToastInput, type VfsDuplicateOptions, type WallpaperName } from "../types";
+import {
+  type AppId,
+  type DesktopItem,
+  type IconPosition,
+  type OpenWindowInfo,
+  type SoundEffectName,
+  type ThemeName,
+  type ToastInput,
+  type VfsDuplicateOptions,
+  type WallpaperName,
+} from "../types";
 import { type LucideIcon } from "lucide-react";
 
 export type WindowMotion = "closing" | "minimizing";
@@ -92,13 +102,7 @@ export type ToastMessage = Required<ToastInput> & {
 };
 export type ShellPhase = "booting" | "locked" | "shutdown" | "unlocked";
 export type SnapZone =
-  | "bottom-left"
-  | "bottom-right"
-  | "left"
-  | "right"
-  | "top"
-  | "top-left"
-  | "top-right";
+  "bottom-left" | "bottom-right" | "left" | "right" | "top" | "top-left" | "top-right";
 export type SnapPreviewState = {
   zone: SnapZone;
 };

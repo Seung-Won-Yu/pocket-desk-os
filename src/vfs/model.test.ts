@@ -199,7 +199,10 @@ describe("getUniqueCanvasItemName", () => {
 describe("getVfsNameParts", () => {
   it("splits on the last dot", () => {
     expect(getVfsNameParts("보고서.txt")).toEqual({ base: "보고서", extension: ".txt" });
-    expect(getVfsNameParts("archive.tar.gz")).toEqual({ base: "archive.tar", extension: ".gz" });
+    expect(getVfsNameParts("archive.tar.gz")).toEqual({
+      base: "archive.tar",
+      extension: ".gz",
+    });
   });
 
   it("treats names without a usable dot as extensionless", () => {
@@ -276,7 +279,9 @@ describe("getUniqueVfsCopyName", () => {
   });
 
   it("is unaffected by names that only collide in a different folder", () => {
-    expect(getUniqueVfsCopyName(new Set(["다른.txt"]), "보고서.txt")).toBe("보고서 - 복사본.txt");
+    expect(getUniqueVfsCopyName(new Set(["다른.txt"]), "보고서.txt")).toBe(
+      "보고서 - 복사본.txt",
+    );
   });
 });
 
@@ -401,8 +406,12 @@ describe("getVfsEntryExtension", () => {
     expect(getVfsEntryExtension(makeItem({ id: "c", kind: "canvas", name: "그림" }))).toBe(
       "canvas",
     );
-    expect(getVfsEntryExtension(makeItem({ id: "g", kind: "game", name: "게임" }))).toBe("game");
-    expect(getVfsEntryExtension(makeItem({ id: "s", kind: "shortcut", name: "링크" }))).toBe("url");
+    expect(getVfsEntryExtension(makeItem({ id: "g", kind: "game", name: "게임" }))).toBe(
+      "game",
+    );
+    expect(getVfsEntryExtension(makeItem({ id: "s", kind: "shortcut", name: "링크" }))).toBe(
+      "url",
+    );
     expect(getVfsEntryExtension(makeItem({ id: "n", kind: "note", name: "메모" }))).toBe("txt");
   });
 
@@ -410,7 +419,9 @@ describe("getVfsEntryExtension", () => {
     expect(getVfsEntryExtension(makeItem({ id: "c", kind: "canvas", name: "그림.png" }))).toBe(
       "png",
     );
-    expect(getVfsEntryExtension(makeItem({ id: "n", kind: "note", name: "노트.md" }))).toBe("md");
+    expect(getVfsEntryExtension(makeItem({ id: "n", kind: "note", name: "노트.md" }))).toBe(
+      "md",
+    );
   });
 
   it("ignores a dotfile-style leading dot", () => {
@@ -422,7 +433,9 @@ describe("getVfsEntryExtension", () => {
 
 describe("getVfsEntryAssociation", () => {
   it("labels folders as file folders owned by the explorer", () => {
-    const association = getVfsEntryAssociation(makeItem({ id: "f", kind: "folder", name: "문서" }));
+    const association = getVfsEntryAssociation(
+      makeItem({ id: "f", kind: "folder", name: "문서" }),
+    );
     expect(association.appId).toBe("files");
     expect(association.typeLabel).toBe("파일 폴더");
     expect(association.extension).toBe("folder");
@@ -549,7 +562,9 @@ describe("getVfsShortcutTarget", () => {
 
   it("falls back to a placeholder when no url is stored", () => {
     expect(getVfsShortcutTarget(makeItem({ id: "s" }))).toBe("https://example.com");
-    expect(getVfsShortcutTarget(makeItem({ content: "", id: "s" }))).toBe("https://example.com");
+    expect(getVfsShortcutTarget(makeItem({ content: "", id: "s" }))).toBe(
+      "https://example.com",
+    );
     expect(getVfsShortcutTarget(makeItem({ content: "   \n ", id: "s" }))).toBe(
       "https://example.com",
     );
@@ -564,7 +579,9 @@ describe("getVfsEntryDetail", () => {
   });
 
   it("previews note content, trimmed", () => {
-    expect(getVfsEntryDetail(makeItem({ content: "  안녕  ", id: "n", kind: "note" }))).toBe("안녕");
+    expect(getVfsEntryDetail(makeItem({ content: "  안녕  ", id: "n", kind: "note" }))).toBe(
+      "안녕",
+    );
   });
 
   it("explains that a note is empty when it has no usable content", () => {
@@ -578,7 +595,9 @@ describe("getVfsEntryDetail", () => {
 
   it("distinguishes a saved canvas from an empty one", () => {
     expect(
-      getVfsEntryDetail(makeItem({ content: "data:image/png;base64,AAA", id: "c", kind: "canvas" })),
+      getVfsEntryDetail(
+        makeItem({ content: "data:image/png;base64,AAA", id: "c", kind: "canvas" }),
+      ),
     ).toBe("저장된 PNG 그림입니다. 그림판에서 다시 열 수 있습니다.");
     expect(getVfsEntryDetail(makeItem({ id: "c", kind: "canvas" }))).toBe(
       "그림판에서 새 그림을 그릴 수 있습니다.",
@@ -610,9 +629,9 @@ describe("getVfsEntryDetail", () => {
         }),
       ),
     ).toBe("Microsoft Edge에서 https://example.dev 주소를 엽니다.");
-    expect(getVfsEntryDetail(makeItem({ id: "s", kind: "shortcut", name: "바로 가기.url" }))).toBe(
-      "Microsoft Edge에서 https://example.com 주소를 엽니다.",
-    );
+    expect(
+      getVfsEntryDetail(makeItem({ id: "s", kind: "shortcut", name: "바로 가기.url" })),
+    ).toBe("Microsoft Edge에서 https://example.com 주소를 엽니다.");
   });
 });
 
@@ -680,7 +699,9 @@ describe("getVfsFolderPath", () => {
   ];
 
   it("returns just the desktop segment for the root", () => {
-    expect(getVfsFolderPath(items, VFS_ROOT_ID)).toEqual([{ id: VFS_ROOT_ID, name: "바탕 화면" }]);
+    expect(getVfsFolderPath(items, VFS_ROOT_ID)).toEqual([
+      { id: VFS_ROOT_ID, name: "바탕 화면" },
+    ]);
   });
 
   it("builds the full chain from the desktop down to the folder", () => {
@@ -693,9 +714,13 @@ describe("getVfsFolderPath", () => {
   });
 
   it("falls back to the desktop when the chain cannot be resolved", () => {
-    expect(getVfsFolderPath(items, "missing")).toEqual([{ id: VFS_ROOT_ID, name: "바탕 화면" }]);
+    expect(getVfsFolderPath(items, "missing")).toEqual([
+      { id: VFS_ROOT_ID, name: "바탕 화면" },
+    ]);
     expect(getVfsFolderPath(items, "note")).toEqual([{ id: VFS_ROOT_ID, name: "바탕 화면" }]);
-    expect(getVfsFolderPath(items, "trashed")).toEqual([{ id: VFS_ROOT_ID, name: "바탕 화면" }]);
+    expect(getVfsFolderPath(items, "trashed")).toEqual([
+      { id: VFS_ROOT_ID, name: "바탕 화면" },
+    ]);
   });
 
   it("does not loop forever on a cyclic parent chain", () => {
@@ -724,7 +749,9 @@ describe("getVfsDescendantIds", () => {
   });
 
   it("collects the whole subtree, not just direct children", () => {
-    expect(getVfsDescendantIds(items, ["a"])).toEqual(new Set(["a", "a1", "a1-note", "a-note"]));
+    expect(getVfsDescendantIds(items, ["a"])).toEqual(
+      new Set(["a", "a1", "a1-note", "a-note"]),
+    );
   });
 
   it("collects several subtrees at once and excludes unrelated items", () => {
@@ -883,16 +910,18 @@ describe("name length capping", () => {
     // A split surrogate pair would make the last code unit an unpaired D800-DBFF.
     const lastUnit = truncated.charCodeAt(truncated.length - 1);
     expect(lastUnit >= 0xd800 && lastUnit <= 0xdbff).toBe(false);
-    expect([...truncated].every((character) => character === "a" || character === "🙂")).toBe(true);
+    expect([...truncated].every((character) => character === "a" || character === "🙂")).toBe(
+      true,
+    );
   });
 
   it("does not hand back the very name it was deduplicating", () => {
     const existing = "가".repeat(MAX_VFS_NAME_LENGTH);
     const items = [makeNote("n1", "folder-a", existing)];
     expect(getUniqueVfsEntryName(items, "folder-a", existing)).not.toBe(existing);
-    expect(getUniqueRenamedVfsItemName([...items, makeNote("n2", "folder-a")], "n2", existing)).not.toBe(
-      existing,
-    );
+    expect(
+      getUniqueRenamedVfsItemName([...items, makeNote("n2", "folder-a")], "n2", existing),
+    ).not.toBe(existing);
     expect(getUniqueVfsCopyName(new Set([existing]), existing)).not.toBe(existing);
   });
 

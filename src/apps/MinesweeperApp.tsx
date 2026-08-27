@@ -138,7 +138,9 @@ export default function MinesweeperApp({ playSound }: MinesweeperAppProps) {
     if (target.revealed) {
       if (target.adjacent === 0) return;
       const neighbors = getNeighbors(index, difficulty);
-      const adjacentFlags = neighbors.filter((neighbor) => activeBoard[neighbor]?.flagged).length;
+      const adjacentFlags = neighbors.filter(
+        (neighbor) => activeBoard[neighbor]?.flagged,
+      ).length;
       if (adjacentFlags !== target.adjacent) return;
 
       const explodedNeighbor = neighbors.find(
@@ -355,7 +357,9 @@ export default function MinesweeperApp({ playSound }: MinesweeperAppProps) {
                   )}
                 </span>
                 <span>
-                  <h2 id="mines-result-title">{status === "won" ? "게임 완료" : "게임 종료"}</h2>
+                  <h2 id="mines-result-title">
+                    {status === "won" ? "게임 완료" : "게임 종료"}
+                  </h2>
                   <p>
                     {status === "won"
                       ? "모든 지뢰를 찾았습니다."
@@ -400,7 +404,10 @@ export default function MinesweeperApp({ playSound }: MinesweeperAppProps) {
 }
 
 function getMinesDifficulty(difficultyId: MinesDifficultyId) {
-  return minesDifficulties.find((difficulty) => difficulty.id === difficultyId) ?? minesDifficulties[0];
+  return (
+    minesDifficulties.find((difficulty) => difficulty.id === difficultyId) ??
+    minesDifficulties[0]
+  );
 }
 
 function loadMinesBestRecords(): Record<MinesDifficultyId, number | null> {
@@ -451,7 +458,8 @@ function createMineBoard(difficulty: MinesDifficulty, safeStartIndex?: number): 
   const minePositions = new Set(candidates.slice(0, difficulty.mines));
 
   return Array.from({ length: size }, (_, index) => ({
-    adjacent: getNeighbors(index, difficulty).filter((neighbor) => minePositions.has(neighbor)).length,
+    adjacent: getNeighbors(index, difficulty).filter((neighbor) => minePositions.has(neighbor))
+      .length,
     flagged: false,
     id: `cell-${index}`,
     mine: minePositions.has(index),

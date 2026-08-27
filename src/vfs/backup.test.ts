@@ -104,7 +104,12 @@ function buildZip(inputs: ZipEntryInput[]) {
     target.push(value & 0xff, (value >>> 8) & 0xff);
   };
   const pushUint32 = (target: number[], value: number) => {
-    target.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+    target.push(
+      value & 0xff,
+      (value >>> 8) & 0xff,
+      (value >>> 16) & 0xff,
+      (value >>> 24) & 0xff,
+    );
   };
 
   for (const input of inputs) {
@@ -245,7 +250,9 @@ describe("crc32 reference oracle", () => {
     expect(crc32Reference(encode(""))).toBe(0x00000000);
     expect(crc32Reference(encode("a"))).toBe(0xe8b7be43);
     expect(crc32Reference(encode("123456789"))).toBe(0xcbf43926);
-    expect(crc32Reference(encode("The quick brown fox jumps over the lazy dog"))).toBe(0x414fa339);
+    expect(crc32Reference(encode("The quick brown fox jumps over the lazy dog"))).toBe(
+      0x414fa339,
+    );
   });
 });
 
@@ -310,7 +317,12 @@ describe("createVfsBackupZip", () => {
 
   it("round-trips multi-byte names and content byte for byte", () => {
     const tricky = [
-      makeEntry({ content: "한글 \u{1F600} ✓", createdAt: 5, id: "note-2", name: "테스트 🙂.txt" }),
+      makeEntry({
+        content: "한글 \u{1F600} ✓",
+        createdAt: 5,
+        id: "note-2",
+        name: "테스트 🙂.txt",
+      }),
     ];
     const parsed = parseZip(createVfsBackupZip(tricky));
     const text = new TextDecoder("utf-8", { fatal: true }).decode(parsed.payload);
@@ -321,7 +333,9 @@ describe("createVfsBackupZip", () => {
 
   it("accepts an empty entry list", () => {
     const parsed = parseZip(createVfsBackupZip([]));
-    const envelope = JSON.parse(new TextDecoder().decode(parsed.payload)) as { entries: unknown[] };
+    const envelope = JSON.parse(new TextDecoder().decode(parsed.payload)) as {
+      entries: unknown[];
+    };
     expect(envelope.entries).toEqual([]);
   });
 
@@ -376,7 +390,10 @@ describe("readVfsBackupZip round trip", () => {
       makeEntry({ createdAt: 30, id: "shortcut-1", kind: "shortcut", name: "링크.url" }),
     ];
 
-    const restored = await readVfsBackupZip(toFile(createVfsBackupZip(entries)), normalizeEntry);
+    const restored = await readVfsBackupZip(
+      toFile(createVfsBackupZip(entries)),
+      normalizeEntry,
+    );
     expect(restored).toEqual(entries);
   });
 
@@ -611,32 +628,32 @@ describe("readVfsBackupZip payload validation", () => {
   it("rejects payload bytes that are not valid UTF-8", async () => {
     // 0xff is never a legal UTF-8 lead byte, so the fatal decoder must reject it.
     const payload = new Uint8Array([0x7b, 0x22, 0xff, 0xfe, 0x22, 0x7d]);
-    await expect(readVfsBackupZip(toFile(zipWithPayload(payload)), normalizeEntry)).rejects.toThrow(
-      /백업 JSON이 손상되었습니다/,
-    );
+    await expect(
+      readVfsBackupZip(toFile(zipWithPayload(payload)), normalizeEntry),
+    ).rejects.toThrow(/백업 JSON이 손상되었습니다/);
   });
 
   it("rejects a truncated multi-byte UTF-8 sequence", async () => {
     // Leading two bytes of "한" (EC 95 9C) without its final continuation byte.
     const payload = new Uint8Array([0xec, 0x95]);
-    await expect(readVfsBackupZip(toFile(zipWithPayload(payload)), normalizeEntry)).rejects.toThrow(
-      /백업 JSON이 손상되었습니다/,
-    );
+    await expect(
+      readVfsBackupZip(toFile(zipWithPayload(payload)), normalizeEntry),
+    ).rejects.toThrow(/백업 JSON이 손상되었습니다/);
   });
 
   it("rejects malformed JSON", async () => {
     for (const text of ["", "{", '{"app": ', "not json"]) {
-      await expect(readVfsBackupZip(toFile(zipWithJsonText(text)), normalizeEntry)).rejects.toThrow(
-        /백업 JSON이 손상되었습니다/,
-      );
+      await expect(
+        readVfsBackupZip(toFile(zipWithJsonText(text)), normalizeEntry),
+      ).rejects.toThrow(/백업 JSON이 손상되었습니다/);
     }
   });
 
   it("rejects a JSON document that is not an object", async () => {
     for (const text of ["null", "123", '"hello"', "true"]) {
-      await expect(readVfsBackupZip(toFile(zipWithJsonText(text)), normalizeEntry)).rejects.toThrow(
-        /백업 JSON을 읽을 수 없습니다/,
-      );
+      await expect(
+        readVfsBackupZip(toFile(zipWithJsonText(text)), normalizeEntry),
+      ).rejects.toThrow(/백업 JSON을 읽을 수 없습니다/);
     }
   });
 
@@ -665,9 +682,9 @@ describe("readVfsBackupZip payload validation", () => {
   });
 
   it("treats a bare JSON array as a wrong-format backup", async () => {
-    await expect(readVfsBackupZip(toFile(zipWithJsonText("[]")), normalizeEntry)).rejects.toThrow(
-      /지원하지 않는 PocketDesk 백업 형식입니다/,
-    );
+    await expect(
+      readVfsBackupZip(toFile(zipWithJsonText("[]")), normalizeEntry),
+    ).rejects.toThrow(/지원하지 않는 PocketDesk 백업 형식입니다/);
   });
 
   it("rejects a backup whose entries field is missing or not an array", async () => {

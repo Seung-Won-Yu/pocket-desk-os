@@ -100,8 +100,7 @@ export function TaskView({
         })}
         {desktopCount < MAX_VIRTUAL_DESKTOPS && (
           <button className="task-view-add" onClick={onAddDesktop} type="button">
-            <Plus aria-hidden="true" size={22} />
-            새 데스크톱
+            <Plus aria-hidden="true" size={22} />새 데스크톱
           </button>
         )}
       </div>

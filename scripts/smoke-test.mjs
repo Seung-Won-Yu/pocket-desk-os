@@ -100,7 +100,9 @@ async function unlockPocketDesk(page) {
   await signInButton.click();
   await shellGate.waitFor({ state: "hidden" });
   assert(
-    await page.locator(".desktop").evaluate((desktop) => desktop.classList.contains("is-unlocked")),
+    await page
+      .locator(".desktop")
+      .evaluate((desktop) => desktop.classList.contains("is-unlocked")),
     "Desktop unlock transition state missing",
   );
 }
@@ -230,7 +232,10 @@ async function runSmoke(baseUrl) {
       );
     });
     await page.waitForTimeout(100);
-    assert(!(await pwaUpdatePrompt.isVisible()), "Dismissed PWA update prompt reopened for the same worker");
+    assert(
+      !(await pwaUpdatePrompt.isVisible()),
+      "Dismissed PWA update prompt reopened for the same worker",
+    );
     await page.evaluate(() => {
       window.dispatchEvent(
         new CustomEvent("pocketdesk:pwa-update", {
@@ -251,16 +256,28 @@ async function runSmoke(baseUrl) {
     await page.mouse.move(380, 520, { steps: 10 });
     await page.mouse.up();
     await page.waitForTimeout(100);
-    assert((await page.locator(".desktop").count()) === 1, "Desktop selection drag crashed the shell");
-    assert((await page.locator(".desktop-icon").count()) === 2, "Desktop should only show core system icons");
+    assert(
+      (await page.locator(".desktop").count()) === 1,
+      "Desktop selection drag crashed the shell",
+    );
+    assert(
+      (await page.locator(".desktop-icon").count()) === 2,
+      "Desktop should only show core system icons",
+    );
     const defaultIconBoxes = await page.locator(".desktop-icon").evaluateAll((icons) =>
       icons.map((icon) => {
         const box = icon.getBoundingClientRect();
         return { left: box.left, top: box.top };
       }),
     );
-    assert(defaultIconBoxes[0].left === defaultIconBoxes[1].left, "Desktop system icons are not vertically aligned");
-    assert(defaultIconBoxes[0].top < defaultIconBoxes[1].top, "Desktop system icon order is wrong");
+    assert(
+      defaultIconBoxes[0].left === defaultIconBoxes[1].left,
+      "Desktop system icons are not vertically aligned",
+    );
+    assert(
+      defaultIconBoxes[0].top < defaultIconBoxes[1].top,
+      "Desktop system icon order is wrong",
+    );
 
     const desktopThisPc = page.locator(".desktop-icon", { hasText: "내 PC" });
     await desktopThisPc.click();
@@ -272,9 +289,9 @@ async function runSmoke(baseUrl) {
     const desktopThisPcWindow = page.locator('article[aria-label="내 PC"]');
     await desktopThisPcWindow.waitFor({ state: "visible" });
     assert(
-      (await desktopThisPcWindow.evaluate((frame) => getComputedStyle(frame).animationName)).includes(
-        "window-open",
-      ),
+      (
+        await desktopThisPcWindow.evaluate((frame) => getComputedStyle(frame).animationName)
+      ).includes("window-open"),
       "Window open transition missing",
     );
     const showDesktopButton = page.getByRole("button", { name: "바탕 화면 표시" });
@@ -311,8 +328,16 @@ async function runSmoke(baseUrl) {
     const viewMenu = page.getByRole("menu", { name: "보기" });
     await viewMenu.waitFor({ state: "visible" });
     await viewMenu.getByRole("menuitemradio", { name: "큰 아이콘" }).click();
-    assert(await page.locator(".desktop").evaluate((node) => node.classList.contains("desktop-view-large")), "Large desktop icon view did not apply");
-    const largeIconWidth = await page.locator(".desktop-icon").first().evaluate((node) => node.getBoundingClientRect().width);
+    assert(
+      await page
+        .locator(".desktop")
+        .evaluate((node) => node.classList.contains("desktop-view-large")),
+      "Large desktop icon view did not apply",
+    );
+    const largeIconWidth = await page
+      .locator(".desktop-icon")
+      .first()
+      .evaluate((node) => node.getBoundingClientRect().width);
     assert(largeIconWidth > 86, "Large desktop icon view did not increase icon width");
 
     await page.locator(".desktop").dispatchEvent("contextmenu", {
@@ -331,7 +356,10 @@ async function runSmoke(baseUrl) {
         return { left: box.left, top: box.top };
       }),
     );
-    assert(sortedIconBoxes[0].left === sortedIconBoxes[1].left, "Desktop name sort did not form a vertical grid");
+    assert(
+      sortedIconBoxes[0].left === sortedIconBoxes[1].left,
+      "Desktop name sort did not form a vertical grid",
+    );
     assert(sortedIconBoxes[0].top < sortedIconBoxes[1].top, "Desktop name sort order is wrong");
 
     await page.locator(".desktop").dispatchEvent("contextmenu", {
@@ -436,8 +464,14 @@ async function runSmoke(baseUrl) {
     });
     const desktopItemMenu = page.getByRole("menu", { name: "바탕 화면 항목 메뉴" });
     await desktopItemMenu.waitFor({ state: "visible" });
-    assert((await desktopItemMenu.innerText()).includes("복사"), "Desktop item menu is missing Copy");
-    assert((await desktopItemMenu.innerText()).includes("속성"), "Desktop item menu is missing Properties");
+    assert(
+      (await desktopItemMenu.innerText()).includes("복사"),
+      "Desktop item menu is missing Copy",
+    );
+    assert(
+      (await desktopItemMenu.innerText()).includes("속성"),
+      "Desktop item menu is missing Properties",
+    );
     await desktopItemMenu.getByRole("menuitem", { name: "속성" }).click();
     const desktopProperties = page.getByRole("dialog", { name: "바탕 화면 파일 속성" });
     await desktopProperties.waitFor({ state: "visible" });
@@ -480,7 +514,10 @@ async function runSmoke(baseUrl) {
     assert(startText.includes("고정됨"), "Start menu pinned section missing");
     assert(startText.includes("모든 앱"), "Start menu all-apps action missing");
     assert(startText.includes("추천"), "Start menu recommended section missing");
-    assert(await page.locator(".start-pinned-grid button").count() >= 6, "Pinned app grid is too sparse");
+    assert(
+      (await page.locator(".start-pinned-grid button").count()) >= 6,
+      "Pinned app grid is too sparse",
+    );
     await startMenu.getByRole("button", { name: "전원 옵션" }).click();
     await startMenu.getByRole("menuitem", { name: "다시 시작" }).click();
     await page.locator('[aria-label="부팅 화면"]').waitFor({ state: "visible" });
@@ -490,7 +527,10 @@ async function runSmoke(baseUrl) {
     await page.getByRole("button", { name: "시작 메뉴" }).click();
     await startMenu.waitFor({ state: "visible" });
 
-    await startMenu.locator(".start-pinned-grid").getByRole("button", { name: /내 PC/ }).click();
+    await startMenu
+      .locator(".start-pinned-grid")
+      .getByRole("button", { name: /내 PC/ })
+      .click();
     const thisPc = page.locator('article[aria-label="내 PC"]');
     await thisPc.waitFor({ state: "visible" });
     const thisPcText = await thisPc.innerText();
@@ -498,22 +538,33 @@ async function runSmoke(baseUrl) {
     assert(thisPcText.includes("로컬 디스크 (C:)"), "This PC did not show local disk");
     await thisPc.getByRole("button", { name: "자세히 보기" }).click();
     assert(
-      await thisPc.locator(".this-pc-drive-list").evaluate((node) => node.classList.contains("is-details")),
+      await thisPc
+        .locator(".this-pc-drive-list")
+        .evaluate((node) => node.classList.contains("is-details")),
       "This PC details view did not apply",
     );
     const thisPcSearch = thisPc.getByLabel("내 PC 검색");
     await thisPcSearch.fill("없는 드라이브");
-    assert((await thisPc.innerText()).includes("검색 결과 없음"), "This PC search did not filter drives");
+    assert(
+      (await thisPc.innerText()).includes("검색 결과 없음"),
+      "This PC search did not filter drives",
+    );
     await thisPcSearch.fill("");
     await thisPc.getByRole("button", { name: /로컬 디스크/ }).click();
-    assert(await thisPc.getByRole("button", { name: "열기" }).isEnabled(), "This PC Open command stayed disabled");
+    assert(
+      await thisPc.getByRole("button", { name: "열기" }).isEnabled(),
+      "This PC Open command stayed disabled",
+    );
     await thisPc.getByRole("button", { name: /바탕 화면/ }).click();
     await page.locator('article[aria-label="파일 탐색기"]').waitFor({ state: "visible" });
     const files = page.locator('article[aria-label="파일 탐색기"]');
     const explorerSidebar = files.locator("aside");
     await explorerSidebar.getByRole("button", { name: "문서", exact: true }).click();
     assert((await files.locator(".file-list button").count()) > 0, "Documents view is empty");
-    assert((await files.locator(".file-list").innerText()).includes("notes.txt"), "Documents view did not filter notes");
+    assert(
+      (await files.locator(".file-list").innerText()).includes("notes.txt"),
+      "Documents view did not filter notes",
+    );
 
     await files.getByRole("button", { name: "새 파일 탐색기 창" }).click();
     const explorerWindows = page.locator('article[aria-label="파일 탐색기"]');
@@ -526,7 +577,10 @@ async function runSmoke(baseUrl) {
       (await page.locator(".taskbar-window-count").filter({ hasText: "2" }).count()) > 0,
       "Taskbar did not show the File Explorer window count",
     );
-    await secondExplorer.locator("aside").getByRole("button", { name: "사진", exact: true }).click();
+    await secondExplorer
+      .locator("aside")
+      .getByRole("button", { name: "사진", exact: true })
+      .click();
     assert(
       (await secondExplorer.locator(".file-address").innerText()).includes("사진"),
       "Second Explorer window did not navigate independently",
@@ -550,7 +604,10 @@ async function runSmoke(baseUrl) {
     await projectFolder.waitFor({ state: "visible" });
 
     await files.getByRole("button", { name: "새로 만들기" }).click();
-    await files.getByRole("menu", { name: "새로 만들기" }).getByRole("menuitem", { name: "텍스트 문서" }).click();
+    await files
+      .getByRole("menu", { name: "새로 만들기" })
+      .getByRole("menuitem", { name: "텍스트 문서" })
+      .click();
     const movingNoteNameInput = files.getByLabel("파일 이름");
     await movingNoteNameInput.fill("이동할 메모.txt");
     await movingNoteNameInput.press("Enter");
@@ -558,12 +615,19 @@ async function runSmoke(baseUrl) {
     await movingNote.dragTo(projectFolder);
     await movingNote.waitFor({ state: "hidden" });
     await projectFolder.dblclick();
-    await files.locator(".file-list button", { hasText: "이동할 메모.txt" }).waitFor({ state: "visible" });
-    assert((await files.locator(".file-address").innerText()).includes("프로젝트"), "Explorer did not enter a folder");
+    await files
+      .locator(".file-list button", { hasText: "이동할 메모.txt" })
+      .waitFor({ state: "visible" });
+    assert(
+      (await files.locator(".file-address").innerText()).includes("프로젝트"),
+      "Explorer did not enter a folder",
+    );
     await files.getByRole("button", { name: "위로" }).click();
     await projectFolder.waitFor({ state: "visible" });
     await files.getByRole("button", { name: "뒤로" }).click();
-    await files.locator(".file-list button", { hasText: "이동할 메모.txt" }).waitFor({ state: "visible" });
+    await files
+      .locator(".file-list button", { hasText: "이동할 메모.txt" })
+      .waitFor({ state: "visible" });
     await files.getByRole("button", { name: "앞으로" }).click();
     await projectFolder.waitFor({ state: "visible" });
     await explorerSidebar.getByRole("button", { name: "바탕 화면", exact: true }).click();
@@ -575,27 +639,51 @@ async function runSmoke(baseUrl) {
     await files.getByRole("button", { name: "정렬" }).click();
     await explorerSortMenu.getByRole("menuitemradio", { name: "내림차순" }).click();
     const descendingNames = await files.locator(".file-list button > span").allInnerTexts();
-    assert(descendingNames.at(-1) === "web-surf.url", "Explorer did not keep folders grouped before files");
+    assert(
+      descendingNames.at(-1) === "web-surf.url",
+      "Explorer did not keep folders grouped before files",
+    );
 
     await files.getByRole("button", { name: "큰 아이콘 보기" }).click();
-    assert(await files.locator(".file-list").evaluate((node) => node.classList.contains("file-view-icons")), "Explorer icon view did not apply");
+    assert(
+      await files
+        .locator(".file-list")
+        .evaluate((node) => node.classList.contains("file-view-icons")),
+      "Explorer icon view did not apply",
+    );
     const firstExplorerFile = files.locator(".file-list button").first();
     const firstExplorerFileName = await firstExplorerFile.locator("span").innerText();
     await firstExplorerFile.click();
     await page.keyboard.press("Control+a");
-    assert((await files.locator(".file-list button.is-selected").count()) === 4, "Explorer Ctrl+A did not select all files");
+    assert(
+      (await files.locator(".file-list button.is-selected").count()) === 4,
+      "Explorer Ctrl+A did not select all files",
+    );
     await firstExplorerFile.click({ modifiers: [multiSelectModifier] });
-    const ctrlClickSelectionCount = await files.locator(".file-list button.is-selected").count();
-    assert(ctrlClickSelectionCount === 3, `Explorer Ctrl+click did not toggle selection: ${ctrlClickSelectionCount}`);
-    assert(!(await files.locator(".file-preview h3").innerText()).includes(firstExplorerFileName), "Explorer kept a deselected file active");
+    const ctrlClickSelectionCount = await files
+      .locator(".file-list button.is-selected")
+      .count();
+    assert(
+      ctrlClickSelectionCount === 3,
+      `Explorer Ctrl+click did not toggle selection: ${ctrlClickSelectionCount}`,
+    );
+    assert(
+      !(await files.locator(".file-preview h3").innerText()).includes(firstExplorerFileName),
+      "Explorer kept a deselected file active",
+    );
     await files.locator(".file-list button", { hasText: "web-surf.url" }).click();
     await page.keyboard.press("F2");
     await files.getByLabel("파일 이름").waitFor({ state: "visible" });
     await page.keyboard.press("Escape");
     await files.getByLabel("파일 이름").waitFor({ state: "hidden" });
     await page.keyboard.press("ArrowUp");
-    const arrowSelectedName = await files.locator(".file-list button.is-selected span").innerText();
-    assert(arrowSelectedName !== "web-surf.url", `Explorer arrow navigation did not move selection: ${arrowSelectedName}`);
+    const arrowSelectedName = await files
+      .locator(".file-list button.is-selected span")
+      .innerText();
+    assert(
+      arrowSelectedName !== "web-surf.url",
+      `Explorer arrow navigation did not move selection: ${arrowSelectedName}`,
+    );
     await files.getByRole("button", { name: "자세히 보기" }).click();
     await files.getByRole("button", { name: "정렬" }).click();
     await files.locator(".file-address").click();
@@ -615,16 +703,31 @@ async function runSmoke(baseUrl) {
     await workNote.dispatchEvent("contextmenu", { bubbles: true, cancelable: true });
     const fileContextMenu = page.getByRole("menu", { name: "파일 메뉴" });
     await fileContextMenu.waitFor({ state: "visible" });
-    assert((await fileContextMenu.innerText()).includes("열기"), "Explorer file context menu is missing Open");
-    assert((await fileContextMenu.innerText()).includes("복사"), "Explorer file context menu is missing Copy");
-    assert((await fileContextMenu.innerText()).includes("속성"), "Explorer file context menu is missing Properties");
+    assert(
+      (await fileContextMenu.innerText()).includes("열기"),
+      "Explorer file context menu is missing Open",
+    );
+    assert(
+      (await fileContextMenu.innerText()).includes("복사"),
+      "Explorer file context menu is missing Copy",
+    );
+    assert(
+      (await fileContextMenu.innerText()).includes("속성"),
+      "Explorer file context menu is missing Properties",
+    );
     await fileContextMenu.getByRole("menuitem", { name: "속성" }).click();
     const propertiesDialog = files.getByRole("dialog", { name: "파일 속성" });
     await propertiesDialog.waitFor({ state: "visible" });
     const propertiesText = await propertiesDialog.innerText();
-    assert(propertiesText.includes("작업 메모.txt"), "Explorer Properties did not show the file name");
+    assert(
+      propertiesText.includes("작업 메모.txt"),
+      "Explorer Properties did not show the file name",
+    );
     assert(propertiesText.includes("크기"), "Explorer Properties did not show file size");
-    assert(propertiesText.includes("만든 날짜"), "Explorer Properties did not show creation time");
+    assert(
+      propertiesText.includes("만든 날짜"),
+      "Explorer Properties did not show creation time",
+    );
     const propertiesLayout = await propertiesDialog.evaluate((dialog) => {
       const overlay = dialog.parentElement;
       const windowContent = dialog.closest(".window-content");
@@ -639,15 +742,23 @@ async function runSmoke(baseUrl) {
       };
     });
     assert(propertiesLayout.contained, "Explorer Properties overflowed its window");
-    assert(propertiesLayout.windowScrollTop === 0, "Explorer Properties scrolled the whole app");
+    assert(
+      propertiesLayout.windowScrollTop === 0,
+      "Explorer Properties scrolled the whole app",
+    );
     await propertiesDialog.getByRole("button", { name: "확인" }).click();
 
     await workNote.click();
     await page.keyboard.press("Control+c");
     await page.keyboard.press("Control+v");
-    const copiedWorkNote = files.locator(".file-list button", { hasText: "작업 메모 - 복사본.txt" });
+    const copiedWorkNote = files.locator(".file-list button", {
+      hasText: "작업 메모 - 복사본.txt",
+    });
     await copiedWorkNote.waitFor({ state: "visible" });
-    assert((await copiedWorkNote.count()) === 1, "Explorer copy/paste did not create one persisted copy");
+    assert(
+      (await copiedWorkNote.count()) === 1,
+      "Explorer copy/paste did not create one persisted copy",
+    );
     await page.waitForTimeout(180);
     const copiedFilePersisted = await page.evaluate(
       () =>
@@ -660,7 +771,9 @@ async function runSmoke(baseUrl) {
             const allEntries = transaction.objectStore("entries").getAll();
             allEntries.onerror = () => resolve(false);
             allEntries.onsuccess = () => {
-              resolve(allEntries.result.some((entry) => entry.name === "작업 메모 - 복사본.txt"));
+              resolve(
+                allEntries.result.some((entry) => entry.name === "작업 메모 - 복사본.txt"),
+              );
               database.close();
             };
           };
@@ -698,14 +811,19 @@ async function runSmoke(baseUrl) {
           };
         }),
     );
-    assert(vfsMetadata?.databaseVersion === 2, "VFS database did not migrate to schema version 2");
+    assert(
+      vfsMetadata?.databaseVersion === 2,
+      "VFS database did not migrate to schema version 2",
+    );
     assert(vfsMetadata?.metadata?.schemaVersion === 2, "VFS snapshot metadata is missing");
     assert(
       vfsMetadata?.metadata?.entryCount === vfsMetadata?.entryCount,
       "VFS snapshot metadata count does not match persisted entries",
     );
 
-    const explorerFileCountBeforeInvalidImport = await files.locator(".file-list button").count();
+    const explorerFileCountBeforeInvalidImport = await files
+      .locator(".file-list button")
+      .count();
     await files.locator('input[type="file"][accept*=".zip"]').setInputFiles({
       buffer: Buffer.from("not-a-pocketdesk-zip"),
       mimeType: "application/zip",
@@ -713,7 +831,8 @@ async function runSmoke(baseUrl) {
     });
     await page.getByText("ZIP 가져오기 실패", { exact: true }).waitFor({ state: "visible" });
     assert(
-      (await files.locator(".file-list button").count()) === explorerFileCountBeforeInvalidImport,
+      (await files.locator(".file-list button").count()) ===
+        explorerFileCountBeforeInvalidImport,
       "Invalid ZIP import replaced the current VFS state",
     );
 
@@ -727,13 +846,22 @@ async function runSmoke(baseUrl) {
     for (const key of ["7", "+", "5", "="]) {
       await calculator.getByRole("button", { name: key, exact: true }).click();
     }
-    assert((await calculator.getByLabel("계산기 표시창").innerText()) === "12", "Calculator result is wrong");
+    assert(
+      (await calculator.getByLabel("계산기 표시창").innerText()) === "12",
+      "Calculator result is wrong",
+    );
     await calculator.getByRole("button", { name: "M+", exact: true }).click();
     await calculator.getByRole("button", { name: "C", exact: true }).click();
     await calculator.getByRole("button", { name: "MR", exact: true }).click();
-    assert((await calculator.getByLabel("계산기 표시창").innerText()) === "12", "Calculator memory recall failed");
+    assert(
+      (await calculator.getByLabel("계산기 표시창").innerText()) === "12",
+      "Calculator memory recall failed",
+    );
     await calculator.getByRole("button", { name: "기록", exact: true }).click();
-    assert((await calculator.locator(".calc-history-panel").innerText()).includes("7+5"), "Calculator history is empty");
+    assert(
+      (await calculator.locator(".calc-history-panel").innerText()).includes("7+5"),
+      "Calculator history is empty",
+    );
 
     await page.keyboard.press("Control+Alt+R");
     await runDialog.waitFor({ state: "visible" });
@@ -743,11 +871,23 @@ async function runSmoke(baseUrl) {
     await minesweeper.waitFor({ state: "visible" });
     const difficultySelect = minesweeper.getByLabel("지뢰찾기 난이도");
     await difficultySelect.selectOption("medium");
-    assert((await minesweeper.locator(".mine-cell").count()) === 256, "Minesweeper intermediate board is not 16x16");
-    assert((await minesweeper.locator(".mines-commandbar").innerText()).includes("16 × 16"), "Minesweeper intermediate dimensions are wrong");
+    assert(
+      (await minesweeper.locator(".mine-cell").count()) === 256,
+      "Minesweeper intermediate board is not 16x16",
+    );
+    assert(
+      (await minesweeper.locator(".mines-commandbar").innerText()).includes("16 × 16"),
+      "Minesweeper intermediate dimensions are wrong",
+    );
     await difficultySelect.selectOption("hard");
-    assert((await minesweeper.locator(".mine-cell").count()) === 480, "Minesweeper expert board is not 30x16");
-    assert((await minesweeper.locator(".mines-commandbar").innerText()).includes("30 × 16"), "Minesweeper expert dimensions are wrong");
+    assert(
+      (await minesweeper.locator(".mine-cell").count()) === 480,
+      "Minesweeper expert board is not 30x16",
+    );
+    assert(
+      (await minesweeper.locator(".mines-commandbar").innerText()).includes("30 × 16"),
+      "Minesweeper expert dimensions are wrong",
+    );
     await difficultySelect.selectOption("easy");
     await page.evaluate(() => {
       window.__pocketDeskOriginalRandom = Math.random;
@@ -762,39 +902,72 @@ async function runSmoke(baseUrl) {
     });
     await minesweeper.getByRole("button", { name: "깃발 모드" }).click();
     await mineCells.nth(80).click();
-    assert(await mineCells.nth(80).evaluate((node) => node.classList.contains("is-flagged")), "Minesweeper touch flag mode failed");
-    assert((await minesweeper.locator(".mines-counter.is-time strong").innerText()) === "0:00", "Minesweeper timer started before the first reveal");
+    assert(
+      await mineCells.nth(80).evaluate((node) => node.classList.contains("is-flagged")),
+      "Minesweeper touch flag mode failed",
+    );
+    assert(
+      (await minesweeper.locator(".mines-counter.is-time strong").innerText()) === "0:00",
+      "Minesweeper timer started before the first reveal",
+    );
     await mineCells.nth(80).click();
     await minesweeper.getByRole("button", { name: "깃발 모드" }).click();
 
     await mineCells.first().click();
-    assert((await minesweeper.locator(".mine-cell.is-open").count()) > 0, "Minesweeper first click opened no cells");
-    assert((await minesweeper.locator(".mine-cell.is-mine").count()) === 0, "Minesweeper first click hit a mine");
+    assert(
+      (await minesweeper.locator(".mine-cell.is-open").count()) > 0,
+      "Minesweeper first click opened no cells",
+    );
+    assert(
+      (await minesweeper.locator(".mine-cell.is-mine").count()) === 0,
+      "Minesweeper first click hit a mine",
+    );
     const wrongFlagIndex = (
       await Promise.all(
         [...Array(81).keys()]
           .filter((index) => !deterministicMines.has(index))
           .map(async (index) => ({
             index,
-            open: await mineCells.nth(index).evaluate((node) => node.classList.contains("is-open")),
+            open: await mineCells
+              .nth(index)
+              .evaluate((node) => node.classList.contains("is-open")),
           })),
       )
     ).find((cell) => !cell.open)?.index;
-    assert(wrongFlagIndex !== undefined, "Minesweeper deterministic board has no closed safe cell");
-    await mineCells.nth(wrongFlagIndex).dispatchEvent("contextmenu", { bubbles: true, cancelable: true });
+    assert(
+      wrongFlagIndex !== undefined,
+      "Minesweeper deterministic board has no closed safe cell",
+    );
+    await mineCells
+      .nth(wrongFlagIndex)
+      .dispatchEvent("contextmenu", { bubbles: true, cancelable: true });
     await mineCells.nth([...deterministicMines][0]).click();
     const lostDialog = minesweeper.getByRole("dialog");
     await lostDialog.waitFor({ state: "visible" });
-    assert((await lostDialog.innerText()).includes("게임 종료"), "Minesweeper loss result was not shown");
-    assert((await minesweeper.locator(".mine-cell.is-detonated").count()) === 1, "Minesweeper did not mark the detonated mine");
-    assert((await minesweeper.locator(".mine-cell.is-wrong-flag").count()) === 1, "Minesweeper did not mark the wrong flag");
+    assert(
+      (await lostDialog.innerText()).includes("게임 종료"),
+      "Minesweeper loss result was not shown",
+    );
+    assert(
+      (await minesweeper.locator(".mine-cell.is-detonated").count()) === 1,
+      "Minesweeper did not mark the detonated mine",
+    );
+    assert(
+      (await minesweeper.locator(".mine-cell.is-wrong-flag").count()) === 1,
+      "Minesweeper did not mark the wrong flag",
+    );
     await lostDialog.getByRole("button", { name: "보드 보기" }).click();
     await lostDialog.waitFor({ state: "hidden" });
-    assert(await mineCells.first().isDisabled(), "Minesweeper board stayed interactive after loss");
+    assert(
+      await mineCells.first().isDisabled(),
+      "Minesweeper board stayed interactive after loss",
+    );
     await minesweeper.getByRole("button", { name: "새 게임" }).click();
 
     await mineCells.first().click();
-    for (const index of [...Array(81).keys()].filter((cellIndex) => !deterministicMines.has(cellIndex))) {
+    for (const index of [...Array(81).keys()].filter(
+      (cellIndex) => !deterministicMines.has(cellIndex),
+    )) {
       const cell = mineCells.nth(index);
       if (!(await cell.evaluate((node) => node.classList.contains("is-open")))) {
         await cell.click();
@@ -802,14 +975,33 @@ async function runSmoke(baseUrl) {
     }
     const wonDialog = minesweeper.getByRole("dialog");
     await wonDialog.waitFor({ state: "visible" });
-    assert((await wonDialog.innerText()).includes("게임 완료"), "Minesweeper win result was not shown");
-    assert((await minesweeper.locator(".mine-cell.is-flagged").count()) === 10, "Minesweeper did not auto-flag every mine on win");
-    assert((await minesweeper.locator(".mines-counter").first().locator("strong").innerText()) === "00", "Minesweeper counter did not finish at zero");
-    const completedTime = await minesweeper.locator(".mines-counter.is-time strong").innerText();
+    assert(
+      (await wonDialog.innerText()).includes("게임 완료"),
+      "Minesweeper win result was not shown",
+    );
+    assert(
+      (await minesweeper.locator(".mine-cell.is-flagged").count()) === 10,
+      "Minesweeper did not auto-flag every mine on win",
+    );
+    assert(
+      (await minesweeper.locator(".mines-counter").first().locator("strong").innerText()) ===
+        "00",
+      "Minesweeper counter did not finish at zero",
+    );
+    const completedTime = await minesweeper
+      .locator(".mines-counter.is-time strong")
+      .innerText();
     await page.waitForTimeout(1100);
-    assert((await minesweeper.locator(".mines-counter.is-time strong").innerText()) === completedTime, "Minesweeper timer kept running after completion");
+    assert(
+      (await minesweeper.locator(".mines-counter.is-time strong").innerText()) ===
+        completedTime,
+      "Minesweeper timer kept running after completion",
+    );
     await wonDialog.getByRole("button", { name: "보드 보기" }).click();
-    assert(await mineCells.first().isDisabled(), "Minesweeper board stayed interactive after victory");
+    assert(
+      await mineCells.first().isDisabled(),
+      "Minesweeper board stayed interactive after victory",
+    );
     await page.evaluate(() => {
       Math.random = window.__pocketDeskOriginalRandom;
       delete window.__pocketDeskOriginalRandom;
@@ -819,7 +1011,10 @@ async function runSmoke(baseUrl) {
     await files.waitFor({ state: "visible" });
     await files.locator(".file-list button", { hasText: "web-surf.url" }).click();
     const filePreviewText = await files.locator(".file-preview").innerText();
-    assert(filePreviewText.includes("연결 프로그램: Microsoft Edge"), "File Explorer did not show URL association");
+    assert(
+      filePreviewText.includes("연결 프로그램: Microsoft Edge"),
+      "File Explorer did not show URL association",
+    );
     await page.keyboard.press("Enter");
     const edge = page.locator('article[aria-label="Microsoft Edge"]');
     await edge.waitFor({ state: "visible" });
@@ -829,12 +1024,18 @@ async function runSmoke(baseUrl) {
       return input instanceof HTMLInputElement && input.value.includes("https://example.com");
     });
     const edgeFrame = edge.locator("iframe");
-    assert((await edgeFrame.count()) === 1, "Edge did not render the website inside its window");
+    assert(
+      (await edgeFrame.count()) === 1,
+      "Edge did not render the website inside its window",
+    );
     assert(
       (await edgeFrame.getAttribute("src"))?.startsWith("https://example.com"),
       "Edge web view did not load the requested website",
     );
-    assert(page.context().pages().length === 1, "Edge opened an external tab during normal navigation");
+    assert(
+      page.context().pages().length === 1,
+      "Edge opened an external tab during normal navigation",
+    );
     await edge.getByRole("button", { name: "읽기 보기" }).click();
     const readerView = edge.locator(".browser-reader");
     await readerView.waitFor({ state: "visible" });
@@ -889,7 +1090,10 @@ async function runSmoke(baseUrl) {
     await edgeAddress.fill("https://github.com");
     await edgeAddress.press("Enter");
     await readerView.waitFor({ state: "visible" });
-    assert((await edge.locator("iframe").count()) === 0, "Known iframe-blocked host did not prefer reader view");
+    assert(
+      (await edge.locator("iframe").count()) === 0,
+      "Known iframe-blocked host did not prefer reader view",
+    );
     await edge.getByRole("button", { name: "뒤로" }).click();
     await edgeFrame.waitFor({ state: "visible" });
     await edge.getByRole("button", { name: "홈" }).click();
@@ -909,13 +1113,22 @@ async function runSmoke(baseUrl) {
     await page.locator(".taskbar-app", { hasText: "Microsoft Edge" }).hover();
     const taskbarPreview = page.locator(".taskbar-preview-card");
     await taskbarPreview.waitFor({ state: "visible" });
-    assert((await taskbarPreview.innerText()).includes("Microsoft Edge"), "Taskbar preview did not show browser");
+    assert(
+      (await taskbarPreview.innerText()).includes("Microsoft Edge"),
+      "Taskbar preview did not show browser",
+    );
     await page.getByRole("button", { name: "알림 센터 열기" }).click();
     const notificationCenter = page.locator(".notification-center-panel");
     await notificationCenter.waitFor({ state: "visible" });
-    assert((await notificationCenter.locator(".notification-item").count()) > 0, "Notification center did not keep recent alerts");
+    assert(
+      (await notificationCenter.locator(".notification-item").count()) > 0,
+      "Notification center did not keep recent alerts",
+    );
     await notificationCenter.getByRole("button", { name: "모두 지우기" }).click();
-    assert((await notificationCenter.innerText()).includes("새 알림 없음"), "Notification center did not clear alerts");
+    assert(
+      (await notificationCenter.innerText()).includes("새 알림 없음"),
+      "Notification center did not clear alerts",
+    );
     const calendarMonth = notificationCenter.locator(".notification-calendar header strong");
     const initialCalendarMonth = await calendarMonth.innerText();
     await notificationCenter.getByRole("button", { name: "다음 달" }).click();
@@ -932,14 +1145,15 @@ async function runSmoke(baseUrl) {
     const brightnessSlider = quickSettings.getByRole("slider", { name: "화면 밝기" });
     await brightnessSlider.fill("55");
     assert(
-      (await page.evaluate(() => localStorage.getItem("pocket-desk-display-brightness-v1"))) === "55",
+      (await page.evaluate(() => localStorage.getItem("pocket-desk-display-brightness-v1"))) ===
+        "55",
       "Quick Settings brightness was not persisted",
     );
     assert(
       Number(
-        await page.locator(".desktop").evaluate((desktop) =>
-          getComputedStyle(desktop).getPropertyValue("--display-dim"),
-        ),
+        await page
+          .locator(".desktop")
+          .evaluate((desktop) => getComputedStyle(desktop).getPropertyValue("--display-dim")),
       ) > 0,
       "Quick Settings brightness did not dim the desktop",
     );
@@ -948,9 +1162,15 @@ async function runSmoke(baseUrl) {
     const settings = page.locator('article[aria-label="설정"]');
     await settings.waitFor({ state: "visible" });
     await settings.getByRole("button", { name: "시스템", exact: true }).click();
-    assert((await settings.innerText()).includes("창과 바탕 화면"), "Settings System tab is not functional");
+    assert(
+      (await settings.innerText()).includes("창과 바탕 화면"),
+      "Settings System tab is not functional",
+    );
     await settings.getByRole("button", { name: "소리", exact: true }).click();
-    assert((await settings.locator('input[type="checkbox"]').count()) === 1, "Settings Sound tab is not functional");
+    assert(
+      (await settings.locator('input[type="checkbox"]').count()) === 1,
+      "Settings Sound tab is not functional",
+    );
     await page.locator(".taskbar-app", { hasText: "파일 탐색기" }).click();
     await explorerSidebar.getByRole("button", { name: "문서", exact: true }).click();
     const fileToTrash = files.locator(".file-list button", { hasText: "프로젝트" });
@@ -985,16 +1205,24 @@ async function runSmoke(baseUrl) {
     await runDialog.getByRole("button", { name: "확인" }).click();
     const recycle = page.locator('article[aria-label="휴지통"]');
     await recycle.waitFor({ state: "visible" });
-    assert((await recycle.innerText()).includes(trashedFileName), "Recycle Bin did not show deleted file");
+    assert(
+      (await recycle.innerText()).includes(trashedFileName),
+      "Recycle Bin did not show deleted file",
+    );
     await recycle.getByRole("button", { name: "복원" }).click();
     await page.waitForTimeout(180);
-    assert(!(await recycle.innerText()).includes(trashedFileName), "Recycle Bin still shows restored file");
+    assert(
+      !(await recycle.innerText()).includes(trashedFileName),
+      "Recycle Bin still shows restored file",
+    );
 
     await page.locator(".taskbar-app", { hasText: "파일 탐색기" }).click();
     await explorerSidebar.getByRole("button", { name: "문서", exact: true }).click();
     const restoredFolder = files.locator(".file-list button", { hasText: trashedFileName });
     await restoredFolder.dblclick();
-    await files.locator(".file-list button", { hasText: "이동할 메모.txt" }).waitFor({ state: "visible" });
+    await files
+      .locator(".file-list button", { hasText: "이동할 메모.txt" })
+      .waitFor({ state: "visible" });
     await files.getByRole("button", { name: "위로" }).click();
     await restoredFolder.click();
     await files.locator(".file-preview").getByRole("button", { name: "삭제" }).click();
@@ -1002,19 +1230,32 @@ async function runSmoke(baseUrl) {
     await recycle.getByRole("button", { name: "휴지통 비우기" }).click();
     await recycle.getByRole("button", { name: "모두 삭제" }).click();
     await page.waitForTimeout(180);
-    assert((await recycle.innerText()).includes("휴지통이 비어 있습니다"), "Recycle Bin did not empty");
+    assert(
+      (await recycle.innerText()).includes("휴지통이 비어 있습니다"),
+      "Recycle Bin did not empty",
+    );
 
     const initialTaskbar = await page
       .locator(".taskbar-app")
-      .evaluateAll((items) => items.map((item) => item.textContent?.trim().replace(/\s+/g, " ")));
-    assert(initialTaskbar.some((text) => text?.includes("파일 탐색기")), "File Explorer pinned taskbar app missing");
+      .evaluateAll((items) =>
+        items.map((item) => item.textContent?.trim().replace(/\s+/g, " ")),
+      );
+    assert(
+      initialTaskbar.some((text) => text?.includes("파일 탐색기")),
+      "File Explorer pinned taskbar app missing",
+    );
     await page
       .locator(".taskbar-app", { hasText: "파일 탐색기" })
       .dispatchEvent("contextmenu", { bubbles: true, cancelable: true });
     await page.getByRole("menuitem", { name: "작업 표시줄에서 제거" }).click();
     await page.waitForTimeout(180);
-    const pinnedAfterUnpin = await page.evaluate(() => localStorage.getItem("pocket-desk-taskbar-pinned-v2"));
-    assert(pinnedAfterUnpin && !pinnedAfterUnpin.includes("files"), "Taskbar unpin did not persist");
+    const pinnedAfterUnpin = await page.evaluate(() =>
+      localStorage.getItem("pocket-desk-taskbar-pinned-v2"),
+    );
+    assert(
+      pinnedAfterUnpin && !pinnedAfterUnpin.includes("files"),
+      "Taskbar unpin did not persist",
+    );
 
     await page.locator(".taskbar-app", { hasText: "Microsoft Edge" }).click();
     const frame = page.locator('article[aria-label="Microsoft Edge"]');
@@ -1022,7 +1263,10 @@ async function runSmoke(baseUrl) {
     await frame.getByRole("button", { name: "Microsoft Edge 최대화" }).hover();
     const snapLayoutMenu = frame.getByRole("menu", { name: "스냅 레이아웃" });
     await snapLayoutMenu.waitFor({ state: "visible" });
-    assert((await snapLayoutMenu.getByRole("menuitem").count()) === 3, "Snap layout choices missing");
+    assert(
+      (await snapLayoutMenu.getByRole("menuitem").count()) === 3,
+      "Snap layout choices missing",
+    );
     await page.mouse.move(8, 8);
     await snapLayoutMenu.waitFor({ state: "hidden" });
     const box = await titlebar.boundingBox();
@@ -1034,7 +1278,10 @@ async function runSmoke(baseUrl) {
     await page.mouse.up();
     await page.waitForTimeout(220);
     const snapped = await frame.boundingBox();
-    assert(snapped && snapped.x <= 20 && snapped.width >= 560 && snapped.width <= 680, "Window did not snap left");
+    assert(
+      snapped && snapped.x <= 20 && snapped.width >= 560 && snapped.width <= 680,
+      "Window did not snap left",
+    );
     const titlebarAfterSnap = frame.locator(".window-titlebar");
     await titlebarAfterSnap.dispatchEvent("contextmenu", {
       bubbles: true,
@@ -1044,7 +1291,10 @@ async function runSmoke(baseUrl) {
     });
     const windowSystemMenu = page.locator(".window-system-menu");
     await windowSystemMenu.waitFor({ state: "visible" });
-    assert((await windowSystemMenu.innerText()).includes("최대화"), "Window system menu missing maximize action");
+    assert(
+      (await windowSystemMenu.innerText()).includes("최대화"),
+      "Window system menu missing maximize action",
+    );
     await page.keyboard.press("Escape");
     await windowSystemMenu.waitFor({ state: "hidden" });
 
@@ -1125,18 +1375,29 @@ async function runSmoke(baseUrl) {
 
     const explorerAfterShell = page.locator('article[aria-label="파일 탐색기"]').first();
     if (await explorerAfterShell.isVisible()) {
-      await explorerAfterShell.getByRole("button", { name: "새로 고침" }).click().catch(() => {});
+      await explorerAfterShell
+        .getByRole("button", { name: "새로 고침" })
+        .click()
+        .catch(() => {});
     }
 
     await page.keyboard.press("Control+Shift+Escape");
     const taskManager = page.locator('article[aria-label="작업 관리자"]');
     await taskManager.waitFor({ state: "visible" });
-    const terminalRow = taskManager.locator(".taskmgr-row", { hasText: "명령 프롬프트" }).first();
+    const terminalRow = taskManager
+      .locator(".taskmgr-row", { hasText: "명령 프롬프트" })
+      .first();
     await terminalRow.waitFor({ state: "visible" });
     const endTaskButton = taskManager.getByRole("button", { name: "작업 끝내기" });
-    assert(await endTaskButton.isDisabled(), "End task is enabled before a process is selected");
+    assert(
+      await endTaskButton.isDisabled(),
+      "End task is enabled before a process is selected",
+    );
     await terminalRow.click();
-    assert(!(await endTaskButton.isDisabled()), "End task stayed disabled after selecting a process");
+    assert(
+      !(await endTaskButton.isDisabled()),
+      "End task stayed disabled after selecting a process",
+    );
     await endTaskButton.click();
     await terminal.waitFor({ state: "hidden" });
 
@@ -1197,13 +1458,18 @@ async function runSmoke(baseUrl) {
     await page.setViewportSize({ width: 390, height: 780 });
     await page.waitForTimeout(250);
     const mobileExplorerSidebar = await files.locator("aside").boundingBox();
-    assert(mobileExplorerSidebar && mobileExplorerSidebar.height >= 54, "Mobile Explorer navigation collapsed");
-    const visibleWindowBoxes = await page.locator(".window-frame:visible").evaluateAll((frames) =>
-      frames.map((frame) => {
-        const box = frame.getBoundingClientRect();
-        return { left: box.left, right: box.right };
-      }),
+    assert(
+      mobileExplorerSidebar && mobileExplorerSidebar.height >= 54,
+      "Mobile Explorer navigation collapsed",
     );
+    const visibleWindowBoxes = await page
+      .locator(".window-frame:visible")
+      .evaluateAll((frames) =>
+        frames.map((frame) => {
+          const box = frame.getBoundingClientRect();
+          return { left: box.left, right: box.right };
+        }),
+      );
     assert(
       visibleWindowBoxes.every((box) => box.left >= 0 && box.right <= 390),
       "Mobile window escaped viewport bounds",

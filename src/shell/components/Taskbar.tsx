@@ -87,11 +87,11 @@ export function Taskbar({
   const pinnedApps = pinnedAppIds
     .filter((appId) => availableAppIds.has(appId))
     .map((appId) => getApp(appId));
-  const unpinnedAppIds = [...new Set(
-    windows
-      .filter((item) => !pinnedAppIds.includes(item.appId))
-      .map((item) => item.appId),
-  )];
+  const unpinnedAppIds = [
+    ...new Set(
+      windows.filter((item) => !pinnedAppIds.includes(item.appId)).map((item) => item.appId),
+    ),
+  ];
   const taskbarApps = [
     ...pinnedApps.map((app) => ({
       app,
@@ -219,17 +219,26 @@ export function Taskbar({
         <div className="taskbar-windows" aria-label="열린 앱">
           {taskbarApps.map(({ app, windows: appWindows }) => {
             const isPinned = pinnedAppIds.includes(app.id);
-            const orderedAppWindows = [...appWindows].sort((first, second) => second.z - first.z);
-            const activeAppWindow = orderedAppWindows.find((item) => item.id === activeWindowId);
+            const orderedAppWindows = [...appWindows].sort(
+              (first, second) => second.z - first.z,
+            );
+            const activeAppWindow = orderedAppWindows.find(
+              (item) => item.id === activeWindowId,
+            );
             const windowItem = activeAppWindow ?? orderedAppWindows[0];
-            const allMinimized = appWindows.length > 0 && appWindows.every((item) => item.minimized);
+            const allMinimized =
+              appWindows.length > 0 && appWindows.every((item) => item.minimized);
             return (
               <div
                 className="taskbar-slot"
                 key={`taskbar-${app.id}`}
                 onBlur={hidePreview}
-                onFocusCapture={(event) => showPreview(event.currentTarget, app, orderedAppWindows)}
-                onMouseEnter={(event) => showPreview(event.currentTarget, app, orderedAppWindows)}
+                onFocusCapture={(event) =>
+                  showPreview(event.currentTarget, app, orderedAppWindows)
+                }
+                onMouseEnter={(event) =>
+                  showPreview(event.currentTarget, app, orderedAppWindows)
+                }
                 onMouseLeave={hidePreview}
               >
                 <button
@@ -488,7 +497,11 @@ export function NotificationCenterPanel({
       <header className="notification-center-header">
         <div>
           <strong>
-            {now.toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "long" })}
+            {now.toLocaleDateString("ko-KR", {
+              month: "long",
+              day: "numeric",
+              weekday: "long",
+            })}
           </strong>
           <small>{notifications.length}개 알림</small>
         </div>
@@ -501,7 +514,10 @@ export function NotificationCenterPanel({
       {notifications.length > 0 ? (
         <div className="notification-list">
           {notifications.slice(0, 8).map((notification) => (
-            <article className={`notification-item notification-${notification.tone}`} key={notification.id}>
+            <article
+              className={`notification-item notification-${notification.tone}`}
+              key={notification.id}
+            >
               <BrandMark className="notification-app-mark" />
               <div>
                 <strong>{notification.title}</strong>
@@ -611,7 +627,10 @@ export function TaskbarPreview({
       role="status"
       style={{ left }}
     >
-      <div className="taskbar-preview-thumb" style={{ "--active": app.accent } as React.CSSProperties}>
+      <div
+        className="taskbar-preview-thumb"
+        style={{ "--active": app.accent } as React.CSSProperties}
+      >
         <AppIconTile accent={app.accent} icon={app.icon} size="large" />
         <span>{status}</span>
       </div>

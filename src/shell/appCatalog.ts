@@ -54,7 +54,9 @@ export function loadPinnedTaskbarApps(): AppId[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(TASKBAR_PINNED_APPS_KEY) ?? "null");
     if (!Array.isArray(parsed)) return defaultPinnedAppIds;
-    const normalized = parsed.filter(isAppId).filter((value, index, values) => values.indexOf(value) === index);
+    const normalized = parsed
+      .filter(isAppId)
+      .filter((value, index, values) => values.indexOf(value) === index);
     return normalized;
   } catch {
     return defaultPinnedAppIds;

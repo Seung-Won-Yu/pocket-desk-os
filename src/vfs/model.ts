@@ -6,11 +6,7 @@ export const VFS_ROOT_ID = "desktop";
 export const VFS_DOCUMENTS_ID = "vfs-system-documents";
 export const VFS_PICTURES_ID = "vfs-system-pictures";
 export const VFS_GAMES_ID = "vfs-system-games";
-export const VFS_SYSTEM_FOLDER_IDS = [
-  VFS_DOCUMENTS_ID,
-  VFS_PICTURES_ID,
-  VFS_GAMES_ID,
-] as const;
+export const VFS_SYSTEM_FOLDER_IDS = [VFS_DOCUMENTS_ID, VFS_PICTURES_ID, VFS_GAMES_ID] as const;
 
 export type VfsPathSegment = {
   id: string;
@@ -56,7 +52,9 @@ export type VfsEntryAssociation = {
 
 export function getUniqueTextFileName(items: DesktopItem[], parentId = VFS_DOCUMENTS_ID) {
   const existingNames = new Set(
-    items.filter((item) => item.parentId === parentId && !item.trashed).map((item) => item.name),
+    items
+      .filter((item) => item.parentId === parentId && !item.trashed)
+      .map((item) => item.name),
   );
   const baseName = "새 텍스트 문서.txt";
   if (!existingNames.has(baseName)) return baseName;
@@ -86,7 +84,9 @@ export function getUniqueVfsEntryName(
   requestedName: string,
 ) {
   const existingNames = new Set(
-    items.filter((item) => item.parentId === parentId && !item.trashed).map((item) => item.name),
+    items
+      .filter((item) => item.parentId === parentId && !item.trashed)
+      .map((item) => item.name),
   );
   const cappedName = truncateVfsName(requestedName);
   if (!existingNames.has(cappedName)) return cappedName;
@@ -109,7 +109,9 @@ export function getDefaultVfsEntryName(kind: VfsEntryKind) {
 
 export function getUniqueCanvasItemName(items: DesktopItem[], parentId = VFS_PICTURES_ID) {
   const existingNames = new Set(
-    items.filter((item) => item.parentId === parentId && !item.trashed).map((item) => item.name),
+    items
+      .filter((item) => item.parentId === parentId && !item.trashed)
+      .map((item) => item.name),
   );
 
   for (let index = 1; index < 1000; index += 1) {
@@ -138,7 +140,11 @@ export function getVfsNameParts(name: string) {
   };
 }
 
-export function getUniqueRenamedVfsItemName(items: DesktopItem[], itemId: string, name: string) {
+export function getUniqueRenamedVfsItemName(
+  items: DesktopItem[],
+  itemId: string,
+  name: string,
+) {
   const target = items.find((item) => item.id === itemId);
   const currentName = target?.name ?? "untitled";
   const requestedName = normalizeVfsEntryName(name) || currentName;
@@ -216,7 +222,11 @@ export function getVfsEntryAssociation(item: DesktopItem): VfsEntryAssociation {
   );
 }
 
-export function createVfsEntryAssociation(appId: AppId, extension: string, typeLabel: string): VfsEntryAssociation {
+export function createVfsEntryAssociation(
+  appId: AppId,
+  extension: string,
+  typeLabel: string,
+): VfsEntryAssociation {
   const app = appMetadata[appId];
   return {
     accent: app.accent,
@@ -227,7 +237,6 @@ export function createVfsEntryAssociation(appId: AppId, extension: string, typeL
     typeLabel,
   };
 }
-
 
 export function getVfsEntryKindDefaultApp(item: DesktopItem): AppId {
   if (item.appId) return item.appId;
@@ -262,7 +271,6 @@ export function getVfsShortcutTarget(item: DesktopItem) {
   if (content) return content;
   return "https://example.com";
 }
-
 
 export function formatDesktopItemTime(createdAt: number) {
   const minutes = Math.max(0, Math.round((Date.now() - createdAt) / 60000));

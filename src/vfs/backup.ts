@@ -182,7 +182,9 @@ function readStoredZipFile(bytes: Uint8Array, fileName: string) {
     if (nameOffset + fileNameLength > bytes.length || dataOffset > bytes.length) {
       throw new Error("ZIP 파일 헤더가 손상되었습니다.");
     }
-    const currentFileName = decoder.decode(bytes.slice(nameOffset, nameOffset + fileNameLength));
+    const currentFileName = decoder.decode(
+      bytes.slice(nameOffset, nameOffset + fileNameLength),
+    );
 
     if (flags & 0x0001) {
       throw new Error("암호화된 ZIP은 지원하지 않습니다.");
