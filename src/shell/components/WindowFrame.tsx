@@ -11,6 +11,7 @@ import {
 import { getSnapPreviewStyle, getWindowSnapPatch, getWindowSnapZone } from "../windowGeometry";
 import { Copy, Minus, Square, X } from "lucide-react";
 import { useState, type PointerEvent } from "react";
+import { handleMenuKeyboard } from "../keyboardNav";
 
 const MIN_WINDOW_WIDTH = 320;
 const MIN_WINDOW_HEIGHT = 240;
@@ -230,7 +231,12 @@ export function WindowFrame({
               )}
             </button>
             {snapFlyoutOpen && !instance.maximized && (
-              <div aria-label="스냅 레이아웃" className="snap-layout-flyout" role="menu">
+              <div
+                aria-label="스냅 레이아웃"
+                className="snap-layout-flyout"
+                role="menu"
+                onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+              >
                 <button
                   aria-label="왼쪽 절반에 맞춤"
                   onClick={() => applySnapLayout("left")}

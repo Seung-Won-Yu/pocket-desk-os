@@ -3,7 +3,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import FileDialog from "../components/FileDialog";
 import type { DesktopItem } from "../types";
+import { getNextRovingIndex } from "../shell/keyboardNav";
 import { VFS_DOCUMENTS_ID } from "../vfs/model";
+import { handleMenuKeyboard } from "../shell/keyboardNav";
 
 type NoteSaveStatus = "saved" | "dirty" | "saving";
 
@@ -173,7 +175,11 @@ export default function NotepadApp({
         </button>
       </div>
       {noteMenu === "file" && (
-        <div className="note-menu" role="menu">
+        <div
+          className="note-menu"
+          role="menu"
+          onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+        >
           <button
             onClick={() => {
               setFileDialogMode("open");
@@ -218,7 +224,11 @@ export default function NotepadApp({
         </div>
       )}
       {noteMenu === "edit" && (
-        <div className="note-menu" role="menu">
+        <div
+          className="note-menu"
+          role="menu"
+          onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+        >
           <button
             onClick={() => {
               noteEditorRef.current?.select();
@@ -236,7 +246,11 @@ export default function NotepadApp({
         </div>
       )}
       {noteMenu === "view" && (
-        <div className="note-menu" role="menu">
+        <div
+          className="note-menu"
+          role="menu"
+          onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+        >
           <button
             aria-checked={wordWrap}
             onClick={() => {
@@ -278,14 +292,27 @@ export default function NotepadApp({
         </div>
       )}
       <div className="note-tab-row">
-        <div className="note-tabs" role="tablist">
+        <div
+          className="note-tabs"
+          onKeyDown={(event) => {
+            // role="tablist" promises Left/Right movement between documents.
+            const index = noteEntries.findIndex((note) => note.id === activeNote?.id);
+            const next = getNextRovingIndex(event.key, index, noteEntries.length);
+            if (next === null) return;
+            event.preventDefault();
+            activateVfsEntry(noteEntries[next]);
+          }}
+          role="tablist"
+        >
           {noteEntries.map((note) => (
             <button
+              aria-controls="note-editor-panel"
               aria-selected={note.id === activeNote?.id}
               className={note.id === activeNote?.id ? "is-selected" : ""}
               key={note.id}
               onClick={() => activateVfsEntry(note)}
               role="tab"
+              tabIndex={note.id === activeNote?.id ? 0 : -1}
               type="button"
             >
               <FileText aria-hidden="true" size={14} />
@@ -305,7 +332,11 @@ export default function NotepadApp({
           <Plus aria-hidden="true" size={16} />
         </button>
       </div>
-      <div className={`note-workspace${showMarkdownPreview ? " is-split" : ""}`}>
+      <div
+        className={`note-workspace${showMarkdownPreview ? " is-split" : ""}`}
+        id="note-editor-panel"
+        role="tabpanel"
+      >
         <textarea
           aria-label="메모 내용"
           className="note-editor"

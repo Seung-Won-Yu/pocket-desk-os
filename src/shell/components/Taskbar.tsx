@@ -26,6 +26,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { handleMenuKeyboard } from "../keyboardNav";
 
 export function Taskbar({
   activeDesktopIndex,
@@ -320,6 +321,7 @@ export function Taskbar({
       {taskbarMenu && (
         <div
           className="taskbar-context-menu"
+          onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
           onPointerDown={(event) => event.stopPropagation()}
           role="menu"
           style={{ left: clamp(taskbarMenu.left, 112, window.innerWidth - 112) }}
@@ -347,6 +349,7 @@ export function Taskbar({
       {shellMenu && (
         <div
           className="taskbar-context-menu is-shell-menu"
+          onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
           onPointerDown={(event) => event.stopPropagation()}
           role="menu"
           style={{ left: clamp(shellMenu.left, 112, window.innerWidth - 112) }}

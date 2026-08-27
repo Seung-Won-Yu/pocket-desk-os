@@ -1,5 +1,6 @@
 import { Activity, Cpu, HardDrive, MemoryStick, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getNextRovingIndex } from "../shell/keyboardNav";
 import { appMetadata } from "./metadata";
 import type { OpenWindowInfo, SoundEffectName } from "../types";
 import { formatStorageSize } from "../utils/format";
@@ -81,6 +82,8 @@ export default function TaskManagerApp({
 }: TaskManagerAppProps) {
   const [tab, setTab] = useState<TaskManagerTab>("processes");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const [cpuSamples, setCpuSamples] = useState<number[]>(() => new Array(SAMPLE_COUNT).fill(4));
   const [memorySamples, setMemorySamples] = useState<number[]>(() =>
     new Array(SAMPLE_COUNT).fill(28),
@@ -97,6 +100,36 @@ export default function TaskManagerApp({
         ),
     [openWindows],
   );
+
+  // The grid is a single tab stop: arrows move the active row, Enter focuses the
+  // window, Space selects it.
+  const handleRowKeyDown = (
+    event: React.KeyboardEvent<HTMLDivElement>,
+    index: number,
+    windowId: string,
+  ) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      focusWindow(windowId);
+      return;
+    }
+    if (event.key === " ") {
+      event.preventDefault();
+      setSelectedId(windowId);
+      return;
+    }
+
+    const next = getNextRovingIndex(event.key, index, rows.length);
+    if (next === null) return;
+    event.preventDefault();
+    setActiveIndex(next);
+    rowRefs.current[next]?.focus();
+  };
+
+  // A closed window must not leave the tab stop pointing past the last row.
+  useEffect(() => {
+    setActiveIndex((current) => Math.min(current, Math.max(0, rows.length - 1)));
+  }, [rows.length]);
 
   const totals = useMemo(
     () => ({
@@ -137,6 +170,15 @@ export default function TaskManagerApp({
     return () => window.clearInterval(timer);
   }, [totals.cpu, totals.memoryMb]);
 
+  // role="tablist" promises Left/Right movement between tabs.
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const order: TaskManagerTab[] = ["processes", "performance"];
+    const next = getNextRovingIndex(event.key, order.indexOf(tab), order.length);
+    if (next === null) return;
+    event.preventDefault();
+    setTab(order[next]);
+  };
+
   const endTask = (windowId: string) => {
     playSound("close");
     closeWindow(windowId);
@@ -145,21 +187,27 @@ export default function TaskManagerApp({
 
   return (
     <div className="taskmgr-app">
-      <div className="taskmgr-tabs" role="tablist">
+      <div className="taskmgr-tabs" onKeyDown={handleTabKeyDown} role="tablist">
         <button
+          aria-controls="taskmgr-panel-processes"
           aria-selected={tab === "processes"}
           className={tab === "processes" ? "is-active" : ""}
+          id="taskmgr-tab-processes"
           onClick={() => setTab("processes")}
           role="tab"
+          tabIndex={tab === "processes" ? 0 : -1}
           type="button"
         >
           <Activity size={15} /> 프로세스
         </button>
         <button
+          aria-controls="taskmgr-panel-performance"
           aria-selected={tab === "performance"}
           className={tab === "performance" ? "is-active" : ""}
+          id="taskmgr-tab-performance"
           onClick={() => setTab("performance")}
           role="tab"
+          tabIndex={tab === "performance" ? 0 : -1}
           type="button"
         >
           <Cpu size={15} /> 성능
@@ -167,7 +215,12 @@ export default function TaskManagerApp({
       </div>
 
       {tab === "processes" ? (
-        <div className="taskmgr-processes">
+        <div
+          aria-labelledby="taskmgr-tab-processes"
+          className="taskmgr-processes"
+          id="taskmgr-panel-processes"
+          role="tabpanel"
+        >
           <div aria-label="실행 중인 프로세스" className="taskmgr-table" role="grid">
             <div className="taskmgr-row is-head" role="row">
               <span role="columnheader">이름</span>
@@ -178,7 +231,7 @@ export default function TaskManagerApp({
             {rows.length === 0 ? (
               <p className="taskmgr-empty">실행 중인 앱이 없습니다.</p>
             ) : (
-              rows.map((row) => {
+              rows.map((row, index) => {
                 const Icon = appMetadata[row.appId].icon;
                 return (
                   <div
@@ -187,19 +240,12 @@ export default function TaskManagerApp({
                     key={row.id}
                     onClick={() => setSelectedId(row.id)}
                     onDoubleClick={() => focusWindow(row.id)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        focusWindow(row.id);
-                        return;
-                      }
-                      if (event.key === " ") {
-                        event.preventDefault();
-                        setSelectedId(row.id);
-                      }
+                    onKeyDown={(event) => handleRowKeyDown(event, index, row.id)}
+                    ref={(node) => {
+                      rowRefs.current[index] = node;
                     }}
                     role="row"
-                    tabIndex={0}
+                    tabIndex={index === activeIndex ? 0 : -1}
                   >
                     <span className="taskmgr-name" role="cell">
                       <Icon size={16} style={{ color: appMetadata[row.appId].accent }} />
@@ -229,7 +275,12 @@ export default function TaskManagerApp({
           </footer>
         </div>
       ) : (
-        <div className="taskmgr-performance">
+        <div
+          aria-labelledby="taskmgr-tab-performance"
+          className="taskmgr-performance"
+          id="taskmgr-panel-performance"
+          role="tabpanel"
+        >
           <Sparkline label="CPU" samples={cpuSamples} unit="%" />
           <Sparkline label="메모리" samples={memorySamples} unit="%" />
           <dl className="taskmgr-stats">

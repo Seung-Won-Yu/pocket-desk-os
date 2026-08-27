@@ -2565,6 +2565,14 @@ export default function App() {
               ? () => copyDesktopItems(desktopContextItem.id, "cut")
               : undefined
           }
+          onMoveTo={
+            desktopContextItem
+              ? (folderId) => {
+                  moveVfsEntries([desktopContextItem.id], folderId);
+                  setDesktopIconMenu(null);
+                }
+              : undefined
+          }
           onDelete={
             desktopContextItem
               ? () => deleteSelectedDesktopItems(desktopContextItem.id)

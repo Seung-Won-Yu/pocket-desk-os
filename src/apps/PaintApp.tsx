@@ -18,6 +18,7 @@ import type React from "react";
 import FileDialog from "../components/FileDialog";
 import type { DesktopItem } from "../types";
 import { VFS_PICTURES_ID } from "../vfs/model";
+import { handleMenuKeyboard } from "../shell/keyboardNav";
 
 type PaintTool = "brush" | "line" | "rect" | "ellipse";
 const PAINT_SAVE_EVENT = "pocket-desk-save-paint";
@@ -348,7 +349,11 @@ export default function PaintApp({
         </span>
       </div>
       {fileMenuOpen && (
-        <div className="paint-file-menu" role="menu">
+        <div
+          className="paint-file-menu"
+          role="menu"
+          onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+        >
           <button
             onClick={() => {
               setFileDialogMode("open");

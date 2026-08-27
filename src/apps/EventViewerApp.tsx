@@ -7,11 +7,12 @@ import {
   ShieldCheck,
   TriangleAlert,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { appMetadata } from "./metadata";
 import type { DesktopItem, OpenWindowInfo, SoundEffectName, ToastInput } from "../types";
 import { normalizeSearchText } from "../utils/format";
 import { VFS_ROOT_ID, getVfsEntryAssociation } from "../vfs/model";
+import { getNextRovingIndex } from "../shell/keyboardNav";
 
 type EventViewerAppProps = {
   desktopItems: DesktopItem[];
@@ -203,6 +204,9 @@ export default function EventViewerApp({
   const [sortKey, setSortKey] = useState<EventSortKey>("timestamp");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The grid is one tab stop; arrows move the active row.
+  const [activeIndex, setActiveIndex] = useState(0);
+  const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const [logsExpanded, setLogsExpanded] = useState(true);
   const [windowSightings, setWindowSightings] = useState<Record<string, WindowSighting>>(() => {
     const openedAt = Date.now();
@@ -458,19 +462,32 @@ export default function EventViewerApp({
                 : "조건에 맞는 이벤트가 없습니다."}
             </p>
           ) : (
-            visibleEvents.map((event) => (
+            visibleEvents.map((event, index) => (
               <div
                 aria-selected={event.id === selectedId}
                 className={`event-viewer-row${event.id === selectedId ? " is-selected" : ""}`}
                 key={event.id}
-                onClick={() => setSelectedId(event.id)}
-                onKeyDown={(keyEvent) => {
-                  if (keyEvent.key !== "Enter" && keyEvent.key !== " ") return;
-                  keyEvent.preventDefault();
+                onClick={() => {
                   setSelectedId(event.id);
+                  setActiveIndex(index);
+                }}
+                onKeyDown={(keyEvent) => {
+                  if (keyEvent.key === "Enter" || keyEvent.key === " ") {
+                    keyEvent.preventDefault();
+                    setSelectedId(event.id);
+                    return;
+                  }
+                  const next = getNextRovingIndex(keyEvent.key, index, visibleEvents.length);
+                  if (next === null) return;
+                  keyEvent.preventDefault();
+                  setActiveIndex(next);
+                  rowRefs.current[next]?.focus();
+                }}
+                ref={(node) => {
+                  rowRefs.current[index] = node;
                 }}
                 role="row"
-                tabIndex={0}
+                tabIndex={index === activeIndex ? 0 : -1}
               >
                 <span
                   className={`event-viewer-level${event.level === "warning" ? " is-warning" : ""}`}

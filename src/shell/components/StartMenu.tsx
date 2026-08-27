@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { handleMenuKeyboard } from "../keyboardNav";
 
 export function StartMenu({
   apps,
@@ -228,7 +229,11 @@ export function StartMenu({
               <Power aria-hidden="true" size={18} />
             </button>
             {powerMenuOpen && (
-              <div className="power-menu" role="menu">
+              <div
+                className="power-menu"
+                role="menu"
+                onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+              >
                 <button onClick={() => runPowerAction(onLock)} role="menuitem" type="button">
                   <Lock aria-hidden="true" size={15} />
                   잠금

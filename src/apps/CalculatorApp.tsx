@@ -1,6 +1,7 @@
 import { History, Menu, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type React from "react";
+import { handleMenuKeyboard } from "../shell/keyboardNav";
 
 type CalculatorMode = "standard" | "scientific";
 
@@ -252,7 +253,11 @@ export default function CalculatorApp() {
         </button>
       </div>
       {modeMenuOpen && (
-        <div className="calc-mode-menu" role="menu">
+        <div
+          className="calc-mode-menu"
+          role="menu"
+          onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+        >
           {(["standard", "scientific"] as CalculatorMode[]).map((option) => (
             <button
               className={mode === option ? "is-selected" : ""}

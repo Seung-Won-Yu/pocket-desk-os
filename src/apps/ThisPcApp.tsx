@@ -136,14 +136,7 @@ export default function ThisPcApp({ openApp }: ThisPcAppProps) {
             </div>
           </div>
         </div>
-        <div
-          className="this-pc-content"
-          onClick={() => setDriveSelected(false)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && driveSelected) openDrive();
-          }}
-          tabIndex={0}
-        >
+        <div className="this-pc-content" onClick={() => setDriveSelected(false)}>
           <section className="this-pc-section">
             <button
               aria-expanded={devicesExpanded}

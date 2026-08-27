@@ -1,13 +1,20 @@
 import AppIconTile from "../../components/AppIconTile";
 import { type DesktopItem } from "../../types";
 import { formatVfsEntrySize, formatVfsPropertyDate } from "../../utils/format";
-import { getVfsEntryAssociation } from "../../vfs/model";
+import {
+  getVfsEntryAssociation,
+  VFS_DOCUMENTS_ID,
+  VFS_GAMES_ID,
+  VFS_PICTURES_ID,
+} from "../../vfs/model";
 import { CONTEXT_MENU_WIDTH } from "../constants";
 import { trapDialogFocus, useReturnFocus } from "../dialogFocus";
 import { type DesktopSortKey, type DesktopViewMode } from "../types";
 import {
   Check,
   ChevronRight,
+  Folder,
+  FolderInput,
   ClipboardPaste,
   Copy,
   ExternalLink,
@@ -27,6 +34,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { handleMenuKeyboard } from "../keyboardNav";
 
 export function DesktopContextMenu({
   alignToGrid,
@@ -72,6 +80,7 @@ export function DesktopContextMenu({
       aria-label="바탕 화면 메뉴"
       className={`desktop-context-menu ${opensLeft ? "opens-left" : ""}`}
       onContextMenu={(event) => event.preventDefault()}
+      onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
       onPointerDown={(event) => event.stopPropagation()}
       role="menu"
       style={{ left: x, top: y }}
@@ -90,7 +99,12 @@ export function DesktopContextMenu({
           <ChevronRight aria-hidden="true" className="menu-chevron" size={15} />
         </button>
         {submenu === "view" && (
-          <div aria-label="보기" className="desktop-context-submenu" role="menu">
+          <div
+            aria-label="보기"
+            className="desktop-context-submenu"
+            role="menu"
+            onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+          >
             {(
               [
                 ["large", "큰 아이콘"],
@@ -135,7 +149,12 @@ export function DesktopContextMenu({
           <ChevronRight aria-hidden="true" className="menu-chevron" size={15} />
         </button>
         {submenu === "sort" && (
-          <div aria-label="정렬 기준" className="desktop-context-submenu" role="menu">
+          <div
+            aria-label="정렬 기준"
+            className="desktop-context-submenu"
+            role="menu"
+            onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+          >
             {(
               [
                 ["name", "이름"],
@@ -190,7 +209,12 @@ export function DesktopContextMenu({
           <ChevronRight aria-hidden="true" className="menu-chevron" size={15} />
         </button>
         {submenu === "new" && (
-          <div aria-label="새로 만들기" className="desktop-context-submenu" role="menu">
+          <div
+            aria-label="새로 만들기"
+            className="desktop-context-submenu"
+            role="menu"
+            onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+          >
             <button onClick={onCreateNote} role="menuitem" type="button">
               <FileText aria-hidden="true" size={16} />
               텍스트 문서
@@ -212,11 +236,18 @@ export function DesktopContextMenu({
   );
 }
 
+const MOVE_TARGETS: Array<{ id: string; label: string }> = [
+  { id: VFS_DOCUMENTS_ID, label: "문서" },
+  { id: VFS_PICTURES_ID, label: "사진" },
+  { id: VFS_GAMES_ID, label: "게임" },
+];
+
 export function DesktopIconContextMenu({
   appPinned,
   itemSelectionCount,
   onCopy,
   onCut,
+  onMoveTo,
   onDelete,
   onOpen,
   onProperties,
@@ -230,6 +261,7 @@ export function DesktopIconContextMenu({
   itemSelectionCount: number;
   onCopy?: () => void;
   onCut?: () => void;
+  onMoveTo?: (folderId: string) => void;
   onDelete?: () => void;
   onOpen: () => void;
   onProperties?: () => void;
@@ -245,6 +277,7 @@ export function DesktopIconContextMenu({
   y: number;
 }) {
   useReturnFocus();
+  const [moveOpen, setMoveOpen] = useState(false);
 
   const firstItemRef = useRef<HTMLButtonElement>(null);
 
@@ -258,6 +291,7 @@ export function DesktopIconContextMenu({
       aria-label="바탕 화면 항목 메뉴"
       className="desktop-context-menu desktop-icon-context-menu"
       onContextMenu={(event) => event.preventDefault()}
+      onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
       onPointerDown={(event) => event.stopPropagation()}
       role="menu"
       style={{ left: x, top: y }}
@@ -286,6 +320,47 @@ export function DesktopIconContextMenu({
           <Scissors aria-hidden="true" size={16} />
           잘라내기
         </button>
+      )}
+      {onMoveTo && (
+        // Dragging an icon into a folder is pointer-only, so the same move has
+        // to be reachable from here.
+        <div
+          className="desktop-menu-row"
+          onMouseEnter={() => setMoveOpen(true)}
+          onMouseLeave={() => setMoveOpen(false)}
+        >
+          <button
+            aria-expanded={moveOpen}
+            aria-haspopup="menu"
+            onClick={() => setMoveOpen((open) => !open)}
+            role="menuitem"
+            type="button"
+          >
+            <FolderInput aria-hidden="true" size={16} />
+            <span>폴더로 이동</span>
+            <ChevronRight aria-hidden="true" className="menu-chevron" size={15} />
+          </button>
+          {moveOpen && (
+            <div
+              aria-label="폴더로 이동"
+              className="desktop-context-submenu"
+              onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+              role="menu"
+            >
+              {MOVE_TARGETS.map((target) => (
+                <button
+                  key={target.id}
+                  onClick={() => onMoveTo(target.id)}
+                  role="menuitem"
+                  type="button"
+                >
+                  <Folder aria-hidden="true" size={15} />
+                  {target.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
       {onRename && (
         <button

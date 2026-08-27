@@ -52,6 +52,7 @@ import {
   VFS_PICTURES_ID,
   VFS_ROOT_ID,
 } from "../vfs/model";
+import { handleMenuKeyboard } from "../shell/keyboardNav";
 
 type FileSortDirection = "asc" | "desc";
 type FileSortKey = "name" | "type" | "modified";
@@ -325,8 +326,14 @@ export default function FilesApp({
   }, [renaming]);
 
   const focusFileList = () => {
-    fileListRef.current?.focus();
-    window.requestAnimationFrame(() => fileListRef.current?.focus());
+    const focusActive = () => {
+      const list = fileListRef.current;
+      if (!list) return;
+      const active = list.querySelector<HTMLElement>('[tabindex="0"]');
+      (active ?? list).focus();
+    };
+    focusActive();
+    window.requestAnimationFrame(focusActive);
   };
 
   const resetTransientState = () => {
@@ -771,6 +778,7 @@ export default function FilesApp({
                 <div
                   aria-label="새로 만들기"
                   className="file-command-menu file-new-menu"
+                  onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
                   role="menu"
                 >
                   <button onClick={createFolder} role="menuitem" type="button">
@@ -882,7 +890,12 @@ export default function FilesApp({
                 <span>정렬</span>
               </button>
               {sortOpen && (
-                <div aria-label="파일 정렬" className="file-sort-menu" role="menu">
+                <div
+                  aria-label="파일 정렬"
+                  className="file-sort-menu"
+                  role="menu"
+                  onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+                >
                   {(
                     [
                       ["name", "이름"],
@@ -1011,7 +1024,9 @@ export default function FilesApp({
               onPointerDown={() => setFileContextMenu(null)}
               ref={fileListRef}
               role="listbox"
-              tabIndex={0}
+              // A listbox is a single tab stop. The active option holds it, so
+              // the container is only focusable when there is no option at all.
+              tabIndex={visibleFiles.length === 0 ? 0 : -1}
             >
               {visibleFiles.map((file, index) => {
                 const FileIcon = file.icon;
@@ -1024,6 +1039,7 @@ export default function FilesApp({
                       }`}
                       data-file-id={file.id}
                       draggable={!isVfsSystemFolderId(file.id)}
+                      tabIndex={file.id === (activeFileId ?? visibleFiles[0]?.id) ? 0 : -1}
                       onClick={(event) => selectFile(file.id, index, event)}
                       onContextMenu={(event) => showFileContextMenu(event, file.id)}
                       onDoubleClick={() => openFile(file.item)}
@@ -1175,6 +1191,7 @@ export default function FilesApp({
           className="file-context-menu"
           onContextMenu={(event) => event.preventDefault()}
           onPointerDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
           ref={fileContextMenuRef}
           role="menu"
           style={{ left: fileContextMenu.x, top: fileContextMenu.y }}

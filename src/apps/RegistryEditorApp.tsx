@@ -10,6 +10,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { trapDialogFocus } from "../shell/dialogFocus";
 import type { SoundEffectName, ToastInput } from "../types";
+import { getNextRovingIndex } from "../shell/keyboardNav";
 
 type RegistryEditorAppProps = {
   notify: (toast: ToastInput) => void;
@@ -294,6 +295,9 @@ export default function RegistryEditorApp({ notify, playSound }: RegistryEditorA
   const [snapshot, setSnapshot] = useState<RegistrySnapshot>(readRegistrySnapshot);
   const [selectedKeyId, setSelectedKeyId] = useState<string | null>(null);
   const [selectedValueKey, setSelectedValueKey] = useState<string | null>(null);
+  // The grid is one tab stop; arrows move the active row.
+  const [activeIndex, setActiveIndex] = useState(0);
+  const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const [treeExpanded, setTreeExpanded] = useState(true);
   const [editTarget, setEditTarget] = useState<RegistryValue | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<RegistryValue | null>(null);
@@ -473,23 +477,40 @@ export default function RegistryEditorApp({ notify, playSound }: RegistryEditorA
             ) : !activeKey ? (
               <p className="registry-empty">{STORAGE_PREFIX} 로 시작하는 값이 없습니다.</p>
             ) : (
-              activeKey.values.map((value) => (
+              activeKey.values.map((value, index) => (
                 <div
                   aria-selected={value.storageKey === selectedValueKey}
                   className={`registry-row${
                     value.storageKey === selectedValueKey ? " is-selected" : ""
                   }`}
                   key={value.storageKey}
-                  onClick={() => setSelectedValueKey(value.storageKey)}
+                  onClick={() => {
+                    setSelectedValueKey(value.storageKey);
+                    setActiveIndex(index);
+                  }}
                   onDoubleClick={() => openEditor(value)}
                   onKeyDown={(event) => {
-                    if (event.key !== "Enter" && event.key !== " ") return;
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      openEditor(value);
+                      return;
+                    }
+                    if (event.key === " ") {
+                      event.preventDefault();
+                      setSelectedValueKey(value.storageKey);
+                      return;
+                    }
+                    const next = getNextRovingIndex(event.key, index, activeKey.values.length);
+                    if (next === null) return;
                     event.preventDefault();
-                    if (event.key === "Enter") openEditor(value);
-                    else setSelectedValueKey(value.storageKey);
+                    setActiveIndex(next);
+                    rowRefs.current[next]?.focus();
+                  }}
+                  ref={(node) => {
+                    rowRefs.current[index] = node;
                   }}
                   role="row"
-                  tabIndex={0}
+                  tabIndex={index === activeIndex ? 0 : -1}
                 >
                   <span className="registry-name" role="cell">
                     <em aria-hidden="true" className="registry-badge">

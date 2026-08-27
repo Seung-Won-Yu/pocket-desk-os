@@ -3,6 +3,7 @@ import { type AppDefinition, type WindowInstance } from "../types";
 import { Maximize2, Minus, Square, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useReturnFocus } from "../dialogFocus";
+import { handleMenuKeyboard } from "../keyboardNav";
 
 export function WindowSystemMenu({
   app,
@@ -42,7 +43,9 @@ export function WindowSystemMenu({
         if (event.key === "Escape") {
           event.preventDefault();
           onDismiss();
+          return;
         }
+        handleMenuKeyboard(event, event.currentTarget);
       }}
       onPointerDown={(event) => event.stopPropagation()}
       role="menu"
