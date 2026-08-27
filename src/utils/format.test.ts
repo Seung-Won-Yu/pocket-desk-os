@@ -122,9 +122,12 @@ describe("formatVfsEntrySize", () => {
 });
 
 describe("formatVfsPropertyDate", () => {
-  it("renders a Korean medium date with a short time", () => {
+  it("renders a Korean medium date with a short 12-hour time", () => {
+    // The meridiem word comes from the runtime's ICU data: browsers and a
+    // full-icu Node render 오전/오후, while a small-icu build falls back to
+    // AM/PM. Accept either so the assertion tests the format, not the build.
     expect(formatVfsPropertyDate(Date.UTC(2024, 0, 2, 3, 4, 5))).toMatch(
-      /^\d{4}\. \d{1,2}\. \d{1,2}\. (오전|오후) \d{1,2}:\d{2}$/,
+      /^\d{4}\. \d{1,2}\. \d{1,2}\. (오전|오후|AM|PM) \d{1,2}:\d{2}$/,
     );
   });
 
