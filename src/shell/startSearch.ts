@@ -134,6 +134,8 @@ export function getStartPinnedApps(apps: AppDefinition[]) {
     "paint",
     "calculator",
     "minesweeper",
+    "eventviewer",
+    "registry",
     "recycle",
     "settings",
   ];

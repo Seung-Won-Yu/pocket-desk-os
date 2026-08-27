@@ -158,10 +158,16 @@ describe("buildStartSearchResults", () => {
 
   it("prefers a keyword hit over a subtitle hit and sorts by score", () => {
     const results = buildStartSearchResults("파일", [], appCatalog);
-    expect(results.map((result) => result.id)).toEqual(["app-files", "app-terminal"]);
+    expect(results.map((result) => result.id)).toEqual([
+      "app-files",
+      "app-eventviewer",
+      "app-terminal",
+    ]);
+    // The title/keyword hit outranks both subtitle hits.
     expect(results[0].score).toBeGreaterThan(results[1].score);
+    expect(results[1].score).toBeGreaterThan(results[2].score);
     expect(results[0].matchLabel).toBe("파일");
-    expect(results[1].matchLabel).toBe("가상 파일 시스템 셸");
+    expect(results[2].matchLabel).toBe("가상 파일 시스템 셸");
   });
 
   it("finds a desktop file by name", () => {
@@ -265,6 +271,8 @@ describe("getStartPinnedApps", () => {
       "paint",
       "calculator",
       "minesweeper",
+      "eventviewer",
+      "registry",
       "recycle",
       "settings",
     ]);

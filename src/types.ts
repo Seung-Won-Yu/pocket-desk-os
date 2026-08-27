@@ -9,6 +9,8 @@ export type AppId =
   | "photos"
   | "terminal"
   | "taskmanager"
+  | "eventviewer"
+  | "registry"
   | "recycle"
   | "settings";
 

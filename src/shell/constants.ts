@@ -64,6 +64,8 @@ export const appSearchKeywords: Record<AppId, string[]> = {
     "터미널",
     "콘솔",
   ],
+  eventviewer: ["event", "viewer", "log", "이벤트", "이벤트뷰어", "로그", "기록"],
+  registry: ["registry", "regedit", "레지스트리", "편집기", "설정값"],
   taskmanager: [
     "task",
     "manager",
@@ -90,6 +92,8 @@ export const runCommandAliases: Partial<Record<AppId, string[]>> = {
   photos: ["photo", "photos", "사진", "사진 앱"],
   terminal: ["cmd", "cmd.exe", "command", "powershell", "terminal", "명령 프롬프트"],
   taskmanager: ["taskmgr", "taskmgr.exe", "task manager", "작업 관리자"],
+  eventviewer: ["eventvwr", "eventvwr.msc", "event viewer", "이벤트 뷰어"],
+  registry: ["regedit", "regedit.exe", "레지스트리 편집기"],
   files: ["explorer", "explorer.exe"],
   notepad: ["notepad.exe"],
   paint: ["mspaint", "mspaint.exe"],

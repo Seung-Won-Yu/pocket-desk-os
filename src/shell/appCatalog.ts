@@ -1,11 +1,13 @@
 import BrowserApp from "../apps/BrowserApp";
 import CalculatorApp from "../apps/CalculatorApp";
+import EventViewerApp from "../apps/EventViewerApp";
 import FilesApp from "../apps/FilesApp";
 import MinesweeperApp from "../apps/MinesweeperApp";
 import NotepadApp from "../apps/NotepadApp";
 import PaintApp from "../apps/PaintApp";
 import PhotosApp from "../apps/PhotosApp";
 import RecycleBinApp from "../apps/RecycleBinApp";
+import RegistryEditorApp from "../apps/RegistryEditorApp";
 import SettingsApp from "../apps/SettingsApp";
 import TaskManagerApp from "../apps/TaskManagerApp";
 import TerminalApp from "../apps/TerminalApp";
@@ -18,12 +20,14 @@ import { type AppDefinition } from "./types";
 export const appComponents: Record<AppId, AppDefinition["component"]> = {
   browser: BrowserApp,
   calculator: CalculatorApp,
+  eventviewer: EventViewerApp,
   files: FilesApp,
   minesweeper: MinesweeperApp,
   notepad: NotepadApp,
   paint: PaintApp,
   photos: PhotosApp,
   recycle: RecycleBinApp,
+  registry: RegistryEditorApp,
   settings: SettingsApp,
   taskmanager: TaskManagerApp,
   terminal: TerminalApp,
