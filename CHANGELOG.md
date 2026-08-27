@@ -2,6 +2,29 @@
 
 All notable changes to PocketDesk OS are documented here.
 
+## 0.5.0
+
+Snap Assist, drag between Explorer and the desktop, a keyboard-accessibility pass, and image storage that no longer pays the base64 tax.
+
+### Added
+
+- Snap Assist: snapping a window to one half offers the remaining windows on the other.
+- Dragging in both directions between Explorer and the desktop.
+
+### Changed
+
+- Images are stored in IndexedDB as raw bytes rather than a base64 data URL, cutting their stored size by about a third. The conversion is confined to the storage boundary, so the model, the ZIP backup, and every app still see a data URL.
+
+### Fixed
+
+- The Start button listened on pointerdown only, so it could be focused but never activated from the keyboard; and focusing the taskbar search field opened the Start menu, which then stole focus.
+- Escape did not close Task View or Snap Assist, neither of which let focus enter at all.
+- Task Manager rows, Recycle Bin rows, and the This PC drive tile could only be opened by double-click.
+- A focused control usually showed nothing: 44 rules cleared the focus outline and replaced it with a tint matching :hover, and in five places matching .is-selected. Minefield cells had no focus style at all.
+- Menus and dialogs dropped focus to the page body when they closed instead of returning it to whatever opened them.
+- Four modals declared aria-modal without trapping Tab or handling Escape.
+- aria-selected sat on roles that do not support it in five places, and role="status" containers re-announced their whole contents on every change.
+
 ## 0.4.0
 
 One shared clipboard, a Photos viewer, taskbar search, Settings that change real behavior, two system apps built on the desktop's own data, and the first component tests.
