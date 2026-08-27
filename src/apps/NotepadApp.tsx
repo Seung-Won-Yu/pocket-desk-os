@@ -1,20 +1,51 @@
-import { FileText, Plus } from "lucide-react";
+import { ChevronDown, ChevronUp, FileText, Plus, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import FileDialog from "../components/FileDialog";
-import type { DesktopItem } from "../types";
+import type { DesktopItem, ToastInput } from "../types";
 import { getNextRovingIndex } from "../shell/keyboardNav";
 import { VFS_DOCUMENTS_ID } from "../vfs/model";
 import { handleMenuKeyboard } from "../shell/keyboardNav";
+import { APP_BAR_HEIGHT } from "../shell/constants";
+import { trapDialogFocus } from "../shell/dialogFocus";
+import { clamp } from "../utils/format";
 
 type NoteSaveStatus = "saved" | "dirty" | "saving";
 
+/** One point Ctrl+Z can rewind to: the text, plus where the caret was in it. */
+type NoteHistoryEntry = {
+  selectionEnd: number;
+  selectionStart: number;
+  text: string;
+};
+
+/**
+ * Which typing run a change belongs to. A run of the same kind folds into a
+ * single undo step; `null` means the change stands on its own.
+ */
+type NoteEditRun = "delete" | "insert" | null;
+
+type NoteFindMatch = {
+  end: number;
+  start: number;
+};
+
+type NoteEditorMenuState = {
+  selectionEnd: number;
+  selectionStart: number;
+  x: number;
+  y: number;
+};
+
 type NotepadAppProps = {
   activeNoteId: string;
+  closeWindow: (windowId: string) => void;
+  registerCloseGuard: (windowId: string, guard: (() => boolean) | null) => void;
   createVfsFolder: (parentId?: string) => DesktopItem;
   createVfsTextFile: () => DesktopItem;
   desktopItems: DesktopItem[];
   noteEntries: DesktopItem[];
+  notify: (toast: ToastInput) => void;
   activateVfsEntry: (item: DesktopItem) => void;
   openVfsEntry: (item: DesktopItem) => void;
   saveNoteAs: (
@@ -24,25 +55,43 @@ type NotepadAppProps = {
     existingItemId?: string,
   ) => DesktopItem;
   saveNoteContent: (noteId: string, content: string) => void;
+  windowId: string;
 };
 
 const NOTE_SAVE_EVENT = "pocket-desk-save-note";
 const NOTE_OPEN_EVENT = "pocket-desk-open-note";
 const NOTE_SAVE_AS_EVENT = "pocket-desk-save-note-as";
+const NOTE_HISTORY_LIMIT = 120;
+const NOTE_HISTORY_RUN_MS = 700;
+const NOTE_CONTEXT_MENU_WIDTH = 232;
+const NOTE_CONTEXT_MENU_HEIGHT = 240;
+/** The window frame's own close button, which this app has to see coming. */
+const CLIPBOARD_BLOCKED_TOAST: ToastInput = {
+  detail: "브라우저가 클립보드 사용을 막았습니다. Ctrl+C나 Ctrl+V를 사용해 주세요.",
+  title: "클립보드를 사용할 수 없음",
+};
 
 export default function NotepadApp({
   activeNoteId,
+  closeWindow,
+  registerCloseGuard,
   createVfsFolder,
   createVfsTextFile,
   desktopItems,
   noteEntries,
+  notify,
   activateVfsEntry,
   openVfsEntry,
   saveNoteAs,
   saveNoteContent,
+  windowId,
 }: NotepadAppProps) {
   const activeNote = noteEntries.find((item) => item.id === activeNoteId) ?? noteEntries[0];
+  const noteAppRef = useRef<HTMLDivElement | null>(null);
   const noteEditorRef = useRef<HTMLTextAreaElement | null>(null);
+  const editorMenuRef = useRef<HTMLDivElement | null>(null);
+  const findInputRef = useRef<HTMLInputElement | null>(null);
+  const closeSaveRef = useRef<HTMLButtonElement | null>(null);
   const [text, setText] = useState(activeNote?.content ?? "");
   const [saveStatus, setSaveStatus] = useState<NoteSaveStatus>("saved");
   const [noteMenu, setNoteMenu] = useState<"file" | "edit" | "view" | null>(null);
@@ -51,6 +100,21 @@ export default function NotepadApp({
   const [cursorPosition, setCursorPosition] = useState({ column: 1, line: 1 });
   const [fileDialogMode, setFileDialogMode] = useState<"open" | "save" | null>(null);
   const [showMarkdownPreview, setShowMarkdownPreview] = useState(false);
+  const [history, setHistory] = useState<NoteHistoryEntry[]>([]);
+  const [editorMenu, setEditorMenu] = useState<NoteEditorMenuState | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findIndex, setFindIndex] = useState(0);
+  const [closePromptOpen, setClosePromptOpen] = useState(false);
+  const historyRunRef = useRef<{ at: number; run: NoteEditRun }>({ at: 0, run: null });
+  const editorSelectionRef = useRef({ end: 0, start: 0 });
+  const finalSaveRef = useRef({ content: "", noteId: "", text: "" });
+  const skipFinalSaveRef = useRef(false);
+  const saveNoteContentRef = useRef(saveNoteContent);
+  const hasUnsavedChanges = Boolean(activeNote) && text !== (activeNote?.content ?? "");
+  const findMatches = useMemo(() => getNoteFindMatches(text, findQuery), [findQuery, text]);
+  const findPosition =
+    findMatches.length === 0 ? 0 : Math.min(findIndex, findMatches.length - 1) + 1;
 
   const save = () => {
     if (!activeNote) return;
@@ -63,6 +127,16 @@ export default function NotepadApp({
     setText(activeNote?.content ?? "");
     setSaveStatus("saved");
   }, [activeNote?.content, activeNote?.id]);
+
+  // Each document carries its own undo history — rewinding one tab into another
+  // tab's text would be a data loss dressed up as an undo. Keyed on the id
+  // alone, so a save of the open document does not throw its history away.
+  useEffect(() => {
+    setHistory([]);
+    historyRunRef.current = { at: 0, run: null };
+    setEditorMenu(null);
+    setFindIndex(0);
+  }, [activeNote?.id]);
 
   // Markdown documents open with the preview already showing.
   useEffect(() => {
@@ -78,12 +152,43 @@ export default function NotepadApp({
     }
 
     setSaveStatus("dirty");
+    // While the close prompt is up, autosaving would answer the question for the
+    // reader: "저장 안 함" has to be able to throw away what is on screen.
+    if (closePromptOpen) return;
+
     const timer = window.setTimeout(() => {
       save();
     }, 850);
 
     return () => window.clearTimeout(timer);
-  }, [activeNote?.content, activeNote?.id, text]);
+  }, [activeNote?.content, activeNote?.id, closePromptOpen, text]);
+
+  // Refs the unmount flush below reads, kept fresh every render because that
+  // flush must not re-subscribe (and re-fire) whenever a prop identity changes.
+  useEffect(() => {
+    saveNoteContentRef.current = saveNoteContent;
+    finalSaveRef.current = {
+      content: activeNote?.content ?? "",
+      noteId: activeNote?.id ?? "",
+      text,
+    };
+  });
+
+  /*
+   * Autosave commits 850ms after a keystroke, and the shell can take the window
+   * away sooner: Task Manager's 작업 끝내기, the window menu's 닫기, or a switch
+   * to another virtual desktop, none of which this app can put a question in
+   * front of. Flushing on the way out keeps the promise the dirty dot makes,
+   * and is skipped when the reader has already answered "저장 안 함".
+   */
+  useEffect(() => {
+    return () => {
+      if (skipFinalSaveRef.current) return;
+      const { content, noteId, text: pendingText } = finalSaveRef.current;
+      if (!noteId || pendingText === content) return;
+      saveNoteContentRef.current(noteId, pendingText);
+    };
+  }, []);
 
   useEffect(() => {
     const saveFromShortcut = () => save();
@@ -102,6 +207,79 @@ export default function NotepadApp({
     };
   }, []);
 
+  /*
+   * Windows never drops typed text without asking. The shell consults this guard
+   * on every close path — the ✕, Alt+F4, the system menu, the taskbar, Task
+   * Manager — so returning false is enough to hold the window open until the
+   * user answers. Registered only while there is something to lose, so a clean
+   * document still closes on the first click.
+   */
+  useEffect(() => {
+    if (!hasUnsavedChanges) {
+      registerCloseGuard(windowId, null);
+      return;
+    }
+
+    registerCloseGuard(windowId, () => {
+      setNoteMenu(null);
+      setEditorMenu(null);
+      setClosePromptOpen(true);
+      return false;
+    });
+    return () => registerCloseGuard(windowId, null);
+  }, [hasUnsavedChanges, registerCloseGuard, windowId]);
+
+  useEffect(() => {
+    if (!closePromptOpen) return;
+    const frame = window.requestAnimationFrame(() => closeSaveRef.current?.focus());
+    // Escape is 취소 wherever focus happens to be, and it is claimed in the
+    // capture phase so the shell's own Escape handling stays out of it.
+    const cancelOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setClosePromptOpen(false);
+      noteEditorRef.current?.focus();
+    };
+
+    window.addEventListener("keydown", cancelOnEscape, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("keydown", cancelOnEscape, true);
+    };
+  }, [closePromptOpen]);
+
+  useEffect(() => {
+    if (!editorMenu) return;
+    const frame = window.requestAnimationFrame(() => {
+      editorMenuRef.current
+        ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
+        ?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [editorMenu]);
+
+  useEffect(() => {
+    if (!editorMenu) return;
+    const closeOnOutsidePointer = (event: Event) => {
+      if (event.target instanceof Node && !editorMenuRef.current?.contains(event.target)) {
+        setEditorMenu(null);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setEditorMenu(null);
+      noteEditorRef.current?.focus();
+    };
+
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [editorMenu]);
+
   const updateCursorPosition = () => {
     const editor = noteEditorRef.current;
     if (!editor) return;
@@ -113,25 +291,284 @@ export default function NotepadApp({
     });
   };
 
+  const rememberEditorSelection = () => {
+    const editor = noteEditorRef.current;
+    if (!editor) return;
+    // Read before the keystroke lands, so an undo step knows where it began.
+    editorSelectionRef.current = { end: editor.selectionEnd, start: editor.selectionStart };
+  };
+
+  /**
+   * Records a point Ctrl+Z can return to. A steady run of single keystrokes
+   * folds into one entry, so undo takes back a word rather than a letter, and
+   * anything bigger — a paste, a replaced selection, a newline — stands alone.
+   */
+  const pushHistory = (entry: NoteHistoryEntry, run: NoteEditRun) => {
+    const now = Date.now();
+    const previous = historyRunRef.current;
+    historyRunRef.current = { at: now, run };
+    if (run !== null && previous.run === run && now - previous.at < NOTE_HISTORY_RUN_MS) {
+      return;
+    }
+    setHistory((current) => [...current, entry].slice(-NOTE_HISTORY_LIMIT));
+  };
+
+  /** Puts the caret back once React has painted a programmatic text change. */
+  const selectInEditor = (start: number, end: number) => {
+    window.requestAnimationFrame(() => {
+      const editor = noteEditorRef.current;
+      if (!editor) return;
+      editor.focus();
+      editor.setSelectionRange(start, end);
+      editorSelectionRef.current = { end, start };
+      updateCursorPosition();
+    });
+  };
+
+  /** Replaces a range as one undo step and leaves the caret after the insertion. */
+  const replaceEditorRange = (start: number, end: number, insertion: string) => {
+    pushHistory({ selectionEnd: end, selectionStart: start, text }, null);
+    setText(`${text.slice(0, start)}${insertion}${text.slice(end)}`);
+    selectInEditor(start + insertion.length, start + insertion.length);
+  };
+
+  const handleEditorChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const nextText = event.target.value;
+    const selection = editorSelectionRef.current;
+    pushHistory(
+      { selectionEnd: selection.end, selectionStart: selection.start, text },
+      getNoteEditRun(text, nextText),
+    );
+    setText(nextText);
+  };
+
+  /*
+   * A controlled <textarea> has no working native undo: every render assigns
+   * `value` back onto the element, and an assigned value wipes the browser's own
+   * undo stack. The text has to stay controlled — the tab title, the Markdown
+   * preview and 찾기 all read it — so the history lives here instead.
+   */
+  const undo = () => {
+    setNoteMenu(null);
+    setEditorMenu(null);
+    const entry = history[history.length - 1];
+    if (!entry) return;
+    setHistory((current) => current.slice(0, -1));
+    historyRunRef.current = { at: 0, run: null };
+    setText(entry.text);
+    selectInEditor(entry.selectionStart, entry.selectionEnd);
+  };
+
   const insertDateTime = () => {
     const editor = noteEditorRef.current;
     if (!editor) return;
-    const insertion = new Date().toLocaleString("ko-KR");
-    const start = editor.selectionStart;
-    const end = editor.selectionEnd;
-    setText((current) => `${current.slice(0, start)}${insertion}${current.slice(end)}`);
     setNoteMenu(null);
-    window.requestAnimationFrame(() => {
-      editor.focus();
-      editor.setSelectionRange(start + insertion.length, start + insertion.length);
-      updateCursorPosition();
+    replaceEditorRange(
+      editor.selectionStart,
+      editor.selectionEnd,
+      new Date().toLocaleString("ko-KR"),
+    );
+  };
+
+  const selectAllText = () => {
+    setNoteMenu(null);
+    setEditorMenu(null);
+    const editor = noteEditorRef.current;
+    if (!editor) return;
+    editor.focus();
+    editor.select();
+    rememberEditorSelection();
+    updateCursorPosition();
+  };
+
+  const requestClose = () => {
+    setNoteMenu(null);
+    setEditorMenu(null);
+    if (!hasUnsavedChanges) {
+      closeWindow(windowId);
+      return;
+    }
+    setClosePromptOpen(true);
+  };
+
+  const closeAfterSave = () => {
+    if (activeNote) saveNoteContent(activeNote.id, text);
+    // The content is already written, so the unmount flush has nothing to add.
+    skipFinalSaveRef.current = true;
+    setClosePromptOpen(false);
+    registerCloseGuard(windowId, null);
+    closeWindow(windowId);
+  };
+
+  const closeWithoutSaving = () => {
+    skipFinalSaveRef.current = true;
+    setClosePromptOpen(false);
+    registerCloseGuard(windowId, null);
+    closeWindow(windowId);
+  };
+
+  const cancelClose = () => {
+    setClosePromptOpen(false);
+    noteEditorRef.current?.focus();
+  };
+
+  const openFind = () => {
+    setNoteMenu(null);
+    setEditorMenu(null);
+    setFindOpen(true);
+    window.requestAnimationFrame(() => findInputRef.current?.select());
+  };
+
+  const closeFind = () => {
+    setFindOpen(false);
+    // Focus lands back on the match, where the selection becomes visible again.
+    noteEditorRef.current?.focus();
+    updateCursorPosition();
+  };
+
+  /**
+   * A textarea will not scroll itself to a selection set from script — measured
+   * in Chrome, where neither focus() nor a re-focus moves the view — so the
+   * match's row is worked out from the line height and the view moved by hand.
+   * The row count comes from the newlines before the match, which is exact with
+   * 자동 줄 바꿈 off and lands just above the match when a line has wrapped.
+   */
+  const scrollEditorToOffset = (editor: HTMLTextAreaElement, offset: number) => {
+    const lineHeight = Number.parseFloat(window.getComputedStyle(editor).lineHeight);
+    if (!Number.isFinite(lineHeight) || lineHeight <= 0) return;
+    const top = (editor.value.slice(0, offset).split("\n").length - 1) * lineHeight;
+    const alreadyInView =
+      top >= editor.scrollTop && top + lineHeight <= editor.scrollTop + editor.clientHeight;
+    if (alreadyInView) return;
+    editor.scrollTop = clamp(top - editor.clientHeight / 3, 0, editor.scrollHeight);
+  };
+
+  /**
+   * Selects a match and scrolls it into view. Focus is left where it is, so the
+   * find field keeps taking keystrokes; closing 찾기 hands focus to the editor,
+   * where the selection becomes visible again.
+   */
+  const revealFindMatch = (matches: NoteFindMatch[], index: number) => {
+    setFindIndex(index);
+    const match = matches[index];
+    const editor = noteEditorRef.current;
+    if (!match || !editor) return;
+    editor.setSelectionRange(match.start, match.end);
+    editorSelectionRef.current = { end: match.end, start: match.start };
+    scrollEditorToOffset(editor, match.start);
+    updateCursorPosition();
+  };
+
+  const stepFindMatch = (direction: 1 | -1) => {
+    if (findMatches.length === 0) return;
+    const from = Math.min(findIndex, findMatches.length - 1);
+    revealFindMatch(findMatches, (from + direction + findMatches.length) % findMatches.length);
+  };
+
+  const handleFindQueryChange = (value: string) => {
+    setFindQuery(value);
+    // `findMatches` is a render behind, so the matches for what was just typed
+    // are computed here to move the selection along with the typing.
+    const matches = getNoteFindMatches(text, value);
+    const caret = noteEditorRef.current?.selectionStart ?? 0;
+    const fromCaret = matches.findIndex((match) => match.start >= caret);
+    revealFindMatch(matches, fromCaret === -1 ? 0 : fromCaret);
+  };
+
+  const handleFindKeyboard = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeFind();
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      stepFindMatch(event.shiftKey ? -1 : 1);
+    }
+  };
+
+  const showEditorMenu = (event: React.MouseEvent<HTMLTextAreaElement>) => {
+    const editor = event.currentTarget;
+    // Without this the host browser's own Reload / Inspect menu opens on top of
+    // the desktop, which gives the whole illusion away.
+    event.preventDefault();
+    setNoteMenu(null);
+    setEditorMenu({
+      selectionEnd: editor.selectionEnd,
+      selectionStart: editor.selectionStart,
+      x: clamp(event.clientX, 8, Math.max(8, window.innerWidth - NOTE_CONTEXT_MENU_WIDTH)),
+      y: clamp(
+        event.clientY,
+        8,
+        Math.max(8, window.innerHeight - APP_BAR_HEIGHT - NOTE_CONTEXT_MENU_HEIGHT),
+      ),
     });
+  };
+
+  const copyEditorSelection = async (menu: NoteEditorMenuState) => {
+    setEditorMenu(null);
+    const selected = text.slice(menu.selectionStart, menu.selectionEnd);
+    if (!selected) return;
+    if (!(await writeClipboardText(selected))) {
+      notify(CLIPBOARD_BLOCKED_TOAST);
+      return;
+    }
+    selectInEditor(menu.selectionStart, menu.selectionEnd);
+  };
+
+  const cutEditorSelection = async (menu: NoteEditorMenuState) => {
+    setEditorMenu(null);
+    const selected = text.slice(menu.selectionStart, menu.selectionEnd);
+    if (!selected) return;
+    // Nothing is removed unless the clipboard actually took a copy of it.
+    if (!(await writeClipboardText(selected))) {
+      notify(CLIPBOARD_BLOCKED_TOAST);
+      return;
+    }
+    replaceEditorRange(menu.selectionStart, menu.selectionEnd, "");
+  };
+
+  const pasteIntoEditor = async (menu: NoteEditorMenuState) => {
+    setEditorMenu(null);
+    const pasted = await readClipboardText();
+    if (pasted === null) {
+      notify(CLIPBOARD_BLOCKED_TOAST);
+      return;
+    }
+    replaceEditorRange(menu.selectionStart, menu.selectionEnd, pasted);
+  };
+
+  const deleteEditorSelection = (menu: NoteEditorMenuState) => {
+    setEditorMenu(null);
+    if (menu.selectionStart === menu.selectionEnd) return;
+    replaceEditorRange(menu.selectionStart, menu.selectionEnd, "");
   };
 
   return (
     <div
       className="notepad-app app-fill"
       onKeyDown={(event) => {
+        // Alt+F4 is the shell's shortcut, handled on `window`. Stopping the
+        // event here is what lets the app ask about unsaved text first.
+        if (event.altKey && event.key === "F4") {
+          event.preventDefault();
+          event.stopPropagation();
+          requestClose();
+          return;
+        }
+        if (event.key === "F3" && findOpen) {
+          event.preventDefault();
+          event.stopPropagation();
+          stepFindMatch(event.shiftKey ? -1 : 1);
+          return;
+        }
+        if (event.key === "Escape" && findOpen && !editorMenu && !fileDialogMode) {
+          event.preventDefault();
+          event.stopPropagation();
+          closeFind();
+          return;
+        }
         if (!(event.ctrlKey || event.metaKey)) return;
         const key = event.key.toLowerCase();
         if (key === "o") {
@@ -148,8 +585,17 @@ export default function NotepadApp({
           event.preventDefault();
           event.stopPropagation();
           activateVfsEntry(createVfsTextFile());
+        } else if (key === "f") {
+          event.preventDefault();
+          event.stopPropagation();
+          openFind();
+        } else if (key === "z" && !event.shiftKey) {
+          event.preventDefault();
+          event.stopPropagation();
+          undo();
         }
       }}
+      ref={noteAppRef}
     >
       <div className="note-menu-bar">
         <button
@@ -229,15 +675,13 @@ export default function NotepadApp({
           role="menu"
           onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
         >
-          <button
-            onClick={() => {
-              noteEditorRef.current?.select();
-              setNoteMenu(null);
-              updateCursorPosition();
-            }}
-            role="menuitem"
-            type="button"
-          >
+          <button disabled={history.length === 0} onClick={undo} role="menuitem" type="button">
+            실행 취소 <kbd>Ctrl+Z</kbd>
+          </button>
+          <button onClick={openFind} role="menuitem" type="button">
+            찾기 <kbd>Ctrl+F</kbd>
+          </button>
+          <button onClick={selectAllText} role="menuitem" type="button">
             모두 선택 <kbd>Ctrl+A</kbd>
           </button>
           <button onClick={insertDateTime} role="menuitem" type="button">
@@ -332,6 +776,50 @@ export default function NotepadApp({
           <Plus aria-hidden="true" size={16} />
         </button>
       </div>
+      {findOpen && (
+        <div aria-label="찾기" className="note-find-bar" role="search">
+          <label className="note-find-field">
+            <Search aria-hidden="true" size={14} />
+            <input
+              aria-label="찾을 내용"
+              onChange={(event) => handleFindQueryChange(event.target.value)}
+              onKeyDown={handleFindKeyboard}
+              placeholder="찾을 내용"
+              ref={findInputRef}
+              type="text"
+              value={findQuery}
+            />
+          </label>
+          <span className="note-find-count">
+            {findMatches.length > 0
+              ? `${findPosition}/${findMatches.length}`
+              : findQuery
+                ? "결과 없음"
+                : "0/0"}
+          </span>
+          <button
+            aria-label="이전 찾기"
+            disabled={findMatches.length === 0}
+            onClick={() => stepFindMatch(-1)}
+            title="이전 찾기 (Shift+F3)"
+            type="button"
+          >
+            <ChevronUp aria-hidden="true" size={16} />
+          </button>
+          <button
+            aria-label="다음 찾기"
+            disabled={findMatches.length === 0}
+            onClick={() => stepFindMatch(1)}
+            title="다음 찾기 (F3)"
+            type="button"
+          >
+            <ChevronDown aria-hidden="true" size={16} />
+          </button>
+          <button aria-label="찾기 닫기" onClick={closeFind} title="닫기 (Esc)" type="button">
+            <X aria-hidden="true" size={15} />
+          </button>
+        </div>
+      )}
       <div
         className={`note-workspace${showMarkdownPreview ? " is-split" : ""}`}
         id="note-editor-panel"
@@ -341,8 +829,13 @@ export default function NotepadApp({
           aria-label="메모 내용"
           className="note-editor"
           disabled={!activeNote}
-          onChange={(event) => setText(event.target.value)}
-          onClick={updateCursorPosition}
+          onChange={handleEditorChange}
+          onClick={() => {
+            rememberEditorSelection();
+            updateCursorPosition();
+          }}
+          onContextMenu={showEditorMenu}
+          onKeyDown={rememberEditorSelection}
           onKeyUp={updateCursorPosition}
           ref={noteEditorRef}
           spellCheck
@@ -383,8 +876,143 @@ export default function NotepadApp({
           title={fileDialogMode === "open" ? "열기" : "다른 이름으로 저장"}
         />
       )}
+      {editorMenu && (
+        <div
+          aria-label="메모 편집 메뉴"
+          className="note-menu note-context-menu"
+          onContextMenu={(event) => event.preventDefault()}
+          onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+          onPointerDown={(event) => event.stopPropagation()}
+          ref={editorMenuRef}
+          role="menu"
+          style={{ left: editorMenu.x, top: editorMenu.y }}
+        >
+          <button disabled={history.length === 0} onClick={undo} role="menuitem" type="button">
+            실행 취소 <kbd>Ctrl+Z</kbd>
+          </button>
+          <button
+            disabled={editorMenu.selectionStart === editorMenu.selectionEnd}
+            onClick={() => void cutEditorSelection(editorMenu)}
+            role="menuitem"
+            type="button"
+          >
+            잘라내기 <kbd>Ctrl+X</kbd>
+          </button>
+          <button
+            disabled={editorMenu.selectionStart === editorMenu.selectionEnd}
+            onClick={() => void copyEditorSelection(editorMenu)}
+            role="menuitem"
+            type="button"
+          >
+            복사 <kbd>Ctrl+C</kbd>
+          </button>
+          <button
+            onClick={() => void pasteIntoEditor(editorMenu)}
+            role="menuitem"
+            type="button"
+          >
+            붙여넣기 <kbd>Ctrl+V</kbd>
+          </button>
+          <button
+            disabled={editorMenu.selectionStart === editorMenu.selectionEnd}
+            onClick={() => deleteEditorSelection(editorMenu)}
+            role="menuitem"
+            type="button"
+          >
+            삭제 <kbd>Del</kbd>
+          </button>
+          <button onClick={selectAllText} role="menuitem" type="button">
+            모두 선택 <kbd>Ctrl+A</kbd>
+          </button>
+        </div>
+      )}
+      {closePromptOpen && (
+        <div className="note-close-overlay">
+          <section
+            aria-label="저장 확인"
+            aria-modal="true"
+            onKeyDown={(event) => trapDialogFocus(event, event.currentTarget)}
+            role="alertdialog"
+          >
+            <strong>{activeNote?.name ?? "제목 없음"}의 변경 내용을 저장하시겠습니까?</strong>
+            <p>저장하지 않으면 지금까지 입력한 내용이 사라집니다.</p>
+            <div>
+              <button
+                className="is-primary"
+                onClick={closeAfterSave}
+                ref={closeSaveRef}
+                type="button"
+              >
+                저장
+              </button>
+              <button onClick={closeWithoutSaving} type="button">
+                저장 안 함
+              </button>
+              <button onClick={cancelClose} type="button">
+                취소
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
+}
+
+/**
+ * Every place `query` appears in `text`, case-insensitively like Notepad's own
+ * 찾기 default. Matched with a regular expression rather than a lowercased copy
+ * of the text, because lowercasing can change a string's length and slide every
+ * offset after it out of place.
+ */
+function getNoteFindMatches(text: string, query: string): NoteFindMatch[] {
+  if (!query) return [];
+  const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  const matches: NoteFindMatch[] = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text)) !== null) {
+    const end = match.index + (match[0].length || 1);
+    matches.push({ end, start: match.index });
+    pattern.lastIndex = end;
+  }
+
+  return matches;
+}
+
+/**
+ * The typing run a change belongs to, or null when it should be its own undo
+ * step. One character in or out continues a run; a newline ends it, so undo
+ * stops at line boundaries instead of swallowing a whole paragraph.
+ */
+function getNoteEditRun(previous: string, next: string): NoteEditRun {
+  const growth = next.length - previous.length;
+  if (Math.abs(growth) !== 1) return null;
+
+  let index = 0;
+  while (index < previous.length && previous[index] === next[index]) index += 1;
+  if (growth === 1) return next[index] === "\n" ? null : "insert";
+  return previous[index] === "\n" ? null : "delete";
+}
+
+/** Reads the clipboard, or null when the browser refuses to hand it over. */
+async function readClipboardText() {
+  try {
+    if (typeof navigator.clipboard?.readText !== "function") return null;
+    return await navigator.clipboard.readText();
+  } catch {
+    return null;
+  }
+}
+
+async function writeClipboardText(value: string) {
+  try {
+    if (typeof navigator.clipboard?.writeText !== "function") return false;
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function MarkdownPreview({ text }: { text: string }) {

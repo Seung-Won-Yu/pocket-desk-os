@@ -148,6 +148,12 @@ export type AppContentProps = {
   closeWindow: (windowId: string) => void;
   focusWindow: (windowId: string) => void;
   openWindows: OpenWindowInfo[];
+  /**
+   * Lets an app veto its own close so it can ask the user first. Returning false
+   * cancels the close; the app calls closeWindow again once the user answers.
+   * Pass null to clear the guard.
+   */
+  registerCloseGuard: (windowId: string, guard: (() => boolean) | null) => void;
   createVfsFolder: (parentId?: string, name?: string) => DesktopItem;
   onImportLocalEntries: (entries: DesktopItem[]) => void;
   createVfsTextFile: (parentId?: string) => DesktopItem;

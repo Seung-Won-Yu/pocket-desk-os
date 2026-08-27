@@ -218,6 +218,7 @@ export default function App() {
   const vfsSaveErrorShownRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const windowMotionTimersRef = useRef(new Map<string, number>());
+  const closeGuardsRef = useRef(new Map<string, () => boolean>());
 
   useEffect(() => {
     if (shellPhase !== "booting") return;
@@ -1620,7 +1621,22 @@ export default function App() {
     windowMotionTimersRef.current.set(id, timer);
   };
 
+  /**
+   * Apps that can lose work register a guard here. Every close path goes through
+   * closeWindow — the title bar, Alt+F4, the system menu, the taskbar, Task
+   * Manager's 작업 끝내기 — so one check covers all of them. An app that wants to
+   * ask the user first returns false and calls closeWindow again once answered.
+   */
+  const registerCloseGuard = (windowId: string, guard: (() => boolean) | null) => {
+    if (guard) closeGuardsRef.current.set(windowId, guard);
+    else closeGuardsRef.current.delete(windowId);
+  };
+
   const closeWindow = (id: string) => {
+    const guard = closeGuardsRef.current.get(id);
+    if (guard && !guard()) return;
+
+    closeGuardsRef.current.delete(id);
     playSound("close");
     setWindowMenu(null);
     scheduleWindowMotion(id, "closing", () => {
@@ -2388,6 +2404,7 @@ export default function App() {
                 closeWindow={closeWindow}
                 focusWindow={focusWindow}
                 openWindows={openWindows}
+                registerCloseGuard={registerCloseGuard}
                 createVfsFolder={createVfsFolder}
                 onImportLocalEntries={(imported) =>
                   setDesktopItems((current) => [...current, ...imported])
