@@ -2,6 +2,29 @@
 
 All notable changes to PocketDesk OS are documented here.
 
+## 0.10.0
+
+Every finding from a behavioral audit that drove the real app and measured element geometry, plus a shipped regression.
+
+### Fixed
+
+- **Hiding a window destroyed everything its app held.** A minimized window returned null, so React unmounted the app. Measured across per-window minimize, `Win+M`, `Win+D` and a virtual-desktop switch: an unsaved Notepad draft, the calculator's display, 22 lines of terminal scrollback, 62 revealed minefield cells and 1481 painted pixels were all gone on restore. `Win+D` is meant to be a peek.
+- **Closing Notepad discarded typed text with no prompt.** `closeWindow` now consults a per-window guard an app can register, so the ✕, Alt+F4, the window system menu and Task Manager's 작업 끝내기 all ask first.
+- **Trusted Types broke the service worker**, which shipped in 0.9.0 — `register()` takes a script URL, so offline support was lost entirely. The URL now goes through a policy that vouches for this origin and this path only.
+- **Settings clipped 86px with no way to scroll**, on the section shown at first open. Its grid grew past the window's content box, so the content pane never had a bounded track. Overflow is 0 and the pane scrolls.
+- **The resize borders were dead.** `overflow: hidden` on the frame clipped the outer half off every handle: measured, only a 3px band strictly inside the frame responded, and 1px outside fell through to the desktop. The live band now straddles the border.
+- **One shared 320×240 floor let apps be shrunk past their own UI** — the calculator lost its entire keypad with no way to reach it. Each app declares its own minimum.
+- **Explorer's details view scrolled horizontally out of the box** and its column header could not follow, stranding labels over the wrong columns while filenames were sliced. Columns are flexible now: 470/525 became 718/718. The preview pane is off by default, as in Windows.
+- **Both Explorer context menus landed 53px from the pointer**, and could be drawn past the viewport entirely — they are `position: fixed`, but the frame's `backdrop-filter` makes it their containing block.
+- **The minefield resized as cells were revealed**, because its grid rows were implicit.
+- **Chrome's own context menu appeared inside app content** — the Notepad editor and the Explorer file-list background and status bar. Nothing breaks the illusion faster.
+
+### Added
+
+- Notepad gained 실행 취소 with a real history (the controlled textarea had no native undo stack), 찾기 with match counts and F3 stepping, and a proper right-click menu.
+- Explorer gained a folder-background menu and Backspace to navigate up.
+- `npm run qa:all` runs every gate in one command, so a partial local check cannot stand in for a full one — which is how the Trusted Types regression reached a release.
+
 ## 0.9.0
 
 Everything GitHub Pages can still enforce, plus two visible bugs.
