@@ -205,5 +205,6 @@ export type AppDefinition = {
   icon: LucideIcon;
   accent: string;
   defaultSize: { width: number; height: number };
+  minSize?: { width: number; height: number };
   component: (props: AppContentProps) => JSX.Element;
 };

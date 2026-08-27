@@ -10,11 +10,11 @@ import {
 } from "../types";
 import { getSnapPreviewStyle, getWindowSnapPatch, getWindowSnapZone } from "../windowGeometry";
 import { Copy, Minus, Square, X } from "lucide-react";
-import { useState, type PointerEvent } from "react";
+import { useState, type CSSProperties, type PointerEvent } from "react";
 import { handleMenuKeyboard } from "../keyboardNav";
 
-const MIN_WINDOW_WIDTH = 320;
-const MIN_WINDOW_HEIGHT = 240;
+const FALLBACK_MIN_WIDTH = 320;
+const FALLBACK_MIN_HEIGHT = 240;
 
 type WindowResizeEdge = "e" | "n" | "ne" | "nw" | "s" | "se" | "sw" | "w";
 
@@ -48,17 +48,28 @@ export function WindowFrame({
   onUpdate: (patch: Partial<WindowInstance>) => void;
 }) {
   const [snapFlyoutOpen, setSnapFlyoutOpen] = useState(false);
+  // An app declares the size its own UI stops working below.
+  const minWidth = app.minSize?.width ?? FALLBACK_MIN_WIDTH;
+  const minHeight = app.minSize?.height ?? FALLBACK_MIN_HEIGHT;
 
-  if (instance.minimized) {
-    return null;
-  }
-
-  const frameStyle = instance.maximized
+  /*
+   * A minimized window stays mounted and is hidden with CSS. Returning null
+   * unmounted the app, which threw away everything it held: an unsaved Notepad
+   * draft, the calculator's display, terminal scrollback, a game in progress.
+   * Minimizing in Windows is purely visual, and Win+D is meant to be a peek.
+   */
+  const minSizeVars = {
+    "--window-min-height": `${minHeight}px`,
+    "--window-min-width": `${minWidth}px`,
+  } as CSSProperties;
+  const frameStyle: CSSProperties = instance.maximized
     ? {
+        ...minSizeVars,
         inset: `0 0 ${APP_BAR_HEIGHT}px 0`,
         zIndex: instance.z,
       }
     : {
+        ...minSizeVars,
         left: instance.x,
         top: instance.y,
         width: instance.width,
@@ -124,23 +135,19 @@ export function WindowFrame({
       if (grow.east) {
         patch.width = clamp(
           width + moveEvent.clientX - startX,
-          MIN_WINDOW_WIDTH,
+          minWidth,
           window.innerWidth - x - 8,
         );
       } else if (grow.west) {
-        const nextX = clamp(x + moveEvent.clientX - startX, 8, right - MIN_WINDOW_WIDTH);
+        const nextX = clamp(x + moveEvent.clientX - startX, 8, right - minWidth);
         patch.width = right - nextX;
         patch.x = nextX;
       }
 
       if (grow.south) {
-        patch.height = clamp(
-          height + moveEvent.clientY - startY,
-          MIN_WINDOW_HEIGHT,
-          maxBottom - y,
-        );
+        patch.height = clamp(height + moveEvent.clientY - startY, minHeight, maxBottom - y);
       } else if (grow.north) {
-        const nextY = clamp(y + moveEvent.clientY - startY, 8, bottom - MIN_WINDOW_HEIGHT);
+        const nextY = clamp(y + moveEvent.clientY - startY, 8, bottom - minHeight);
         patch.height = bottom - nextY;
         patch.y = nextY;
       }
@@ -172,9 +179,10 @@ export function WindowFrame({
   return (
     <article
       aria-label={app.title}
+      aria-hidden={instance.minimized ? "true" : undefined}
       className={`window-frame ${active ? "is-active" : ""} ${
         instance.maximized ? "is-maximized" : ""
-      } ${motion ? `is-${motion}` : ""}`}
+      } ${instance.minimized ? "is-minimized" : ""} ${motion ? `is-${motion}` : ""}`}
       onPointerDown={onFocus}
       style={frameStyle}
     >

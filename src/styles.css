@@ -1339,9 +1339,16 @@ button {
   flex-direction: column;
   max-height: calc(100vh - 66px);
   max-width: calc(100vw - 16px);
-  min-height: 240px;
-  min-width: 320px;
-  overflow: hidden;
+  /* Supplied per app by WindowFrame; the fallbacks match its own defaults. */
+  min-height: var(--window-min-height, 240px);
+  min-width: var(--window-min-width, 320px);
+  /*
+   * Deliberately not `overflow: hidden`. That clipped the outer half of every
+   * resize handle, so aiming at the visible border did nothing and aiming 1px
+   * past it fell through to the desktop. The rounded corners are masked by the
+   * titlebar and content instead.
+   */
+  overflow: visible;
   pointer-events: auto;
   position: absolute;
   transform-origin: center bottom;
@@ -1377,6 +1384,7 @@ button {
 .window-titlebar {
   align-items: center;
   background: rgba(32, 32, 32, 0.9);
+  border-radius: 7px 7px 0 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   height: 32px;
@@ -1521,9 +1529,15 @@ button {
 
 .window-content {
   background: rgba(28, 28, 28, 0.74);
+  border-radius: 0 0 7px 7px;
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+.window-frame.is-maximized > .window-titlebar,
+.window-frame.is-maximized > .window-content {
+  border-radius: 0;
 }
 
 .window-frame * {
@@ -1557,33 +1571,33 @@ button {
 .resize-handle.is-n,
 .resize-handle.is-s {
   cursor: ns-resize;
-  height: 6px;
-  left: 8px;
-  right: 8px;
+  height: 8px;
+  left: 10px;
+  right: 10px;
 }
 
 .resize-handle.is-n {
-  top: -3px;
+  top: -4px;
 }
 
 .resize-handle.is-s {
-  bottom: -3px;
+  bottom: -4px;
 }
 
 .resize-handle.is-e,
 .resize-handle.is-w {
-  bottom: 8px;
+  bottom: 10px;
   cursor: ew-resize;
-  top: 8px;
-  width: 6px;
+  top: 10px;
+  width: 8px;
 }
 
 .resize-handle.is-e {
-  right: -3px;
+  right: -4px;
 }
 
 .resize-handle.is-w {
-  left: -3px;
+  left: -4px;
 }
 
 .resize-handle.is-ne,
@@ -8808,4 +8822,18 @@ button {
 
 .browser-reader-notice a:hover {
   background: #f4f8ff;
+}
+
+/*
+ * A minimized window keeps its app mounted so nothing it holds is lost, so it
+ * has to be hidden without being removed. `visibility: hidden` also takes it out
+ * of the tab order, and the zero size keeps it from affecting layout or
+ * intercepting a pointer.
+ */
+.window-frame.is-minimized {
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  visibility: hidden;
+  width: 0;
 }

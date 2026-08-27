@@ -1493,6 +1493,106 @@ async function runSmoke(baseUrl) {
     );
     await minesLayout.getByRole("button", { name: "지뢰찾기 닫기" }).click();
 
+    // Hiding a window must not throw away what the app holds. Minimizing used to
+    // unmount it, so an unsaved draft, the calculator display, terminal
+    // scrollback and a game in progress were all lost — including on Win+D,
+    // which is meant to be a peek.
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("notepad");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const draftNotepad = page.locator('article[aria-label="메모장"]').first();
+    await draftNotepad.waitFor({ state: "visible" });
+    const draftEditor = draftNotepad.getByLabel("메모 내용");
+    await draftEditor.fill("SMOKE UNSAVED DRAFT");
+
+    for (const hide of ["minimize", "Meta+m", "Meta+d"]) {
+      if (hide === "minimize") {
+        await draftNotepad.getByRole("button", { name: "메모장 최소화" }).click();
+      } else {
+        await page.keyboard.press(hide);
+      }
+      await page.waitForTimeout(350);
+      if (hide === "Meta+d") {
+        await page.keyboard.press("Meta+d");
+      } else {
+        await page.locator(".taskbar-app", { hasText: "메모장" }).first().click();
+      }
+      await page.waitForTimeout(350);
+      assert(
+        (await draftEditor.inputValue()) === "SMOKE UNSAVED DRAFT",
+        `Hiding the window with ${hide} discarded the unsaved draft`,
+      );
+    }
+    await draftNotepad.getByRole("button", { name: "메모장 닫기" }).click();
+    await page.waitForTimeout(200);
+
+    // A window shrunk to its own minimum must leave every control reachable —
+    // either inside the content box, or scrollable into view. The calculator
+    // used to lose its whole keypad to a single shared 320x240 floor.
+    for (const [command, label] of [
+      ["calc", "계산기"],
+      ["mspaint", "그림판"],
+      ["regedit", "레지스트리 편집기"],
+      ["사진", "사진"],
+    ]) {
+      await page.keyboard.press("Control+Alt+R");
+      await runDialog.waitFor({ state: "visible" });
+      await runDialog.getByLabel("열기").fill(command);
+      await runDialog.getByRole("button", { name: "확인" }).click();
+      const shrinkTarget = page.locator(`article[aria-label="${label}"]`).first();
+      await shrinkTarget.waitFor({ state: "visible" });
+
+      const startBox = await shrinkTarget.boundingBox();
+      await page.mouse.move(startBox.x + startBox.width - 2, startBox.y + startBox.height - 2);
+      await page.mouse.down();
+      await page.mouse.move(startBox.x + 40, startBox.y + 40, { steps: 8 });
+      await page.mouse.up();
+      await page.waitForTimeout(250);
+
+      const unreachable = await shrinkTarget.evaluate((frame) => {
+        const content = frame.querySelector(".window-content");
+        if (!content) return ["no content"];
+        const box = content.getBoundingClientRect();
+        const names = [];
+        for (const el of content.querySelectorAll("button, input, select, a")) {
+          const rect = el.getBoundingClientRect();
+          if (rect.width === 0 && rect.height === 0) continue;
+          const inside =
+            rect.right <= box.right + 1 &&
+            rect.bottom <= box.bottom + 1 &&
+            rect.left >= box.left - 1;
+          if (inside) continue;
+
+          let node = el.parentElement;
+          let scrollable = false;
+          while (node && node !== content.parentElement) {
+            const style = getComputedStyle(node);
+            const scrolls = /(auto|scroll)/.test(style.overflowY + style.overflowX);
+            if (
+              scrolls &&
+              (node.scrollHeight > node.clientHeight + 1 ||
+                node.scrollWidth > node.clientWidth + 1)
+            ) {
+              scrollable = true;
+              break;
+            }
+            node = node.parentElement;
+          }
+          if (!scrollable) {
+            names.push((el.getAttribute("aria-label") ?? el.textContent ?? el.tagName).trim());
+          }
+        }
+        return names;
+      });
+      assert(
+        unreachable.length === 0,
+        `${label} at its minimum size hides ${unreachable.length} control(s): ${unreachable.slice(0, 4).join(", ")}`,
+      );
+      await shrinkTarget.getByRole("button", { name: `${label} 닫기` }).click();
+      await page.waitForTimeout(150);
+    }
+
     await page.keyboard.press("Control+Shift+Escape");
     const taskManager = page.locator('article[aria-label="작업 관리자"]');
     await taskManager.waitFor({ state: "visible" });

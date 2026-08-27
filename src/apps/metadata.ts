@@ -20,6 +20,12 @@ import type { AppId } from "../types";
 export type AppMetadata = {
   accent: string;
   defaultSize: { width: number; height: number };
+  /**
+   * Smallest size the app's own UI stays usable at, the way a Windows app
+   * declares a minimum track size. A single shared floor let the calculator be
+   * shrunk until its whole keypad was outside the window and unreachable.
+   */
+  minSize?: { width: number; height: number };
   icon: LucideIcon;
   id: AppId;
   subtitle: string;
@@ -51,6 +57,7 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     icon: Monitor,
     accent: "#8fc9ff",
     defaultSize: { width: 780, height: 560 },
+    minSize: { width: 520, height: 360 },
   },
   browser: {
     id: "browser",
@@ -59,6 +66,7 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     icon: Globe2,
     accent: "#43b0f1",
     defaultSize: { width: 860, height: 560 },
+    minSize: { width: 560, height: 360 },
   },
   minesweeper: {
     id: "minesweeper",
@@ -67,6 +75,7 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     icon: Bomb,
     accent: "#f6b44b",
     defaultSize: { width: 440, height: 560 },
+    minSize: { width: 360, height: 460 },
   },
   calculator: {
     id: "calculator",
@@ -75,6 +84,7 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     icon: Calculator,
     accent: "#7bc96f",
     defaultSize: { width: 400, height: 570 },
+    minSize: { width: 330, height: 520 },
   },
   paint: {
     id: "paint",
@@ -83,6 +93,7 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     icon: Paintbrush,
     accent: "#ef6f6c",
     defaultSize: { width: 820, height: 560 },
+    minSize: { width: 620, height: 440 },
   },
   notepad: {
     id: "notepad",
@@ -91,6 +102,7 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     icon: FileText,
     accent: "#f2d16b",
     defaultSize: { width: 600, height: 520 },
+    minSize: { width: 400, height: 300 },
   },
   files: {
     id: "files",
@@ -99,6 +111,7 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     icon: Folder,
     accent: "#f3c64d",
     defaultSize: { width: 900, height: 600 },
+    minSize: { width: 620, height: 380 },
   },
   photos: {
     id: "photos",
@@ -107,6 +120,7 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     icon: Image,
     accent: "#6fc3ff",
     defaultSize: { width: 820, height: 600 },
+    minSize: { width: 480, height: 380 },
   },
   terminal: {
     id: "terminal",
@@ -115,6 +129,7 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     icon: SquareTerminal,
     accent: "#5ac8b0",
     defaultSize: { width: 780, height: 520 },
+    minSize: { width: 360, height: 260 },
   },
   taskmanager: {
     id: "taskmanager",
@@ -123,6 +138,7 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     icon: Activity,
     accent: "#ff9f6b",
     defaultSize: { width: 720, height: 560 },
+    minSize: { width: 480, height: 360 },
   },
   eventviewer: {
     id: "eventviewer",
@@ -131,6 +147,7 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     icon: ScrollText,
     accent: "#9db4d0",
     defaultSize: { width: 900, height: 600 },
+    minSize: { width: 640, height: 420 },
   },
   registry: {
     id: "registry",
@@ -139,6 +156,7 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     icon: Database,
     accent: "#c9a2f0",
     defaultSize: { width: 880, height: 580 },
+    minSize: { width: 620, height: 400 },
   },
   recycle: {
     id: "recycle",
@@ -147,6 +165,7 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     icon: Trash2,
     accent: "#9bb7c9",
     defaultSize: { width: 720, height: 520 },
+    minSize: { width: 520, height: 360 },
   },
   settings: {
     id: "settings",
@@ -155,5 +174,6 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     icon: Settings,
     accent: "#b99cff",
     defaultSize: { width: 840, height: 610 },
+    minSize: { width: 620, height: 440 },
   },
 };
