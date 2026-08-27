@@ -90,11 +90,27 @@ C:\Users\PocketDesk\Desktop\프로젝트> type 메모.txt
 | 분류 | 명령 |
 | --- | --- |
 | 탐색 | `dir`(`ls`), `cd`(`chdir`), `pwd`, `tree`, `find`(`findstr`) |
-| 파일 | `type`(`cat`), `echo` + `>`·`>>`, `md`(`mkdir`), `del`(`rm`), `copy`, `move`, `ren` |
-| 실행 | `start`, `tasklist`, `taskkill /pid <번호>`, `exit` |
-| 시스템 | `systeminfo`, `ver`, `vol`, `whoami`, `hostname`, `date`, `time`, `cls` |
+| 파일 | `type`(`cat`), `echo` + `>`·`>>`, `md`(`mkdir`), `del`(`erase`), `rd`(`rmdir`), `copy`, `move`, `ren` |
+| 실행 | `start`, `call`, `tasklist`, `taskkill /pid <번호>`, `exit` |
+| 시스템 | `set`, `systeminfo`, `ver`, `vol`, `whoami`, `hostname`, `date`, `time`, `cls` |
 
 `↑`·`↓`로 명령 기록을 넘기고 `Tab`으로 현재 폴더의 이름을 자동 완성합니다. `help`가 전체 목록을 표시합니다.
+
+### 환경 변수, 와일드카드, 파이프, 배치 파일
+
+```text
+C:\Users\PocketDesk\Desktop> set PROJECT=문서
+C:\Users\PocketDesk\Desktop> cd %PROJECT%
+C:\Users\PocketDesk\Desktop\문서> dir *.txt
+C:\Users\PocketDesk\Desktop\문서> dir | find 메모
+C:\Users\PocketDesk\Desktop\문서> del *.txt
+```
+
+- **환경 변수** — `set NAME=값`으로 지정하고 `%NAME%`으로 사용합니다. `set NAME=`은 삭제, `set`만 입력하면 전체 목록입니다. `%CD%`, `%USERNAME%`, `%COMPUTERNAME%`, `%DATE%`, `%TIME%`, `%USERPROFILE%`은 기본 제공됩니다
+- **와일드카드** — `*`와 `?`를 `dir`, `del`, `copy`, `move`에서 사용합니다. 파일 대상 명령은 폴더를 쓸어담지 않습니다
+- **파이프** — `|` 뒤에 `find`, `findstr`, `sort`, `more`를 연결합니다. 부수 효과는 첫 단계만 수행합니다
+- **배치 파일** — `.bat` 파일 이름을 입력하거나 `call 파일.bat`으로 실행합니다. `rem`과 `::` 주석, 빈 줄은 건너뜁니다. 각 줄은 앞 줄이 파일 시스템에 남긴 결과를 보고 실행됩니다
+- **`^` 이스케이프** — `echo md 백업 ^> 로그.txt > 설치.bat`처럼 `>`나 `|`를 리터럴로 넣을 때 사용합니다
 
 명령 해석은 `src/shell/commandShell.ts`의 순수 함수가 담당합니다. 문자열과 현재 상태를 받아 출력 줄과 적용할 효과 목록만 반환하므로 UI 없이 단위 테스트할 수 있습니다.
 
@@ -216,6 +232,8 @@ DEPLOYMENT.md         정적 호스팅과 배포 안내
 - [x] 작업 관리자와 작업 표시줄 우클릭 셸 메뉴
 - [x] 가상 데스크톱과 작업 보기
 - [x] 사분면 스냅과 8방향 창 크기 조절
+- [x] 셸 환경 변수, 와일드카드, 파이프와 배치 파일
+- [x] IndexedDB 저장 검증 로직 단위 테스트
 
 구현 과정과 설계 기준은 [개발 기록](./docs/DEVELOPMENT-NOTES.md)에 정리했습니다.
 

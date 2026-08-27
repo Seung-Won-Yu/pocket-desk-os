@@ -2,6 +2,26 @@
 
 All notable changes to PocketDesk OS are documented here.
 
+## Unreleased
+
+### Added
+
+- Shell environment variables: `set NAME=value`, `set NAME=` to clear, bare `set` to list, and `%NAME%` expansion, alongside built-in `%CD%`, `%USERNAME%`, `%COMPUTERNAME%`, `%DATE%`, `%TIME%`, and `%USERPROFILE%`.
+- Wildcard arguments (`*`, `?`) for `dir`, `del`, `copy`, and `move`. File commands never sweep folders into a match.
+- Pipelines: `dir | find memo`, with `find`, `findstr`, `sort`, and `more` as downstream filters.
+- Batch files: run a stored `.bat` by name or with `call`. Each line executes on its own commit, so it sees what the previous line wrote to the file system.
+- `^` escaping so `>` and `|` can be written literally, which is what makes a batch file able to create files.
+- Unit tests for the IndexedDB snapshot validator, previously the only untested module.
+
+### Fixed
+
+- `persistVfsEntries` threw synchronously when validation failed, so the caller's `.catch()` never ran and a storage-limit breach surfaced as an unhandled error instead of a notification.
+- `rd` and `rmdir` now accept a folder; `del` keeps cmd's file-only behaviour.
+
+### Changed
+
+- The snapshot validator counts content bytes with a shared `TextEncoder` instead of allocating a `Blob` per entry on every save.
+
 ## 0.2.0
 
 Desktop shell split into modules, a working command prompt, task manager, and virtual desktops, plus the project's first automated unit tests.
