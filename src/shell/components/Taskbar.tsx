@@ -25,7 +25,7 @@ import {
   Wifi,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export function Taskbar({
   activeDesktopIndex,
@@ -62,7 +62,7 @@ export function Taskbar({
   taskViewOpen: boolean;
   notificationHistory: ToastMessage[];
   onClearNotifications: () => void;
-  onOpenStart: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  onOpenStart: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onOpenApp: (appId: AppId) => void;
   onOpenRunDialog: () => void;
   clock24h: boolean;
@@ -204,10 +204,11 @@ export function Taskbar({
       <div className="taskbar-center">
         <button
           aria-expanded={startOpen}
+          aria-haspopup="menu"
           aria-label="시작 메뉴"
           className="start-button"
+          onClick={onOpenStart}
           onContextMenu={openShellMenu}
-          onPointerDown={onOpenStart}
           type="button"
         >
           <StartGlyph />
@@ -218,7 +219,6 @@ export function Taskbar({
             aria-label="검색"
             autoComplete="off"
             onChange={(event) => onSearch(event.target.value)}
-            onFocus={() => onSearch(searchQuery)}
             placeholder="검색하려면 여기에 입력하십시오"
             spellCheck={false}
             type="search"
@@ -641,12 +641,7 @@ export function TaskbarPreview({
   const detail = primaryWindow ? app.subtitle : "고정된 앱";
 
   return (
-    <div
-      aria-label={`${app.title} 작업표시줄 미리보기`}
-      className="taskbar-preview-card"
-      role="status"
-      style={{ left }}
-    >
+    <div aria-hidden="true" className="taskbar-preview-card" style={{ left }}>
       <div
         className="taskbar-preview-thumb"
         style={{ "--active": app.accent } as React.CSSProperties}

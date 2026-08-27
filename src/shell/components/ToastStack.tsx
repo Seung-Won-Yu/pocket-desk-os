@@ -10,7 +10,7 @@ export function ToastStack({
   toasts: ToastMessage[];
 }) {
   return (
-    <section aria-label="알림" className="toast-stack" role="status">
+    <section aria-atomic="false" aria-label="알림" className="toast-stack" role="status">
       {toasts.map((toast) => (
         <article className={`toast toast-${toast.tone}`} key={toast.id}>
           <header className="toast-header">

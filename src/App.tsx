@@ -2217,6 +2217,16 @@ export default function App() {
           setWindowMenu(null);
           return;
         }
+        if (taskViewOpen) {
+          event.preventDefault();
+          setTaskViewOpen(false);
+          return;
+        }
+        if (snapAssistZone) {
+          event.preventDefault();
+          setSnapAssistZone(null);
+          return;
+        }
         if (altTabWindowId) {
           event.preventDefault();
           clearAltTab();
@@ -2257,6 +2267,8 @@ export default function App() {
     desktopRenamingItemId,
     runOpen,
     selectedDesktopIds,
+    snapAssistZone,
+    taskViewOpen,
     shellPhase,
     startOpen,
     windowMenu,

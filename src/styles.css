@@ -16,6 +16,18 @@
   box-sizing: border-box;
 }
 
+/*
+ * A visible focus ring for every focusable control. Many rules below tint the
+ * background on :focus-visible, but that wash is the same colour as :hover and
+ * often the same as .is-selected, so on its own it neither meets the 3:1
+ * non-text contrast bar nor distinguishes focus from those states. This ring
+ * is the indicator; those tints stay as reinforcement.
+ */
+:focus-visible {
+  outline: 2px solid var(--active, #60cdff);
+  outline-offset: 2px;
+}
+
 html,
 body,
 #root {
@@ -266,7 +278,6 @@ button {
     linear-gradient(rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.08)),
     rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.28);
-  outline: none;
 }
 
 .desktop-icon.is-selected {
@@ -523,7 +534,6 @@ button {
 .window-system-menu button:hover,
 .window-system-menu button:focus-visible {
   background: color-mix(in srgb, var(--active) 26%, rgba(255, 255, 255, 0.08));
-  outline: none;
 }
 
 .desktop-context-menu button:disabled {
@@ -693,7 +703,6 @@ button {
 .toast-header button:focus-visible {
   background: rgba(255, 255, 255, 0.12);
   color: var(--text);
-  outline: none;
 }
 
 .toast-stack:has(+ .pwa-update-prompt) {
@@ -754,7 +763,6 @@ button {
 .pwa-update-prompt header > button:focus-visible {
   background: rgba(255, 255, 255, 0.12);
   color: var(--text);
-  outline: none;
 }
 
 .pwa-update-prompt p {
@@ -1110,7 +1118,6 @@ button {
 .shutdown-panel button:hover,
 .shutdown-panel button:focus-visible {
   background: rgba(255, 255, 255, 0.16);
-  outline: none;
 }
 
 .alt-tab-switcher {
@@ -1467,7 +1474,6 @@ button {
 .snap-layout-flyout button:hover,
 .snap-layout-flyout button:focus-visible {
   background: color-mix(in srgb, var(--active) 26%, rgba(255, 255, 255, 0.12));
-  outline: none;
 }
 
 .snap-layout-thumb {
@@ -1507,7 +1513,6 @@ button {
 .taskbar button:hover,
 .start-menu button:hover {
   background: var(--control-hover);
-  outline: none;
 }
 
 .window-controls button:last-child:hover {
@@ -1924,7 +1929,6 @@ button {
 .show-desktop-button:hover,
 .show-desktop-button:focus-visible {
   background: rgba(255, 255, 255, 0.12);
-  outline: none;
 }
 
 .system-tray {
@@ -1961,7 +1965,6 @@ button {
 .system-tray:hover,
 .system-tray:focus-visible {
   background: rgba(255, 255, 255, 0.12);
-  outline: none;
 }
 
 .quick-settings-panel {
@@ -2275,7 +2278,6 @@ button {
 .notification-center-panel button:hover,
 .notification-center-panel button:focus-visible {
   background: rgba(255, 255, 255, 0.16);
-  outline: none;
 }
 
 .start-menu {
@@ -2375,7 +2377,6 @@ button {
 .run-dialog button:hover,
 .run-dialog button:focus-visible {
   background: rgba(255, 255, 255, 0.16);
-  outline: none;
 }
 
 .power-menu {
@@ -3051,7 +3052,6 @@ button {
 .browser-menu button:hover,
 .browser-menu button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .browser-home {
@@ -3147,7 +3147,6 @@ button {
 .browser-panel-title button:hover,
 .browser-panel-title button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .browser-link-list strong,
@@ -3556,7 +3555,6 @@ button {
   background: #343434;
   border-color: rgba(255, 255, 255, 0.1);
   color: var(--text);
-  outline: none;
 }
 
 .mines-flag-mode[aria-pressed="true"] {
@@ -3874,7 +3872,6 @@ button {
 .calc-memory-row button:hover:not(:disabled),
 .calc-memory-row button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .calc-header strong {
@@ -3915,7 +3912,6 @@ button {
 .calc-mode-menu button:focus-visible,
 .calc-mode-menu button.is-selected {
   background: var(--control-hover);
-  outline: none;
 }
 
 .calc-mode-menu button.is-selected {
@@ -3969,7 +3965,6 @@ button {
 .calc-history-panel > div button:hover,
 .calc-history-panel > div button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .calc-history-panel small,
@@ -4099,7 +4094,6 @@ button {
 .note-menu-bar button:hover,
 .note-menu-bar button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .paint-tabs button.is-selected {
@@ -4142,7 +4136,6 @@ button {
 .note-menu button:hover,
 .note-menu button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .paint-ribbon {
@@ -4193,7 +4186,6 @@ button {
 .paint-ribbon button:hover:not(:disabled),
 .paint-ribbon button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .paint-ribbon button:disabled {
@@ -4371,7 +4363,6 @@ button {
 .note-tab-row > button:hover,
 .note-tab-row > button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .note-editor {
@@ -4642,7 +4633,6 @@ button {
 
 .this-pc-content:focus-visible {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--active) 65%, white) inset;
-  outline: none;
 }
 
 .this-pc-section {
@@ -4736,7 +4726,6 @@ button {
 .this-pc-drive-list button:focus-visible,
 .this-pc-drive-list button.is-selected {
   background: var(--control-hover);
-  outline: none;
 }
 
 .this-pc-drive-list button.is-selected {
@@ -4770,7 +4759,6 @@ button {
 .this-pc-sidebar button:hover,
 .this-pc-sidebar button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .files-app {
@@ -4811,7 +4799,6 @@ button {
 .files-app > aside button:hover,
 .files-app > aside button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .files-app > aside button:disabled {
@@ -4896,7 +4883,6 @@ button {
 .file-new-window-button:hover,
 .file-new-window-button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .file-explorer-top {
@@ -4932,7 +4918,6 @@ button {
 .file-command-strip button:hover,
 .file-command-strip button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .file-command-strip button:disabled {
@@ -4994,7 +4979,6 @@ button {
 .file-sort-menu button:hover,
 .file-sort-menu button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .file-command-menu button > svg:first-child,
@@ -5084,7 +5068,6 @@ button {
 .file-address button:hover,
 .file-address button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .file-nav-controls button:disabled {
@@ -5178,7 +5161,6 @@ button {
 .recycle-sidebar button:hover,
 .recycle-sidebar button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .recycle-main {
@@ -5332,7 +5314,6 @@ button {
 
 .file-list:focus-visible {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--active) 65%, white) inset;
-  outline: none;
 }
 
 .file-list button {
@@ -5350,7 +5331,6 @@ button {
 .file-list button:hover,
 .file-list button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .file-list-item {
@@ -5668,7 +5648,6 @@ button {
 .file-context-menu button:hover,
 .file-context-menu button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .file-context-menu button:disabled {
@@ -5738,7 +5717,6 @@ button {
 .file-dialog-nav-buttons button:hover:not(:disabled),
 .file-dialog-nav-buttons button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .file-dialog-titlebar button:hover {
@@ -5806,7 +5784,6 @@ button {
 .file-dialog-address button:hover,
 .file-dialog-address button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .file-dialog-address span {
@@ -5852,7 +5829,6 @@ button {
 .file-dialog-commandbar button:hover,
 .file-dialog-commandbar button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .file-dialog-workspace {
@@ -5886,7 +5862,6 @@ button {
 .file-dialog-workspace > aside button:focus-visible,
 .file-dialog-workspace > aside button.is-selected {
   background: var(--control-hover);
-  outline: none;
 }
 
 .file-dialog-workspace > aside button.is-selected {
@@ -5937,7 +5912,6 @@ button {
 .file-dialog-list button:focus-visible,
 .file-dialog-list button.is-selected {
   background: var(--control-hover);
-  outline: none;
 }
 
 .file-dialog-list button.is-selected {
@@ -6025,7 +5999,6 @@ button {
 .file-dialog-replace-overlay button:hover,
 .file-dialog-replace-overlay button:focus-visible {
   background: #414141;
-  outline: none;
 }
 
 .file-dialog-actions button.is-primary,
@@ -6142,7 +6115,6 @@ button {
 .file-properties-dialog header button:focus-visible {
   background: var(--control-hover);
   color: var(--text);
-  outline: none;
 }
 
 .file-properties-dialog dl {
@@ -6429,7 +6401,6 @@ button {
 .wallpaper-options button:hover,
 .wallpaper-options button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .theme-options small,
@@ -7573,7 +7544,6 @@ button {
 .photos-toolbar-group button:hover:not(:disabled),
 .photos-toolbar-group button:focus-visible {
   background: var(--control-hover);
-  outline: none;
 }
 
 .photos-toolbar-group button:active:not(:disabled) {
@@ -7725,7 +7695,6 @@ button {
 .photos-nav:hover:not(:disabled),
 .photos-nav:focus-visible {
   background: var(--panel-strong);
-  outline: none;
 }
 
 .photos-nav:active:not(:disabled) {
@@ -8628,7 +8597,6 @@ button {
 
 .registry-edit-field input:focus-visible {
   border-color: var(--active);
-  outline: none;
 }
 
 .registry-edit-field input[readonly] {
@@ -8759,4 +8727,37 @@ button {
 .snap-assist-dismiss:hover {
   background: var(--control-hover);
   color: var(--text);
+}
+
+/*
+ * These selectors clear the UA outline in their base state, which out-specifies
+ * the global :focus-visible ring. Restore the ring at matching specificity so
+ * every one of them still shows where focus is. `.taskbar-search` is absent on
+ * purpose: its wrapper already carries a :focus-within treatment.
+ */
+.browser-toolbar input:focus-visible,
+.calculator-app:focus-visible,
+.desktop-icon-rename input:focus-visible,
+.event-viewer-search input:focus-visible,
+.file-dialog-name-field input:focus-visible,
+.file-dialog-search input:focus-visible,
+.file-inline-rename input:focus-visible,
+.file-search input:focus-visible,
+.lock-screen:focus-visible,
+.note-editor:focus-visible,
+.photos-rename input:focus-visible,
+.photos-viewer:focus-visible,
+.run-input-row input:focus-visible,
+.settings-search input:focus-visible,
+.start-search input:focus-visible,
+.terminal-prompt input:focus-visible {
+  outline: 2px solid var(--active);
+  outline-offset: 2px;
+}
+
+/* The minefield had no focus style at all, so keyboard play was invisible. */
+.mine-cell:focus-visible {
+  outline: 2px solid var(--active);
+  outline-offset: -2px;
+  z-index: 1;
 }

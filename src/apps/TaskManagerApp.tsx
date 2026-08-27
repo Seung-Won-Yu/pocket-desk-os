@@ -168,7 +168,7 @@ export default function TaskManagerApp({
 
       {tab === "processes" ? (
         <div className="taskmgr-processes">
-          <div className="taskmgr-table" role="table">
+          <div aria-label="실행 중인 프로세스" className="taskmgr-table" role="grid">
             <div className="taskmgr-row is-head" role="row">
               <span role="columnheader">이름</span>
               <span role="columnheader">CPU</span>
@@ -187,6 +187,17 @@ export default function TaskManagerApp({
                     key={row.id}
                     onClick={() => setSelectedId(row.id)}
                     onDoubleClick={() => focusWindow(row.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        focusWindow(row.id);
+                        return;
+                      }
+                      if (event.key === " ") {
+                        event.preventDefault();
+                        setSelectedId(row.id);
+                      }
+                    }}
                     role="row"
                     tabIndex={0}
                   >

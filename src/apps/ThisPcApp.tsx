@@ -166,13 +166,21 @@ export default function ThisPcApp({ openApp }: ThisPcAppProps) {
               <div className={`this-pc-drive-list is-${driveView}`}>
                 {driveVisible ? (
                   <button
-                    aria-selected={driveSelected}
+                    aria-pressed={driveSelected}
                     className={driveSelected ? "is-selected" : ""}
                     onClick={(event) => {
                       event.stopPropagation();
                       setDriveSelected(true);
                     }}
                     onDoubleClick={openDrive}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      // Enter opens the drive outright rather than needing a
+                      // select-then-confirm pair the mouse never has to do.
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openDrive();
+                    }}
                     type="button"
                   >
                     <HardDrive aria-hidden="true" size={driveView === "tiles" ? 34 : 20} />

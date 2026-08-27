@@ -136,7 +136,11 @@ export default function RecycleBinApp({
               <span>크기</span>
             </div>
           )}
-          <div className="file-list recycle-list file-view-details" role="list">
+          <div
+            aria-label="삭제된 항목"
+            className="file-list recycle-list file-view-details"
+            role="listbox"
+          >
             {visibleFiles.map((file, index) => {
               const FileIcon = file.icon;
               return (
@@ -146,6 +150,12 @@ export default function RecycleBinApp({
                   key={file.id}
                   onClick={() => setSelected(index)}
                   onDoubleClick={() => restoreVfsEntry(file.id)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    event.preventDefault();
+                    restoreVfsEntry(file.id);
+                  }}
+                  role="option"
                   type="button"
                 >
                   <FileIcon aria-hidden="true" size={18} />

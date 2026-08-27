@@ -507,6 +507,13 @@ async function runSmoke(baseUrl) {
 
     const startButton = page.getByRole("button", { name: "시작 메뉴" });
     await startButton.waitFor({ state: "visible" });
+    // The Start button used to listen on pointerdown only, which a keyboard
+    // activation never fires.
+    await startButton.focus();
+    await page.keyboard.press("Enter");
+    await page.locator(".start-menu").waitFor({ state: "visible" });
+    await page.keyboard.press("Escape");
+    await page.locator(".start-menu").waitFor({ state: "hidden" });
     await startButton.click();
     const startMenu = page.locator(".start-menu");
     await startMenu.waitFor({ state: "visible" });

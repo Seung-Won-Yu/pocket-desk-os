@@ -423,7 +423,7 @@ export default function EventViewerApp({
         <div
           aria-label={`${activeChannel.label} 이벤트`}
           className="event-viewer-table"
-          role="table"
+          role="grid"
         >
           <div className="event-viewer-row is-head" role="row">
             {columnList.map((column) => (

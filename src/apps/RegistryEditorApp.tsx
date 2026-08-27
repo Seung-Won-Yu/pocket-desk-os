@@ -460,7 +460,7 @@ export default function RegistryEditorApp({ notify, playSound }: RegistryEditorA
             </button>
           </header>
 
-          <div aria-label="레지스트리 값" className="registry-table" role="table">
+          <div aria-label="레지스트리 값" className="registry-table" role="grid">
             <div className="registry-row is-head" role="row">
               <span role="columnheader">이름</span>
               <span role="columnheader">종류</span>

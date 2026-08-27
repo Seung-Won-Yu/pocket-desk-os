@@ -109,19 +109,21 @@ describe("Taskbar 검색", () => {
 
     await user.type(searchBox(), "note");
 
-    expect(handlers.onSearch).toHaveBeenNthCalledWith(2, "n");
-    expect(handlers.onSearch).toHaveBeenNthCalledWith(3, "no");
+    expect(handlers.onSearch).toHaveBeenNthCalledWith(1, "n");
+    expect(handlers.onSearch).toHaveBeenNthCalledWith(2, "no");
     expect(handlers.onSearch).toHaveBeenLastCalledWith("note");
     expect(searchBox()).toHaveValue("note");
   });
 
-  it("검색창에 포커스가 들어오면 현재 검색어를 다시 알린다", async () => {
+  it("포커스만으로는 검색을 시작하지 않는다", async () => {
+    // Focusing used to fire onSearch, which opened the Start menu and pulled
+    // focus away the moment Tab reached the field.
     const { handlers, user } = renderTaskbar({ searchQuery: "메모" });
 
     expect(searchBox()).toHaveValue("메모");
     await user.click(searchBox());
 
-    expect(handlers.onSearch).toHaveBeenCalledWith("메모");
+    expect(handlers.onSearch).not.toHaveBeenCalled();
   });
 });
 
