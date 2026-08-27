@@ -1,4 +1,5 @@
 import type { DesktopItem } from "../types";
+import { blobToDataUrl, dataUrlToBlob, isImageDataUrl } from "./imageCodec";
 
 const VFS_DB_NAME = "pocket-desk-vfs";
 const VFS_DB_VERSION = 2;
@@ -11,6 +12,42 @@ type VfsItemNormalizer = (value: unknown, index: number) => DesktopItem | null;
 
 let writeQueue: Promise<void> = Promise.resolve();
 const contentEncoder = new TextEncoder();
+/**
+ * Encoded images, keyed by the data URL they came from. Every save rewrites the
+ * whole snapshot, so without this a large picture would be re-encoded on each
+ * rename or icon nudge. Bounded because the entries it holds are already in
+ * memory as strings anyway.
+ */
+const imageBlobCache = new Map<string, Blob>();
+const IMAGE_BLOB_CACHE_LIMIT = 48;
+
+/** A stored entry keeps image bytes as a Blob; everything else is unchanged. */
+type StoredVfsEntry = Omit<DesktopItem, "content"> & { content?: string | Blob };
+
+function toStoredEntry(entry: DesktopItem): StoredVfsEntry {
+  const content = entry.content;
+  if (typeof content !== "string" || !isImageDataUrl(content)) return entry;
+
+  const cached = imageBlobCache.get(content);
+  if (cached) return { ...entry, content: cached };
+
+  const blob = dataUrlToBlob(content);
+  if (!blob) return entry;
+
+  if (imageBlobCache.size >= IMAGE_BLOB_CACHE_LIMIT) imageBlobCache.clear();
+  imageBlobCache.set(content, blob);
+  return { ...entry, content: blob };
+}
+
+async function fromStoredEntry(value: unknown): Promise<unknown> {
+  if (!value || typeof value !== "object") return value;
+  const entry = value as StoredVfsEntry;
+  if (!(entry.content instanceof Blob)) return value;
+
+  const content = await blobToDataUrl(entry.content);
+  imageBlobCache.set(content, entry.content);
+  return { ...entry, content };
+}
 
 export class VfsStorageError extends Error {
   constructor(message: string, cause?: unknown) {
@@ -30,8 +67,9 @@ export async function readVfsEntries(normalize: VfsItemNormalizer): Promise<Desk
     const request = transaction.objectStore(VFS_STORE_NAME).getAll();
     const values = await requestResult<unknown[]>(request, "가상 파일 목록을 읽지 못했습니다.");
     await transactionDone(transaction, "가상 파일 읽기 트랜잭션이 실패했습니다.");
+    const decoded = await Promise.all(values.map(fromStoredEntry));
 
-    return values
+    return decoded
       .map((item, index) => normalize(item, index))
       .filter((item): item is DesktopItem => Boolean(item))
       .sort((a, b) => a.createdAt - b.createdAt);
@@ -72,7 +110,7 @@ async function writeVfsSnapshot(entries: DesktopItem[]) {
     const metaStore = transaction.objectStore(VFS_META_STORE_NAME);
 
     entriesStore.clear();
-    entries.forEach((entry) => entriesStore.put(entry));
+    entries.forEach((entry) => entriesStore.put(toStoredEntry(entry)));
     metaStore.put({
       entryCount: entries.length,
       key: "snapshot",
