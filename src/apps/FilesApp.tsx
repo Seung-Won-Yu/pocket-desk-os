@@ -31,6 +31,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import type React from "react";
 import AppIconTile from "../components/AppIconTile";
+import { VFS_DRAG_MIME } from "../shell/constants";
 import type { AppId, ClipboardMode, DesktopItem, SystemClipboard, ToastInput } from "../types";
 import {
   clamp,
@@ -476,7 +477,7 @@ export default function FilesApp({
       return;
     }
     event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("application/x-pocketdesk-vfs", JSON.stringify(draggedIds));
+    event.dataTransfer.setData(VFS_DRAG_MIME, JSON.stringify(draggedIds));
     event.dataTransfer.setData("text/plain", draggedIds.join(","));
   };
 
@@ -484,7 +485,7 @@ export default function FilesApp({
     event.preventDefault();
     event.stopPropagation();
     setDragOverFolderId(null);
-    const payload = event.dataTransfer.getData("application/x-pocketdesk-vfs");
+    const payload = event.dataTransfer.getData(VFS_DRAG_MIME);
     if (!payload) return;
     try {
       const itemIds = JSON.parse(payload);
@@ -1004,6 +1005,7 @@ export default function FilesApp({
                 event.dataTransfer.dropEffect = "move";
               }}
               onDrop={(event) => dropFilesIntoFolder(event, currentFolderId)}
+              data-vfs-drop-folder={currentFolderId}
               onKeyDown={handleFileListKeyDown}
               onPointerDown={() => setFileContextMenu(null)}
               ref={fileListRef}

@@ -16,6 +16,7 @@ export function DesktopIcon({
 }: {
   app: AppDefinition;
   onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onDropIntoFolder?: (folderId: string) => void;
   onMove: (position: IconPosition) => void;
   onOpen: () => void;
   onSelect: (event: React.MouseEvent<HTMLButtonElement>) => void;
@@ -45,6 +46,7 @@ export function DesktopItemIcon({
   onChangeDraftName,
   onCommitRename,
   onContextMenu,
+  onDropIntoFolder,
   onMove,
   onOpen,
   onSelect,
@@ -57,6 +59,7 @@ export function DesktopItemIcon({
   onCancelRename: () => void;
   onChangeDraftName: (name: string) => void;
   onCommitRename: () => void;
+  onDropIntoFolder?: (folderId: string) => void;
   onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onMove: (position: IconPosition) => void;
   onOpen: () => void;
@@ -72,6 +75,7 @@ export function DesktopItemIcon({
         accent={association.accent}
         icon={association.icon}
         onContextMenu={onContextMenu}
+        onDropIntoFolder={onDropIntoFolder}
         onMove={onMove}
         onOpen={onOpen}
         onSelect={onSelect}
@@ -114,6 +118,7 @@ export function DesktopIconButton({
   accent,
   icon: Icon,
   onContextMenu,
+  onDropIntoFolder,
   onMove,
   onOpen,
   onSelect,
@@ -125,6 +130,7 @@ export function DesktopIconButton({
   accent: string;
   icon: LucideIcon;
   onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onDropIntoFolder?: (folderId: string) => void;
   onMove: (position: IconPosition) => void;
   onOpen: () => void;
   onSelect: (event: React.MouseEvent<HTMLButtonElement>) => void;
@@ -175,6 +181,16 @@ export function DesktopIconButton({
     if (event.currentTarget.hasPointerCapture(state.pointerId)) {
       event.currentTarget.releasePointerCapture(state.pointerId);
     }
+
+    // Dropping over an open Explorer window files the item into that folder.
+    // Pointer capture keeps the icon as the event target, so hit-test manually.
+    if (state.moved && onDropIntoFolder) {
+      const under = document.elementFromPoint(event.clientX, event.clientY);
+      const folderId =
+        under?.closest<HTMLElement>("[data-vfs-drop-folder]")?.dataset.vfsDropFolder;
+      if (folderId) onDropIntoFolder(folderId);
+    }
+
     suppressNextClick.current = state.moved;
     dragState.current = null;
     window.setTimeout(() => {

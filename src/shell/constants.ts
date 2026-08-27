@@ -28,6 +28,7 @@ export const DESKTOP_ITEMS_KEY = "pocket-desk-desktop-items-v1";
 export const SOUND_ENABLED_KEY = "pocket-desk-sound-enabled-v1";
 export const DISPLAY_BRIGHTNESS_KEY = "pocket-desk-display-brightness-v1";
 export const TASKBAR_PINNED_APPS_KEY = "pocket-desk-taskbar-pinned-v2";
+export const VFS_DRAG_MIME = "application/x-pocketdesk-vfs";
 export const VIRTUAL_DESKTOPS_KEY = "pocket-desk-virtual-desktops-v1";
 export const USER_NAME_KEY = "pocket-desk-user-name-v1";
 export const CLOCK_24H_KEY = "pocket-desk-clock-24h-v1";

@@ -1417,6 +1417,46 @@ async function runSmoke(baseUrl) {
         .catch(() => {});
     }
 
+    // Snap Assist offers the opposite half once a window takes one side.
+    await page.keyboard.press("Meta+ArrowLeft");
+    const snapAssist = page.locator(".snap-assist");
+    await snapAssist.waitFor({ state: "visible" });
+    assert(
+      (await snapAssist.locator(".snap-assist-card").count()) > 0,
+      "Snap Assist offered no windows to pair with",
+    );
+    await snapAssist.locator(".snap-assist-card").first().click();
+    await snapAssist.waitFor({ state: "hidden" });
+    const snappedEdges = await page
+      .locator(".window-frame:visible")
+      .evaluateAll((frames) =>
+        frames.map((frame) => Math.round(frame.getBoundingClientRect().left)),
+      );
+    assert(
+      Math.max(...snappedEdges) > 300,
+      "Snap Assist did not move the chosen window to the opposite half",
+    );
+
+    // A file dragged out of Explorer lands on the desktop.
+    await page.keyboard.press("Meta+e");
+    const dragExplorer = page.locator('article[aria-label="파일 탐색기"]').first();
+    await dragExplorer.waitFor({ state: "visible" });
+    const dragSource = dragExplorer.getByRole("option").first();
+    await dragSource.waitFor({ state: "visible" });
+    const draggedName = (await dragSource.innerText()).split("\n")[0].trim();
+    // Drop clear of the Explorer window, or the window itself takes the drop.
+    const explorerBox = await dragExplorer.boundingBox();
+    await dragSource.dragTo(page.locator(".desktop"), {
+      targetPosition: {
+        x: Math.round((explorerBox?.x ?? 0) + (explorerBox?.width ?? 0) + 120),
+        y: 700,
+      },
+    });
+    await page
+      .locator(".desktop-icon", { hasText: draggedName })
+      .first()
+      .waitFor({ state: "visible" });
+
     await page.keyboard.press("Control+Shift+Escape");
     const taskManager = page.locator('article[aria-label="작업 관리자"]');
     await taskManager.waitFor({ state: "visible" });

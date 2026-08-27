@@ -43,6 +43,7 @@ import {
   VFS_PRIMARY_NOTE_ID,
   CLOCK_24H_KEY,
   USER_NAME_KEY,
+  VFS_DRAG_MIME,
   VIRTUAL_DESKTOPS_KEY,
   WALLPAPER_KEY,
   WINDOW_EXIT_MOTION_MS,
@@ -100,6 +101,7 @@ import {
   loadWindowState,
   persistWindowState,
 } from "./shell/windowState";
+import { SnapAssist } from "./shell/components/SnapAssist";
 import { TaskView } from "./shell/components/TaskView";
 import {
   loadClock24h,
@@ -200,6 +202,7 @@ export default function App() {
   const [altTabWindowId, setAltTabWindowId] = useState<string | null>(null);
   const [pinnedAppIds, setPinnedAppIds] = useState<AppId[]>(() => loadPinnedTaskbarApps());
   const [snapPreview, setSnapPreview] = useState<SnapPreviewState | null>(null);
+  const [snapAssistZone, setSnapAssistZone] = useState<SnapZone | null>(null);
   const [notificationHistory, setNotificationHistory] = useState<ToastMessage[]>([]);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [windows, setWindows] = useState<WindowInstance[]>(() => loadWindowState());
@@ -617,6 +620,39 @@ export default function App() {
       setActiveCanvasId(item.id);
       setActiveCanvasOpenKey((current) => current + 1);
     }
+  };
+
+  /** Accepts a drag out of an Explorer window and files it onto the desktop. */
+  const dropEntriesOntoDesktop = (event: React.DragEvent<HTMLElement>) => {
+    const payload = event.dataTransfer.getData(VFS_DRAG_MIME);
+    if (!payload) return;
+    event.preventDefault();
+
+    let itemIds: string[];
+    try {
+      const parsed: unknown = JSON.parse(payload);
+      if (!Array.isArray(parsed)) return;
+      itemIds = parsed.filter((value): value is string => typeof value === "string");
+    } catch {
+      return;
+    }
+    if (itemIds.length === 0) return;
+
+    // An entry already in the desktop folder is not moved, only surfaced: living
+    // in that folder and having an icon on the desktop are separate states here.
+    const needsMove = itemIds.filter((id) =>
+      activeDesktopItems.some((item) => item.id === id && item.parentId !== VFS_ROOT_ID),
+    );
+    if (needsMove.length > 0 && !moveVfsEntries(needsMove, VFS_ROOT_ID)) return;
+
+    const position = clampIconPosition(event.clientX - 40, event.clientY - 40, desktopViewMode);
+    // moveVfsEntries clears showOnDesktop, so a desktop drop has to restore it.
+    setDesktopItems((current) =>
+      current.map((item) =>
+        itemIds.includes(item.id) ? { ...item, showOnDesktop: true, ...position } : item,
+      ),
+    );
+    setSelectedDesktopIds(itemIds.map((id) => `item:${id}`));
   };
 
   const openDesktopItem = (item: DesktopItem) => {
@@ -1675,10 +1711,28 @@ export default function App() {
     updateWindow(windowId, { desktopIndex: target });
   };
 
+  /** The half opposite a left/right snap, where Snap Assist offers the rest. */
+  const getOppositeSnapZone = (zone: SnapZone): SnapZone | null => {
+    if (zone === "left") return "right";
+    if (zone === "right") return "left";
+    return null;
+  };
+
   const snapWindow = (id: string, zone: SnapZone) => {
     playSound("toggle");
     updateWindow(id, { ...getWindowSnapPatch(zone), snapZone: zone });
+
+    const opposite = getOppositeSnapZone(zone);
+    const hasCandidate = desktopWindows.some(
+      (item) => item.id !== id && !item.maximized && item.snapZone !== opposite,
+    );
+    setSnapAssistZone(opposite && hasCandidate ? opposite : null);
   };
+
+  const getSnapAssistCandidates = (zone: SnapZone) =>
+    desktopWindows
+      .filter((item) => !item.maximized && item.snapZone !== getOppositeSnapZone(zone))
+      .sort((first, second) => second.z - first.z);
 
   /**
    * Windows-style Win+Arrow stepping: a half-snapped window narrows to a
@@ -1807,7 +1861,7 @@ export default function App() {
     const target = event.target as HTMLElement;
     if (
       target.closest(
-        ".desktop-icon, .desktop-context-menu, .window-system-menu, .window-frame, .start-menu, .taskbar, .shell-gate, .toast-stack, .pwa-update-prompt, .task-view, .alt-tab-switcher",
+        ".desktop-icon, .desktop-context-menu, .window-system-menu, .window-frame, .start-menu, .taskbar, .shell-gate, .toast-stack, .pwa-update-prompt, .task-view, .alt-tab-switcher, .snap-assist",
       )
     ) {
       return;
@@ -2223,6 +2277,12 @@ export default function App() {
         shellPhase === "unlocked" ? "is-unlocked" : ""
       }`}
       onContextMenu={showDesktopContextMenu}
+      onDragOver={(event) => {
+        if (!event.dataTransfer.types.includes(VFS_DRAG_MIME)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+      }}
+      onDrop={dropEntriesOntoDesktop}
       onPointerCancel={finishDesktopSelection}
       onPointerDown={beginDesktopPointerAction}
       onPointerMove={updateDesktopSelection}
@@ -2262,6 +2322,10 @@ export default function App() {
               onContextMenu={(event) =>
                 showDesktopIconContextMenu(event, { itemId: item.id, kind: "item" })
               }
+              onDropIntoFolder={(folderId) => {
+                if (folderId === VFS_ROOT_ID) return;
+                moveVfsEntries([item.id], folderId);
+              }}
               onMove={(position) => moveDesktopItem(item.id, position)}
               onOpen={() => openDesktopItem(item)}
               onSelect={(event) => selectDesktopTarget(`item:${item.id}`, event)}
@@ -2360,6 +2424,18 @@ export default function App() {
       </section>
 
       {snapPreview && <SnapPreview zone={snapPreview.zone} />}
+
+      {shellPhase === "unlocked" && snapAssistZone && (
+        <SnapAssist
+          candidates={getSnapAssistCandidates(snapAssistZone)}
+          onDismiss={() => setSnapAssistZone(null)}
+          onPick={(windowId) => {
+            snapWindow(windowId, snapAssistZone);
+            setSnapAssistZone(null);
+          }}
+          zone={snapAssistZone}
+        />
+      )}
 
       {windowMenu && windowMenuInstance && (
         <WindowSystemMenu
