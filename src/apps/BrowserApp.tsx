@@ -832,6 +832,17 @@ function BrowserReader({
           <small>{getBrowserPageTitle(url)}</small>
         </span>
       </header>
+      {!isSearchResult && (
+        // Reader mode substitutes text for the page. Without saying so, a site
+        // that forbids framing just looks like a broken render.
+        <p className="browser-reader-notice">
+          이 사이트는 창 안에 표시되지 않아 본문만 옮겨 왔습니다. 원래 디자인은 새 탭에서 볼 수
+          있습니다.
+          <a href={url} rel="noreferrer" target="_blank">
+            <ExternalLink aria-hidden="true" size={14} />새 탭에서 열기
+          </a>
+        </p>
+      )}
       <article>
         <ReactMarkdown components={markdownComponents}>{document.markdown}</ReactMarkdown>
       </article>
