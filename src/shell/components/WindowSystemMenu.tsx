@@ -2,6 +2,7 @@ import AppIconTile from "../../components/AppIconTile";
 import { type AppDefinition, type WindowInstance } from "../types";
 import { Maximize2, Minus, Square, X } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { useReturnFocus } from "../dialogFocus";
 
 export function WindowSystemMenu({
   app,
@@ -24,6 +25,8 @@ export function WindowSystemMenu({
   x: number;
   y: number;
 }) {
+  useReturnFocus();
+
   const firstItemRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {

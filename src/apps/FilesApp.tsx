@@ -32,6 +32,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent 
 import type React from "react";
 import AppIconTile from "../components/AppIconTile";
 import { VFS_DRAG_MIME } from "../shell/constants";
+import { trapDialogFocus } from "../shell/dialogFocus";
 import type { AppId, ClipboardMode, DesktopItem, SystemClipboard, ToastInput } from "../types";
 import {
   clamp,
@@ -1257,6 +1258,14 @@ export default function FilesApp({
             aria-label="파일 속성"
             aria-modal="true"
             className="file-properties-dialog"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setPropertiesFileId(null);
+                return;
+              }
+              trapDialogFocus(event, event.currentTarget);
+            }}
             onPointerDown={(event) => event.stopPropagation()}
             role="dialog"
           >

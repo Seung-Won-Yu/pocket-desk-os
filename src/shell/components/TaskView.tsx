@@ -1,5 +1,7 @@
 import { Plus, X } from "lucide-react";
+import { useEffect, useRef } from "react";
 import AppIconTile from "../../components/AppIconTile";
+import { trapDialogFocus } from "../dialogFocus";
 import { getApp } from "../appCatalog";
 import { APP_BAR_HEIGHT, MAX_VIRTUAL_DESKTOPS } from "../constants";
 import { type WindowInstance } from "../types";
@@ -29,6 +31,14 @@ export function TaskView({
   onSelectWindow: (windowId: string) => void;
   windows: WindowInstance[];
 }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  // Focus has to enter the overlay, or Tab keeps walking the desktop behind it.
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => rootRef.current?.focus());
+    return () => window.cancelAnimationFrame(frameId);
+  }, []);
+
   const workAreaWidth = Math.max(320, window.innerWidth);
   const workAreaHeight = Math.max(240, window.innerHeight - APP_BAR_HEIGHT);
 
@@ -47,11 +57,22 @@ export function TaskView({
   return (
     <div
       aria-label="작업 보기"
+      aria-modal="true"
       className="task-view"
       onClick={(event) => {
         if (event.target === event.currentTarget) onDismiss();
       }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          onDismiss();
+          return;
+        }
+        trapDialogFocus(event, event.currentTarget);
+      }}
+      ref={rootRef}
       role="dialog"
+      tabIndex={-1}
     >
       <div className="task-view-desktops">
         {Array.from({ length: desktopCount }, (_, index) => {

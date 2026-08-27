@@ -1,4 +1,6 @@
+import { useEffect, useRef } from "react";
 import AppIconTile from "../../components/AppIconTile";
+import { trapDialogFocus } from "../dialogFocus";
 import { getApp } from "../appCatalog";
 import { getSnapPreviewStyle } from "../windowGeometry";
 import { type SnapZone, type WindowInstance } from "../types";
@@ -18,7 +20,17 @@ export function SnapAssist({
   onPick: (windowId: string) => void;
   zone: SnapZone;
 }) {
-  if (candidates.length === 0) return null;
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const hasCandidates = candidates.length > 0;
+
+  // Without focus inside, the Escape handler below never receives the key.
+  useEffect(() => {
+    if (!hasCandidates) return;
+    const frameId = window.requestAnimationFrame(() => rootRef.current?.focus());
+    return () => window.cancelAnimationFrame(frameId);
+  }, [hasCandidates]);
+
+  if (!hasCandidates) return null;
 
   return (
     <div
@@ -28,10 +40,18 @@ export function SnapAssist({
         if (event.target === event.currentTarget) onDismiss();
       }}
       onKeyDown={(event) => {
-        if (event.key === "Escape") onDismiss();
+        if (event.key === "Escape") {
+          event.preventDefault();
+          onDismiss();
+          return;
+        }
+        trapDialogFocus(event, event.currentTarget);
       }}
+      aria-modal="true"
+      ref={rootRef}
       role="dialog"
       style={getSnapPreviewStyle(zone)}
+      tabIndex={-1}
     >
       <p className="snap-assist-title">나란히 놓을 창을 고르세요</p>
       <div className="snap-assist-grid">

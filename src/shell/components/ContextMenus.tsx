@@ -3,7 +3,7 @@ import { type DesktopItem } from "../../types";
 import { formatVfsEntrySize, formatVfsPropertyDate } from "../../utils/format";
 import { getVfsEntryAssociation } from "../../vfs/model";
 import { CONTEXT_MENU_WIDTH } from "../constants";
-import { trapDialogFocus } from "../dialogFocus";
+import { trapDialogFocus, useReturnFocus } from "../dialogFocus";
 import { type DesktopSortKey, type DesktopViewMode } from "../types";
 import {
   Check,
@@ -57,6 +57,8 @@ export function DesktopContextMenu({
   x: number;
   y: number;
 }) {
+  useReturnFocus();
+
   const firstItemRef = useRef<HTMLButtonElement>(null);
   const [submenu, setSubmenu] = useState<"new" | "sort" | "view" | null>(null);
   const opensLeft = x > window.innerWidth - CONTEXT_MENU_WIDTH * 2 - 20;
@@ -242,6 +244,8 @@ export function DesktopIconContextMenu({
   x: number;
   y: number;
 }) {
+  useReturnFocus();
+
   const firstItemRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -335,6 +339,8 @@ export function DesktopItemPropertiesDialog({
   item: DesktopItem;
   onClose: () => void;
 }) {
+  useReturnFocus();
+
   const association = getVfsEntryAssociation(item);
   const confirmRef = useRef<HTMLButtonElement>(null);
 

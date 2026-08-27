@@ -1,10 +1,12 @@
 import { Bomb, Check, Flag, History, RotateCcw, X } from "lucide-react";
 import {
   useEffect,
+  useRef,
   useState,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { trapDialogFocus } from "../shell/dialogFocus";
 
 type MinesDifficultyId = "easy" | "medium" | "hard";
 
@@ -46,6 +48,15 @@ export default function MinesweeperApp({ playSound }: MinesweeperAppProps) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [detonatedIndex, setDetonatedIndex] = useState<number | null>(null);
   const [resultVisible, setResultVisible] = useState(false);
+  const resultDialogRef = useRef<HTMLElement | null>(null);
+
+  // The result dialog is modal, so focus has to move into it or the board
+  // behind stays the Tab target.
+  useEffect(() => {
+    if (!resultVisible) return;
+    const frameId = window.requestAnimationFrame(() => resultDialogRef.current?.focus());
+    return () => window.cancelAnimationFrame(frameId);
+  }, [resultVisible]);
   const [newBest, setNewBest] = useState(false);
   const [flagMode, setFlagMode] = useState(false);
   const [bestRecords, setBestRecords] = useState<Record<MinesDifficultyId, number | null>>(() =>
@@ -346,7 +357,17 @@ export default function MinesweeperApp({ playSound }: MinesweeperAppProps) {
               aria-labelledby="mines-result-title"
               aria-modal="true"
               className={`mines-result-dialog is-${status}`}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setResultVisible(false);
+                  return;
+                }
+                trapDialogFocus(event, event.currentTarget);
+              }}
+              ref={resultDialogRef}
               role="dialog"
+              tabIndex={-1}
             >
               <div className="mines-result-heading">
                 <span className="mines-result-icon">

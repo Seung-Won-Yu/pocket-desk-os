@@ -1,6 +1,6 @@
 import AppIconTile from "../../components/AppIconTile";
 import { runCommandSuggestions } from "../constants";
-import { trapDialogFocus } from "../dialogFocus";
+import { trapDialogFocus, useReturnFocus } from "../dialogFocus";
 import { SquareTerminal, X } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
@@ -14,17 +14,14 @@ export function RunDialog({
   const [command, setCommand] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  useReturnFocus();
+
   useEffect(() => {
-    const previousFocus =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const frameId = window.requestAnimationFrame(() => {
       inputRef.current?.focus();
       inputRef.current?.select();
     });
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      previousFocus?.focus();
-    };
+    return () => window.cancelAnimationFrame(frameId);
   }, []);
 
   const submit = (event: FormEvent) => {

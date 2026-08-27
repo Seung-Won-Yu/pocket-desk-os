@@ -4,6 +4,7 @@ import type React from "react";
 import type { AppId, DesktopItem } from "../types";
 import { clamp, formatVfsEntrySize, normalizeSearchText } from "../utils/format";
 import { formatDesktopItemTime, getVfsEntryAssociation, getVfsEntryDetail } from "../vfs/model";
+import { trapDialogFocus } from "../shell/dialogFocus";
 
 type RecycleBinAppProps = {
   emptyRecycleBin: () => void;
@@ -266,23 +267,4 @@ function ConfirmDialog({
       </section>
     </div>
   );
-}
-
-function trapDialogFocus(event: React.KeyboardEvent, container: HTMLElement) {
-  if (event.key !== "Tab") return;
-  const focusable = Array.from(
-    container.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-    ),
-  );
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  if (!first || !last) return;
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first.focus();
-  }
 }

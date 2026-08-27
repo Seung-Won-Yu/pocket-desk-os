@@ -132,6 +132,8 @@ export function Taskbar({
 
   useEffect(() => {
     if (!trayPanel) return;
+    const opener =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
     const closeOnOutsideClick = (event: MouseEvent) => {
       if (event.target instanceof Node && trayRef.current?.contains(event.target)) return;
@@ -148,11 +150,14 @@ export function Taskbar({
     return () => {
       window.removeEventListener("mousedown", closeOnOutsideClick);
       window.removeEventListener("keydown", closeOnEscape);
+      if (opener?.isConnected) opener.focus();
     };
   }, [trayPanel]);
 
   useEffect(() => {
     if (!taskbarMenu) return;
+    const opener =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const frameId = window.requestAnimationFrame(() => taskbarMenuButtonRef.current?.focus());
     const closeMenu = () => setTaskbarMenu(null);
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -164,11 +169,14 @@ export function Taskbar({
       window.cancelAnimationFrame(frameId);
       window.removeEventListener("pointerdown", closeMenu);
       window.removeEventListener("keydown", closeOnEscape);
+      if (opener?.isConnected) opener.focus();
     };
   }, [taskbarMenu]);
 
   useEffect(() => {
     if (!shellMenu) return;
+    const opener =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const frameId = window.requestAnimationFrame(() => shellMenuButtonRef.current?.focus());
     const closeMenu = () => setShellMenu(null);
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -180,6 +188,7 @@ export function Taskbar({
       window.cancelAnimationFrame(frameId);
       window.removeEventListener("pointerdown", closeMenu);
       window.removeEventListener("keydown", closeOnEscape);
+      if (opener?.isConnected) opener.focus();
     };
   }, [shellMenu]);
 
