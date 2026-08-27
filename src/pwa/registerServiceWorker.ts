@@ -1,3 +1,4 @@
+import { toTrustedServiceWorkerUrl } from "../security/trustedWorkerUrl";
 export const PWA_UPDATE_EVENT = "pocketdesk:pwa-update";
 export const PWA_CONTROLLER_CHANGE_EVENT = "pocketdesk:pwa-controller-change";
 
@@ -36,7 +37,10 @@ function observeRegistration(registration: ServiceWorkerRegistration) {
 
 async function register() {
   const serviceWorkerUrl = new URL(`${import.meta.env.BASE_URL}sw.js`, window.location.origin);
-  const registration = await navigator.serviceWorker.register(serviceWorkerUrl, {
+  // Trusted Types refuses a plain string here, so the URL goes through a policy
+  // that only ever vouches for this exact path on this origin.
+  const trustedUrl = toTrustedServiceWorkerUrl(serviceWorkerUrl);
+  const registration = await navigator.serviceWorker.register(trustedUrl, {
     scope: import.meta.env.BASE_URL,
   });
   if (!registration) return;

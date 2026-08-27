@@ -228,13 +228,10 @@ GitHub Pages는 계정당 오리진이 하나입니다. `seung-won-yu.github.io`
 ## 검증 명령
 
 ```bash
-npm run lint
-npm test
-npm run release:check
-npm run qa:pages
-npm run qa:smoke
-npm run qa:pwa
+npm run qa:all
 ```
+
+`qa:all`이 린트·포맷·단위 테스트·런타임 의존성 감사·릴리즈 검사·Pages 빌드·브라우저 스모크·PWA 오프라인을 순서대로 전부 돌립니다. 개별 명령으로 나눠 돌리다 하나를 빠뜨리는 일을 막기 위한 것입니다 — 실제로 `require-trusted-types-for`를 추가한 뒤 `qa:pwa`만 건너뛴 적이 있고, 그 지시어가 서비스 워커 등록을 막는다는 사실이 배포 후에 드러났습니다.
 
 `npm test`는 파일 시스템 모델, ZIP 백업 검증, 형식 helper, 셸의 순수 로직을 브라우저 없이 검사합니다.
 
