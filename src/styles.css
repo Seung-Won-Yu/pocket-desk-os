@@ -8761,3 +8761,9 @@ button {
   outline-offset: -2px;
   z-index: 1;
 }
+
+/* 같은 오리진 주소는 프레임에 넣지 않고 안내만 표시한다. */
+.browser-frame-fallback.is-static {
+  inset: auto 16px 16px;
+  position: relative;
+}

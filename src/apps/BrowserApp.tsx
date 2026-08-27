@@ -79,6 +79,23 @@ const BROWSER_HISTORY_KEY = "pocket-desk-browser-history-v1";
 const BROWSER_SEARCH_ENGINE_KEY = "pocket-desk-browser-search-engine-v1";
 const APPLE_BURST_URL = "https://seung-won-yu.github.io/apple-burst/";
 
+/**
+ * A same-origin document must never be framed. The frame needs allow-scripts to
+ * be useful, and a same-origin frame with allow-same-origin can reach
+ * parent.document, delete its own sandbox attribute and escape — which would
+ * hand it this app's origin, its stored files, and any permission the user has
+ * granted. GitHub Pages puts every repo of an account on one origin, so the
+ * project's own sibling pages are same-origin too. Those open in a real tab.
+ */
+export function isSameOriginTarget(value: string) {
+  if (typeof window === "undefined") return false;
+  try {
+    return new URL(value, window.location.href).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 const browserSearchEngines: Array<{
   id: BrowserSearchEngineId;
   label: string;
@@ -433,14 +450,28 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
           aria-label={`${viewMode === "reader" ? "읽기" : "웹"} 보기`}
           className={`browser-viewport is-${viewMode}`}
         >
-          {pageLoading && viewMode === "web" && (
+          {pageLoading && viewMode === "web" && !isSameOriginTarget(url) && (
             <div className="browser-loading" role="status">
               <span aria-hidden="true" />
               {/* `.browser-loading span` is the spinner ring, so the text is a <p>. */}
               <p style={browserVisuallyHiddenStyle}>페이지 불러오는 중</p>
             </div>
           )}
-          {viewMode === "reader" ? (
+          {isSameOriginTarget(url) ? (
+            <div className="browser-frame-fallback is-static" role="alert">
+              <ShieldAlert aria-hidden="true" size={24} />
+              <span>
+                <strong>이 주소는 창 안에서 열 수 없습니다</strong>
+                <small>
+                  PocketDesk와 같은 오리진이라 프레임에 넣으면 이 앱의 파일과 권한에 접근할 수
+                  있습니다. 새 탭에서 열어 주세요.
+                </small>
+              </span>
+              <a className="is-primary" href={url} rel="noreferrer" target="_blank">
+                <ExternalLink aria-hidden="true" size={15} />새 탭에서 열기
+              </a>
+            </div>
+          ) : viewMode === "reader" ? (
             <BrowserReader
               key={`${pageLoadKey}-${url}`}
               onNavigate={navigateReader}
@@ -462,7 +493,7 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
               title={`${getBrowserPageTitle(url)} 웹 보기`}
             />
           )}
-          {viewMode === "web" && frameIssue && (
+          {viewMode === "web" && frameIssue && !isSameOriginTarget(url) && (
             <div className="browser-frame-fallback" role="alert">
               <ShieldAlert aria-hidden="true" size={24} />
               <span>
