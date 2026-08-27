@@ -2,6 +2,28 @@
 
 All notable changes to PocketDesk OS are documented here.
 
+## 0.8.0
+
+A security pass over the whole app, from an adversarial audit.
+
+### Fixed
+
+- Reader mode sent the full target address — query string, fragment and any embedded credentials — to a third-party proxy, and selected itself automatically for github.com, notion.so, openai.com and others. Opening an invitation or reset link in the Edge app therefore leaked its token. The reader URL now carries only scheme, host and path, and reader mode is never auto-selected for an address whose query would be handed over.
+- The iframe granted `clipboard-read` and `clipboard-write` to every site browsed to. Chrome auto-grants the write, and attributes the read prompt to the top-level origin, so the user would see PocketDesk asking to read their clipboard. The `allow` list is gone.
+- `allow-same-origin` is gone from the iframe sandbox. A load-time origin check cannot see a frame navigating itself to this origin afterwards, because the app can never read a cross-origin frame's location. Without the flag the frame is an opaque origin and the escape is impossible. `allow-downloads` and `allow-modals` went too.
+- The service worker served `/assets/` cache-first and never revalidated, while `activate` evicted only caches with a different *name* — and that name was a hand-edited constant. A single cache write would have been served forever, offline included, outliving the fix to whatever caused it. The build now stamps a per-deploy id into the cache name.
+- Every URL reaching an `href`, an image `src`, a navigation or the proxy passes a shared http(s) check. Stored bookmarks and history entries are dropped on load if their URL is not http(s), since the Registry Editor exposes those keys for editing.
+- The CI workflow ran pull-request code with the repository's default token scope; it now takes `contents: read`.
+- The dev server had no CSP, which made the build with real file access the weaker of the two.
+
+### Added
+
+- `frame-ancestors`, COOP, `Permissions-Policy`, `Referrer-Policy`, `nosniff`, `X-Frame-Options` and HSTS on Netlify and Vercel, generated from one definition the release check verifies has not drifted. GitHub Pages cannot set headers, so the app refuses to mount inside a frame instead.
+
+### Notes
+
+- CSP is not an exfiltration boundary here and is documented as such: the reader proxy fetches whatever URL it is handed, and no shipping browser directive restricts top-level navigation. The real defences are preventing code execution and not admitting sensitive data in the first place.
+
 ## 0.7.0
 
 Closes two real security holes in the deployed site, and brings actual local files into Explorer on the developer's own machine.
