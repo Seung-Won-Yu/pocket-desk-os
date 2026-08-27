@@ -1464,6 +1464,35 @@ async function runSmoke(baseUrl) {
       .first()
       .waitFor({ state: "visible" });
 
+    // Revealing cells must not resize the board. Implicit grid rows took their
+    // height from their content, so a row showing a number grew taller than an
+    // empty one and everything below it shifted.
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("지뢰찾기");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const minesLayout = page.locator('article[aria-label="지뢰찾기"]');
+    await minesLayout.waitFor({ state: "visible" });
+    const cellHeights = () =>
+      minesLayout
+        .locator(".mine-cell")
+        .evaluateAll((cells) => [
+          ...new Set(cells.map((cell) => Math.round(cell.getBoundingClientRect().height))),
+        ]);
+    // An earlier step may already have played this board, so restart it and pick
+    // a cell that is actually still covered.
+    await minesLayout.getByRole("button", { name: "새 게임" }).click();
+    await page.waitForTimeout(300);
+    assert((await cellHeights()).length === 1, "Minefield cells started at mixed heights");
+    await minesLayout.locator(".mine-cell:not([disabled])").first().click();
+    await page.waitForTimeout(400);
+    const revealedHeights = await cellHeights();
+    assert(
+      revealedHeights.length === 1,
+      `Revealing a cell resized the minefield: heights ${revealedHeights.join(", ")}`,
+    );
+    await minesLayout.getByRole("button", { name: "지뢰찾기 닫기" }).click();
+
     await page.keyboard.press("Control+Shift+Escape");
     const taskManager = page.locator('article[aria-label="작업 관리자"]');
     await taskManager.waitFor({ state: "visible" });

@@ -3584,6 +3584,12 @@ button {
   display: grid;
   gap: var(--mine-gap);
   grid-template-columns: repeat(var(--mine-cols), 1fr);
+  /*
+   * Rows must be sized explicitly. Left implicit they take their height from
+   * their content, so a row that reveals a number grew taller than an empty one
+   * and the whole board shifted as cells were uncovered.
+   */
+  grid-template-rows: repeat(var(--mine-rows), 1fr);
   max-height: 100%;
   max-width: min(560px, 100%);
   width: 100%;
@@ -8766,4 +8772,40 @@ button {
 .browser-frame-fallback.is-static {
   inset: auto 16px 16px;
   position: relative;
+}
+
+/* 읽기 보기가 왜 텍스트만 보여주는지 알려 준다. */
+.browser-reader-notice {
+  align-items: center;
+  background: #eef3fb;
+  border: 1px solid #cfdcf0;
+  border-radius: 6px;
+  color: #33415c;
+  display: flex;
+  flex-wrap: wrap;
+  font-family: "Segoe UI", Arial, sans-serif;
+  font-size: 0.78rem;
+  gap: 10px;
+  line-height: 1.5;
+  margin: 16px auto 0;
+  max-width: 760px;
+  padding: 10px 14px;
+  width: calc(100% - 56px);
+}
+
+.browser-reader-notice a {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #b8c6dd;
+  border-radius: 4px;
+  color: #1a4b8f;
+  display: inline-flex;
+  gap: 5px;
+  padding: 4px 10px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.browser-reader-notice a:hover {
+  background: #f4f8ff;
 }
