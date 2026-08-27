@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import { buildContentSecurityPolicy } from "./scripts/security-policy.mjs";
 
 function normalizeBasePath(path = "/") {
   if (!path || path === ".") return "/";
@@ -10,38 +11,44 @@ function normalizeBasePath(path = "/") {
 }
 
 /**
- * Shipped as a <meta> tag because GitHub Pages serves static files and cannot set
- * response headers. Applied only to the production build: the dev server injects
- * inline <style> blocks and HMR machinery that a policy this strict would block.
- *
- * frame-src has to stay broad — framing arbitrary sites is what the Edge app is
- * for — but it is limited to https, so a data: or blob: document can never be
- * framed. connect-src allows only the reader proxy the Edge app actually calls.
+ * The policy itself lives in scripts/security-policy.mjs so the meta tag here and
+ * the response headers in netlify.toml / vercel.json share one definition.
  */
-const contentSecurityPolicy = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
-  "font-src 'self'",
-  "connect-src 'self' https://r.jina.ai",
-  "frame-src https:",
-  "worker-src 'self'",
-  "manifest-src 'self'",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'none'",
-  "upgrade-insecure-requests",
-].join("; ");
-
-function contentSecurityPolicyPlugin(): Plugin {
+/**
+ * Stamps the service worker's cache name with a per-build id. Without it the
+ * cache name only changed when someone remembered to edit a constant, so a
+ * poisoned cache entry outlived the deploy that was supposed to replace it.
+ */
+function serviceWorkerCacheIdPlugin(): Plugin {
+  const buildId = process.env.GITHUB_SHA?.slice(0, 12) ?? String(Date.now());
   return {
     apply: "build",
+    generateBundle(_options, bundle) {
+      void bundle;
+    },
+    name: "pocketdesk-sw-cache-id",
+    async writeBundle(options) {
+      const { readFile, writeFile } = await import("node:fs/promises");
+      const { join } = await import("node:path");
+      const target = join(options.dir ?? "dist", "sw.js");
+      const source = await readFile(target, "utf8");
+      await writeFile(target, source.replaceAll("__BUILD_ID__", buildId));
+    },
+  };
+}
+
+function contentSecurityPolicyPlugin(): Plugin {
+  let dev = false;
+  return {
+    configResolved(config) {
+      dev = config.command === "serve";
+    },
     name: "pocketdesk-csp",
     transformIndexHtml(html) {
+      const policy = buildContentSecurityPolicy({ dev });
       return html.replace(
         "<head>",
-        `<head>\n    <meta http-equiv="Content-Security-Policy" content="${contentSecurityPolicy}" />`,
+        `<head>\n    <meta http-equiv="Content-Security-Policy" content="${policy}" />`,
       );
     },
   };
@@ -57,5 +64,5 @@ export default defineConfig({
     // match that decision rather than silencing a surprise.
     chunkSizeWarningLimit: 700,
   },
-  plugins: [react(), contentSecurityPolicyPlugin()],
+  plugins: [react(), contentSecurityPolicyPlugin(), serviceWorkerCacheIdPlugin()],
 });

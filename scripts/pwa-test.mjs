@@ -98,11 +98,16 @@ async function runPwaTest(baseUrl) {
 
     const cacheState = await page.evaluate(async () => {
       const names = await caches.keys();
-      const cache = await caches.open("pocketdesk-os-v4");
+      // The cache name carries a per-build id, so find it by prefix.
+      const cacheName = names.find((name) => name.startsWith("pocketdesk-os-"));
+      const cache = await caches.open(cacheName ?? "pocketdesk-os-missing");
       const urls = (await cache.keys()).map((request) => request.url);
       return { names, urls };
     });
-    assert(cacheState.names.includes("pocketdesk-os-v4"), "PWA cache was not created");
+    assert(
+      cacheState.names.some((name) => name.startsWith("pocketdesk-os-")),
+      "PWA cache was not created",
+    );
     assert(
       cacheState.urls.some((url) => url.includes("/assets/") && url.endsWith(".js")),
       "JS bundle was not precached",

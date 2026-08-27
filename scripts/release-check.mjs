@@ -1,4 +1,5 @@
 import { access, readFile } from "node:fs/promises";
+import { buildContentSecurityPolicy, SECURITY_HEADERS } from "./security-policy.mjs";
 
 const requiredFiles = [
   ".github/workflows/ci.yml",
@@ -80,7 +81,9 @@ const textChecks = [
   ["public/manifest.webmanifest", "brand/pocketdesk-social.png"],
   ["public/robots.txt", "Allow: /"],
   ["public/llms.txt", "PocketDesk OS"],
-  ["public/sw.js", "pocketdesk-os-v4"],
+  // The build stamps a per-deploy id in place of the placeholder, so the source
+  // must still carry the placeholder rather than a frozen version number.
+  ["public/sw.js", "pocketdesk-os-__BUILD_ID__"],
   ["public/sw.js", "SKIP_WAITING"],
 ];
 
@@ -99,6 +102,30 @@ async function assertFileContains(path, expected) {
   }
 }
 
+/**
+ * The meta tag is generated from scripts/security-policy.mjs, but the hosting
+ * configs carry the policy as literal text. Editing the policy without updating
+ * them would silently leave Netlify and Vercel on an older one, so fail here.
+ */
+async function assertSecurityHeadersMatchPolicy() {
+  const headerPolicy = buildContentSecurityPolicy({ header: true });
+
+  for (const path of ["netlify.toml", "vercel.json"]) {
+    const text = await readFile(path, "utf8");
+    if (!text.includes(headerPolicy)) {
+      throw new Error(
+        `${path} does not carry the current Content-Security-Policy. ` +
+          "Regenerate its headers from scripts/security-policy.mjs.",
+      );
+    }
+    for (const key of Object.keys(SECURITY_HEADERS)) {
+      if (!text.includes(key)) {
+        throw new Error(`${path} is missing the ${key} header.`);
+      }
+    }
+  }
+}
+
 async function runReleaseCheck() {
   const files = [...requiredFiles, ...requiredWallpapers];
 
@@ -106,9 +133,11 @@ async function runReleaseCheck() {
   for (const [path, expected] of textChecks) {
     await assertFileContains(path, expected);
   }
+  await assertSecurityHeadersMatchPolicy();
 
   console.log(
-    `PocketDesk release check passed (${files.length} files, ${textChecks.length} text checks)`,
+    `PocketDesk release check passed (${files.length} files, ${textChecks.length} text checks, ` +
+      `${Object.keys(SECURITY_HEADERS).length} security headers)`,
   );
 }
 

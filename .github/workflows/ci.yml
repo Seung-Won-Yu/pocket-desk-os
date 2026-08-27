@@ -6,6 +6,11 @@ on:
       - main
   pull_request:
 
+# This workflow builds and tests code from pull requests. It needs nothing but
+# read access to the repository, so it gets nothing else.
+permissions:
+  contents: read
+
 jobs:
   release-check:
     name: Release checks

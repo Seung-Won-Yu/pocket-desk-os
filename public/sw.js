@@ -1,5 +1,12 @@
 const CACHE_PREFIX = "pocketdesk-os-";
-const CACHE_NAME = "pocketdesk-os-v4";
+/*
+ * The build stamps a fresh value in here. A hand-maintained version number meant
+ * a poisoned cache entry survived every deploy that forgot to bump it: activate
+ * only evicts caches whose *name* differs, so a script that wrote a malicious
+ * response into this cache kept being served, offline and forever, long after
+ * whatever let it in was fixed.
+ */
+const CACHE_NAME = "pocketdesk-os-__BUILD_ID__";
 const SCOPE_URL = new URL(self.registration.scope);
 const INDEX_URL = new URL("./index.html", SCOPE_URL).href;
 const APP_SHELL = [
@@ -73,9 +80,15 @@ async function networkFirst(request) {
   }
 }
 
+/*
+ * ignoreSearch is gone: it let one cached entry answer for every query-string
+ * variant of a URL, and a hashed asset filename never needs that. ignoreVary
+ * stays, because the response may carry a Vary header the offline match would
+ * otherwise fail on.
+ */
 async function cacheFirst(request) {
   const cache = await caches.open(CACHE_NAME);
-  const cached = await cache.match(request, { ignoreSearch: true, ignoreVary: true });
+  const cached = await cache.match(request, { ignoreVary: true });
   if (cached) return cached;
 
   const response = await fetch(request);
