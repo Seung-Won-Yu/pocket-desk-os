@@ -2,6 +2,23 @@
 
 All notable changes to PocketDesk OS are documented here.
 
+## 0.6.0
+
+Completes the accessibility pass: every menu, grid and tab strip now behaves the way its ARIA role promises.
+
+
+### Fixed
+
+- `role="menu"` was used in 14 places with no arrow-key handling, which is worse than a plain button stack because a screen reader switches to form mode and passes the arrows through to nothing. A shared helper now supplies arrow, Home and End movement to every menu.
+- Task Manager, Event Viewer and Registry Editor put a tab stop on every row; ten open windows added ten tab stops. Each grid is a single tab stop with the active row roving.
+- Explorer's `role="listbox"` had N+1 tab stops, since both the container and every item button were focusable.
+- Moving a desktop icon into a folder was pointer-only. The icon's context menu gained a 폴더로 이동 submenu.
+- The Notepad and Task Manager tab strips declared `role="tablist"` without `aria-controls`, a `tabpanel`, roving tabindex, or Left/Right movement.
+- Removed a redundant tab stop on the This PC content pane.
+- The minefield placed every cell directly under `role="grid"` with no `role="row"`, and made each cell its own tab stop — 480 Tab presses to cross a hard board.
+- Edge's settings flyout held a `<select>` inside `role="menu"` and used `aria-pressed` on `menuitem`, and had no Escape, outside-click close, arrow navigation or focus return despite its role.
+- Two Edge live regions carried only an `aria-label`, which names a region rather than being announced as its contents, so nothing was read while a page loaded.
+
 ## 0.5.0
 
 Snap Assist, drag between Explorer and the desktop, a keyboard-accessibility pass, and image storage that no longer pays the base64 tax.
