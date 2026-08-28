@@ -8,13 +8,39 @@ import {
   WINDOW_STATE_KEY,
 } from "./constants";
 import { type PersistedWindow, type SnapZone, type WindowInstance } from "./types";
+import { getWindowSnapPatch } from "./windowGeometry";
 
 export function createDefaultWindows(): WindowInstance[] {
   return [];
 }
 
+/**
+ * The geometry a snap zone implies, and nothing else. The snap patch also flips
+ * `minimized` and `maximized`, which is right when the user snaps a window but
+ * wrong when a resize or a session restore merely re-tiles one — that would
+ * un-minimize a window nobody asked to see. The `top` zone is maximize, which
+ * carries no box of its own.
+ */
+function getSnapBox(zone: SnapZone | undefined) {
+  if (!zone) return null;
+  const { height, width, x, y } = getWindowSnapPatch(zone);
+  if (width === undefined || height === undefined || x === undefined || y === undefined) {
+    return null;
+  }
+  return { height, width, x, y };
+}
+
 export function fitWindowToViewport(item: WindowInstance): WindowInstance {
   if (item.maximized) return item;
+
+  /*
+   * A snapped window re-tiles to the new work area, the way Windows re-tiles on
+   * a resolution change. Running it through the 8px float margin below instead
+   * pushed two flush halves to x=8 and x=632, overlapping by 16px and leaving a
+   * gap under them — the seam reappeared on the first resize after snapping.
+   */
+  const snapBox = getSnapBox(item.snapZone);
+  if (snapBox) return { ...item, ...snapBox };
 
   const minWidth = window.innerWidth <= 740 ? 288 : 320;
   const width = clamp(item.width, minWidth, Math.max(minWidth, window.innerWidth - 16));
@@ -84,7 +110,10 @@ export function loadWindowState(): WindowInstance[] {
     const restored = parsed
       .map((item, index) => normalizePersistedWindow(item as PersistedWindow, index))
       .filter((item): item is WindowInstance => {
-        if (!item || (item.appId !== "files" && seenApps.has(item.appId))) return false;
+        // Same rule as openApp: only a multi-instance app may restore twice.
+        if (!item || (!getApp(item.appId).multiInstance && seenApps.has(item.appId))) {
+          return false;
+        }
         seenApps.add(item.appId);
         return true;
       });
@@ -117,15 +146,21 @@ export function normalizePersistedWindow(
     240,
     Math.max(240, window.innerHeight - APP_BAR_HEIGHT - 16),
   );
-  const x = clamp(Number(item.x) || 8, 8, Math.max(8, window.innerWidth - width - 8));
+  const persistedX = Number(item.x);
+  const persistedY = Number(item.y);
+  const x = clamp(
+    Number.isFinite(persistedX) ? persistedX : 8,
+    8,
+    Math.max(8, window.innerWidth - width - 8),
+  );
   const y = clamp(
-    Number(item.y) || 8,
+    Number.isFinite(persistedY) ? persistedY : 8,
     8,
     Math.max(8, window.innerHeight - APP_BAR_HEIGHT - height - 8),
   );
   const z = Number.isFinite(Number(item.z)) ? Number(item.z) : 12 + index;
 
-  return {
+  const restored: WindowInstance = {
     id: typeof item.id === "string" ? item.id : `${appId}-${crypto.randomUUID()}`,
     appId,
     x,
@@ -142,6 +177,11 @@ export function normalizePersistedWindow(
     ),
     snapZone: isSnapZone(item.snapZone) ? item.snapZone : undefined,
   };
+
+  // Restoring a snapped window through the float margin above would land it
+  // 8px inside its own edge, so it re-tiles from the zone it was snapped to.
+  const restoredSnapBox = restored.maximized ? null : getSnapBox(restored.snapZone);
+  return restoredSnapBox ? { ...restored, ...restoredSnapBox } : restored;
 }
 
 /** Desktops always cover index 0 through the highest one still holding a window. */

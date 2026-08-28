@@ -112,3 +112,6 @@ export const runCommandSuggestions = [
   { command: "recycle", label: "recycle" },
   { command: "https://example.com", label: "url" },
 ];
+
+/** Pointer travel before a title-bar drag un-maximizes a window, as Windows does. */
+export const WINDOW_DRAG_THRESHOLD = 5;

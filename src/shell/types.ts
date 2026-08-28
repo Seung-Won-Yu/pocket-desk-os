@@ -212,5 +212,6 @@ export type AppDefinition = {
   accent: string;
   defaultSize: { width: number; height: number };
   minSize?: { width: number; height: number };
+  multiInstance?: boolean;
   component: (props: AppContentProps) => JSX.Element;
 };

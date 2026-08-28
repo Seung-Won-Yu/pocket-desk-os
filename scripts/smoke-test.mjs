@@ -1447,6 +1447,44 @@ async function runSmoke(baseUrl) {
       "Snapped halves did not reach the viewport edges",
     );
 
+    // Restoring a maximized window puts it back exactly where it was. The
+    // window controls sit inside the title bar, so their pointerdown bubbled
+    // into the drag handler and moved the window before the click landed.
+    const restoreTarget = page.locator(".window-frame.is-active");
+    const beforeMaximize = await restoreTarget.boundingBox();
+    await restoreTarget.getByRole("button", { name: /최대화$/ }).click();
+    await page.waitForTimeout(350);
+    await restoreTarget
+      .getByRole("button", { name: /이전 크기로|최대화$/ })
+      .first()
+      .click();
+    await page.waitForTimeout(400);
+    const afterRestore = await restoreTarget.boundingBox();
+    assert(
+      Math.round(afterRestore.x) === Math.round(beforeMaximize.x) &&
+        Math.round(afterRestore.y) === Math.round(beforeMaximize.y),
+      `Restore moved the window from ${Math.round(beforeMaximize.x)},${Math.round(beforeMaximize.y)} to ${Math.round(afterRestore.x)},${Math.round(afterRestore.y)}`,
+    );
+
+    // A snapped window re-tiles on a resize instead of being nudged into the
+    // 8px float margin, which used to overlap two halves by 16px.
+    await page.keyboard.press("Meta+ArrowLeft");
+    await page.waitForTimeout(350);
+    await page.setViewportSize({ height: 820, width: 1281 });
+    await page.waitForTimeout(350);
+    await page.setViewportSize({ height: 820, width: 1280 });
+    await page.waitForTimeout(350);
+    const resnapped = await restoreTarget.boundingBox();
+    const taskbarTop = (await page.locator(".taskbar").boundingBox()).y;
+    assert(
+      Math.round(resnapped.x) === 0 && Math.round(resnapped.y) === 0,
+      `Resize moved the snapped window to ${Math.round(resnapped.x)},${Math.round(resnapped.y)}`,
+    );
+    assert(
+      Math.abs(resnapped.y + resnapped.height - taskbarTop) <= 1,
+      `Snapped window stopped ${Math.round(taskbarTop - resnapped.y - resnapped.height)}px short of the taskbar`,
+    );
+
     // Task View leaves the taskbar reachable, as Windows does.
     await page.getByRole("button", { name: /작업 보기/ }).click();
     await page.locator(".task-view").waitFor({ state: "visible" });

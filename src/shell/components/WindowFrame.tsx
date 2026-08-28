@@ -1,6 +1,6 @@
 import AppIconTile from "../../components/AppIconTile";
 import { clamp } from "../../utils/format";
-import { APP_BAR_HEIGHT } from "../constants";
+import { APP_BAR_HEIGHT, WINDOW_DRAG_THRESHOLD } from "../constants";
 import {
   type AppDefinition,
   type SnapPreviewState,
@@ -83,6 +83,10 @@ export function WindowFrame({
 
   const startMove = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
+    // The window controls sit inside the title bar, so their pointerdown
+    // bubbles here. Treating it as a drag start moved the window out from
+    // under the restore button before the click could toggle it.
+    if ((event.target as HTMLElement).closest("button, select, input")) return;
     event.preventDefault();
     onFocus();
     const startX = event.clientX;
@@ -99,24 +103,32 @@ export function WindowFrame({
       ? Math.min(instance.height, window.innerHeight - APP_BAR_HEIGHT - 16)
       : instance.height;
     const grip = restoring ? Math.min(0.9, startX / Math.max(1, window.innerWidth)) : 0;
-    const x = restoring ? startX - width * grip : instance.x;
-    const y = restoring ? 0 : instance.y;
-    if (restoring) {
-      onUpdate({
-        height,
-        maximized: false,
-        snapZone: undefined,
-        width,
-        x: clamp(x, 8, Math.max(8, window.innerWidth - width - 8)),
-        y: 8,
-      });
-    }
+    const baseX = restoring
+      ? clamp(startX - width * grip, 8, Math.max(8, window.innerWidth - width - 8))
+      : instance.x;
+    const baseY = restoring ? 8 : instance.y;
+    // Windows only leaves the maximized state once the pointer actually travels;
+    // committing on pointerdown restored the window on a plain click too.
+    let pendingRestore = restoring;
 
     let activeSnapZone: SnapZone | null = null;
 
     const onPointerMove = (moveEvent: globalThis.PointerEvent) => {
-      const nextX = x + moveEvent.clientX - startX;
-      const nextY = y + moveEvent.clientY - startY;
+      if (pendingRestore) {
+        const travelled = Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY);
+        if (travelled < WINDOW_DRAG_THRESHOLD) return;
+        pendingRestore = false;
+        onUpdate({
+          height,
+          maximized: false,
+          snapZone: undefined,
+          width,
+          x: baseX,
+          y: baseY,
+        });
+      }
+      const nextX = baseX + moveEvent.clientX - startX;
+      const nextY = baseY + moveEvent.clientY - startY;
       activeSnapZone = getWindowSnapZone(moveEvent.clientX, moveEvent.clientY);
       onSnapPreviewChange(activeSnapZone ? { zone: activeSnapZone } : null);
       onUpdate({

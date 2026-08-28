@@ -1,4 +1,7 @@
 :root {
+  /* Mirrors APP_BAR_HEIGHT. The work area is everything above the taskbar, so
+     maximize, snap and Task View all measure against this one value. */
+  --taskbar-height: 48px;
   color: #f6fbff;
   background: #0d1b2a;
   font-family:
@@ -1337,7 +1340,10 @@ button {
     0 24px 70px rgba(0, 0, 0, 0.46);
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 66px);
+  /* The work area, not 18px short of it: this cap silently trimmed a snapped
+     window from the 772px the shell set to 754px, leaving a gap above the
+     taskbar that a maximized window did not have. */
+  max-height: calc(100vh - var(--taskbar-height));
   max-width: calc(100vw - 16px);
   /* Supplied per app by WindowFrame; the fallbacks match its own defaults. */
   min-height: var(--window-min-height, 240px);
@@ -9197,4 +9203,74 @@ button {
    the status bar, and Windows keeps that button on the right. */
 .taskmgr-actions {
   justify-content: flex-end;
+}
+
+/* Taskbar hover preview: one entry per window, each switchable and closable. */
+.taskbar-preview-card {
+  display: grid;
+  gap: 4px;
+}
+
+.taskbar-preview-window {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+}
+
+.taskbar-preview-select {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text);
+  display: flex;
+  flex: 1;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px;
+  text-align: left;
+}
+
+.taskbar-preview-select:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--line);
+}
+
+.taskbar-preview-select .taskbar-preview-meta {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.taskbar-preview-select strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.taskbar-preview-close {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  display: flex;
+  flex: none;
+  height: 24px;
+  justify-content: center;
+  padding: 0;
+  width: 24px;
+}
+
+.taskbar-preview-close:hover {
+  background: #c42b1c;
+  border-color: #c42b1c;
+  color: #fff;
+}
+
+.taskbar-preview-pinned {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  padding: 6px;
 }

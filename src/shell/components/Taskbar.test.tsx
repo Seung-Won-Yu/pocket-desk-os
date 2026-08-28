@@ -30,6 +30,7 @@ function makeWindow(id: string, appId: AppId, overrides: Partial<WindowInstance>
 function makeHandlers() {
   return {
     onClearNotifications: vi.fn(),
+    getDocumentLabel: vi.fn(() => undefined) as (appId: AppId) => string | undefined,
     onOpenApp: vi.fn(),
     onOpenNewWindow: vi.fn(),
     onOpenRunDialog: vi.fn(),
@@ -213,9 +214,9 @@ describe("Taskbar 앱 버튼 우클릭 메뉴", () => {
       target: screen.getByRole("button", { name: "Microsoft Edge" }),
     });
 
-    // The app's own jump list: 새 창 plus the pin toggle, and nothing from the
-    // taskbar's shell menu.
-    expect(screen.getAllByRole("menuitem")).toHaveLength(2);
+    // Edge is single-instance, so its jump list is the pin toggle alone — and
+    // nothing from the taskbar's shell menu.
+    expect(screen.getAllByRole("menuitem")).toHaveLength(1);
     expect(screen.queryByRole("menuitem", { name: /작업 관리자/ })).toBeNull();
 
     await user.click(screen.getByRole("menuitem", { name: "작업 표시줄에서 제거" }));
@@ -343,32 +344,70 @@ describe("Taskbar 앱 메뉴 닫기", () => {
 describe("Taskbar 새 창", () => {
   it("점프 목록에서 새 인스턴스를 연다", async () => {
     const { handlers, user } = renderTaskbar({
-      pinnedAppIds: ["browser"],
-      windows: [makeWindow("win-edge", "browser")],
+      pinnedAppIds: ["files"],
+      windows: [makeWindow("win-files", "files")],
     });
 
     await user.pointer({
       keys: "[MouseRight]",
-      target: screen.getByRole("button", { name: /Microsoft Edge/ }),
+      target: screen.getByRole("button", { name: /파일 탐색기/ }),
     });
     await user.click(screen.getByRole("menuitem", { name: "새 창" }));
 
     // Raising the running window would be the taskbar click; this must not.
-    expect(handlers.onOpenNewWindow).toHaveBeenCalledWith("browser");
+    expect(handlers.onOpenNewWindow).toHaveBeenCalledWith("files");
     expect(handlers.onToggleWindow).not.toHaveBeenCalled();
   });
 
   it("가운데 클릭으로도 새 인스턴스를 연다", async () => {
     const { handlers, user } = renderTaskbar({
-      pinnedAppIds: ["browser"],
-      windows: [makeWindow("win-edge", "browser")],
+      pinnedAppIds: ["files"],
+      windows: [makeWindow("win-files", "files")],
     });
 
     await user.pointer({
       keys: "[MouseMiddle]",
-      target: screen.getByRole("button", { name: /Microsoft Edge/ }),
+      target: screen.getByRole("button", { name: /파일 탐색기/ }),
     });
 
-    expect(handlers.onOpenNewWindow).toHaveBeenCalledWith("browser");
+    expect(handlers.onOpenNewWindow).toHaveBeenCalledWith("files");
+  });
+
+  it("우클릭은 새 창을 열지 않는다", async () => {
+    const { handlers, user } = renderTaskbar({
+      pinnedAppIds: ["files"],
+      windows: [makeWindow("win-files", "files")],
+    });
+
+    // A right click fires auxclick too, so the button guard is what keeps the
+    // context menu from opening a window every time it is summoned.
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("button", { name: /파일 탐색기/ }),
+    });
+
+    expect(handlers.onOpenNewWindow).not.toHaveBeenCalled();
+  });
+
+  it("문서 상태를 공유하는 앱에는 새 창을 제안하지 않는다", async () => {
+    const { handlers, user } = renderTaskbar({
+      pinnedAppIds: ["notepad"],
+      windows: [makeWindow("win-notes", "notepad")],
+    });
+
+    // Two Notepad windows read one shell-level note id, so the autosave of one
+    // overwrites the unsaved text of the other.
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("button", { name: /메모장/ }),
+    });
+    expect(screen.queryByRole("menuitem", { name: "새 창" })).toBeNull();
+
+    await user.keyboard("{Escape}");
+    await user.pointer({
+      keys: "[MouseMiddle]",
+      target: screen.getByRole("button", { name: /메모장/ }),
+    });
+    expect(handlers.onOpenNewWindow).not.toHaveBeenCalled();
   });
 });

@@ -41,6 +41,7 @@ export function Taskbar({
   notificationHistory,
   onClearNotifications,
   onOpenStart,
+  getDocumentLabel,
   onOpenApp,
   onOpenNewWindow,
   onOpenRunDialog,
@@ -68,6 +69,7 @@ export function Taskbar({
   notificationHistory: ToastMessage[];
   onClearNotifications: () => void;
   onOpenStart: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  getDocumentLabel: (appId: AppId) => string | undefined;
   onOpenApp: (appId: AppId) => void;
   onOpenNewWindow: (appId: AppId) => void;
   onOpenRunDialog: () => void;
@@ -122,6 +124,7 @@ export function Taskbar({
     app: AppDefinition,
     windowItems: WindowInstance[],
   ) => {
+    cancelPreviewClose();
     const taskbarBox = taskbarRef.current?.getBoundingClientRect();
     const buttonBox = element.getBoundingClientRect();
     const rawLeft = buttonBox.left + buttonBox.width / 2 - (taskbarBox?.left ?? 0);
@@ -133,9 +136,35 @@ export function Taskbar({
     });
   };
 
+  /*
+   * The preview card is a sibling of the taskbar slot, so moving the pointer
+   * from the button onto the card leaves the slot. Closing immediately made the
+   * card unreachable — which is why it had to be inert. A short grace period,
+   * cancelled when the pointer lands on the card, makes it clickable the way
+   * Windows' thumbnails are.
+   */
+  const previewCloseTimerRef = useRef<number | null>(null);
+
+  const cancelPreviewClose = () => {
+    if (previewCloseTimerRef.current === null) return;
+    window.clearTimeout(previewCloseTimerRef.current);
+    previewCloseTimerRef.current = null;
+  };
+
   const hidePreview = () => {
+    cancelPreviewClose();
+    previewCloseTimerRef.current = window.setTimeout(() => {
+      previewCloseTimerRef.current = null;
+      setPreview(null);
+    }, 220);
+  };
+
+  const hidePreviewNow = () => {
+    cancelPreviewClose();
     setPreview(null);
   };
+
+  useEffect(() => cancelPreviewClose, []);
 
   useEffect(() => {
     if (!trayPanel) return;
@@ -297,10 +326,11 @@ export function Taskbar({
                     }
                   }}
                   onAuxClick={(event) => {
-                    // Windows opens another instance on a middle click.
-                    if (event.button !== 1) return;
+                    // Windows opens another instance on a middle click. Offered
+                    // only where a second window is safe — see AppMetadata.
+                    if (event.button !== 1 || !app.multiInstance) return;
                     event.preventDefault();
-                    hidePreview();
+                    hidePreviewNow();
                     onOpenNewWindow(app.id);
                   }}
                   onContextMenu={(event) => {
@@ -330,7 +360,22 @@ export function Taskbar({
           })}
         </div>
       </div>
-      {preview && <TaskbarPreview {...preview} />}
+      {preview && (
+        <TaskbarPreview
+          {...preview}
+          getDocumentLabel={getDocumentLabel}
+          onCloseWindow={(id) => {
+            hidePreviewNow();
+            onCloseWindow(id);
+          }}
+          onPointerEnter={cancelPreviewClose}
+          onPointerLeave={hidePreview}
+          onSelectWindow={(id) => {
+            hidePreviewNow();
+            onToggleWindow(id);
+          }}
+        />
+      )}
       {taskbarMenu && (
         <div
           className="taskbar-context-menu"
@@ -340,23 +385,28 @@ export function Taskbar({
           style={{ left: clamp(taskbarMenu.left, 112, window.innerWidth - 112) }}
         >
           {/* Windows puts the app itself at the top of a jump list; picking it
-              opens a fresh instance rather than raising the running one. */}
-          <button
-            onClick={() => {
-              setTaskbarMenu(null);
-              onOpenNewWindow(taskbarMenu.appId);
-            }}
-            ref={taskbarMenuButtonRef}
-            role="menuitem"
-            type="button"
-          >
-            <SquarePlus aria-hidden="true" size={15} />새 창
-          </button>
+              opens a fresh instance rather than raising the running one. Apps
+              whose document lives in shell state cannot have a second window,
+              so they do not offer one. */}
+          {getApp(taskbarMenu.appId).multiInstance && (
+            <button
+              onClick={() => {
+                setTaskbarMenu(null);
+                onOpenNewWindow(taskbarMenu.appId);
+              }}
+              ref={taskbarMenuButtonRef}
+              role="menuitem"
+              type="button"
+            >
+              <SquarePlus aria-hidden="true" size={15} />새 창
+            </button>
+          )}
           <button
             onClick={() => {
               onTogglePinnedApp(taskbarMenu.appId);
               setTaskbarMenu(null);
             }}
+            ref={getApp(taskbarMenu.appId).multiInstance ? undefined : taskbarMenuButtonRef}
             role="menuitem"
             type="button"
           >
@@ -674,47 +724,87 @@ export function NotificationCenterPanel({
 
 export function TaskbarPreview({
   app,
+  getDocumentLabel,
   left,
+  onCloseWindow,
+  onPointerEnter,
+  onPointerLeave,
+  onSelectWindow,
   windows,
 }: {
   app: AppDefinition;
+  getDocumentLabel: (appId: AppId) => string | undefined;
   left: number;
+  onCloseWindow: (windowId: string) => void;
+  onPointerEnter: () => void;
+  onPointerLeave: () => void;
+  onSelectWindow: (windowId: string) => void;
   windows: WindowInstance[];
 }) {
-  const primaryWindow = windows[0];
-  const status = primaryWindow
-    ? windows.length > 1
-      ? `${windows.length}개 창`
-      : primaryWindow.minimized
-        ? "최소화됨"
-        : primaryWindow.maximized
-          ? "최대화됨"
-          : "열림"
-    : "고정됨";
-  const detail = primaryWindow ? app.subtitle : "고정된 앱";
+  const documentLabel = getDocumentLabel(app.id);
+  const windowTitle = documentLabel ? `${documentLabel} - ${app.title}` : app.title;
 
+  /*
+   * Windows shows one thumbnail per window here, and each one switches to that
+   * window or closes it. This card was aria-hidden and inert — it listed
+   * "창 1 · 열림" and there was no way to act on any of it, so picking a
+   * specific window of a multi-window app was only possible by cycling the
+   * taskbar button.
+   */
   return (
-    <div aria-hidden="true" className="taskbar-preview-card" style={{ left }}>
-      <div
-        className="taskbar-preview-thumb"
-        style={{ "--active": app.accent } as React.CSSProperties}
-      >
-        <AppIconTile accent={app.accent} icon={app.icon} size="large" />
-        <span>{status}</span>
-      </div>
-      <div className="taskbar-preview-meta">
-        <strong>{app.title}</strong>
-        <small>{detail}</small>
-        {windows.length > 1 && (
-          <div className="taskbar-preview-window-list">
-            {windows.map((windowItem, index) => (
-              <span key={windowItem.id}>
-                창 {index + 1} · {windowItem.minimized ? "최소화됨" : "열림"}
-              </span>
-            ))}
+    <div
+      className="taskbar-preview-card"
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
+      role="group"
+      style={{ left }}
+    >
+      {windows.length === 0 ? (
+        <div className="taskbar-preview-pinned">
+          <AppIconTile accent={app.accent} icon={app.icon} size="large" />
+          <div className="taskbar-preview-meta">
+            <strong>{app.title}</strong>
+            <small>고정된 앱</small>
           </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        windows.map((windowItem) => (
+          <div className="taskbar-preview-window" key={windowItem.id}>
+            <button
+              aria-label={`${windowTitle} 전환`}
+              className="taskbar-preview-select"
+              onClick={() => onSelectWindow(windowItem.id)}
+              type="button"
+            >
+              <span
+                aria-hidden="true"
+                className="taskbar-preview-thumb"
+                style={{ "--active": app.accent } as React.CSSProperties}
+              >
+                <AppIconTile accent={app.accent} icon={app.icon} size="large" />
+              </span>
+              <span className="taskbar-preview-meta">
+                <strong>{windowTitle}</strong>
+                <small>
+                  {windowItem.minimized
+                    ? "최소화됨"
+                    : windowItem.maximized
+                      ? "최대화됨"
+                      : "열림"}
+                </small>
+              </span>
+            </button>
+            <button
+              aria-label={`${windowTitle} 미리보기에서 닫기`}
+              className="taskbar-preview-close"
+              onClick={() => onCloseWindow(windowItem.id)}
+              type="button"
+            >
+              <X aria-hidden="true" size={13} />
+            </button>
+          </div>
+        ))
+      )}
     </div>
   );
 }

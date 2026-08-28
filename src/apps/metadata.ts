@@ -26,6 +26,14 @@ export type AppMetadata = {
    * shrunk until its whole keypad was outside the window and unreachable.
    */
   minSize?: { width: number; height: number };
+  /**
+   * Whether a second window of this app is safe to open. Notepad, Paint and
+   * Photos read their document from one shell-level id, so two windows show the
+   * same file and the autosave of one silently overwrote the unsaved text of
+   * the other. Only apps whose per-window state is genuinely window-local opt
+   * in — the same rule the session restore uses to deduplicate windows.
+   */
+  multiInstance?: boolean;
   icon: LucideIcon;
   id: AppId;
   subtitle: string;
@@ -105,6 +113,7 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     minSize: { width: 400, height: 300 },
   },
   files: {
+    multiInstance: true,
     id: "files",
     title: "파일 탐색기",
     subtitle: "가상 파일 탐색기",
@@ -123,6 +132,7 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     minSize: { width: 480, height: 380 },
   },
   terminal: {
+    multiInstance: true,
     id: "terminal",
     title: "명령 프롬프트",
     subtitle: "가상 파일 시스템 셸",

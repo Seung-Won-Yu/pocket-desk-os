@@ -483,7 +483,8 @@ export default function App() {
   };
 
   const openApp = (appId: AppId, options?: { forceNew?: boolean }) => {
-    const forceNew = Boolean(options?.forceNew);
+    // A second window is only safe where the app's state is window-local.
+    const forceNew = Boolean(options?.forceNew) && Boolean(getApp(appId).multiInstance);
     // Prefer a window already on this desktop; otherwise follow one to its own.
     const candidates = windows
       .filter((item) => item.appId === appId)
@@ -1691,6 +1692,9 @@ export default function App() {
 
     playSound("click");
     cancelWindowMotion(id);
+    // Task View no longer covers the taskbar, so a click here used to focus a
+    // window that stayed hidden behind the overlay.
+    setTaskViewOpen(false);
     focusWindow(id);
   };
 
@@ -2307,9 +2311,14 @@ export default function App() {
       window.removeEventListener("keyup", handleGlobalKeyUp);
     };
   }, [
+    // Missing from this list, the handler kept the values it closed over on
+    // mount: Ctrl+V on the desktop always saw an empty clipboard and did
+    // nothing, and Win+Ctrl+Right always tried to switch away from desktop 1.
+    activeDesktopIndex,
     activeDesktopItems,
     activeWindowId,
     altTabWindowId,
+    clipboard,
     desktopIconMenu,
     desktopMenu,
     desktopPropertiesItemId,
@@ -2542,6 +2551,7 @@ export default function App() {
           event.stopPropagation();
           setStartOpen((value) => !value);
         }}
+        getDocumentLabel={getWindowDocumentLabel}
         onOpenApp={openApp}
         onOpenNewWindow={openNewAppWindow}
         onOpenRunDialog={openRunDialog}
