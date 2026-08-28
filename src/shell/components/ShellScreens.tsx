@@ -6,14 +6,18 @@ import { Power, UserRound, Volume2, Wifi } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export function ShellGate({
+  clock24h,
   onPowerOn,
   onUnlock,
   phase,
+  userName,
   wallpaper,
 }: {
+  clock24h: boolean;
   onPowerOn: () => void;
   onUnlock: () => void;
   phase: ShellPhase;
+  userName: string;
   wallpaper: WallpaperName;
 }) {
   if (phase === "booting") {
@@ -31,7 +35,14 @@ export function ShellGate({
     return <ShutdownScreen onPowerOn={onPowerOn} />;
   }
 
-  return <LockScreen onUnlock={onUnlock} wallpaper={wallpaper} />;
+  return (
+    <LockScreen
+      clock24h={clock24h}
+      onUnlock={onUnlock}
+      userName={userName}
+      wallpaper={wallpaper}
+    />
+  );
 }
 
 export function ShutdownScreen({ onPowerOn }: { onPowerOn: () => void }) {
@@ -58,10 +69,14 @@ export function ShutdownScreen({ onPowerOn }: { onPowerOn: () => void }) {
 }
 
 export function LockScreen({
+  clock24h,
   onUnlock,
+  userName,
   wallpaper,
 }: {
+  clock24h: boolean;
   onUnlock: () => void;
+  userName: string;
   wallpaper: WallpaperName;
 }) {
   const lockRef = useRef<HTMLElement>(null);
@@ -138,7 +153,7 @@ export function LockScreen({
             <span className="sign-in-avatar">
               <UserRound aria-hidden="true" size={48} strokeWidth={1.45} />
             </span>
-            <strong>Seung-Won</strong>
+            <strong>{userName}</strong>
             <button
               disabled={unlocking}
               onClick={beginUnlock}
@@ -153,7 +168,11 @@ export function LockScreen({
         <>
           <div className="lock-time">
             <time dateTime={now.toISOString()}>
-              {now.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+              {now.toLocaleTimeString("ko-KR", {
+                hour: "2-digit",
+                hour12: !clock24h,
+                minute: "2-digit",
+              })}
             </time>
             <span>
               {now.toLocaleDateString("ko-KR", {

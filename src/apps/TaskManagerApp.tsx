@@ -1,4 +1,4 @@
-import { Activity, Cpu, HardDrive, MemoryStick, Square } from "lucide-react";
+import { Activity, ChevronUp, Cpu, HardDrive, MemoryStick, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getNextRovingIndex } from "../shell/keyboardNav";
 import { appMetadata } from "./metadata";
@@ -14,22 +14,37 @@ type TaskManagerAppProps = {
 
 type TaskManagerTab = "performance" | "processes";
 
+const TASKMGR_COLUMNS: Array<["cpu" | "disk" | "memory" | "title", string]> = [
+  ["title", "이름"],
+  ["cpu", "CPU"],
+  ["memory", "메모리"],
+  ["disk", "디스크"],
+];
+
 const SAMPLE_COUNT = 48;
 const SAMPLE_INTERVAL_MS = 1000;
 
 /**
- * Per-window load figures. Derived from the window id so a process keeps the
- * same numbers across re-renders instead of flickering every tick.
+ * Per-window load figures. The window id fixes each process's baseline so it
+ * keeps its character across re-renders, and the sample tick moves the CPU and
+ * disk figures the way a real reading moves — they used to be frozen, so the
+ * status bar printed the same string forever while the graph beside it climbed.
  */
-function getWindowLoad(windowId: string, maximized: boolean, minimized: boolean) {
+function getWindowLoad(windowId: string, maximized: boolean, minimized: boolean, tick: number) {
   let hash = 0;
   for (let index = 0; index < windowId.length; index += 1) {
     hash = (hash * 31 + windowId.charCodeAt(index)) % 100000;
   }
   const base = hash % 100;
   const memoryMb = 24 + (base % 96) + (maximized ? 48 : 0);
-  const cpu = minimized ? 0 : Number((((base % 37) / 10) * (maximized ? 1.4 : 1)).toFixed(1));
-  return { cpu, diskMbPerSecond: Number(((base % 13) / 10).toFixed(1)), memoryMb };
+  const wobble = ((base + tick * 13) % 21) / 10;
+  const cpu = minimized
+    ? 0
+    : Number(((((base % 37) / 10) * (maximized ? 1.4 : 1) + wobble) / 1.6).toFixed(1));
+  const diskMbPerSecond = minimized
+    ? 0
+    : Number((((base % 13) / 10) * (0.4 + ((tick + base) % 7) / 6)).toFixed(1));
+  return { cpu, diskMbPerSecond, memoryMb };
 }
 
 function Sparkline({
@@ -84,6 +99,9 @@ export default function TaskManagerApp({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const [sampleTick, setSampleTick] = useState(0);
+  const [sortKey, setSortKey] = useState<"cpu" | "disk" | "memory" | "title">("cpu");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [cpuSamples, setCpuSamples] = useState<number[]>(() => new Array(SAMPLE_COUNT).fill(4));
   const [memorySamples, setMemorySamples] = useState<number[]>(() =>
     new Array(SAMPLE_COUNT).fill(28),
@@ -94,11 +112,22 @@ export default function TaskManagerApp({
   const rows = useMemo(
     () =>
       openWindows
-        .map((item) => ({ ...item, ...getWindowLoad(item.id, item.maximized, item.minimized) }))
-        .sort(
-          (first, second) => second.cpu - first.cpu || first.title.localeCompare(second.title),
-        ),
-    [openWindows],
+        .map((item) => ({
+          ...item,
+          ...getWindowLoad(item.id, item.maximized, item.minimized, sampleTick),
+        }))
+        .sort((first, second) => {
+          const direction = sortDirection === "asc" ? 1 : -1;
+          if (sortKey === "title") return first.title.localeCompare(second.title) * direction;
+          if (sortKey === "memory") return (first.memoryMb - second.memoryMb) * direction;
+          if (sortKey === "disk") {
+            return (first.diskMbPerSecond - second.diskMbPerSecond) * direction;
+          }
+          return (
+            (first.cpu - second.cpu) * direction || first.title.localeCompare(second.title)
+          );
+        }),
+    [openWindows, sampleTick, sortDirection, sortKey],
   );
 
   // The grid is a single tab stop: arrows move the active row, Enter focuses the
@@ -116,6 +145,14 @@ export default function TaskManagerApp({
     if (event.key === " ") {
       event.preventDefault();
       setSelectedId(windowId);
+      return;
+    }
+    // Delete is 작업 끝내기 in Windows' Task Manager; the toolbar button was the
+    // only way to end a task here.
+    if (event.key === "Delete") {
+      event.preventDefault();
+      setSelectedId(windowId);
+      endTask(windowId);
       return;
     }
 
@@ -158,10 +195,9 @@ export default function TaskManagerApp({
     const timer = window.setInterval(() => {
       jitterRef.current = (jitterRef.current + 7) % 23;
       const jitter = jitterRef.current / 4;
-      setCpuSamples((current) => [
-        ...current.slice(1),
-        Math.min(100, 3 + totals.cpu * 2.4 + jitter),
-      ]);
+      setSampleTick((current) => current + 1);
+      // The same figure the status bar prints, so the two cannot disagree.
+      setCpuSamples((current) => [...current.slice(1), Math.min(100, totals.cpu)]);
       setMemorySamples((current) => [
         ...current.slice(1),
         Math.min(100, 22 + totals.memoryMb / 24 + jitter / 3),
@@ -222,11 +258,43 @@ export default function TaskManagerApp({
           role="tabpanel"
         >
           <div aria-label="실행 중인 프로세스" className="taskmgr-table" role="grid">
+            {/* Windows sorts this table from its headers, both directions.
+                These were plain spans, so the order was fixed. */}
             <div className="taskmgr-row is-head" role="row">
-              <span role="columnheader">이름</span>
-              <span role="columnheader">CPU</span>
-              <span role="columnheader">메모리</span>
-              <span role="columnheader">디스크</span>
+              {TASKMGR_COLUMNS.map(([key, label]) => (
+                <span
+                  aria-sort={
+                    sortKey === key
+                      ? sortDirection === "asc"
+                        ? "ascending"
+                        : "descending"
+                      : "none"
+                  }
+                  key={key}
+                  role="columnheader"
+                >
+                  <button
+                    onClick={() => {
+                      if (sortKey === key) {
+                        setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+                        return;
+                      }
+                      setSortKey(key);
+                      setSortDirection(key === "title" ? "asc" : "desc");
+                    }}
+                    type="button"
+                  >
+                    {label}
+                    {sortKey === key && (
+                      <ChevronUp
+                        aria-hidden="true"
+                        className={sortDirection === "asc" ? "" : "is-descending"}
+                        size={12}
+                      />
+                    )}
+                  </button>
+                </span>
+              ))}
             </div>
             {rows.length === 0 ? (
               <p className="taskmgr-empty">실행 중인 앱이 없습니다.</p>

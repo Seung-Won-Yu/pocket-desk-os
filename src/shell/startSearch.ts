@@ -62,6 +62,10 @@ export function buildStartSearchResults(
         app.title,
         app.subtitle,
         ...appSearchKeywords[app.id],
+        // The names people actually type. Matching only ran one way — the field
+        // had to contain the query — so "notepad" found nothing against the
+        // keyword "note", while the Run dialog knew the alias all along.
+        ...(runCommandAliases[app.id] ?? []),
       ]);
       if (!rank) {
         return null;

@@ -59,7 +59,8 @@ export type PersistedIconPosition = {
   x?: unknown;
   y?: unknown;
 };
-export type CreatableDesktopItemKind = "note";
+/** Windows puts 폴더 first in this submenu; only 텍스트 문서 was offered. */
+export type CreatableDesktopItemKind = "folder" | "note";
 export type PersistedDesktopItem = Partial<Omit<DesktopItem, "kind">> & {
   kind?: unknown;
 };

@@ -2,12 +2,20 @@ import { type AppId } from "../types";
 import { clamp } from "../utils/format";
 import { appsById, getApp } from "./appCatalog";
 import {
+  ACTIVE_DESKTOP_KEY,
   APP_BAR_HEIGHT,
+  NOTIFICATION_HISTORY_KEY,
+  NOTIFICATION_HISTORY_LIMIT,
   MAX_VIRTUAL_DESKTOPS,
   VIRTUAL_DESKTOPS_KEY,
   WINDOW_STATE_KEY,
 } from "./constants";
-import { type PersistedWindow, type SnapZone, type WindowInstance } from "./types";
+import {
+  type PersistedWindow,
+  type SnapZone,
+  type ToastMessage,
+  type WindowInstance,
+} from "./types";
 import { getWindowSnapPatch } from "./windowGeometry";
 
 export function createDefaultWindows(): WindowInstance[] {
@@ -195,6 +203,20 @@ export function loadVirtualDesktopCount() {
   return Number.isInteger(stored) ? clamp(stored, 1, MAX_VIRTUAL_DESKTOPS) : 1;
 }
 
+/**
+ * Which desktop the session was left on. Only the count and each window's
+ * desktop were stored, so a reload always landed on desktop 1 — and every
+ * window that lived on another one looked as though it had been closed.
+ */
+export function loadActiveDesktopIndex(desktopCount: number) {
+  const stored = Number(localStorage.getItem(ACTIVE_DESKTOP_KEY));
+  return Number.isInteger(stored) ? clamp(stored, 0, Math.max(0, desktopCount - 1)) : 0;
+}
+
+export function persistActiveDesktopIndex(index: number) {
+  localStorage.setItem(ACTIVE_DESKTOP_KEY, String(index));
+}
+
 const SNAP_ZONES: SnapZone[] = [
   "bottom-left",
   "bottom-right",
@@ -226,4 +248,34 @@ export function persistWindowState(windows: WindowInstance[]) {
     }),
   );
   localStorage.setItem(WINDOW_STATE_KEY, JSON.stringify(payload));
+}
+
+/**
+ * The action centre's backlog. Windows keeps unread notifications across a
+ * restart; these lived only in memory, so a reload emptied the panel and the
+ * header went back to "0개 알림" with nothing said.
+ */
+export function loadNotificationHistory(): ToastMessage[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(NOTIFICATION_HISTORY_KEY) ?? "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (item): item is ToastMessage =>
+          typeof item === "object" &&
+          item !== null &&
+          typeof (item as ToastMessage).id === "string" &&
+          typeof (item as ToastMessage).title === "string",
+      )
+      .slice(0, NOTIFICATION_HISTORY_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+export function persistNotificationHistory(history: ToastMessage[]) {
+  localStorage.setItem(
+    NOTIFICATION_HISTORY_KEY,
+    JSON.stringify(history.slice(0, NOTIFICATION_HISTORY_LIMIT)),
+  );
 }

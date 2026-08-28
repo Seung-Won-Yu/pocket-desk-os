@@ -32,6 +32,7 @@ export function StartMenu({
   recentItems,
   results,
   setQuery,
+  userName,
 }: {
   apps: AppDefinition[];
   onClose: () => void;
@@ -46,6 +47,7 @@ export function StartMenu({
   recentItems: DesktopItem[];
   results: StartSearchResult[];
   setQuery: (value: string) => void;
+  userName: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -223,7 +225,7 @@ export function StartMenu({
             <UserRound aria-hidden="true" size={17} />
           </span>
           <span>
-            <strong>Seung-Won</strong>
+            <strong>{userName}</strong>
           </span>
         </div>
         <div className="start-footer-actions">

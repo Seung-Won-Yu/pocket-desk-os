@@ -20,6 +20,7 @@ import {
   ExternalLink,
   FilePlus2,
   FileText,
+  FolderPlus,
   Grid2X2,
   Info,
   LayoutGrid,
@@ -41,6 +42,7 @@ export function DesktopContextMenu({
   currentSort,
   currentView,
   onChangeWallpaper,
+  onCreateFolder,
   onCreateNote,
   onPaste,
   onRefresh,
@@ -55,6 +57,7 @@ export function DesktopContextMenu({
   currentSort: DesktopSortKey;
   currentView: DesktopViewMode;
   onChangeWallpaper: () => void;
+  onCreateFolder: () => void;
   onCreateNote: () => void;
   onPaste: () => void;
   onRefresh: () => void;
@@ -215,6 +218,10 @@ export function DesktopContextMenu({
             role="menu"
             onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
           >
+            <button onClick={onCreateFolder} role="menuitem" type="button">
+              <FolderPlus aria-hidden="true" size={16} />
+              폴더
+            </button>
             <button onClick={onCreateNote} role="menuitem" type="button">
               <FileText aria-hidden="true" size={16} />
               텍스트 문서

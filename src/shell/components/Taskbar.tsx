@@ -51,12 +51,14 @@ export function Taskbar({
   searchQuery,
   onSetBrightness,
   onSetSoundEnabled,
+  onSetVolume,
   onShowDesktop,
   onTogglePinnedApp,
   onCloseWindow,
   onToggleWindow,
   pinnedAppIds,
   soundEnabled,
+  volume,
   startOpen,
   windows,
 }: {
@@ -79,12 +81,14 @@ export function Taskbar({
   searchQuery: string;
   onSetBrightness: (brightness: number) => void;
   onSetSoundEnabled: (enabled: boolean) => void;
+  onSetVolume: (volume: number) => void;
   onShowDesktop: () => void;
   onTogglePinnedApp: (appId: AppId) => void;
   onCloseWindow: (id: string) => void;
   onToggleWindow: (id: string) => void;
   pinnedAppIds: AppId[];
   soundEnabled: boolean;
+  volume: number;
   startOpen: boolean;
   windows: WindowInstance[];
 }) {
@@ -534,7 +538,9 @@ export function Taskbar({
             }}
             onSetBrightness={onSetBrightness}
             onSetSoundEnabled={onSetSoundEnabled}
+            onSetVolume={onSetVolume}
             soundEnabled={soundEnabled}
+            volume={volume}
           />
         )}
         {trayPanel === "notifications" && (
@@ -560,13 +566,17 @@ export function QuickSettingsPanel({
   onOpenSettings,
   onSetBrightness,
   onSetSoundEnabled,
+  onSetVolume,
   soundEnabled,
+  volume,
 }: {
   brightness: number;
   onOpenSettings: () => void;
   onSetBrightness: (brightness: number) => void;
   onSetSoundEnabled: (enabled: boolean) => void;
+  onSetVolume: (volume: number) => void;
   soundEnabled: boolean;
+  volume: number;
 }) {
   const [online, setOnline] = useState(() => navigator.onLine);
 
@@ -620,9 +630,9 @@ export function QuickSettingsPanel({
           aria-label="볼륨"
           max="100"
           min="0"
-          onChange={(event) => onSetSoundEnabled(Number(event.target.value) > 0)}
+          onChange={(event) => onSetVolume(Number(event.target.value))}
           type="range"
-          value={soundEnabled ? 72 : 0}
+          value={soundEnabled ? volume : 0}
         />
       </label>
       <div className="quick-actions">
@@ -675,7 +685,9 @@ export function NotificationCenterPanel({
       </header>
       {notifications.length > 0 ? (
         <div className="notification-list">
-          {notifications.slice(0, 8).map((notification) => (
+          {/* The header counts what the panel holds, so the panel shows all of
+              it — eight rendered under a header reading 12 was a plain lie. */}
+          {notifications.map((notification) => (
             <article
               className={`notification-item notification-${notification.tone}`}
               key={notification.id}

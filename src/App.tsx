@@ -51,6 +51,8 @@ import {
   WINDOW_EXIT_MOTION_MS,
   WINDOW_STATE_KEY,
   WINDOW_KEYBOARD_STEP,
+  NOTIFICATION_HISTORY_LIMIT,
+  SOUND_VOLUME_KEY,
 } from "./shell/constants";
 import {
   clampContextMenuPosition,
@@ -103,6 +105,10 @@ import {
   loadWindowState,
   persistWindowState,
   makeWindow,
+  loadActiveDesktopIndex,
+  persistActiveDesktopIndex,
+  loadNotificationHistory,
+  persistNotificationHistory,
 } from "./shell/windowState";
 import { SnapAssist } from "./shell/components/SnapAssist";
 import { TaskView } from "./shell/components/TaskView";
@@ -170,6 +176,16 @@ export default function App() {
   const [soundEnabled, setSoundEnabled] = useState(() => {
     return localStorage.getItem(SOUND_ENABLED_KEY) !== "off";
   });
+  /*
+   * A real volume, kept apart from the on/off state and remembered. The tray
+   * slider reported only `> 0` back, so 35 and 60 both sprang back to 72 and
+   * nothing was stored.
+   */
+  const [soundVolume, setSoundVolume] = useState(() => {
+    const stored = Number(localStorage.getItem(SOUND_VOLUME_KEY));
+    return Number.isFinite(stored) && stored >= 0 && stored <= 100 ? stored : 72;
+  });
+
   const [displayBrightness, setDisplayBrightness] = useState(() => {
     const stored = Number(localStorage.getItem(DISPLAY_BRIGHTNESS_KEY));
     return Number.isFinite(stored) && stored >= 30 && stored <= 100 ? stored : 100;
@@ -232,11 +248,15 @@ export default function App() {
   const [pinnedAppIds, setPinnedAppIds] = useState<AppId[]>(() => loadPinnedTaskbarApps());
   const [snapPreview, setSnapPreview] = useState<SnapPreviewState | null>(null);
   const [snapAssistZone, setSnapAssistZone] = useState<SnapZone | null>(null);
-  const [notificationHistory, setNotificationHistory] = useState<ToastMessage[]>([]);
+  const [notificationHistory, setNotificationHistory] = useState<ToastMessage[]>(() =>
+    loadNotificationHistory(),
+  );
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [windows, setWindows] = useState<WindowInstance[]>(() => loadWindowState());
   const [storedDesktopCount, setStoredDesktopCount] = useState(() => loadVirtualDesktopCount());
-  const [activeDesktopIndex, setActiveDesktopIndex] = useState(0);
+  const [activeDesktopIndex, setActiveDesktopIndex] = useState(() =>
+    loadActiveDesktopIndex(loadVirtualDesktopCount()),
+  );
   const [taskViewOpen, setTaskViewOpen] = useState(false);
   const [windowMotions, setWindowMotions] = useState<Record<string, WindowMotion>>({});
   const altTabTimerRef = useRef<number | null>(null);
@@ -246,6 +266,7 @@ export default function App() {
   const desktopSelectionRef = useRef<DesktopSelectionState | null>(null);
   const showDesktopRestoreRef = useRef<string[]>([]);
   const soundEnabledRef = useRef(soundEnabled);
+  const soundVolumeRef = useRef(100);
   const vfsSaveErrorShownRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const windowMotionTimersRef = useRef(new Map<string, number>());
@@ -298,6 +319,7 @@ export default function App() {
 
   useEffect(() => {
     soundEnabledRef.current = soundEnabled;
+    soundVolumeRef.current = soundVolume;
     localStorage.setItem(SOUND_ENABLED_KEY, soundEnabled ? "on" : "off");
   }, [soundEnabled]);
 
@@ -338,6 +360,20 @@ export default function App() {
     window.addEventListener("resize", fitWindowsToViewport);
     return () => window.removeEventListener("resize", fitWindowsToViewport);
   }, []);
+
+  // Windows comes back to the desktop you were on, with the notifications you
+  // had not read. Neither survived a reload.
+  useEffect(() => {
+    localStorage.setItem(SOUND_VOLUME_KEY, String(soundVolume));
+  }, [soundVolume]);
+
+  useEffect(() => {
+    persistActiveDesktopIndex(activeDesktopIndex);
+  }, [activeDesktopIndex]);
+
+  useEffect(() => {
+    persistNotificationHistory(notificationHistory);
+  }, [notificationHistory]);
 
   useEffect(() => {
     persistDesktopIconLayout(iconLayout);
@@ -401,7 +437,9 @@ export default function App() {
     };
 
     setToasts((current) => [...current.slice(-3), nextToast]);
-    setNotificationHistory((current) => [nextToast, ...current].slice(0, 12));
+    setNotificationHistory((current) =>
+      [nextToast, ...current].slice(0, NOTIFICATION_HISTORY_LIMIT),
+    );
     window.setTimeout(() => dismissToast(id), 3400);
   };
 
@@ -416,7 +454,7 @@ export default function App() {
     if (!audioContext) return;
 
     audioContextRef.current = audioContext;
-    playPocketDeskSound(audioContext, effect);
+    playPocketDeskSound(audioContext, effect, soundVolumeRef.current);
   };
 
   const lockDesktop = () => {
@@ -619,24 +657,62 @@ export default function App() {
     });
   };
 
+  const fitIconPosition = (position: IconPosition) =>
+    alignDesktopIcons
+      ? snapDesktopIconPosition(position, desktopViewMode)
+      : clampIconPosition(position.x, position.y, desktopViewMode);
+
+  /*
+   * Dragging one icon of a multi-selection moves the whole selection on
+   * Windows. Only the dragged one moved here, so a selection of five was really
+   * a selection of one as soon as the pointer went down.
+   */
+  const shiftSelectedIcons = (draggedId: string, dx: number, dy: number) => {
+    if (dx === 0 && dy === 0) return;
+    if (!selectedDesktopIds.includes(draggedId) || selectedDesktopIds.length < 2) return;
+
+    setIconLayout((current) => {
+      const next = { ...current };
+      for (const app of desktopApps) {
+        const id = `app:${app.id}`;
+        const position = current[app.id];
+        if (!position || id === draggedId || !selectedDesktopIds.includes(id)) continue;
+        next[app.id] = fitIconPosition({ x: position.x + dx, y: position.y + dy });
+      }
+      return next;
+    });
+    setDesktopItems((current) =>
+      current.map((item) => {
+        const id = `item:${item.id}`;
+        if (!item.showOnDesktop || id === draggedId || !selectedDesktopIds.includes(id)) {
+          return item;
+        }
+        return { ...item, ...fitIconPosition({ x: item.x + dx, y: item.y + dy }) };
+      }),
+    );
+  };
+
   const moveDesktopIcon = (appId: AppId, nextPosition: IconPosition) => {
-    setIconLayout((current) => ({
-      ...current,
-      [appId]: alignDesktopIcons
-        ? snapDesktopIconPosition(nextPosition, desktopViewMode)
-        : clampIconPosition(nextPosition.x, nextPosition.y, desktopViewMode),
-    }));
+    const fitted = fitIconPosition(nextPosition);
+    const previous = iconLayout[appId];
+    if (previous) {
+      shiftSelectedIcons(`app:${appId}`, fitted.x - previous.x, fitted.y - previous.y);
+    }
+    setIconLayout((current) => ({ ...current, [appId]: fitted }));
   };
 
   const moveDesktopItem = (itemId: string, nextPosition: IconPosition) => {
+    const fitted = fitIconPosition(nextPosition);
+    const previous = desktopItems.find((item) => item.id === itemId);
+    if (previous) {
+      shiftSelectedIcons(`item:${itemId}`, fitted.x - previous.x, fitted.y - previous.y);
+    }
     setDesktopItems((current) =>
       current.map((item) =>
         item.id === itemId
           ? {
               ...item,
-              ...(alignDesktopIcons
-                ? snapDesktopIconPosition(nextPosition, desktopViewMode)
-                : clampIconPosition(nextPosition.x, nextPosition.y, desktopViewMode)),
+              ...fitted,
               // Where an icon sits is shell layout, not a change to the file:
               // stamping it here made dragging an icon log a "contents changed"
               // event and reorder the Start menu's recent list.
@@ -735,10 +811,13 @@ export default function App() {
           .map((item) => ({ x: item.x, y: item.y })),
       ],
     );
-    const name = getUniqueTextFileName(activeDesktopItems, VFS_ROOT_ID);
+    const isFolder = kind === "folder";
+    const name = isFolder
+      ? getUniqueVfsEntryName(activeDesktopItems, VFS_ROOT_ID, "새 폴더")
+      : getUniqueTextFileName(activeDesktopItems, VFS_ROOT_ID);
     const now = Date.now();
     const item: DesktopItem = {
-      content: "",
+      ...(isFolder ? {} : { content: "" }),
       createdAt: now,
       id: `${kind}-${crypto.randomUUID()}`,
       kind,
@@ -756,7 +835,9 @@ export default function App() {
     setDesktopRenameDraft(item.name);
     setDesktopRenamingItemId(item.id);
     notify({
-      detail: "메모장에서 열어 작성할 수 있습니다.",
+      detail: isFolder
+        ? "파일 탐색기에서 열어 항목을 담을 수 있습니다."
+        : "메모장에서 열어 작성할 수 있습니다.",
       title: `${name} 생성됨`,
       tone: "success",
     });
@@ -1199,11 +1280,14 @@ export default function App() {
     });
   };
 
+  const desktopSelectionAnchorRef = useRef<string | null>(null);
+
   const selectDesktopTarget = (
     targetId: string,
-    event?: Pick<React.MouseEvent, "ctrlKey" | "metaKey">,
+    event?: Pick<React.MouseEvent, "ctrlKey" | "metaKey" | "shiftKey">,
   ) => {
     if (event?.ctrlKey || event?.metaKey) {
+      desktopSelectionAnchorRef.current = targetId;
       setSelectedDesktopIds((current) =>
         current.includes(targetId)
           ? current.filter((id) => id !== targetId)
@@ -1211,6 +1295,21 @@ export default function App() {
       );
       return;
     }
+
+    // Shift picks the run between the anchor and here, as it does in Explorer
+    // and on the Windows desktop; it used to behave like a plain click.
+    if (event?.shiftKey && desktopSelectionAnchorRef.current) {
+      const order = desktopIconIds;
+      const from = order.indexOf(desktopSelectionAnchorRef.current);
+      const to = order.indexOf(targetId);
+      if (from !== -1 && to !== -1) {
+        const [start, end] = from <= to ? [from, to] : [to, from];
+        setSelectedDesktopIds(order.slice(start, end + 1));
+        return;
+      }
+    }
+
+    desktopSelectionAnchorRef.current = targetId;
     setSelectedDesktopIds([targetId]);
   };
 
@@ -2923,6 +3022,13 @@ export default function App() {
         searchQuery={query}
         onSetBrightness={setDisplayBrightness}
         onSetSoundEnabled={setSoundEnabled}
+        onSetVolume={(volume) => {
+          setSoundVolume(volume);
+          // Dragging to zero mutes, and dragging away from zero unmutes — the
+          // slider and the toggle describe one thing.
+          setSoundEnabled(volume > 0);
+        }}
+        volume={soundVolume}
         onShowDesktop={toggleShowDesktop}
         onTogglePinnedApp={togglePinnedApp}
         onCloseWindow={closeWindow}
@@ -2951,6 +3057,7 @@ export default function App() {
           recentItems={recentStartItems}
           results={startSearchResults}
           setQuery={setQuery}
+          userName={userName}
         />
       )}
 
@@ -2965,6 +3072,7 @@ export default function App() {
             setDesktopMenu(null);
             openApp("settings");
           }}
+          onCreateFolder={() => createDesktopItem("folder")}
           onCreateNote={() => createDesktopItem("note")}
           onPaste={pasteDesktopItems}
           onRefresh={refreshDesktop}
@@ -3057,6 +3165,8 @@ export default function App() {
 
       {shellPhase !== "unlocked" && (
         <ShellGate
+          clock24h={clock24h}
+          userName={userName}
           onPowerOn={powerOnDesktop}
           onUnlock={unlockDesktop}
           phase={shellPhase}

@@ -29,10 +29,15 @@ export const DESKTOP_ICON_VIEW_KEY = "pocket-desk-icon-view-v1";
 export const DESKTOP_ICON_SORT_KEY = "pocket-desk-icon-sort-v1";
 export const DESKTOP_ICON_GRID_KEY = "pocket-desk-icon-grid-v1";
 export const DESKTOP_ITEMS_KEY = "pocket-desk-desktop-items-v1";
+export const SOUND_VOLUME_KEY = "pocket-desk-volume-v1";
 export const SOUND_ENABLED_KEY = "pocket-desk-sound-enabled-v1";
 export const DISPLAY_BRIGHTNESS_KEY = "pocket-desk-display-brightness-v1";
 export const TASKBAR_PINNED_APPS_KEY = "pocket-desk-taskbar-pinned-v2";
 export const VFS_DRAG_MIME = "application/x-pocketdesk-vfs";
+export const ACTIVE_DESKTOP_KEY = "pocket-desk-active-desktop-v1";
+export const NOTIFICATION_HISTORY_KEY = "pocket-desk-notifications-v1";
+/** How many notifications the action centre keeps — and shows. */
+export const NOTIFICATION_HISTORY_LIMIT = 12;
 export const VIRTUAL_DESKTOPS_KEY = "pocket-desk-virtual-desktops-v1";
 export const USER_NAME_KEY = "pocket-desk-user-name-v1";
 export const CLOCK_24H_KEY = "pocket-desk-clock-24h-v1";
@@ -55,7 +60,7 @@ export const appSearchKeywords: Record<AppId, string[]> = {
     "disk",
   ],
   browser: ["internet", "web", "edge", "인터넷", "웹", "브라우저", "검색", "google", "url"],
-  minesweeper: ["mine", "field", "mines", "지뢰", "지뢰찾기", "게임", "폭탄"],
+  minesweeper: ["mine", "field", "mines", "minesweeper", "지뢰", "지뢰찾기", "게임", "폭탄"],
   photos: ["photo", "photos", "image", "picture", "사진", "이미지", "그림 보기", "뷰어"],
   terminal: [
     "cmd",
@@ -92,17 +97,17 @@ export const appSearchKeywords: Record<AppId, string[]> = {
 export const runCommandAliases: Partial<Record<AppId, string[]>> = {
   thispc: ["computer", "this pc", "my computer", "내 pc", "내컴퓨터"],
   browser: ["edge", "iexplore", "msedge", "chrome", "www"],
-  calculator: ["calc.exe"],
+  calculator: ["calc", "calc.exe", "calculator"],
   photos: ["photo", "photos", "사진", "사진 앱"],
   terminal: ["cmd", "cmd.exe", "command", "powershell", "terminal", "명령 프롬프트"],
   taskmanager: ["taskmgr", "taskmgr.exe", "task manager", "작업 관리자"],
   eventviewer: ["eventvwr", "eventvwr.msc", "event viewer", "이벤트 뷰어"],
   registry: ["regedit", "regedit.exe", "레지스트리 편집기"],
-  files: ["explorer", "explorer.exe"],
-  notepad: ["notepad.exe"],
-  paint: ["mspaint", "mspaint.exe"],
+  files: ["explorer", "explorer.exe", "file explorer", "files"],
+  notepad: ["notepad", "notepad.exe"],
+  paint: ["mspaint", "mspaint.exe", "paint"],
   recycle: ["recycle bin", "trash", "bin"],
-  settings: ["control", "control.exe", "control panel"],
+  settings: ["control", "control.exe", "control panel", "settings"],
 };
 
 export const runCommandSuggestions = [

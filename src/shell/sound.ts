@@ -15,7 +15,16 @@ export function createPocketDeskAudioContext() {
   }
 }
 
-export function playPocketDeskSound(audioContext: AudioContext, effect: SoundEffectName) {
+/**
+ * `volume` is 0-100. The tray slider used to be a mute toggle wearing a
+ * slider's clothes: it only ever reported 0 or 72 back, so any value the user
+ * dragged to sprang straight back.
+ */
+export function playPocketDeskSound(
+  audioContext: AudioContext,
+  effect: SoundEffectName,
+  volume = 100,
+) {
   if (audioContext.state === "closed") return;
   if (audioContext.state === "suspended") {
     audioContext.resume().catch(() => undefined);
@@ -33,7 +42,8 @@ export function playPocketDeskSound(audioContext: AudioContext, effect: SoundEff
     oscillator.type = step.type ?? "sine";
     oscillator.frequency.setValueAtTime(step.frequency, noteStart);
     gain.gain.setValueAtTime(0.0001, noteStart);
-    gain.gain.exponentialRampToValueAtTime(step.gain, noteStart + 0.012);
+    const level = Math.max(0.0002, step.gain * (volume / 100));
+    gain.gain.exponentialRampToValueAtTime(level, noteStart + 0.012);
     gain.gain.exponentialRampToValueAtTime(0.0001, noteEnd);
 
     oscillator.connect(gain);

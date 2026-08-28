@@ -9381,3 +9381,25 @@ button {
   box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.2);
   top: auto;
 }
+
+/* Sortable Task Manager column headers. */
+.taskmgr-row.is-head button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: inherit;
+  display: flex;
+  font: inherit;
+  gap: 4px;
+  padding: 2px 4px;
+  width: 100%;
+}
+
+.taskmgr-row.is-head button:hover {
+  background: rgba(127, 127, 127, 0.16);
+}
+
+.taskmgr-row.is-head .is-descending {
+  transform: rotate(180deg);
+}
