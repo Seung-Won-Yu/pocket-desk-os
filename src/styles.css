@@ -137,7 +137,14 @@ button {
   position: relative;
   width: 100%;
   height: 100%;
-  overflow: hidden;
+  /*
+   * `clip` rather than `hidden`: the resize handles hang 3px outside their
+   * window on purpose, so a window snapped against the screen edge made the
+   * desktop scrollable. `hidden` still scrolls programmatically, and focusing a
+   * control near the edge scrolled it 2px — shifting every window on screen by
+   * that much, permanently.
+   */
+  overflow: clip;
   background: var(--desktop-wallpaper);
   background-size: cover;
   color: var(--text);
@@ -9345,4 +9352,32 @@ button {
 
 .file-list-header .is-descending {
   transform: rotate(180deg);
+}
+
+/* Keyboard move/resize status, standing in for the cursor Windows swaps. */
+.window-keyboard-drag-hint {
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  bottom: calc(var(--taskbar-height) + 14px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+  color: var(--text);
+  font-size: 0.78rem;
+  left: 50%;
+  margin: 0;
+  padding: 8px 14px;
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 9800;
+}
+
+/*
+ * The automatic offer cannot know whether the page rendered, so it sits at the
+ * bottom of the frame instead of over the top of a page that may be fine. The
+ * detected failure keeps the centred panel, where there is nothing to cover.
+ */
+.browser-frame-fallback.is-offer {
+  bottom: 16px;
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.2);
+  top: auto;
 }

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">PocketDesk OS mark</title>
+  <desc id="desc">A compact desktop monitor inside a rounded glass tile.</desc>
+  <defs>
+    <linearGradient id="tile" x1="74" x2="438" y1="50" y2="462" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6ed7ff"/>
+      <stop offset="0.52" stop-color="#2e8fce"/>
+      <stop offset="1" stop-color="#102a43"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="143" x2="369" y1="142" y2="303" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#e8fbff"/>
+      <stop offset="0.42" stop-color="#9fe8ff"/>
+      <stop offset="1" stop-color="#46b2ff"/>
+    </linearGradient>
+    <filter id="shadow" x="58" y="70" width="396" height="374" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="22" flood-color="#061627" flood-opacity="0.32" stdDeviation="22"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#0d2237"/>
+  <rect x="36" y="36" width="440" height="440" rx="96" fill="url(#tile)"/>
+  <path d="M93 114c55-44 109-63 164-59 74 5 130 46 169 123-55-31-113-39-174-24-56 14-109 43-159 89-16-57-16-100 0-129Z" fill="#ffffff" opacity=".16"/>
+  <g filter="url(#shadow)">
+    <rect x="126" y="136" width="260" height="176" rx="26" fill="#0b2536"/>
+    <rect x="146" y="156" width="220" height="126" rx="18" fill="url(#screen)"/>
+    <path d="M202 326h108l13 47H189l13-47Z" fill="#0b2536"/>
+    <rect x="166" y="369" width="180" height="30" rx="15" fill="#f7c873"/>
+  </g>
+  <path d="M158 179h84v80h-84V179Zm112 0h84v80h-84V179Z" fill="#eaffff" opacity=".28"/>
+</svg>

@@ -115,3 +115,6 @@ export const runCommandSuggestions = [
 
 /** Pointer travel before a title-bar drag un-maximizes a window, as Windows does. */
 export const WINDOW_DRAG_THRESHOLD = 5;
+
+/** Pixels one arrow press moves a window in the keyboard 이동 / 크기 조정 mode. */
+export const WINDOW_KEYBOARD_STEP = 10;

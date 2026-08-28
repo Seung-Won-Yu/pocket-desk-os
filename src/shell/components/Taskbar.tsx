@@ -121,6 +121,16 @@ export function Taskbar({
     })),
   ];
 
+  /*
+   * The roving stop has to name a button that is still on the bar. Closing the
+   * last window of an unpinned app, or unpinning one, removed the button the
+   * stop pointed at and left the whole band out of the tab order.
+   */
+  const rovingTabStopId =
+    taskbarApps.find(({ app }) => app.id === rovingAppId)?.app.id ??
+    taskbarApps[0]?.app.id ??
+    null;
+
   const showPreview = (
     element: HTMLElement,
     app: AppDefinition,
@@ -305,7 +315,7 @@ export function Taskbar({
             setRovingAppId(nextApp.app.id);
             const buttons =
               event.currentTarget.querySelectorAll<HTMLButtonElement>(".taskbar-app");
-            buttons[nextIndex]?.focus();
+            buttons[nextIndex]?.focus({ preventScroll: true });
           }}
           role="toolbar"
         >
@@ -361,7 +371,7 @@ export function Taskbar({
                     onOpenNewWindow(app.id);
                   }}
                   onFocus={() => setRovingAppId(app.id)}
-                  tabIndex={(rovingAppId ?? taskbarApps[0]?.app.id) === app.id ? 0 : -1}
+                  tabIndex={rovingTabStopId === app.id ? 0 : -1}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     // Keep the taskbar's own shell menu from replacing this one.

@@ -60,12 +60,17 @@ export default function MinesweeperApp({
    */
   useLayoutEffect(() => {
     const stage = stageRef.current;
-    if (!stage) return;
+    // A hidden or maximized window has no size to read and cannot grow anyway;
+    // measuring one produced an overflow the shell could never satisfy.
+    if (!stage || stage.clientWidth === 0 || stage.clientHeight === 0) return;
     growWindow(windowId, {
       height: stage.scrollHeight - stage.clientHeight,
       width: stage.scrollWidth - stage.clientWidth,
     });
-  }, [difficultyId, growWindow, windowId]);
+    // growWindow is stable; listing it here would only re-run this on every
+    // render of the shell.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [difficultyId, windowId]);
   const [board, setBoard] = useState(() => createMineBoard(difficulty));
   const [status, setStatus] = useState<"playing" | "won" | "lost">("playing");
   const [boardReady, setBoardReady] = useState(false);

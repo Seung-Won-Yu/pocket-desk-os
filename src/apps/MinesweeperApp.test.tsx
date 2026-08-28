@@ -248,3 +248,14 @@ describe("MinesweeperApp 키보드 조작", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
+
+describe("지뢰찾기 창 크기", () => {
+  it("보드가 넘칠 때만 창을 키운다", async () => {
+    const { growWindow } = renderMinesweeper();
+
+    // jsdom reports every scroll/client size as 0, so the guard must keep the
+    // shell out of it entirely — asking for a grow the shell can never satisfy
+    // is what crashed the desktop with a maximum-update-depth loop.
+    expect(growWindow).not.toHaveBeenCalled();
+  });
+});

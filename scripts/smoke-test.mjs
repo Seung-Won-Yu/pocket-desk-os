@@ -630,6 +630,29 @@ async function runSmoke(baseUrl) {
       "Shift+ArrowDown replaced the selection instead of extending it",
     );
 
+    // Typing a letter jumps to the next item that starts with it.
+    await page.keyboard.press("Home");
+    await page.waitForTimeout(120);
+    const beforeTypeAhead = await selectedName();
+    const typeAheadLetter = (
+      await files.evaluate((node) => {
+        const options = [...node.querySelectorAll('[role="option"]')];
+        const names = options.map((option) => option.textContent?.trim().split("\n")[0] ?? "");
+        const first = names[0] ?? "";
+        // A letter that some other item starts with and the first one does not.
+        return names.slice(1).find((name) => name[0] && name[0] !== first[0])?.[0] ?? "";
+      })
+    ).toLowerCase();
+    assert(typeAheadLetter !== "", "No distinct first letter to test type-ahead with");
+    await page.keyboard.press(typeAheadLetter);
+    await page.waitForTimeout(200);
+    const afterTypeAhead = await selectedName();
+    assert(
+      afterTypeAhead !== beforeTypeAhead &&
+        afterTypeAhead.toLowerCase().startsWith(typeAheadLetter),
+      `Typing ${typeAheadLetter} selected ${afterTypeAhead} instead of jumping to a match`,
+    );
+
     await files.getByRole("button", { name: "새 파일 탐색기 창" }).click();
     const explorerWindows = page.locator('article[aria-label="파일 탐색기"]');
     await page.waitForFunction(
@@ -1552,6 +1575,70 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("Escape");
     await page.locator(".window-system-menu").waitFor({ state: "hidden" });
 
+    /*
+     * Windows moves and resizes a window from this menu with the arrow keys.
+     * Both items were missing, and the eight resize handles are hidden from
+     * assistive technology, so a keyboard user could not move or resize at all.
+     * Runs on a window opened here, so a snapped or edge-clamped window left
+     * over from an earlier step cannot swallow the step being measured.
+     */
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("calc");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const dragTarget = page.locator('article[aria-label="계산기"]').first();
+    await dragTarget.waitFor({ state: "visible" });
+    await page.waitForTimeout(250);
+    const beforeKeyboardMove = await dragTarget.boundingBox();
+    await page.keyboard.press("Alt+ ");
+    await page.locator(".window-system-menu").waitFor({ state: "visible" });
+    await page.getByRole("menuitem", { name: "이동" }).click();
+    await page.locator(".window-keyboard-drag-hint").waitFor({ state: "visible" });
+    // Move away from the edges, where the 8px margin would clamp the step and
+    // the measurement would say nothing about whether the keys work.
+    assert(
+      beforeKeyboardMove.x > 20 && beforeKeyboardMove.y > 20,
+      `Keyboard move check needs room to the left and above, window at ${Math.round(beforeKeyboardMove.x)},${Math.round(beforeKeyboardMove.y)}`,
+    );
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowUp");
+    await page.waitForTimeout(150);
+    const afterKeyboardMove = await dragTarget.boundingBox();
+    assert(
+      Math.round(afterKeyboardMove.x - beforeKeyboardMove.x) === -10 &&
+        Math.round(afterKeyboardMove.y - beforeKeyboardMove.y) === -10,
+      `Keyboard move shifted the window by ${Math.round(afterKeyboardMove.x - beforeKeyboardMove.x)},${Math.round(afterKeyboardMove.y - beforeKeyboardMove.y)}`,
+    );
+    // Escape puts it back where it started, as Windows does.
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("Escape");
+    await page.locator(".window-keyboard-drag-hint").waitFor({ state: "hidden" });
+    const afterKeyboardCancel = await dragTarget.boundingBox();
+    assert(
+      Math.round(afterKeyboardCancel.x) === Math.round(beforeKeyboardMove.x) &&
+        Math.round(afterKeyboardCancel.y) === Math.round(beforeKeyboardMove.y),
+      "Escape did not put the window back where the keyboard move started",
+    );
+
+    await page.keyboard.press("Alt+ ");
+    await page.locator(".window-system-menu").waitFor({ state: "visible" });
+    await page.getByRole("menuitem", { name: "크기 조정" }).click();
+    await page.locator(".window-keyboard-drag-hint").waitFor({ state: "visible" });
+    // The first arrow picks the edge; the ones after it move that edge only.
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowLeft");
+    await page.waitForTimeout(150);
+    const afterKeyboardResize = await dragTarget.boundingBox();
+    assert(
+      Math.round(afterKeyboardResize.width - afterKeyboardCancel.width) === 10 &&
+        Math.round(afterKeyboardResize.x - afterKeyboardCancel.x) === -10,
+      `Keyboard resize changed the width by ${Math.round(afterKeyboardResize.width - afterKeyboardCancel.width)}px and x by ${Math.round(afterKeyboardResize.x - afterKeyboardCancel.x)}`,
+    );
+    await page.keyboard.press("Enter");
+    await page.locator(".window-keyboard-drag-hint").waitFor({ state: "hidden" });
+    await dragTarget.getByRole("button", { name: "계산기 닫기" }).click();
+    await page.waitForTimeout(250);
+
     // Alt+Tab walks every window in one hold and switches on release. Focusing
     // on each press instead raised the selection to the top of the z-order, so
     // re-sorting by z put it back at index 0 and Tab bounced between two
@@ -1620,6 +1707,11 @@ async function runSmoke(baseUrl) {
     await page.waitForTimeout(350);
     await page.setViewportSize({ height: 820, width: 1280 });
     await page.waitForTimeout(350);
+    // Window motion animations translate the frame while they run, so a box
+    // read mid-flight is a couple of pixels off its committed position.
+    await restoreTarget.evaluate(async (node) => {
+      await Promise.all(node.getAnimations().map((animation) => animation.finished));
+    });
     const resnapped = await restoreTarget.boundingBox();
     const taskbarTop = (await page.locator(".taskbar").boundingBox()).y;
     assert(
@@ -2054,6 +2146,52 @@ async function runSmoke(baseUrl) {
     );
     await page.keyboard.press("Escape");
     await page.locator(".task-view").waitFor({ state: "hidden" });
+
+    // Edge's tab strip was a single hardcoded tab; each tab now keeps its own
+    // page, and none of that had a test.
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("msedge");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const edgeTabs = page.locator('article[aria-label="Microsoft Edge"]').first();
+    await edgeTabs.waitFor({ state: "visible" });
+    await page.waitForTimeout(300);
+    const addressBar = edgeTabs.locator(".browser-toolbar input").first();
+    const firstTabAddress = await addressBar.inputValue();
+    assert(
+      (await edgeTabs.locator(".browser-tab").count()) === 1,
+      "Edge did not start with one tab",
+    );
+
+    await edgeTabs.locator(".browser-tab-strip > button").click();
+    await page.waitForTimeout(250);
+    assert(
+      (await edgeTabs.locator(".browser-tab").count()) === 2,
+      "The new tab button did not open a tab",
+    );
+    assert(
+      (await addressBar.inputValue()) === "",
+      "A new tab opened showing the previous tab's address",
+    );
+
+    await addressBar.fill("example.com");
+    await addressBar.press("Enter");
+    await page.waitForTimeout(500);
+    await edgeTabs.locator(".browser-tab button").first().click();
+    await page.waitForTimeout(300);
+    assert(
+      (await addressBar.inputValue()) === firstTabAddress,
+      `Switching back showed ${await addressBar.inputValue()} instead of the first tab's own address`,
+    );
+
+    await edgeTabs.locator(".browser-tab-close").last().click();
+    await page.waitForTimeout(300);
+    assert(
+      (await edgeTabs.locator(".browser-tab").count()) === 1,
+      "Closing a tab did not remove it",
+    );
+    await edgeTabs.getByRole("button", { name: "Microsoft Edge 닫기" }).click();
+    await page.waitForTimeout(250);
 
     assert(consoleErrors.length === 0, `Console errors found: ${consoleErrors.join(" | ")}`);
 

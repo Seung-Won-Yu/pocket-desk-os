@@ -48,6 +48,7 @@ import {
   WALLPAPER_KEY,
   WINDOW_EXIT_MOTION_MS,
   WINDOW_STATE_KEY,
+  WINDOW_KEYBOARD_STEP,
 } from "./shell/constants";
 import {
   clampContextMenuPosition,
@@ -92,7 +93,7 @@ import {
   migrateVfsHierarchy,
   normalizePersistedDesktopItem,
 } from "./shell/vfsBootstrap";
-import { getWindowSnapPatch } from "./shell/windowGeometry";
+import { getWindowSnapPatch, resizeWindowEdge } from "./shell/windowGeometry";
 import {
   createDefaultWindows,
   fitWindowToViewport,
@@ -196,6 +197,12 @@ export default function App() {
   const [desktopRenameDraft, setDesktopRenameDraft] = useState("");
   const [desktopPropertiesItemId, setDesktopPropertiesItemId] = useState<string | null>(null);
   const [windowMenu, setWindowMenu] = useState<WindowSystemMenuState | null>(null);
+  const [windowKeyboardDrag, setWindowKeyboardDrag] = useState<{
+    edge: "bottom" | "left" | "right" | "top" | null;
+    mode: "move" | "resize";
+    origin: { height: number; width: number; x: number; y: number };
+    windowId: string;
+  } | null>(null);
   const [startOpen, setStartOpen] = useState(false);
   const [runOpen, setRunOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -1615,6 +1622,38 @@ export default function App() {
     });
   };
 
+  /*
+   * Windows' 이동 / 크기 조정: the window enters a keyboard mode where the arrow
+   * keys move it or one of its edges, Enter commits and Escape puts it back
+   * where it was. With the eight resize handles hidden from assistive
+   * technology, this was the only route left for a keyboard user — and it did
+   * not exist, so a window could not be moved or resized without a mouse.
+   */
+  const beginWindowKeyboardDrag = (windowId: string, mode: "move" | "resize") => {
+    const target = windows.find((item) => item.id === windowId);
+    if (!target || target.maximized) return;
+    setWindowMenu(null);
+    focusWindow(windowId);
+    setWindowKeyboardDrag({
+      edge: null,
+      mode,
+      origin: {
+        height: target.height,
+        width: target.width,
+        x: target.x,
+        y: target.y,
+      },
+      windowId,
+    });
+  };
+
+  const endWindowKeyboardDrag = (commit: boolean) => {
+    setWindowKeyboardDrag((current) => {
+      if (current && !commit) updateWindow(current.windowId, current.origin);
+      return null;
+    });
+  };
+
   const restoreWindow = (id: string) => {
     playSound("toggle");
     cancelWindowMotion(id);
@@ -1679,16 +1718,26 @@ export default function App() {
     });
   }, []);
 
-  const growWindow = (id: string, delta: { width: number; height: number }) => {
+  /*
+   * Both halves of this have to be stable or the caller loops: apps put it in an
+   * effect's dependency list, so a fresh function every render re-runs the
+   * effect, and `map` handing back a new array even when nothing changed
+   * re-renders App. Together they crashed the shell with React's maximum update
+   * depth as soon as a window that could not grow asked to — a maximized
+   * Minesweeper, for one.
+   */
+  const growWindow = useCallback((id: string, delta: { width: number; height: number }) => {
     if (delta.width <= 0 && delta.height <= 0) return;
-    setWindows((current) =>
-      current.map((item) => {
+    setWindows((current) => {
+      let changed = false;
+      const next = current.map((item) => {
         if (item.id !== id || item.maximized) return item;
         const maxWidth = Math.max(320, window.innerWidth - 16);
         const maxHeight = Math.max(240, window.innerHeight - APP_BAR_HEIGHT - 16);
         const width = Math.min(maxWidth, item.width + Math.max(0, delta.width));
         const height = Math.min(maxHeight, item.height + Math.max(0, delta.height));
         if (width === item.width && height === item.height) return item;
+        changed = true;
         return {
           ...item,
           height,
@@ -1699,9 +1748,10 @@ export default function App() {
           x: clamp(item.x, 8, Math.max(8, window.innerWidth - width - 8)),
           y: clamp(item.y, 8, Math.max(8, window.innerHeight - APP_BAR_HEIGHT - height - 8)),
         };
-      }),
-    );
-  };
+      });
+      return changed ? next : current;
+    });
+  }, []);
 
   const closeWindow = (id: string) => {
     const guard = closeGuardsRef.current.get(id);
@@ -2199,6 +2249,65 @@ export default function App() {
         return;
       }
 
+      /*
+       * While a keyboard move or resize is running it owns the arrow keys, so
+       * it has to be checked before the snap shortcuts below.
+       */
+      if (windowKeyboardDrag) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          endWindowKeyboardDrag(false);
+          return;
+        }
+        if (event.key === "Enter" || event.key === "Tab") {
+          event.preventDefault();
+          endWindowKeyboardDrag(true);
+          return;
+        }
+        if (event.key.startsWith("Arrow")) {
+          event.preventDefault();
+          const step = event.shiftKey ? 1 : WINDOW_KEYBOARD_STEP;
+          const target = windows.find((item) => item.id === windowKeyboardDrag.windowId);
+          if (!target) return;
+
+          if (windowKeyboardDrag.mode === "move") {
+            const dx =
+              event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0;
+            const dy = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0;
+            updateWindow(target.id, {
+              snapZone: undefined,
+              x: clamp(target.x + dx, 8, Math.max(8, window.innerWidth - target.width - 8)),
+              y: clamp(
+                target.y + dy,
+                8,
+                Math.max(8, window.innerHeight - APP_BAR_HEIGHT - target.height - 8),
+              ),
+            });
+            return;
+          }
+
+          // Windows picks the edge with the first arrow, then moves that edge.
+          const edge =
+            windowKeyboardDrag.edge ??
+            (event.key === "ArrowUp"
+              ? "top"
+              : event.key === "ArrowDown"
+                ? "bottom"
+                : event.key === "ArrowLeft"
+                  ? "left"
+                  : "right");
+          if (!windowKeyboardDrag.edge) {
+            setWindowKeyboardDrag((current) => (current ? { ...current, edge } : current));
+            return;
+          }
+          updateWindow(target.id, {
+            ...resizeWindowEdge(target, edge, event.key, step),
+            snapZone: undefined,
+          });
+          return;
+        }
+      }
+
       if (event.altKey && event.key === " " && activeWindowId) {
         event.preventDefault();
         openWindowSystemMenuForKeyboard(activeWindowId);
@@ -2399,6 +2508,7 @@ export default function App() {
     activeWindowId,
     altTabWindowId,
     clipboard,
+    windowKeyboardDrag,
     desktopIconMenu,
     desktopMenu,
     desktopPropertiesItemId,
@@ -2418,13 +2528,15 @@ export default function App() {
    * selected icon when there is one, otherwise the first. Every icon carried
    * tabindex 0 before, so Tab had to walk all of them to leave the desktop.
    */
+  const desktopIconIds = [
+    ...desktopApps.map((app) => `app:${app.id}`),
+    ...activeDesktopItems.filter((item) => item.showOnDesktop).map((item) => `item:${item.id}`),
+  ];
+  // A selection can outlive the icon it names — the file is deleted, or moved
+  // into a folder — and pointing the only tab stop at it took the whole icon
+  // field out of the tab order.
   const desktopTabStopId =
-    selectedDesktopIds[0] ??
-    (desktopApps[0]
-      ? `app:${desktopApps[0].id}`
-      : activeDesktopItems.find((item) => item.showOnDesktop)
-        ? `item:${activeDesktopItems.find((item) => item.showOnDesktop)!.id}`
-        : null);
+    desktopIconIds.find((id) => selectedDesktopIds.includes(id)) ?? desktopIconIds[0] ?? null;
 
   const openStartSearchResult = (result: StartSearchResult) => {
     if (result.kind === "app") {
@@ -2462,6 +2574,19 @@ export default function App() {
         className="desktop-icons"
         onKeyDown={(event) => {
           if (!DESKTOP_ICON_NAV_KEYS.includes(event.key)) return;
+          /*
+           * The rename field sits inside this grid but is not an icon, so an
+           * arrow press while renaming moved focus to an icon instead of the
+           * caret — and the blur committed the half-typed name.
+           */
+          const editing = event.target;
+          if (
+            editing instanceof HTMLInputElement ||
+            editing instanceof HTMLTextAreaElement ||
+            (editing instanceof HTMLElement && editing.isContentEditable)
+          ) {
+            return;
+          }
           const icons = [...event.currentTarget.querySelectorAll<HTMLElement>(".desktop-icon")];
           const currentIndex = icons.findIndex(
             (node) => node === document.activeElement || node.contains(document.activeElement),
@@ -2471,7 +2596,7 @@ export default function App() {
           // Arrow keys and Home/End did nothing here: every icon was its own tab
           // stop and there was no arrow handling at all.
           event.preventDefault();
-          target.focus();
+          target.focus({ preventScroll: true });
         }}
       >
         {desktopApps.map((app) => (
@@ -2640,6 +2765,8 @@ export default function App() {
             }
           }}
           onMinimize={() => minimizeWindow(windowMenuInstance.id)}
+          onMove={() => beginWindowKeyboardDrag(windowMenuInstance.id, "move")}
+          onResize={() => beginWindowKeyboardDrag(windowMenuInstance.id, "resize")}
           onRestore={() => {
             restoreWindow(windowMenuInstance.id);
             setWindowMenu(null);
@@ -2647,6 +2774,21 @@ export default function App() {
           x={windowMenu.x}
           y={windowMenu.y}
         />
+      )}
+
+      {/*
+       * Windows signals this mode by swapping the mouse cursor, which a web
+       * page cannot do for the OS pointer. A status line says the same thing
+       * and, being role=status, reaches a screen reader too.
+       */}
+      {windowKeyboardDrag && (
+        <p className="window-keyboard-drag-hint" role="status">
+          {windowKeyboardDrag.mode === "move"
+            ? "화살표로 창 이동 · Enter 확정 · Esc 취소"
+            : windowKeyboardDrag.edge
+              ? "화살표로 가장자리 이동 · Enter 확정 · Esc 취소"
+              : "화살표로 조정할 가장자리 선택 · Esc 취소"}
+        </p>
       )}
 
       <Taskbar

@@ -4,6 +4,7 @@ import {
   getSnapPreviewStyle,
   getWindowSnapPatch,
   getWindowSnapZone,
+  resizeWindowEdge,
 } from "./windowGeometry";
 
 // These helpers read `window.innerWidth` / `window.innerHeight` directly and the vitest
@@ -306,5 +307,57 @@ describe("getSnapPreviewStyle", () => {
         width: patch.width,
       });
     }
+  });
+});
+
+describe("resizeWindowEdge", () => {
+  const base = {
+    appId: "notepad" as const,
+    desktopIndex: 0,
+    height: 400,
+    id: "win-1",
+    maximized: false,
+    minimized: false,
+    width: 600,
+    x: 100,
+    y: 100,
+    z: 12,
+  };
+
+  it("moves only the edge that was picked, leaving the opposite one alone", () => {
+    setViewport(1280, 820);
+
+    expect(resizeWindowEdge(base, "right", "ArrowRight", 10)).toEqual({ width: 610 });
+    expect(resizeWindowEdge(base, "bottom", "ArrowDown", 10)).toEqual({ height: 410 });
+    // Dragging the left edge left widens the window without moving its right side.
+    expect(resizeWindowEdge(base, "left", "ArrowLeft", 10)).toEqual({ width: 610, x: 90 });
+    expect(resizeWindowEdge(base, "top", "ArrowUp", 10)).toEqual({ height: 410, y: 90 });
+  });
+
+  it("stops at the minimum size instead of inverting the window", () => {
+    setViewport(1280, 820);
+
+    const narrow = { ...base, width: 320 };
+    expect(resizeWindowEdge(narrow, "right", "ArrowLeft", 10)).toEqual({ width: 320 });
+    // The left edge cannot cross its own right edge either.
+    expect(resizeWindowEdge(narrow, "left", "ArrowRight", 10)).toEqual({ width: 320, x: 100 });
+  });
+
+  it("keeps the window inside the work area", () => {
+    setViewport(1280, 820);
+
+    const wide = { ...base, width: 1160, x: 8 };
+    // 8px margin on both sides of a 1280px viewport leaves 1264 to fill.
+    expect(resizeWindowEdge(wide, "right", "ArrowRight", 200)).toEqual({ width: 1264 });
+
+    const tall = { ...base, height: 700, y: 8 };
+    // The work area stops at the taskbar, not at the bottom of the viewport.
+    expect(resizeWindowEdge(tall, "bottom", "ArrowDown", 100)).toEqual({ height: 756 });
+  });
+
+  it("ignores an arrow that does not move along the edge", () => {
+    setViewport(1280, 820);
+
+    expect(resizeWindowEdge(base, "right", "Home", 10)).toEqual({});
   });
 });

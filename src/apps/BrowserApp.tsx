@@ -210,6 +210,7 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
   const [browserMenuOpen, setBrowserMenuOpen] = useState(false);
   const [frameIssue, setFrameIssue] = useState<BrowserFrameIssue | null>(null);
   const [frameSettledAt, setFrameSettledAt] = useState<number | null>(null);
+  const [dismissedOfferUrl, setDismissedOfferUrl] = useState<string | null>(null);
   const [tabs, setTabs] = useState<BrowserTab[]>(() => [createBrowserTab()]);
   const [activeTabId, setActiveTabId] = useState(() => tabs[0].id);
 
@@ -225,13 +226,15 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
    */
   useEffect(() => {
     if (viewMode !== "web" || frameSettledAt === null || !url) return;
-    if (frameIssue || isSameOriginTarget(url)) return;
+    if (frameIssue || isSameOriginTarget(url) || dismissedOfferUrl === url) return;
 
     const timer = window.setTimeout(() => setFrameIssue("settled"), 2500);
     return () => window.clearTimeout(timer);
-  }, [frameIssue, frameSettledAt, url, viewMode]);
+  }, [dismissedOfferUrl, frameIssue, frameSettledAt, url, viewMode]);
 
-  // A fresh navigation gets a fresh offer; dismissing one clears it until then.
+  // A fresh navigation gets a fresh offer. Keyed on the address rather than on
+  // the load: a framed page fires `load` again on every link followed inside
+  // it, which brought a dismissed offer straight back.
   useEffect(() => {
     setFrameSettledAt(null);
   }, [pageLoadKey, url]);
@@ -662,7 +665,10 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
             />
           )}
           {viewMode === "web" && frameIssue && !isSameOriginTarget(url) && (
-            <div className="browser-frame-fallback" role="alert">
+            <div
+              className={`browser-frame-fallback${frameIssue === "settled" ? " is-offer" : ""}`}
+              role={frameIssue === "settled" ? "status" : "alert"}
+            >
               <ShieldAlert aria-hidden="true" size={24} />
               <span>
                 {frameIssue === "settled" ? (
@@ -695,6 +701,7 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
                 aria-label="표시 문제 안내 닫기"
                 className="browser-frame-fallback-close"
                 onClick={() => {
+                  if (frameIssue === "settled") setDismissedOfferUrl(url);
                   setFrameIssue(null);
                   setFrameSettledAt(null);
                 }}

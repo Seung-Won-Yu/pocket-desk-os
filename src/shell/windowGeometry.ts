@@ -1,3 +1,4 @@
+import { clamp } from "../utils/format";
 import { APP_BAR_HEIGHT, SNAP_CORNER_SIZE, SNAP_EDGE_SIZE } from "./constants";
 import { type SnapZone, type WindowInstance } from "./types";
 
@@ -79,4 +80,44 @@ export function getSnapPreviewStyle(zone: SnapZone): React.CSSProperties {
     top: patch.y,
     width: patch.width,
   };
+}
+
+/**
+ * One arrow press against a single edge, the way Windows' 크기 조정 mode works:
+ * the edge you picked is the one that moves, and the opposite edge stays put.
+ * Sizes stop at the app's own minimum rather than inverting the window.
+ */
+export function resizeWindowEdge(
+  instance: WindowInstance,
+  edge: "bottom" | "left" | "right" | "top",
+  key: string,
+  step: number,
+): Partial<WindowInstance> {
+  const delta =
+    key === "ArrowLeft" || key === "ArrowUp"
+      ? -step
+      : key === "ArrowRight" || key === "ArrowDown"
+        ? step
+        : 0;
+  if (delta === 0) return {};
+
+  const minWidth = 320;
+  const minHeight = 240;
+  const maxRight = Math.max(minWidth, window.innerWidth - 8);
+  const maxBottom = Math.max(minHeight, window.innerHeight - APP_BAR_HEIGHT - 8);
+
+  if (edge === "right") {
+    return { width: clamp(instance.width + delta, minWidth, maxRight - instance.x) };
+  }
+  if (edge === "bottom") {
+    return { height: clamp(instance.height + delta, minHeight, maxBottom - instance.y) };
+  }
+  if (edge === "left") {
+    const right = instance.x + instance.width;
+    const x = clamp(instance.x + delta, 8, right - minWidth);
+    return { width: right - x, x };
+  }
+  const bottom = instance.y + instance.height;
+  const y = clamp(instance.y + delta, 8, bottom - minHeight);
+  return { height: bottom - y, y };
 }

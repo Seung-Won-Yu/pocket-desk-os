@@ -1,6 +1,6 @@
 import AppIconTile from "../../components/AppIconTile";
 import { type AppDefinition, type WindowInstance } from "../types";
-import { Maximize2, Minus, Square, X } from "lucide-react";
+import { Maximize2, Minus, Move, Scaling, Square, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useReturnFocus } from "../dialogFocus";
 import { handleMenuKeyboard } from "../keyboardNav";
@@ -12,6 +12,8 @@ export function WindowSystemMenu({
   onDismiss,
   onMaximize,
   onMinimize,
+  onMove,
+  onResize,
   onRestore,
   x,
   y,
@@ -22,6 +24,8 @@ export function WindowSystemMenu({
   onDismiss: () => void;
   onMaximize: () => void;
   onMinimize: () => void;
+  onMove: () => void;
+  onResize: () => void;
   onRestore: () => void;
   x: number;
   y: number;
@@ -69,6 +73,20 @@ export function WindowSystemMenu({
       <button disabled={!instance.maximized} onClick={onRestore} role="menuitem" type="button">
         <Square aria-hidden="true" size={15} />
         복원
+      </button>
+      {/*
+       * Windows moves and resizes a window from here with the arrow keys, and
+       * these two items were missing — with the resize handles hidden from
+       * assistive technology as well, a keyboard user had no way at all to
+       * move or resize a window.
+       */}
+      <button disabled={instance.maximized} onClick={onMove} role="menuitem" type="button">
+        <Move aria-hidden="true" size={15} />
+        이동
+      </button>
+      <button disabled={instance.maximized} onClick={onResize} role="menuitem" type="button">
+        <Scaling aria-hidden="true" size={15} />
+        크기 조정
       </button>
       <button onClick={onMinimize} role="menuitem" type="button">
         <Minus aria-hidden="true" size={15} />
