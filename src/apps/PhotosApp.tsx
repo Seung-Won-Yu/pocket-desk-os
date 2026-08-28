@@ -18,6 +18,7 @@ import type { DesktopItem } from "../types";
 import { clamp } from "../utils/format";
 
 type PhotosAppProps = {
+  reportDocument: (appId: "photos", itemId: string | undefined) => void;
   activeCanvasId: string;
   activeCanvasOpenKey: number;
   canvasEntries: DesktopItem[];
@@ -42,6 +43,7 @@ const ZOOM_STEP = 1.25;
 const STAGE_PADDING = 16;
 
 export default function PhotosApp({
+  reportDocument,
   activeCanvasId,
   activeCanvasOpenKey,
   canvasEntries,
@@ -87,6 +89,10 @@ export default function PhotosApp({
   useEffect(() => {
     viewerRef.current?.focus({ preventScroll: true });
   }, [activeCanvasOpenKey]);
+
+  useEffect(() => {
+    reportDocument("photos", currentEntry?.id);
+  }, [currentEntry?.id, reportDocument]);
 
   useEffect(() => {
     setNaturalSize(null);
@@ -335,6 +341,16 @@ export default function PhotosApp({
               width: event.currentTarget.naturalWidth,
             })
           }
+          /*
+           * The reset above clears the measured size, but a cached image that is
+           * already decoded fires no second `load`, so the photo stayed at
+           * opacity 0 for good — the viewer went blank after a round trip to
+           * Paint and only came back by navigating away and back.
+           */
+          ref={(node) => {
+            if (!node || naturalSize || !node.complete || node.naturalWidth === 0) return;
+            setNaturalSize({ height: node.naturalHeight, width: node.naturalWidth });
+          }}
           src={currentEntry.content}
           style={imageStyle}
         />

@@ -28,6 +28,7 @@ function makeCanvas(id: string, name: string, content: string | null = PIXEL) {
 function renderPhotos(options: { activeCanvasId?: string; entries?: DesktopItem[] } = {}) {
   const handlers = {
     activateVfsEntry: vi.fn(),
+    reportDocument: vi.fn(),
     deleteVfsEntry: vi.fn(),
     notify: vi.fn(),
     openApp: vi.fn(),
@@ -42,6 +43,7 @@ function renderPhotos(options: { activeCanvasId?: string; entries?: DesktopItem[
   render(
     <PhotosApp
       activateVfsEntry={handlers.activateVfsEntry}
+      reportDocument={handlers.reportDocument}
       activeCanvasId={options.activeCanvasId ?? "photo-b"}
       activeCanvasOpenKey={1}
       canvasEntries={entries}

@@ -95,12 +95,12 @@ import {
 } from "./shell/vfsBootstrap";
 import { getWindowSnapPatch, resizeWindowEdge } from "./shell/windowGeometry";
 import {
-  createDefaultWindows,
   fitWindowToViewport,
   getVirtualDesktopCount,
   loadVirtualDesktopCount,
   loadWindowState,
   persistWindowState,
+  makeWindow,
 } from "./shell/windowState";
 import { SnapAssist } from "./shell/components/SnapAssist";
 import { TaskView } from "./shell/components/TaskView";
@@ -112,6 +112,7 @@ import {
   type DefaultAppMap,
 } from "./shell/preferences";
 import { getNeighbourByPosition } from "./shell/keyboardNav";
+import { formatWindowTitle } from "./shell/windowTitle";
 import { clamp } from "./utils/format";
 import {
   type AppId,
@@ -216,6 +217,15 @@ export default function App() {
   const [activeCanvasId, setActiveCanvasId] = useState(VFS_PRIMARY_CANVAS_ID);
   const [activeCanvasOpenKey, setActiveCanvasOpenKey] = useState(0);
   const [activeNoteId, setActiveNoteId] = useState(VFS_PRIMARY_NOTE_ID);
+  const [reportedDocuments, setReportedDocuments] = useState<
+    Partial<Record<AppId, string | undefined>>
+  >({});
+
+  const reportDocument = useCallback((appId: AppId, itemId: string | undefined) => {
+    setReportedDocuments((current) =>
+      current[appId] === itemId ? current : { ...current, [appId]: itemId },
+    );
+  }, []);
   const [altTabWindowId, setAltTabWindowId] = useState<string | null>(null);
   const [pinnedAppIds, setPinnedAppIds] = useState<AppId[]>(() => loadPinnedTaskbarApps());
   const [snapPreview, setSnapPreview] = useState<SnapPreviewState | null>(null);
@@ -472,9 +482,31 @@ export default function App() {
   const resetWindowLayout = () => {
     playSound("success");
     localStorage.removeItem(WINDOW_STATE_KEY);
-    setWindows(createDefaultWindows());
+    /*
+     * The default layout is no windows at all, so this used to close every
+     * running app without a word — a memo with unsaved text included, while its
+     * title bar showed the asterisk. It restores positions and sizes now and
+     * leaves the windows themselves alone, which is what the button says it
+     * does.
+     */
+    setWindows((current) =>
+      current.map((item, index) => {
+        // Identity, stacking and desktop stay; only the geometry is replaced.
+        const fresh = makeWindow(item.appId, 52 + index * 26, 42 + index * 24, item.z);
+        return {
+          ...item,
+          height: fresh.height,
+          maximized: false,
+          minimized: false,
+          snapZone: undefined,
+          width: fresh.width,
+          x: fresh.x,
+          y: fresh.y,
+        };
+      }),
+    );
     notify({
-      detail: "열린 앱과 창 위치를 기본 배치로 되돌렸습니다.",
+      detail: "열린 창의 위치와 크기를 기본값으로 되돌렸습니다.",
       title: "창 배치 초기화",
       tone: "success",
     });
@@ -603,7 +635,9 @@ export default function App() {
               ...(alignDesktopIcons
                 ? snapDesktopIconPosition(nextPosition, desktopViewMode)
                 : clampIconPosition(nextPosition.x, nextPosition.y, desktopViewMode)),
-              updatedAt: Date.now(),
+              // Where an icon sits is shell layout, not a change to the file:
+              // stamping it here made dragging an icon log a "contents changed"
+              // event and reorder the Start menu's recent list.
             }
           : item,
       ),
@@ -989,7 +1023,28 @@ export default function App() {
 
   const changeDesktopView = (viewMode: DesktopViewMode) => {
     setDesktopViewMode(viewMode);
-    arrangeDesktopIcons(desktopSortKey, viewMode);
+    /*
+     * Windows changes the icon size and leaves hand-placed icons where they
+     * are. Re-arranging threw the whole layout away — an icon dragged to
+     * 330,226 went back to 18,18 — so each icon is only re-fitted to the new
+     * size where it already sits.
+     */
+    const refit = (position: IconPosition) =>
+      alignDesktopIcons
+        ? snapDesktopIconPosition(position, viewMode)
+        : clampIconPosition(position.x, position.y, viewMode);
+
+    setIconLayout((current) => {
+      const next = { ...current };
+      for (const app of desktopApps) {
+        const position = current[app.id];
+        if (position) next[app.id] = refit(position);
+      }
+      return next;
+    });
+    setDesktopItems((current) =>
+      current.map((item) => (item.showOnDesktop ? { ...item, ...refit(item) } : item)),
+    );
   };
 
   const toggleDesktopGrid = () => {
@@ -2005,6 +2060,13 @@ export default function App() {
    * is resolved once here and handed to all three.
    */
   const getWindowDocumentLabel = (appId: AppId) => {
+    // What the app says it is showing wins; the ids below are only the shell's
+    // opening guess, and an app that navigates on its own leaves them behind.
+    const reported = reportedDocuments[appId];
+    if (reported) {
+      const match = activeDesktopItems.find((item) => item.id === reported);
+      if (match) return match.name;
+    }
     if (appId === "notepad") {
       return activeDesktopItems.find((item) => item.id === activeNoteId)?.name;
     }
@@ -2021,9 +2083,14 @@ export default function App() {
         id: item.id,
         maximized: item.maximized,
         minimized: item.minimized,
-        title: getApp(item.appId).title,
+        // Windows' Task Manager lists window titles, so two windows of one app
+        // can be told apart before one of them is ended. This listed the app
+        // name, leaving two identical rows.
+        title: formatWindowTitle(getApp(item.appId).title, getWindowDocumentLabel(item.appId)),
       })),
-    [windows],
+    // getWindowDocumentLabel closes over the item list and the reported ids.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeCanvasId, activeDesktopItems, activeNoteId, reportedDocuments, windows],
   );
   const windowMenuInstance = windowMenu
     ? windows.find((item) => item.id === windowMenu.windowId)
@@ -2704,6 +2771,7 @@ export default function App() {
                 focusWindow={focusWindow}
                 openWindows={openWindows}
                 growWindow={growWindow}
+                reportDocument={reportDocument}
                 registerCloseGuard={registerCloseGuard}
                 createVfsFolder={createVfsFolder}
                 onImportLocalEntries={(imported) =>

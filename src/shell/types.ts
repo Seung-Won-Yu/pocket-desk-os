@@ -161,6 +161,13 @@ export type AppContentProps = {
    * the work area.
    */
   growWindow: (windowId: string, delta: { width: number; height: number }) => void;
+  /**
+   * The document an app is actually showing. The shell used to infer it from
+   * the id it had handed the app, which is only right until the app moves on by
+   * itself — the photo viewer's next/previous left the title bar naming the
+   * first image indefinitely.
+   */
+  reportDocument: (appId: AppId, itemId: string | undefined) => void;
   createVfsFolder: (parentId?: string, name?: string) => DesktopItem;
   onImportLocalEntries: (entries: DesktopItem[]) => void;
   createVfsTextFile: (parentId?: string) => DesktopItem;
