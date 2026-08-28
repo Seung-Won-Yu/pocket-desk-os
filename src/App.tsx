@@ -1753,6 +1753,25 @@ export default function App() {
     });
   }, []);
 
+  /*
+   * A reload or a closed tab takes the whole desktop with it, and React never
+   * runs the unmount flush that saves a pending draft — so a drawing that had
+   * not been saved was simply gone, with the title bar still showing its
+   * asterisk. Windows cannot warn when a process is killed; a browser can, so
+   * the same unsaved-work signal that guards the ✕ guards the page too.
+   */
+  useEffect(() => {
+    if (unsavedWindowIds.size === 0) return;
+
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [unsavedWindowIds]);
+
   const closeWindow = (id: string) => {
     const guard = closeGuardsRef.current.get(id);
     if (guard && !guard()) return;

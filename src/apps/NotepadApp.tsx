@@ -123,9 +123,30 @@ export default function NotepadApp({
     window.setTimeout(() => setSaveStatus("saved"), 220);
   };
 
+  const loadedNoteRef = useRef<{ content: string; id: string } | null>(null);
+
   useEffect(() => {
+    /*
+     * Autosave commits 850ms after a keystroke, and this effect replaces the
+     * editor's text the moment another document becomes the active one. Typing
+     * and then switching tabs inside that window threw the last keystrokes away
+     * — with the dirty dot still showing and nothing asked. Write the outgoing
+     * document back before its text is replaced.
+     */
+    const previous = loadedNoteRef.current;
+    if (previous && previous.id !== activeNote?.id && text !== previous.content) {
+      saveNoteContent(previous.id, text);
+    }
+    loadedNoteRef.current = {
+      content: activeNote?.content ?? "",
+      id: activeNote?.id ?? "",
+    };
+
     setText(activeNote?.content ?? "");
     setSaveStatus("saved");
+    // `text` is what is being flushed, not what this effect reacts to; listing
+    // it would reload the document on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeNote?.content, activeNote?.id]);
 
   // Each document carries its own undo history — rewinding one tab into another

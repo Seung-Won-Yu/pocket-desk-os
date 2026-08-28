@@ -13,6 +13,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
+import { trapDialogFocus } from "../shell/dialogFocus";
 import { useEffect, useRef, useState } from "react";
 import type React from "react";
 import FileDialog from "../components/FileDialog";
@@ -33,6 +34,9 @@ type CanvasEntry = {
 
 type PaintAppProps = {
   activeCanvasId: string;
+  closeWindow: (windowId: string) => void;
+  registerCloseGuard: (windowId: string, guard: (() => boolean) | null) => void;
+  windowId: string;
   activeCanvasOpenKey: number;
   canvasEntries: CanvasEntry[];
   createVfsFolder: (parentId?: string) => DesktopItem;
@@ -64,6 +68,9 @@ const paintTools: Array<{ id: PaintTool; label: string }> = [
 
 export default function PaintApp({
   activeCanvasId,
+  closeWindow,
+  registerCloseGuard,
+  windowId,
   activeCanvasOpenKey,
   canvasEntries,
   createVfsFolder,
@@ -89,11 +96,37 @@ export default function PaintApp({
   const [zoom, setZoom] = useState(100);
   const [historyState, setHistoryState] = useState({ redo: 0, undo: 0 });
   const [fileDialogMode, setFileDialogMode] = useState<"open" | "save" | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [closePromptOpen, setClosePromptOpen] = useState(false);
+  const dirtyRef = useRef(false);
+  const flushRef = useRef<(() => void) | null>(null);
+  const closePromptRef = useRef<HTMLButtonElement | null>(null);
+
+  const markDirty = () => {
+    dirtyRef.current = true;
+    setDirty(true);
+  };
+
+  const loadedCanvasIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
+
+    /*
+     * The document can be swapped out from under this app — the photo viewer's
+     * 편집 button does exactly that — and the canvas was simply repainted with
+     * the new file, taking the unsaved drawing with it. Write the old one back
+     * to its own file first.
+     */
+    const previousId = loadedCanvasIdRef.current;
+    if (previousId && previousId !== activeCanvas?.id && dirtyRef.current) {
+      savePaintImage(canvas.toDataURL("image/png"), { existingItemId: previousId });
+    }
+    loadedCanvasIdRef.current = activeCanvas?.id ?? null;
+    dirtyRef.current = false;
+    setDirty(false);
 
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, canvas.width, canvas.height);
@@ -111,6 +144,7 @@ export default function PaintApp({
   }, [activeCanvas?.content, activeCanvas?.id, activeCanvasOpenKey]);
 
   const updateHistoryState = () => {
+    markDirty();
     setHistoryState({ redo: redoStack.current.length, undo: undoStack.current.length });
   };
 
@@ -209,6 +243,7 @@ export default function PaintApp({
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, canvas.width, canvas.height);
     setSaved(false);
+    markDirty();
   };
 
   const save = () => {
@@ -216,9 +251,46 @@ export default function PaintApp({
     if (!canvas) return;
 
     savePaintImage(canvas.toDataURL("image/png"));
+    dirtyRef.current = false;
+    setDirty(false);
     setSaved(true);
     window.setTimeout(() => setSaved(false), 1300);
   };
+
+  /*
+   * The shell unmounts a window's app when its virtual desktop goes away, and a
+   * reload drops it too. Notepad already flushes its draft on the way out; this
+   * did not, so switching desktops or reloading came back to a blank canvas
+   * with the drawing gone and nothing said about it.
+   */
+  flushRef.current = () => {
+    if (!dirtyRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    savePaintImage(canvas.toDataURL("image/png"));
+    dirtyRef.current = false;
+  };
+
+  useEffect(() => () => flushRef.current?.(), []);
+
+  /*
+   * Windows asks before throwing a drawing away. Every close path goes through
+   * the shell's guard — the ✕, Alt+F4, the system menu, the taskbar, Task
+   * Manager — so returning false holds the window open until the user answers.
+   */
+  useEffect(() => {
+    if (!dirty) {
+      registerCloseGuard(windowId, null);
+      return;
+    }
+
+    registerCloseGuard(windowId, () => {
+      setFileMenuOpen(false);
+      setClosePromptOpen(true);
+      return false;
+    });
+    return () => registerCloseGuard(windowId, null);
+  }, [dirty, registerCloseGuard, windowId]);
 
   useEffect(() => {
     const saveFromShortcut = () => save();
@@ -236,6 +308,23 @@ export default function PaintApp({
       window.removeEventListener(PAINT_SAVE_AS_EVENT, saveAsFromShortcut);
     };
   }, []);
+
+  const closeAfterSave = () => {
+    save();
+    dirtyRef.current = false;
+    setClosePromptOpen(false);
+    registerCloseGuard(windowId, null);
+    closeWindow(windowId);
+  };
+
+  const closeWithoutSaving = () => {
+    // The unmount flush would otherwise write the drawing the user just chose
+    // to discard.
+    dirtyRef.current = false;
+    setClosePromptOpen(false);
+    registerCloseGuard(windowId, null);
+    closeWindow(windowId);
+  };
 
   const saveAs = (result: { existingItem?: DesktopItem; name: string; parentId: string }) => {
     const canvas = canvasRef.current;
@@ -275,6 +364,7 @@ export default function PaintApp({
     if (!context) return;
 
     pushUndoSnapshot();
+    markDirty();
     drawing.current = true;
     const point = getPoint(event);
     lastPoint.current = point;
@@ -580,6 +670,37 @@ export default function PaintApp({
           onSave={saveAs}
           title={fileDialogMode === "open" ? "열기" : "다른 이름으로 저장"}
         />
+      )}
+
+      {/* Windows asks before throwing a drawing away; this closed in silence. */}
+      {closePromptOpen && (
+        <div className="note-close-overlay">
+          <section
+            aria-label="저장 확인"
+            aria-modal="true"
+            onKeyDown={(event) => trapDialogFocus(event, event.currentTarget)}
+            role="alertdialog"
+          >
+            <strong>{activeCanvas?.name ?? "제목 없음"}의 변경 내용을 저장하시겠습니까?</strong>
+            <p>저장하지 않으면 지금까지 그린 내용이 사라집니다.</p>
+            <div>
+              <button
+                className="is-primary"
+                onClick={closeAfterSave}
+                ref={closePromptRef}
+                type="button"
+              >
+                저장
+              </button>
+              <button onClick={closeWithoutSaving} type="button">
+                저장 안 함
+              </button>
+              <button onClick={() => setClosePromptOpen(false)} type="button">
+                취소
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );
