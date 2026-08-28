@@ -74,3 +74,49 @@ export function getNextRovingIndex(
   }
   return (next + itemCount) % itemCount;
 }
+
+/**
+ * The neighbour of a freely positioned icon in one direction. The desktop lays
+ * its icons out by coordinate, not in a list, so stepping an index moved the
+ * selection to whatever happened to be next in the DOM — usually sideways when
+ * the user pressed Down. Picks the nearest icon that actually lies that way,
+ * preferring ones aligned with the current column or row.
+ */
+export function getNeighbourByPosition(
+  nodes: HTMLElement[],
+  currentIndex: number,
+  key: string,
+): HTMLElement | null {
+  if (nodes.length === 0) return null;
+
+  const inReadingOrder = [...nodes].sort((first, second) => {
+    const a = first.getBoundingClientRect();
+    const b = second.getBoundingClientRect();
+    return a.top - b.top || a.left - b.left;
+  });
+  if (key === "Home") return inReadingOrder[0] ?? null;
+  if (key === "End") return inReadingOrder[inReadingOrder.length - 1] ?? null;
+
+  const current = nodes[currentIndex]?.getBoundingClientRect();
+  if (!current) return inReadingOrder[0] ?? null;
+
+  const axis = key === "ArrowUp" || key === "ArrowDown" ? "y" : "x";
+  const forward = key === "ArrowDown" || key === "ArrowRight";
+
+  const candidates = nodes
+    .map((node) => ({ node, rect: node.getBoundingClientRect() }))
+    .filter(({ rect }) => {
+      const delta = axis === "y" ? rect.top - current.top : rect.left - current.left;
+      return forward ? delta > 1 : delta < -1;
+    });
+  if (candidates.length === 0) return null;
+
+  return candidates.reduce((closest, item) => {
+    // Distance along the travel axis dominates; drift across it only breaks ties.
+    const score = ({ rect }: { rect: DOMRect }) =>
+      axis === "y"
+        ? Math.abs(rect.top - current.top) + Math.abs(rect.left - current.left) * 2
+        : Math.abs(rect.left - current.left) + Math.abs(rect.top - current.top) * 2;
+    return score(item) < score(closest) ? item : closest;
+  }).node;
+}

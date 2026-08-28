@@ -2968,13 +2968,36 @@ button {
   padding: 0 9px;
 }
 
+/* A tab is a switch button plus its own ✕, the way Edge draws one. */
 .browser-tab {
+  align-items: center;
+  border-radius: 5px 5px 0 0;
+  display: inline-flex;
+  height: 31px;
   max-width: 220px;
-  min-width: 150px !important;
+  min-width: 150px;
+  padding-right: 4px;
 }
 
 .browser-tab.is-current {
   background: #303030;
+}
+
+.browser-tab > button:first-child {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  display: inline-flex;
+  flex: 1;
+  gap: 7px;
+  height: 100%;
+  min-width: 0;
+  padding: 0 4px 0 9px;
+}
+
+.browser-tab:not(.is-current):hover {
+  background: rgba(255, 255, 255, 0.07);
 }
 
 .browser-tab span {
@@ -2983,6 +3006,25 @@ button {
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.browser-tab-close {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--muted);
+  display: inline-flex;
+  flex: none;
+  height: 20px;
+  justify-content: center;
+  padding: 0;
+  width: 20px;
+}
+
+.browser-tab-close:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--text);
 }
 
 .browser-toolbar {

@@ -1,7 +1,7 @@
 import { Plus, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import AppIconTile from "../../components/AppIconTile";
-import { trapDialogFocus } from "../dialogFocus";
+import { trapDialogFocus, useReturnFocus } from "../dialogFocus";
 import { getApp } from "../appCatalog";
 import { formatWindowTitle } from "../windowTitle";
 import { APP_BAR_HEIGHT, MAX_VIRTUAL_DESKTOPS } from "../constants";
@@ -37,6 +37,10 @@ export function TaskView({
   windows: WindowInstance[];
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
+
+  // Closing this overlay hands focus back to whatever opened it; it used to
+  // fall to <body>, so the next Tab restarted at the top of the desktop.
+  useReturnFocus();
 
   // Focus has to enter the overlay, or Tab keeps walking the desktop behind it.
   useEffect(() => {

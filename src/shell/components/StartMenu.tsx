@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { handleMenuKeyboard } from "../keyboardNav";
+import { trapDialogFocus, useReturnFocus } from "../dialogFocus";
 
 export function StartMenu({
   apps,
@@ -47,6 +48,9 @@ export function StartMenu({
   setQuery: (value: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Escape used to leave focus on <body> instead of the Start button.
+  useReturnFocus();
   const [powerMenuOpen, setPowerMenuOpen] = useState(false);
   const [allAppsOpen, setAllAppsOpen] = useState(false);
   const hasQuery = query.trim().length > 0;
@@ -78,7 +82,13 @@ export function StartMenu({
   };
 
   return (
-    <aside className="start-menu" onPointerDown={onPointerDown}>
+    <aside
+      className="start-menu"
+      // Tab used to walk off the end of the menu and carry on into the desktop
+      // behind it, leaving the menu open with focus outside it.
+      onKeyDown={(event) => trapDialogFocus(event, event.currentTarget)}
+      onPointerDown={onPointerDown}
+    >
       <label className="start-search">
         <Search aria-hidden="true" size={17} />
         <input

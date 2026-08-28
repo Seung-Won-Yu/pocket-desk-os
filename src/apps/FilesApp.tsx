@@ -31,7 +31,15 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
 import type React from "react";
 import AppIconTile from "../components/AppIconTile";
 import { VFS_DRAG_MIME } from "../shell/constants";
@@ -60,6 +68,7 @@ import {
   getVfsFolderPath,
   getVfsNameParts,
   getVfsTopLevelIds,
+  hasForbiddenVfsNameChar,
   isVfsSystemFolderId,
 } from "../vfs/model";
 import { handleMenuKeyboard } from "../shell/keyboardNav";
@@ -251,6 +260,26 @@ export default function FilesApp({
     visibleFiles.find((file) => file.id === activeFileId && selectedIds.includes(file.id)) ??
     visibleFiles.find((file) => selectedIds.includes(file.id));
   const propertiesFile = files.find((file) => file.id === propertiesFileId);
+  /*
+   * The clamp above budgets a constant for the menu's height, and a constant
+   * can only guess: the file menu renders 282px tall against a 226px reserve,
+   * so its last rows — 속성 among them — sat under the taskbar and could not be
+   * clicked at all. Measure the menu that actually rendered and lift it.
+   */
+  useLayoutEffect(() => {
+    const menu = fileContextMenuRef.current;
+    if (!menu || !fileContextMenu) return;
+
+    const rect = menu.getBoundingClientRect();
+    const limit = window.innerHeight - APP_BAR_HEIGHT - 8;
+    const overflow = rect.bottom - limit;
+    if (overflow <= 0) return;
+
+    const shift = Math.min(overflow, Math.max(0, rect.top - 8));
+    if (shift <= 0) return;
+    setFileContextMenu((current) => (current ? { ...current, y: current.y - shift } : current));
+  }, [fileContextMenu]);
+
   const contextFile = files.find((file) => file.id === fileContextMenu?.fileId);
   const selectedHasSystemFolder = selectedIds.some(isVfsSystemFolderId);
   const [renaming, setRenaming] = useState(false);
@@ -566,11 +595,29 @@ export default function FilesApp({
     setPropertiesFileId(fileId);
   };
 
+  /*
+   * Windows refuses these characters outright. Accepting them produced files
+   * this shell could list but not open: renaming one to `a\\b.txt` left the
+   * Command Prompt reading the backslash as a path separator, so `type` could
+   * never find a file `dir` had just shown.
+   */
+  const commitRename = (fileId: string, name: string) => {
+    if (hasForbiddenVfsNameChar(name)) {
+      notify({
+        detail: '파일 이름에 \\ / : * ? " < > | 문자를 사용할 수 없습니다.',
+        title: "이름을 바꿀 수 없음",
+      });
+      return false;
+    }
+    renameVfsEntry(fileId, name);
+    return true;
+  };
+
   const submitRename = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selectedFile || isVfsSystemFolderId(selectedFile.id)) return;
     cancelRenameRef.current = false;
-    renameVfsEntry(selectedFile.id, draftName);
+    if (!commitRename(selectedFile.id, draftName)) return;
     setRenaming(false);
     focusFileList();
   };
@@ -734,12 +781,54 @@ export default function FilesApp({
       0,
       visibleFiles.findIndex((file) => file.id === activeFileId),
     );
+    const vertical = event.key === "ArrowUp" || event.key === "ArrowDown";
+    /*
+     * Icons wrap into a grid, so ↑/↓ have to cross a row. Stepping the index by
+     * one moved the selection sideways instead: from 게임 at x=262 the down
+     * arrow landed on 문서 at x=381, on the same row.
+     */
+    const rowIndex =
+      vertical && viewMode === "icons"
+        ? stepFileRow(currentIndex, event.key === "ArrowDown" ? 1 : -1)
+        : null;
     const offset = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
-    const nextFile = visibleFiles[clamp(currentIndex + offset, 0, visibleFiles.length - 1)];
+    const nextFile =
+      rowIndex === null
+        ? visibleFiles[clamp(currentIndex + offset, 0, visibleFiles.length - 1)]
+        : visibleFiles[rowIndex];
     if (!nextFile) return;
     setActiveFileId(nextFile.id);
     setSelectedIds([nextFile.id]);
     selectionAnchorRef.current = nextFile.id;
+  };
+
+  /** Index of the item one row away in a wrapping grid, or null if there is none. */
+  const stepFileRow = (currentIndex: number, direction: 1 | -1) => {
+    const list = fileListRef.current;
+    if (!list) return null;
+    const nodes = [...list.querySelectorAll<HTMLElement>('[role="option"]')];
+    const currentNode = nodes[currentIndex];
+    if (!currentNode) return null;
+
+    const current = currentNode.getBoundingClientRect();
+    const candidates = nodes
+      .map((node, index) => ({ index, rect: node.getBoundingClientRect() }))
+      .filter(({ rect }) =>
+        direction === 1 ? rect.top > current.top + 1 : rect.top < current.top - 1,
+      );
+    if (candidates.length === 0) return null;
+
+    // The nearest row in the direction of travel, then the nearest column in it.
+    const rowTop =
+      direction === 1
+        ? Math.min(...candidates.map((item) => item.rect.top))
+        : Math.max(...candidates.map((item) => item.rect.top));
+    const row = candidates.filter((item) => Math.abs(item.rect.top - rowTop) < 2);
+    return row.reduce((closest, item) =>
+      Math.abs(item.rect.left - current.left) < Math.abs(closest.rect.left - current.left)
+        ? item
+        : closest,
+    ).index;
   };
 
   const importLocalFolder = async () => {
@@ -1272,7 +1361,7 @@ export default function FilesApp({
                         <input
                           aria-label="파일 이름"
                           onBlur={() => {
-                            if (!cancelRenameRef.current) renameVfsEntry(file.id, draftName);
+                            if (!cancelRenameRef.current) commitRename(file.id, draftName);
                             cancelRenameRef.current = false;
                             setRenaming(false);
                           }}

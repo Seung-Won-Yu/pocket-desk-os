@@ -13,6 +13,7 @@ export function DesktopIcon({
   onSelect,
   position,
   selected,
+  tabStop,
 }: {
   app: AppDefinition;
   onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
@@ -22,6 +23,7 @@ export function DesktopIcon({
   onSelect: (event: React.MouseEvent<HTMLButtonElement>) => void;
   position: IconPosition;
   selected: boolean;
+  tabStop?: boolean;
 }) {
   const Icon = app.icon;
   return (
@@ -34,6 +36,7 @@ export function DesktopIcon({
       onSelect={onSelect}
       position={position}
       selected={selected}
+      tabStop={tabStop}
       title={app.title}
     />
   );
@@ -52,6 +55,7 @@ export function DesktopItemIcon({
   onSelect,
   renaming,
   selected,
+  tabStop,
   viewMode,
 }: {
   draftName: string;
@@ -66,6 +70,7 @@ export function DesktopItemIcon({
   onSelect: (event: React.MouseEvent<HTMLButtonElement>) => void;
   renaming: boolean;
   selected: boolean;
+  tabStop?: boolean;
   viewMode: DesktopViewMode;
 }) {
   const association = getVfsEntryAssociation(item);
@@ -81,6 +86,7 @@ export function DesktopItemIcon({
         onSelect={onSelect}
         position={item}
         selected={selected}
+        tabStop={tabStop}
         title={item.name}
         tone="file"
       />
@@ -124,6 +130,7 @@ export function DesktopIconButton({
   onSelect,
   position,
   selected,
+  tabStop = false,
   title,
   tone = "app",
 }: {
@@ -136,6 +143,7 @@ export function DesktopIconButton({
   onSelect: (event: React.MouseEvent<HTMLButtonElement>) => void;
   position: IconPosition;
   selected: boolean;
+  tabStop?: boolean;
   title: string;
   tone?: "app" | "file";
 }) {
@@ -225,6 +233,9 @@ export function DesktopIconButton({
       onPointerMove={moveDrag}
       onPointerUp={endDrag}
       style={{ left: position.x, top: position.y }}
+      // One tab stop for the whole desktop, arrows to move within it. Every icon
+      // used to be its own stop, so Tab walked through all of them.
+      tabIndex={tabStop ? 0 : -1}
       title={title}
       type="button"
     >

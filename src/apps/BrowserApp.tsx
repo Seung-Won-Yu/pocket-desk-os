@@ -64,6 +64,32 @@ type BrowserNavigationEntry = {
   viewMode: BrowserViewMode;
 };
 
+/**
+ * Everything a background tab has to remember. The active tab's copy lives in
+ * the live state below and is written back here when the user leaves it, so the
+ * navigation logic keeps working against plain state instead of an index into
+ * an array.
+ */
+type BrowserTab = {
+  draft: string;
+  id: string;
+  navigationIndex: number;
+  navigationStack: BrowserNavigationEntry[];
+  url: string | null;
+  viewMode: BrowserViewMode;
+};
+
+function createBrowserTab(): BrowserTab {
+  return {
+    draft: "",
+    id: crypto.randomUUID(),
+    navigationIndex: 0,
+    navigationStack: [{ url: null, viewMode: "web" }],
+    url: null,
+    viewMode: "web",
+  };
+}
+
 type BrowserToast = {
   detail?: string;
   title: string;
@@ -184,6 +210,8 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
   const [browserMenuOpen, setBrowserMenuOpen] = useState(false);
   const [frameIssue, setFrameIssue] = useState<BrowserFrameIssue | null>(null);
   const [frameSettledAt, setFrameSettledAt] = useState<number | null>(null);
+  const [tabs, setTabs] = useState<BrowserTab[]>(() => [createBrowserTab()]);
+  const [activeTabId, setActiveTabId] = useState(() => tabs[0].id);
 
   /*
    * A frame blocked by X-Frame-Options or a CSP `frame-ancestors` rule fires
@@ -280,6 +308,75 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
     setBrowserMenuOpen(false);
   };
 
+  /*
+   * The tab strip drew one hardcoded tab and the + button only reset the page,
+   * so the strip was decoration: there was no way to keep two pages open. A tab
+   * switch parks the live state in the outgoing tab and loads the incoming one.
+   */
+  const snapshotActiveTab = (): BrowserTab => ({
+    draft,
+    id: activeTabId,
+    navigationIndex,
+    navigationStack,
+    url,
+    viewMode,
+  });
+
+  const applyTab = (tab: BrowserTab) => {
+    setDraft(tab.draft);
+    setUrl(tab.url);
+    setViewMode(tab.viewMode);
+    setNavigationStack(tab.navigationStack);
+    setNavigationIndex(tab.navigationIndex);
+    setFrameIssue(null);
+    setFrameSettledAt(null);
+    setPageLoading(false);
+    setPageLoadKey((current) => current + 1);
+    setBrowserMenuOpen(false);
+  };
+
+  const openTab = () => {
+    const created = createBrowserTab();
+    setTabs((current) => [
+      ...current.map((tab) => (tab.id === activeTabId ? snapshotActiveTab() : tab)),
+      created,
+    ]);
+    setActiveTabId(created.id);
+    applyTab(created);
+  };
+
+  const selectTab = (tabId: string) => {
+    if (tabId === activeTabId) return;
+    const target = tabs.find((tab) => tab.id === tabId);
+    if (!target) return;
+    setTabs((current) =>
+      current.map((tab) => (tab.id === activeTabId ? snapshotActiveTab() : tab)),
+    );
+    setActiveTabId(tabId);
+    applyTab(target);
+  };
+
+  const closeTab = (tabId: string) => {
+    // The last tab stays: this window is the browser, and Edge closing the
+    // window on the last ✕ is the shell's job, not the page's.
+    if (tabs.length <= 1) {
+      openHome();
+      return;
+    }
+
+    const index = tabs.findIndex((tab) => tab.id === tabId);
+    if (index === -1) return;
+    const remaining = tabs
+      .map((tab) => (tab.id === activeTabId ? snapshotActiveTab() : tab))
+      .filter((tab) => tab.id !== tabId);
+    setTabs(remaining);
+    if (tabId !== activeTabId) return;
+
+    const next = remaining[Math.min(index, remaining.length - 1)];
+    setActiveTabId(next.id);
+    applyTab(next);
+  };
+
   const moveThroughHistory = (nextIndex: number) => {
     const nextEntry = navigationStack[nextIndex];
     if (!nextEntry) return;
@@ -354,12 +451,35 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
 
   return (
     <div className="browser-app app-fill">
-      <div className="browser-tab-strip">
-        <button className="browser-tab is-current" type="button">
-          <Globe2 aria-hidden="true" size={14} />
-          <span>{url ? getBrowserPageTitle(url) : "새 탭"}</span>
-        </button>
-        <button aria-label="새 탭" onClick={openHome} title="새 탭" type="button">
+      <div className="browser-tab-strip" role="tablist">
+        {tabs.map((tab) => {
+          const isCurrent = tab.id === activeTabId;
+          const tabUrl = isCurrent ? url : tab.url;
+          const title = tabUrl ? getBrowserPageTitle(tabUrl) : "새 탭";
+          return (
+            <span className={`browser-tab${isCurrent ? " is-current" : ""}`} key={tab.id}>
+              <button
+                aria-selected={isCurrent}
+                onClick={() => selectTab(tab.id)}
+                role="tab"
+                type="button"
+              >
+                <Globe2 aria-hidden="true" size={14} />
+                <span>{title}</span>
+              </button>
+              <button
+                aria-label={`${title} 탭 닫기`}
+                className="browser-tab-close"
+                onClick={() => closeTab(tab.id)}
+                title="탭 닫기"
+                type="button"
+              >
+                <X aria-hidden="true" size={12} />
+              </button>
+            </span>
+          );
+        })}
+        <button aria-label="새 탭" onClick={openTab} title="새 탭" type="button">
           <Plus aria-hidden="true" size={16} />
         </button>
       </div>

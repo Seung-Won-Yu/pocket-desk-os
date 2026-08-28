@@ -154,6 +154,13 @@ export type AppContentProps = {
    * Pass null to clear the guard.
    */
   registerCloseGuard: (windowId: string, guard: (() => boolean) | null) => void;
+  /**
+   * Lets an app grow its own window to fit content it cannot shrink, the way
+   * Windows resizes Minesweeper when the difficulty changes. Deltas only: the
+   * app knows how much room it is missing, the shell knows the frame chrome and
+   * the work area.
+   */
+  growWindow: (windowId: string, delta: { width: number; height: number }) => void;
   createVfsFolder: (parentId?: string, name?: string) => DesktopItem;
   onImportLocalEntries: (entries: DesktopItem[]) => void;
   createVfsTextFile: (parentId?: string) => DesktopItem;

@@ -110,6 +110,7 @@ import {
   persistDefaultApps,
   type DefaultAppMap,
 } from "./shell/preferences";
+import { getNeighbourByPosition } from "./shell/keyboardNav";
 import { clamp } from "./utils/format";
 import {
   type AppId,
@@ -145,6 +146,15 @@ import {
 import { persistVfsEntries } from "./vfs/storage";
 import { getWallpaperStyle, wallpaperGallery, type WallpaperCssVars } from "./wallpapers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+const DESKTOP_ICON_NAV_KEYS = [
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "End",
+  "Home",
+];
 
 export default function App() {
   const [theme, setTheme] = useState<ThemeName>(() => {
@@ -1583,6 +1593,28 @@ export default function App() {
     });
   };
 
+  /*
+   * Alt+Space is how Windows opens the system menu without a mouse. There was
+   * no binding at all, and the ContextMenu key opened the desktop's menu, so
+   * the menu — and 이동 / 크기 조정 with it — was unreachable from the keyboard.
+   */
+  const openWindowSystemMenuForKeyboard = (windowId: string) => {
+    const target = windows.find((item) => item.id === windowId);
+    if (!target) return;
+    focusWindow(windowId);
+    setStartOpen(false);
+    setRunOpen(false);
+    setDesktopMenu(null);
+    setWindowMenu({
+      windowId,
+      // Windows drops it at the top-left corner of the window, under the icon.
+      ...clampWindowSystemMenuPosition(
+        target.maximized ? 8 : target.x + 8,
+        target.maximized ? 8 : target.y + 32,
+      ),
+    });
+  };
+
   const restoreWindow = (id: string) => {
     playSound("toggle");
     cancelWindowMotion(id);
@@ -1646,6 +1678,30 @@ export default function App() {
       return next;
     });
   }, []);
+
+  const growWindow = (id: string, delta: { width: number; height: number }) => {
+    if (delta.width <= 0 && delta.height <= 0) return;
+    setWindows((current) =>
+      current.map((item) => {
+        if (item.id !== id || item.maximized) return item;
+        const maxWidth = Math.max(320, window.innerWidth - 16);
+        const maxHeight = Math.max(240, window.innerHeight - APP_BAR_HEIGHT - 16);
+        const width = Math.min(maxWidth, item.width + Math.max(0, delta.width));
+        const height = Math.min(maxHeight, item.height + Math.max(0, delta.height));
+        if (width === item.width && height === item.height) return item;
+        return {
+          ...item,
+          height,
+          snapZone: undefined,
+          width,
+          // Growing off the right or bottom edge would push the window out of
+          // reach, so it slides back inside the work area instead.
+          x: clamp(item.x, 8, Math.max(8, window.innerWidth - width - 8)),
+          y: clamp(item.y, 8, Math.max(8, window.innerHeight - APP_BAR_HEIGHT - height - 8)),
+        };
+      }),
+    );
+  };
 
   const closeWindow = (id: string) => {
     const guard = closeGuardsRef.current.get(id);
@@ -2143,6 +2199,12 @@ export default function App() {
         return;
       }
 
+      if (event.altKey && event.key === " " && activeWindowId) {
+        event.preventDefault();
+        openWindowSystemMenuForKeyboard(activeWindowId);
+        return;
+      }
+
       if (
         !editingText &&
         !activeWindowId &&
@@ -2351,6 +2413,19 @@ export default function App() {
     windows,
   ]);
 
+  /*
+   * One tab stop for the whole icon field, the way Windows treats it: the
+   * selected icon when there is one, otherwise the first. Every icon carried
+   * tabindex 0 before, so Tab had to walk all of them to leave the desktop.
+   */
+  const desktopTabStopId =
+    selectedDesktopIds[0] ??
+    (desktopApps[0]
+      ? `app:${desktopApps[0].id}`
+      : activeDesktopItems.find((item) => item.showOnDesktop)
+        ? `item:${activeDesktopItems.find((item) => item.showOnDesktop)!.id}`
+        : null);
+
   const openStartSearchResult = (result: StartSearchResult) => {
     if (result.kind === "app") {
       openApp(result.appId);
@@ -2382,7 +2457,23 @@ export default function App() {
         } as WallpaperCssVars
       }
     >
-      <section className="desktop-icons" aria-label="바탕화면 바로가기">
+      <section
+        aria-label="바탕화면 바로가기"
+        className="desktop-icons"
+        onKeyDown={(event) => {
+          if (!DESKTOP_ICON_NAV_KEYS.includes(event.key)) return;
+          const icons = [...event.currentTarget.querySelectorAll<HTMLElement>(".desktop-icon")];
+          const currentIndex = icons.findIndex(
+            (node) => node === document.activeElement || node.contains(document.activeElement),
+          );
+          const target = getNeighbourByPosition(icons, currentIndex, event.key);
+          if (!target) return;
+          // Arrow keys and Home/End did nothing here: every icon was its own tab
+          // stop and there was no arrow handling at all.
+          event.preventDefault();
+          target.focus();
+        }}
+      >
         {desktopApps.map((app) => (
           <DesktopIcon
             key={app.id}
@@ -2395,6 +2486,7 @@ export default function App() {
             onSelect={(event) => selectDesktopTarget(`app:${app.id}`, event)}
             position={iconLayout[app.id] ?? createDefaultIconLayout()[app.id]!}
             selected={selectedDesktopIds.includes(`app:${app.id}`)}
+            tabStop={desktopTabStopId === `app:${app.id}`}
           />
         ))}
         {activeDesktopItems
@@ -2419,6 +2511,7 @@ export default function App() {
               onSelect={(event) => selectDesktopTarget(`item:${item.id}`, event)}
               renaming={desktopRenamingItemId === item.id}
               selected={selectedDesktopIds.includes(`item:${item.id}`)}
+              tabStop={desktopTabStopId === `item:${item.id}`}
               viewMode={desktopViewMode}
             />
           ))}
@@ -2466,6 +2559,7 @@ export default function App() {
                 closeWindow={closeWindow}
                 focusWindow={focusWindow}
                 openWindows={openWindows}
+                growWindow={growWindow}
                 registerCloseGuard={registerCloseGuard}
                 createVfsFolder={createVfsFolder}
                 onImportLocalEntries={(imported) =>

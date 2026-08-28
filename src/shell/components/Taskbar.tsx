@@ -29,7 +29,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { handleMenuKeyboard } from "../keyboardNav";
+import { getNextRovingIndex, handleMenuKeyboard } from "../keyboardNav";
 
 export function Taskbar({
   activeDesktopIndex,
@@ -89,6 +89,7 @@ export function Taskbar({
   windows: WindowInstance[];
 }) {
   const taskbarRef = useRef<HTMLElement | null>(null);
+  const [rovingAppId, setRovingAppId] = useState<AppId | null>(null);
   const trayRef = useRef<HTMLDivElement | null>(null);
   const [preview, setPreview] = useState<{
     app: AppDefinition;
@@ -282,7 +283,32 @@ export function Taskbar({
           <LayoutGrid aria-hidden="true" size={17} />
           {desktopCount > 1 && <span>{activeDesktopIndex + 1}</span>}
         </button>
-        <div className="taskbar-windows" aria-label="열린 앱">
+        {/*
+         * One tab stop for the whole band, arrows to move within it — the
+         * Windows model, and what the desktop icons and the Start menu do.
+         * Every button was its own tab stop, so Tab had to walk through all of
+         * them to leave the taskbar and the arrow keys did nothing.
+         */}
+        <div
+          aria-label="열린 앱"
+          className="taskbar-windows"
+          onKeyDown={(event) => {
+            const nextIndex = getNextRovingIndex(
+              event.key,
+              taskbarApps.findIndex(({ app }) => app.id === rovingAppId),
+              taskbarApps.length,
+            );
+            if (nextIndex === null) return;
+            event.preventDefault();
+            const nextApp = taskbarApps[nextIndex];
+            if (!nextApp) return;
+            setRovingAppId(nextApp.app.id);
+            const buttons =
+              event.currentTarget.querySelectorAll<HTMLButtonElement>(".taskbar-app");
+            buttons[nextIndex]?.focus();
+          }}
+          role="toolbar"
+        >
           {taskbarApps.map(({ app, windows: appWindows }) => {
             const isPinned = pinnedAppIds.includes(app.id);
             const orderedAppWindows = [...appWindows].sort(
@@ -334,6 +360,8 @@ export function Taskbar({
                     hidePreviewNow();
                     onOpenNewWindow(app.id);
                   }}
+                  onFocus={() => setRovingAppId(app.id)}
+                  tabIndex={(rovingAppId ?? taskbarApps[0]?.app.id) === app.id ? 0 : -1}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     // Keep the taskbar's own shell menu from replacing this one.

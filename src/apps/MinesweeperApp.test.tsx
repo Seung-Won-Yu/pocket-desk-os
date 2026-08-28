@@ -6,8 +6,11 @@ import MinesweeperApp from "./MinesweeperApp";
 
 function renderMinesweeper() {
   const playSound = vi.fn();
-  render(<MinesweeperApp playSound={playSound} />);
-  return { playSound, user: userEvent.setup() };
+  const growWindow = vi.fn();
+  render(
+    <MinesweeperApp growWindow={growWindow} playSound={playSound} windowId="mines-test" />,
+  );
+  return { growWindow, playSound, user: userEvent.setup() };
 }
 
 function getCells() {

@@ -1447,6 +1447,54 @@ async function runSmoke(baseUrl) {
       "Snapped halves did not reach the viewport edges",
     );
 
+    // One tab stop per band, arrows to move inside it. Every icon and every
+    // taskbar button used to be its own stop, and the arrow keys did nothing.
+    const rovingCounts = await page.evaluate(() => ({
+      icons: document.querySelectorAll(".desktop-icon").length,
+      iconStops: [...document.querySelectorAll(".desktop-icon")].filter(
+        (node) => node.tabIndex === 0,
+      ).length,
+      taskbar: document.querySelectorAll(".taskbar-app").length,
+      taskbarStops: [...document.querySelectorAll(".taskbar-app")].filter(
+        (node) => node.tabIndex === 0,
+      ).length,
+    }));
+    assert(
+      rovingCounts.iconStops === 1 && rovingCounts.icons > 1,
+      `Desktop icons had ${rovingCounts.iconStops} tab stops across ${rovingCounts.icons} icons`,
+    );
+    assert(
+      rovingCounts.taskbarStops === 1 && rovingCounts.taskbar > 1,
+      `Taskbar had ${rovingCounts.taskbarStops} tab stops across ${rovingCounts.taskbar} buttons`,
+    );
+    await page.locator(".taskbar-app").first().focus();
+    const taskbarBefore = await page.evaluate(() => document.activeElement?.textContent);
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(120);
+    assert(
+      (await page.evaluate(() => document.activeElement?.textContent)) !== taskbarBefore,
+      "ArrowRight did not move along the taskbar",
+    );
+
+    // Alt+Space opens the system menu on the first item that can take focus.
+    // 복원 is disabled on an unmaximized window, so the menu used to open with
+    // focus still on <body> and the arrow keys doing nothing.
+    await page.locator(".window-frame.is-active").click({ position: { x: 60, y: 8 } });
+    await page.keyboard.press("Alt+ ");
+    await page.locator(".window-system-menu").waitFor({ state: "visible" });
+    // The menu focuses its first item a frame after it mounts.
+    await page.waitForTimeout(150);
+    const systemMenuFocus = await page.evaluate(() => ({
+      disabled: document.activeElement?.disabled ?? true,
+      inMenu: Boolean(document.activeElement?.closest(".window-system-menu")),
+    }));
+    assert(
+      systemMenuFocus.inMenu && !systemMenuFocus.disabled,
+      "Alt+Space left focus outside the system menu",
+    );
+    await page.keyboard.press("Escape");
+    await page.locator(".window-system-menu").waitFor({ state: "hidden" });
+
     // Alt+Tab walks every window in one hold and switches on release. Focusing
     // on each press instead raised the selection to the top of the z-order, so
     // re-sorting by z put it back at index 0 and Tab bounced between two

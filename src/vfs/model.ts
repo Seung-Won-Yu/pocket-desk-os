@@ -124,6 +124,13 @@ export function getUniqueCanvasItemName(items: DesktopItem[], parentId = VFS_PIC
   return `그림 ${Date.now()}.png`;
 }
 
+/** The characters Windows refuses in a file name, for the same reason it does. */
+export const VFS_FORBIDDEN_NAME_CHARS = /[\\/:*?"<>|]/;
+
+export function hasForbiddenVfsNameChar(name: string) {
+  return VFS_FORBIDDEN_NAME_CHARS.test(name);
+}
+
 export function normalizeVfsEntryName(name: string) {
   return truncateVfsName(name.trim().replace(/\s+/g, " "));
 }

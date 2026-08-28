@@ -1,6 +1,7 @@
 import { Bomb, Check, Flag, History, RotateCcw, X } from "lucide-react";
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -29,7 +30,9 @@ type MineCell = {
 };
 
 type MinesweeperAppProps = {
+  growWindow: (windowId: string, delta: { width: number; height: number }) => void;
   playSound: (effect: "error" | "success") => void;
+  windowId: string;
 };
 
 const MINES_BEST_RECORDS_KEY = "pocket-desk-mines-best-records-v1";
@@ -40,9 +43,29 @@ const minesDifficulties: MinesDifficulty[] = [
   { cols: 30, id: "hard", label: "고급", mines: 99, rows: 16 },
 ];
 
-export default function MinesweeperApp({ playSound }: MinesweeperAppProps) {
+export default function MinesweeperApp({
+  growWindow,
+  playSound,
+  windowId,
+}: MinesweeperAppProps) {
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const [difficultyId, setDifficultyId] = useState<MinesDifficultyId>("easy");
   const difficulty = getMinesDifficulty(difficultyId);
+
+  /*
+   * Windows resizes its Minesweeper window to the board. The 고급 grid needs
+   * 461px of the 438px this window opens with, so 32 of its 480 cells started
+   * outside the frame — a third of the last two columns, in a game that is
+   * pure global inference.
+   */
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    growWindow(windowId, {
+      height: stage.scrollHeight - stage.clientHeight,
+      width: stage.scrollWidth - stage.clientWidth,
+    });
+  }, [difficultyId, growWindow, windowId]);
   const [board, setBoard] = useState(() => createMineBoard(difficulty));
   const [status, setStatus] = useState<"playing" | "won" | "lost">("playing");
   const [boardReady, setBoardReady] = useState(false);
@@ -324,7 +347,7 @@ export default function MinesweeperApp({ playSound }: MinesweeperAppProps) {
           최고 {bestRecord === null ? "--" : formatDuration(bestRecord)}
         </span>
       </div>
-      <div className={`mines-stage is-${status}`}>
+      <div className={`mines-stage is-${status}`} ref={stageRef}>
         <div
           aria-colcount={difficulty.cols}
           aria-label={`지뢰찾기 ${difficulty.label} 보드`}

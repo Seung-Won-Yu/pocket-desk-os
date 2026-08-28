@@ -28,10 +28,20 @@ export function WindowSystemMenu({
 }) {
   useReturnFocus();
 
-  const firstItemRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const frameId = window.requestAnimationFrame(() => firstItemRef.current?.focus());
+    /*
+     * 복원 is disabled unless the window is maximized, and a disabled button
+     * cannot take focus — so on an ordinary window the menu opened with focus
+     * still on <body> and the arrow keys did nothing at all. Focus the first
+     * item that can actually take it.
+     */
+    const frameId = window.requestAnimationFrame(() => {
+      menuRef.current
+        ?.querySelector<HTMLButtonElement>('button[role="menuitem"]:not([disabled])')
+        ?.focus();
+    });
     return () => window.cancelAnimationFrame(frameId);
   }, []);
 
@@ -39,6 +49,7 @@ export function WindowSystemMenu({
     <div
       className="window-system-menu"
       onContextMenu={(event) => event.preventDefault()}
+      ref={menuRef}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.preventDefault();
@@ -55,13 +66,7 @@ export function WindowSystemMenu({
         <AppIconTile accent={app.accent} icon={app.icon} size="tiny" />
         <strong>{app.title}</strong>
       </div>
-      <button
-        disabled={!instance.maximized}
-        onClick={onRestore}
-        ref={firstItemRef}
-        role="menuitem"
-        type="button"
-      >
+      <button disabled={!instance.maximized} onClick={onRestore} role="menuitem" type="button">
         <Square aria-hidden="true" size={15} />
         복원
       </button>

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import AppIconTile from "../../components/AppIconTile";
-import { trapDialogFocus } from "../dialogFocus";
+import { trapDialogFocus, useReturnFocus } from "../dialogFocus";
 import { getApp } from "../appCatalog";
 import { getSnapPreviewStyle } from "../windowGeometry";
 import { type SnapZone, type WindowInstance } from "../types";
@@ -21,6 +21,10 @@ export function SnapAssist({
   zone: SnapZone;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
+
+  // Closing this overlay hands focus back to whatever opened it; it used to
+  // fall to <body>, so the next Tab restarted at the top of the desktop.
+  useReturnFocus();
   const hasCandidates = candidates.length > 0;
 
   // Without focus inside, the Escape handler below never receives the key.

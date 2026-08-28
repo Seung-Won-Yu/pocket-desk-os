@@ -11,7 +11,7 @@ import {
 } from "../types";
 import { getSnapPreviewStyle, getWindowSnapPatch, getWindowSnapZone } from "../windowGeometry";
 import { Copy, Minus, Square, X } from "lucide-react";
-import { useState, type CSSProperties, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { handleMenuKeyboard } from "../keyboardNav";
 
 const FALLBACK_MIN_WIDTH = 320;
@@ -81,6 +81,21 @@ export function WindowFrame({
         height: instance.height,
         zIndex: instance.z,
       };
+
+  const frameRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!active || instance.minimized) return;
+    const frame = frameRef.current;
+    if (!frame || frame.contains(document.activeElement)) return;
+
+    // A frame later, so a control the window itself focuses on mount wins.
+    const frameId = window.requestAnimationFrame(() => {
+      if (frameRef.current?.contains(document.activeElement)) return;
+      frameRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [active, instance.id, instance.minimized]);
 
   const startMove = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -225,7 +240,15 @@ export function WindowFrame({
         instance.maximized ? "is-maximized" : ""
       } ${instance.minimized ? "is-minimized" : ""} ${motion ? `is-${motion}` : ""}`}
       onPointerDown={onFocus}
+      ref={frameRef}
       style={frameStyle}
+      /*
+       * Activating a window has to move the keyboard into it. Opening one from
+       * the Start menu, a desktop icon, the taskbar or Alt+Tab all left focus
+       * where it was — or on <body> — so the very next Tab restarted at the top
+       * of the desktop instead of entering the window that had just come up.
+       */
+      tabIndex={-1}
     >
       <div
         className="window-titlebar"
