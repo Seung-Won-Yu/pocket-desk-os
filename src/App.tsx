@@ -2707,8 +2707,10 @@ export default function App() {
         <TaskView
           activeDesktopIndex={activeDesktopIndex}
           desktopCount={desktopCount}
+          getDocumentLabel={getWindowDocumentLabel}
           onAddDesktop={addDesktop}
           onCloseDesktop={closeDesktop}
+          onCloseWindow={closeWindow}
           onDismiss={() => setTaskViewOpen(false)}
           onMoveWindowToDesktop={moveWindowToDesktop}
           onSelectDesktop={(index) => {

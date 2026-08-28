@@ -1461,6 +1461,17 @@ async function runSmoke(baseUrl) {
       Math.round(taskViewBox.y + taskViewBox.height) <= Math.round(taskbarBox.y) + 1,
       `Task View bottom ${Math.round(taskViewBox.y + taskViewBox.height)} covered the taskbar at ${Math.round(taskbarBox.y)}`,
     );
+    // A card names its window, not the app, and its preview is proportional to
+    // where the window sits. Pixel dimensions used to stand in for both, so two
+    // windows of the same app were indistinguishable.
+    const firstCard = page.locator(".task-view-card").first();
+    const cardTitle = await firstCard.locator("strong").innerText();
+    assert(cardTitle.length > 0, "Task View card had no window title");
+    assert(
+      (await firstCard.locator(".task-view-card-shape").count()) === 1,
+      "Task View card had no window preview",
+    );
+
     await page.keyboard.press("Escape");
     await page.locator(".task-view").waitFor({ state: "hidden" });
 
@@ -1828,6 +1839,38 @@ async function runSmoke(baseUrl) {
       () => document.documentElement.scrollWidth > window.innerWidth + 2,
     );
     assert(!hasHorizontalOverflow, "Mobile viewport has horizontal overflow");
+    // Task View closes a window on Windows and stays open. Runs last, on a
+    // window it opens itself, so it cannot pull a window out from under a
+    // later step.
+    await page.setViewportSize({ height: 820, width: 1280 });
+    await page.waitForTimeout(300);
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("calc");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    await page.locator('article[aria-label="계산기"]').first().waitFor({ state: "visible" });
+    await page.getByRole("button", { name: /작업 보기/ }).click();
+    await page.locator(".task-view").waitFor({ state: "visible" });
+    const cardsBefore = await page.locator(".task-view-card").count();
+    // The window frame's own close button carries the same name, so scope the
+    // click to the overlay.
+    await page
+      .locator(".task-view")
+      .getByRole("button", { name: "계산기 닫기" })
+      .first()
+      .click();
+    await page.waitForTimeout(450);
+    assert(
+      (await page.locator(".task-view-card").count()) === cardsBefore - 1,
+      "Closing a Task View card did not remove the window",
+    );
+    assert(
+      await page.locator(".task-view").isVisible(),
+      "Closing a Task View card dismissed Task View",
+    );
+    await page.keyboard.press("Escape");
+    await page.locator(".task-view").waitFor({ state: "hidden" });
+
     assert(consoleErrors.length === 0, `Console errors found: ${consoleErrors.join(" | ")}`);
 
     console.log("PocketDesk smoke test passed");
