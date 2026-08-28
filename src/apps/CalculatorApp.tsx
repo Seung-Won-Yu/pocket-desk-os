@@ -98,7 +98,11 @@ export default function CalculatorApp() {
     }
 
     if (action === "delete") {
-      setDisplay((current) => (current.length > 1 ? current.slice(0, -1) : "0"));
+      // Windows clears the error rather than editing its text: backspacing
+      // "Error" used to leave "Erro", then "Err", as if it were an entry.
+      setDisplay((current) =>
+        current === "Error" || current.length <= 1 ? "0" : current.slice(0, -1),
+      );
       return;
     }
 
@@ -120,7 +124,7 @@ export default function CalculatorApp() {
     }
 
     if (action === "percent") {
-      applyUnary((value) => value / 100);
+      setDisplay((current) => applyCalculatorPercent(current));
       return;
     }
 
@@ -175,6 +179,9 @@ export default function CalculatorApp() {
     }
 
     if (key === "Enter" || key === "=") {
+      // Enter on a focused button presses that button. Claiming it here left
+      // keyboard users unable to activate any key on the pad.
+      if (key === "Enter" && (event.target as HTMLElement).closest("button")) return;
       handled();
       runAction("equals");
       return;
@@ -220,6 +227,11 @@ export default function CalculatorApp() {
   return (
     <div
       className={`calculator-app calc-mode-${mode}`}
+      onContextMenu={(event) => {
+        // Chrome's own menu was opening over the fake desktop; every other app
+        // here keeps the right click for the shell.
+        event.preventDefault();
+      }}
       onKeyDown={handleKeyDown}
       onPointerDown={() => calculatorRef.current?.focus()}
       ref={calculatorRef}
@@ -381,8 +393,16 @@ function tokenizeExpression(expression: string): string[] {
 
   for (const char of expression.replace(/\s/g, "")) {
     const previousToken = tokens[tokens.length - 1];
+    /*
+     * A minus is a sign only with no number in progress. Checking `tokens`
+     * alone missed the digits still sitting in `current`, so "200-10" became
+     * the single token "200-10", and Number() of that is NaN: every
+     * subtraction in the calculator answered Error.
+     */
     const unaryMinus =
-      char === "-" && (tokens.length === 0 || ["+", "-", "*", "/"].includes(previousToken));
+      char === "-" &&
+      current === "" &&
+      (tokens.length === 0 || ["+", "-", "*", "/"].includes(previousToken));
     if (/\d|\./.test(char) || unaryMinus) {
       current += char;
       continue;
@@ -430,6 +450,32 @@ function appendCalculatorValue(current: string, value: string) {
   return current;
 }
 
+/**
+ * Windows reads % against the pending operand, not the whole expression:
+ * `50 + 10 %` is 10% *of 50*, so the entry becomes 5 and = gives 55. Dividing
+ * the evaluated expression by 100 instead turned that into 0.6, and made
+ * `200 - 10 %` an outright Error — the single most common thing anyone asks a
+ * calculator for. With × and ÷ the percentage is the plain fraction, and a
+ * percentage of nothing is 0.
+ */
+function applyCalculatorPercent(expression: string) {
+  if (expression === "Error") return "Error";
+
+  const fragment = getCurrentCalculatorFragment(expression);
+  const entry = Number(fragment);
+  if (!fragment || !Number.isFinite(entry)) return expression;
+
+  const head = expression.slice(0, expression.length - fragment.length);
+  const operator = head[head.length - 1];
+  if (!operator) return "0";
+
+  const left = evaluateExpression(head.slice(0, -1));
+  if (!Number.isFinite(left)) return expression;
+
+  const share = operator === "+" || operator === "-" ? (left * entry) / 100 : entry / 100;
+  return `${head}${formatCalculatorResult(share)}`;
+}
+
 function applyCalculatorUnary(expression: string, operation: (value: number) => number) {
   const input = evaluateExpression(expression);
   if (!Number.isFinite(input)) return "Error";
@@ -437,7 +483,9 @@ function applyCalculatorUnary(expression: string, operation: (value: number) => 
 }
 
 function toggleCalculatorSign(expression: string) {
-  if (expression === "Error" || expression === "0") return "-";
+  // Negating nothing is still nothing on Windows. Returning "-" left the
+  // display in a state where the next = answered Error.
+  if (expression === "Error" || expression === "0") return "0";
   const fragment = getCurrentCalculatorFragment(expression);
   if (!fragment || fragment === "-") return expression;
 

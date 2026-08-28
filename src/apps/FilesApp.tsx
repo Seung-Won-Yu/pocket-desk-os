@@ -50,16 +50,17 @@ import {
   normalizeSearchText,
 } from "../utils/format";
 import {
-  formatDesktopItemTime,
-  getVfsEntryAssociation,
-  getVfsEntryDetail,
-  getVfsFolderPath,
-  getVfsTopLevelIds,
-  isVfsSystemFolderId,
   VFS_DOCUMENTS_ID,
   VFS_GAMES_ID,
   VFS_PICTURES_ID,
   VFS_ROOT_ID,
+  formatDesktopItemTime,
+  getVfsEntryAssociation,
+  getVfsEntryDetail,
+  getVfsFolderPath,
+  getVfsNameParts,
+  getVfsTopLevelIds,
+  isVfsSystemFolderId,
 } from "../vfs/model";
 import { handleMenuKeyboard } from "../shell/keyboardNav";
 
@@ -367,7 +368,17 @@ export default function FilesApp({
   useEffect(() => {
     if (!renaming) return;
     cancelRenameRef.current = false;
-    renameInputRef.current?.select();
+    const input = renameInputRef.current;
+    if (!input) return;
+    /*
+     * Windows preselects the base name, leaving the extension in place. This
+     * selected the whole string, so typing a new name over `g1.txt` produced a
+     * file called `보고서` with no extension at all — and the extension is what
+     * decides this shell's icon, file type and which app opens it.
+     */
+    const { base } = getVfsNameParts(input.value);
+    input.setSelectionRange(0, base.length);
+    input.focus();
   }, [renaming]);
 
   const focusFileList = () => {

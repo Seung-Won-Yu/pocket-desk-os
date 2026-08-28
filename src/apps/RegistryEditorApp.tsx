@@ -379,7 +379,14 @@ export default function RegistryEditorApp({ notify, playSound }: RegistryEditorA
   };
 
   return (
-    <div className="registry-app">
+    <div
+      className="registry-app"
+      onContextMenu={(event) => {
+        // Chrome's own menu was opening over the fake desktop; every other app
+        // here keeps the right click for the shell.
+        event.preventDefault();
+      }}
+    >
       <p className="registry-warning">
         <TriangleAlert aria-hidden="true" size={15} />
         여기서 바꾼 값은 바탕 화면을 다시 시작하거나 페이지를 새로 고친 뒤에 적용됩니다.
@@ -510,7 +517,15 @@ export default function RegistryEditorApp({ notify, playSound }: RegistryEditorA
                     rowRefs.current[index] = node;
                   }}
                   role="row"
-                  tabIndex={index === activeIndex ? 0 : -1}
+                  /*
+                   * Clamped the way the minefield clamps its own grid: without
+                   * it, moving from a key with four values to one with a single
+                   * value left activeIndex at 3, so no row carried tabindex 0
+                   * and Tab walked straight out of the window past the list.
+                   */
+                  tabIndex={
+                    index === Math.min(activeIndex, activeKey.values.length - 1) ? 0 : -1
+                  }
                 >
                   <span className="registry-name" role="cell">
                     <em aria-hidden="true" className="registry-badge">

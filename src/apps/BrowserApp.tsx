@@ -33,7 +33,7 @@ import { handleMenuKeyboard } from "../shell/keyboardNav";
 
 type BrowserSearchEngineId = "duckduckgo" | "google" | "bing";
 type BrowserViewMode = "reader" | "web";
-type BrowserFrameIssue = "error" | "manual";
+type BrowserFrameIssue = "error" | "manual" | "settled";
 
 type BrowserBookmark = {
   createdAt: number;
@@ -183,6 +183,30 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
   const [navigationIndex, setNavigationIndex] = useState(0);
   const [browserMenuOpen, setBrowserMenuOpen] = useState(false);
   const [frameIssue, setFrameIssue] = useState<BrowserFrameIssue | null>(null);
+  const [frameSettledAt, setFrameSettledAt] = useState<number | null>(null);
+
+  /*
+   * A frame blocked by X-Frame-Options or a CSP `frame-ancestors` rule fires
+   * `load`, never `error`, so `onError` above catches almost nothing: most real
+   * sites left an empty white rectangle and no way out, because the recovery
+   * panel was only reachable by hunting through the ⋯ menu. The frame is
+   * sandboxed into an opaque origin on purpose, so this app genuinely cannot
+   * read whether the page rendered — rather than guess, it offers the two ways
+   * out a short while after the frame settles, and the offer dismisses like any
+   * other.
+   */
+  useEffect(() => {
+    if (viewMode !== "web" || frameSettledAt === null || !url) return;
+    if (frameIssue || isSameOriginTarget(url)) return;
+
+    const timer = window.setTimeout(() => setFrameIssue("settled"), 2500);
+    return () => window.clearTimeout(timer);
+  }, [frameIssue, frameSettledAt, url, viewMode]);
+
+  // A fresh navigation gets a fresh offer; dismissing one clears it until then.
+  useEffect(() => {
+    setFrameSettledAt(null);
+  }, [pageLoadKey, url]);
   const browserMenuButtonRef = useRef<HTMLButtonElement>(null);
   const isBookmarked = Boolean(url && bookmarks.some((bookmark) => bookmark.url === url));
   const closeBrowserMenu = useCallback(() => setBrowserMenuOpen(false), []);
@@ -491,7 +515,10 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
                 setPageLoading(false);
                 setFrameIssue("error");
               }}
-              onLoad={() => setPageLoading(false)}
+              onLoad={() => {
+                setPageLoading(false);
+                setFrameSettledAt(Date.now());
+              }}
               referrerPolicy="strict-origin-when-cross-origin"
               /*
                * `allow-same-origin` is deliberately absent. With it, a framed
@@ -518,8 +545,20 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
             <div className="browser-frame-fallback" role="alert">
               <ShieldAlert aria-hidden="true" size={24} />
               <span>
-                <strong>이 사이트를 창 안에 표시할 수 없습니다</strong>
-                <small>사이트 보안 정책이 iframe 표시를 차단했을 수 있습니다.</small>
+                {frameIssue === "settled" ? (
+                  <>
+                    <strong>페이지가 비어 있나요?</strong>
+                    <small>
+                      많은 사이트가 다른 창 안에 표시되는 것을 막습니다. 읽기 보기로 열면 본문을
+                      볼 수 있습니다.
+                    </small>
+                  </>
+                ) : (
+                  <>
+                    <strong>이 사이트를 창 안에 표시할 수 없습니다</strong>
+                    <small>사이트 보안 정책이 iframe 표시를 차단했을 수 있습니다.</small>
+                  </>
+                )}
               </span>
               <button
                 className="is-primary"
@@ -535,7 +574,10 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
               <button
                 aria-label="표시 문제 안내 닫기"
                 className="browser-frame-fallback-close"
-                onClick={() => setFrameIssue(null)}
+                onClick={() => {
+                  setFrameIssue(null);
+                  setFrameSettledAt(null);
+                }}
                 title="닫기"
                 type="button"
               >

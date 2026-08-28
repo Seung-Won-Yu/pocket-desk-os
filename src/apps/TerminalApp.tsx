@@ -265,7 +265,25 @@ export default function TerminalApp({
   };
 
   return (
-    <div className="terminal-app" onClick={() => inputRef.current?.focus()}>
+    <div
+      className="terminal-app"
+      onClick={() => {
+        /*
+         * Clicking the window puts the caret back in the prompt — but a click
+         * also ends a drag, and focusing collapses the selection. Dragging
+         * across the output therefore deselected it on mouseup, leaving no way
+         * to copy anything the terminal had printed.
+         */
+        if (!window.getSelection()?.isCollapsed) return;
+        inputRef.current?.focus();
+      }}
+      onContextMenu={(event) => {
+        // The fake desktop's own menus are the ones that belong here, and cmd
+        // reserves the right click for paste; Chrome's menu was appearing over
+        // the shell instead.
+        event.preventDefault();
+      }}
+    >
       <div className="terminal-scroll" ref={scrollRef}>
         {lines.map((line, index) => (
           <pre className={`terminal-line is-${line.kind}`} key={`${index}-${line.text}`}>
