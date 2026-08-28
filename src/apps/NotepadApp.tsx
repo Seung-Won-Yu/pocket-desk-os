@@ -101,6 +101,7 @@ export default function NotepadApp({
   const [fileDialogMode, setFileDialogMode] = useState<"open" | "save" | null>(null);
   const [showMarkdownPreview, setShowMarkdownPreview] = useState(false);
   const [history, setHistory] = useState<NoteHistoryEntry[]>([]);
+  const [redoHistory, setRedoHistory] = useState<NoteHistoryEntry[]>([]);
   const [editorMenu, setEditorMenu] = useState<NoteEditorMenuState | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
@@ -154,6 +155,7 @@ export default function NotepadApp({
   // alone, so a save of the open document does not throw its history away.
   useEffect(() => {
     setHistory([]);
+    setRedoHistory([]);
     historyRunRef.current = { at: 0, run: null };
     setEditorMenu(null);
     setFindIndex(0);
@@ -332,6 +334,7 @@ export default function NotepadApp({
       return;
     }
     setHistory((current) => [...current, entry].slice(-NOTE_HISTORY_LIMIT));
+    setRedoHistory([]);
   };
 
   /** Puts the caret back once React has painted a programmatic text change. */
@@ -374,7 +377,42 @@ export default function NotepadApp({
     setEditorMenu(null);
     const entry = history[history.length - 1];
     if (!entry) return;
+    const editor = noteEditorRef.current;
+    // Windows' Notepad redoes with Ctrl+Y, and there was nothing to redo with:
+    // an undo simply dropped the newer text on the floor.
+    setRedoHistory((current) =>
+      [
+        ...current,
+        {
+          selectionEnd: editor?.selectionEnd ?? text.length,
+          selectionStart: editor?.selectionStart ?? text.length,
+          text,
+        },
+      ].slice(-NOTE_HISTORY_LIMIT),
+    );
     setHistory((current) => current.slice(0, -1));
+    historyRunRef.current = { at: 0, run: null };
+    setText(entry.text);
+    selectInEditor(entry.selectionStart, entry.selectionEnd);
+  };
+
+  const redo = () => {
+    setNoteMenu(null);
+    setEditorMenu(null);
+    const entry = redoHistory[redoHistory.length - 1];
+    if (!entry) return;
+    const editor = noteEditorRef.current;
+    setHistory((current) =>
+      [
+        ...current,
+        {
+          selectionEnd: editor?.selectionEnd ?? text.length,
+          selectionStart: editor?.selectionStart ?? text.length,
+          text,
+        },
+      ].slice(-NOTE_HISTORY_LIMIT),
+    );
+    setRedoHistory((current) => current.slice(0, -1));
     historyRunRef.current = { at: 0, run: null };
     setText(entry.text);
     selectInEditor(entry.selectionStart, entry.selectionEnd);
@@ -614,6 +652,16 @@ export default function NotepadApp({
           event.preventDefault();
           event.stopPropagation();
           undo();
+        } else if (key === "y" || (key === "z" && event.shiftKey)) {
+          event.preventDefault();
+          event.stopPropagation();
+          redo();
+        } else if (key === "a") {
+          // The menu advertises Ctrl+A, and on macOS the browser only honours
+          // Cmd+A — so the shortcut the app documents did nothing there.
+          event.preventDefault();
+          event.stopPropagation();
+          selectAllText();
         }
       }}
       ref={noteAppRef}
@@ -698,6 +746,14 @@ export default function NotepadApp({
         >
           <button disabled={history.length === 0} onClick={undo} role="menuitem" type="button">
             실행 취소 <kbd>Ctrl+Z</kbd>
+          </button>
+          <button
+            disabled={redoHistory.length === 0}
+            onClick={redo}
+            role="menuitem"
+            type="button"
+          >
+            다시 실행 <kbd>Ctrl+Y</kbd>
           </button>
           <button onClick={openFind} role="menuitem" type="button">
             찾기 <kbd>Ctrl+F</kbd>
@@ -856,7 +912,28 @@ export default function NotepadApp({
             updateCursorPosition();
           }}
           onContextMenu={showEditorMenu}
-          onKeyDown={rememberEditorSelection}
+          onKeyDown={(event) => {
+            rememberEditorSelection();
+            if (event.key !== "Tab") return;
+            /*
+             * Notepad inserts a tab; here it walked focus out of the window and
+             * onto the Start button, four presses ending up in the taskbar.
+             */
+            event.preventDefault();
+            const editor = event.currentTarget;
+            const start = editor.selectionStart;
+            const end = editor.selectionEnd;
+            if (event.shiftKey) {
+              // Shift+Tab removes one level of indentation before the caret.
+              const before = text.slice(0, start);
+              if (!before.endsWith("\t")) return;
+              setText(`${before.slice(0, -1)}${text.slice(end)}`);
+              selectInEditor(start - 1, start - 1);
+              return;
+            }
+            setText(`${text.slice(0, start)}\t${text.slice(end)}`);
+            selectInEditor(start + 1, start + 1);
+          }}
           onKeyUp={updateCursorPosition}
           ref={noteEditorRef}
           spellCheck
@@ -910,6 +987,14 @@ export default function NotepadApp({
         >
           <button disabled={history.length === 0} onClick={undo} role="menuitem" type="button">
             실행 취소 <kbd>Ctrl+Z</kbd>
+          </button>
+          <button
+            disabled={redoHistory.length === 0}
+            onClick={redo}
+            role="menuitem"
+            type="button"
+          >
+            다시 실행 <kbd>Ctrl+Y</kbd>
           </button>
           <button
             disabled={editorMenu.selectionStart === editorMenu.selectionEnd}

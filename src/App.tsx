@@ -36,7 +36,9 @@ import {
   NOTE_SAVE_EVENT,
   PAINT_OPEN_EVENT,
   PAINT_SAVE_AS_EVENT,
+  PAINT_REDO_EVENT,
   PAINT_SAVE_EVENT,
+  PAINT_UNDO_EVENT,
   SOUND_ENABLED_KEY,
   TASKBAR_PINNED_APPS_KEY,
   VFS_PRIMARY_CANVAS_ID,
@@ -2452,6 +2454,22 @@ export default function App() {
             beginDesktopRename(item);
             return;
           }
+        }
+      }
+
+      /*
+       * Undo and redo in the drawing app. The window frame holds focus, so a
+       * handler inside the app never saw these — Ctrl+Z left the bitmap
+       * untouched and the toolbar buttons were the only way back.
+       */
+      if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+        const key = event.key.toLowerCase();
+        const paintWindow = windows.find((item) => item.id === activeWindowId);
+        if (paintWindow?.appId === "paint" && (key === "z" || key === "y")) {
+          event.preventDefault();
+          const redo = key === "y" || (key === "z" && event.shiftKey);
+          window.dispatchEvent(new Event(redo ? PAINT_REDO_EVENT : PAINT_UNDO_EVENT));
+          return;
         }
       }
 

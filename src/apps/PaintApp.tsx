@@ -25,6 +25,8 @@ type PaintTool = "brush" | "line" | "rect" | "ellipse";
 const PAINT_SAVE_EVENT = "pocket-desk-save-paint";
 const PAINT_OPEN_EVENT = "pocket-desk-open-paint";
 const PAINT_SAVE_AS_EVENT = "pocket-desk-save-paint-as";
+const PAINT_UNDO_EVENT = "pocket-desk-undo-paint";
+const PAINT_REDO_EVENT = "pocket-desk-redo-paint";
 
 type CanvasEntry = {
   content?: string;
@@ -141,7 +143,9 @@ export default function PaintApp({
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
     };
     image.src = activeCanvas.content;
-  }, [activeCanvas?.content, activeCanvas?.id, activeCanvasOpenKey]);
+    // Keyed on the document, not its bytes: saving rewrites `content`, and
+    // re-running here wiped the undo stack every time the drawing was saved.
+  }, [activeCanvas?.id, activeCanvasOpenKey]);
 
   const updateHistoryState = () => {
     markDirty();
@@ -357,6 +361,17 @@ export default function PaintApp({
     restoreSnapshot(next);
     updateHistoryState();
   };
+
+  useEffect(() => {
+    const undoFromShortcut = () => undo();
+    const redoFromShortcut = () => redo();
+    window.addEventListener(PAINT_UNDO_EVENT, undoFromShortcut);
+    window.addEventListener(PAINT_REDO_EVENT, redoFromShortcut);
+    return () => {
+      window.removeEventListener(PAINT_UNDO_EVENT, undoFromShortcut);
+      window.removeEventListener(PAINT_REDO_EVENT, redoFromShortcut);
+    };
+  });
 
   const startDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = event.currentTarget;

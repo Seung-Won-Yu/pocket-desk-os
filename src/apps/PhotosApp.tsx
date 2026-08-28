@@ -273,6 +273,13 @@ export default function PhotosApp({
       return;
     }
 
+    // Delete is how the Windows photo viewer deletes; it did nothing here.
+    if (event.key === "Delete") {
+      handled();
+      deleteCurrent();
+      return;
+    }
+
     if (!hasPhoto) return;
 
     if (event.key === "+" || event.key === "=") {

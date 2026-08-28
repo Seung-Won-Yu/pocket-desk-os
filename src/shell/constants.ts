@@ -14,6 +14,10 @@ export const NOTE_SAVE_EVENT = "pocket-desk-save-note";
 export const NOTE_OPEN_EVENT = "pocket-desk-open-note";
 export const NOTE_SAVE_AS_EVENT = "pocket-desk-save-note-as";
 export const PAINT_SAVE_EVENT = "pocket-desk-save-paint";
+/* Undo and redo reach the canvas the same way save does: the window frame holds
+   focus, not the app, so a key handler inside the app never sees them. */
+export const PAINT_UNDO_EVENT = "pocket-desk-undo-paint";
+export const PAINT_REDO_EVENT = "pocket-desk-redo-paint";
 export const PAINT_OPEN_EVENT = "pocket-desk-open-paint";
 export const PAINT_SAVE_AS_EVENT = "pocket-desk-save-paint-as";
 export const VFS_PRIMARY_NOTE_ID = "vfs-notes";
