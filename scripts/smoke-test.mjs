@@ -1482,15 +1482,20 @@ async function runSmoke(baseUrl) {
     await page.locator(".window-frame.is-active").click({ position: { x: 60, y: 8 } });
     await page.keyboard.press("Alt+ ");
     await page.locator(".window-system-menu").waitFor({ state: "visible" });
-    // The menu focuses its first item a frame after it mounts.
-    await page.waitForTimeout(150);
-    const systemMenuFocus = await page.evaluate(() => ({
-      disabled: document.activeElement?.disabled ?? true,
-      inMenu: Boolean(document.activeElement?.closest(".window-system-menu")),
-    }));
+    // The menu focuses its first item a frame after it mounts, and a slower
+    // machine takes longer than any fixed wait worth writing.
+    await page
+      .waitForFunction(
+        () => Boolean(document.activeElement?.closest(".window-system-menu")),
+        undefined,
+        { timeout: 5000 },
+      )
+      .catch(() => {
+        throw new Error("Alt+Space left focus outside the system menu");
+      });
     assert(
-      systemMenuFocus.inMenu && !systemMenuFocus.disabled,
-      "Alt+Space left focus outside the system menu",
+      !(await page.evaluate(() => document.activeElement?.disabled ?? true)),
+      "Alt+Space focused a disabled system menu item",
     );
     await page.keyboard.press("Escape");
     await page.locator(".window-system-menu").waitFor({ state: "hidden" });
