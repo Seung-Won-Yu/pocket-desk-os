@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import AppIconTile from "../../components/AppIconTile";
 import { trapDialogFocus } from "../dialogFocus";
 import { getApp } from "../appCatalog";
+import { formatWindowTitle } from "../windowTitle";
 import { APP_BAR_HEIGHT, MAX_VIRTUAL_DESKTOPS } from "../constants";
 import { type WindowInstance } from "../types";
 
@@ -140,7 +141,7 @@ export function TaskView({
             .map((item) => {
               const app = getApp(item.appId);
               const documentLabel = getDocumentLabel(item.appId);
-              const windowTitle = documentLabel ? `${documentLabel} - ${app.title}` : app.title;
+              const windowTitle = formatWindowTitle(app.title, documentLabel);
               return (
                 <div className="task-view-card" key={item.id}>
                   {/*

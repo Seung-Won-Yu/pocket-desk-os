@@ -211,6 +211,8 @@ export default function App() {
   const [taskViewOpen, setTaskViewOpen] = useState(false);
   const [windowMotions, setWindowMotions] = useState<Record<string, WindowMotion>>({});
   const altTabTimerRef = useRef<number | null>(null);
+  const altTabOrderRef = useRef<string[]>([]);
+  const altTabSelectionRef = useRef<string | null>(null);
   const desktopRenameGuardRef = useRef(false);
   const desktopSelectionRef = useRef<DesktopSelectionState | null>(null);
   const showDesktopRestoreRef = useRef<string[]>([]);
@@ -2007,36 +2009,52 @@ export default function App() {
         window.clearTimeout(altTabTimerRef.current);
         altTabTimerRef.current = null;
       }
+      altTabOrderRef.current = [];
+      altTabSelectionRef.current = null;
       setAltTabWindowId(null);
+    };
+
+    /** Releasing Alt is what switches windows; Escape abandons the selection. */
+    const commitAltTab = () => {
+      const selectedId = altTabSelectionRef.current;
+      clearAltTab();
+      if (selectedId) focusWindow(selectedId);
     };
 
     const scheduleAltTabClose = () => {
       if (altTabTimerRef.current !== null) {
         window.clearTimeout(altTabTimerRef.current);
       }
-      altTabTimerRef.current = window.setTimeout(() => {
-        setAltTabWindowId(null);
-        altTabTimerRef.current = null;
-      }, 1200);
+      // A keyup that never arrives (focus left the page mid-hold) still has to
+      // land on the window the user picked.
+      altTabTimerRef.current = window.setTimeout(commitAltTab, 1200);
     };
 
+    /*
+     * Windows freezes the window list while Alt is held and moves a selection
+     * through it, switching only on release. Focusing on every press instead
+     * raised the selected window to the top of the z-order, so re-sorting by z
+     * put it back at index 0 and Tab bounced between the two newest windows —
+     * with four open, eight presses reached two of them.
+     */
     const cycleAltTab = (reverse: boolean) => {
-      const candidates = [...desktopWindows].sort((a, b) => b.z - a.z);
-      if (candidates.length === 0) return;
+      const liveIds = new Set(desktopWindows.map((item) => item.id));
+      const heldOrder = altTabOrderRef.current.filter((id) => liveIds.has(id));
+      const order =
+        heldOrder.length > 0
+          ? heldOrder
+          : [...desktopWindows].sort((a, b) => b.z - a.z).map((item) => item.id);
+      if (order.length === 0) return;
+      altTabOrderRef.current = order;
 
-      const currentId = altTabWindowId ?? activeWindowId;
-      const currentIndex = currentId
-        ? candidates.findIndex((item) => item.id === currentId)
-        : -1;
+      const currentId = altTabSelectionRef.current ?? activeWindowId;
+      const currentIndex = currentId ? order.indexOf(currentId) : -1;
       const direction = reverse ? -1 : 1;
       const nextIndex =
-        currentIndex === -1
-          ? 0
-          : (currentIndex + direction + candidates.length) % candidates.length;
-      const nextWindow = candidates[nextIndex];
+        currentIndex === -1 ? 0 : (currentIndex + direction + order.length) % order.length;
 
-      focusWindow(nextWindow.id);
-      setAltTabWindowId(nextWindow.id);
+      altTabSelectionRef.current = order[nextIndex];
+      setAltTabWindowId(order[nextIndex]);
       scheduleAltTabClose();
     };
 
@@ -2300,7 +2318,7 @@ export default function App() {
 
     const handleGlobalKeyUp = (event: KeyboardEvent) => {
       if (event.key === "Alt") {
-        clearAltTab();
+        commitAltTab();
       }
     };
 

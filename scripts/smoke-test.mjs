@@ -1447,6 +1447,47 @@ async function runSmoke(baseUrl) {
       "Snapped halves did not reach the viewport edges",
     );
 
+    // Alt+Tab walks every window in one hold and switches on release. Focusing
+    // on each press instead raised the selection to the top of the z-order, so
+    // re-sorting by z put it back at index 0 and Tab bounced between two
+    // windows no matter how many were open.
+    const openWindowCount = await page.locator(".window-frame").count();
+    assert(openWindowCount >= 3, `Alt+Tab check needs 3 windows, found ${openWindowCount}`);
+    await page.keyboard.down("Alt");
+    const altTabSeen = [];
+    for (let tap = 0; tap < 3; tap += 1) {
+      await page.keyboard.press("Tab");
+      await page.waitForTimeout(90);
+      altTabSeen.push(
+        await page
+          .locator(".alt-tab-item.is-selected strong")
+          .innerText()
+          .catch(() => null),
+      );
+    }
+    await page.keyboard.up("Alt");
+    await page.waitForTimeout(300);
+    assert(
+      new Set(altTabSeen).size === 3,
+      `Alt+Tab reached ${new Set(altTabSeen).size} windows in three presses: ${altTabSeen.join(", ")}`,
+    );
+
+    // Escape abandons the selection instead of switching, as Windows does.
+    const beforeEscape = await page
+      .locator(".window-frame.is-active")
+      .getAttribute("aria-label");
+    await page.keyboard.down("Alt");
+    await page.keyboard.press("Tab");
+    await page.waitForTimeout(90);
+    await page.keyboard.press("Escape");
+    await page.keyboard.up("Alt");
+    await page.waitForTimeout(300);
+    assert(
+      (await page.locator(".window-frame.is-active").getAttribute("aria-label")) ===
+        beforeEscape,
+      "Escape during Alt+Tab still switched windows",
+    );
+
     // Restoring a maximized window puts it back exactly where it was. The
     // window controls sit inside the title bar, so their pointerdown bubbled
     // into the drag handler and moved the window before the click landed.

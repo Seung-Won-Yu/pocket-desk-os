@@ -1,6 +1,7 @@
 import AppIconTile from "../../components/AppIconTile";
 import { clamp } from "../../utils/format";
 import { APP_BAR_HEIGHT, WINDOW_DRAG_THRESHOLD } from "../constants";
+import { formatWindowTitle } from "../windowTitle";
 import {
   type AppDefinition,
   type SnapPreviewState,
@@ -237,9 +238,10 @@ export function WindowFrame({
           {/* Windows names the window after the document it holds. */}
           {/* Windows marks an unsaved document with a leading asterisk. */}
           <span>
-            {documentLabel
-              ? `${hasUnsavedChanges ? "*" : ""}${documentLabel} - ${app.title}`
-              : app.title}
+            {`${hasUnsavedChanges && documentLabel ? "*" : ""}${formatWindowTitle(
+              app.title,
+              documentLabel,
+            )}`}
           </span>
         </div>
         <div className="window-controls">

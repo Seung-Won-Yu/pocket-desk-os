@@ -2,6 +2,7 @@ import AppIconTile from "../../components/AppIconTile";
 import { type AppId } from "../../types";
 import { clamp } from "../../utils/format";
 import { getApp } from "../appCatalog";
+import { formatWindowTitle } from "../windowTitle";
 import { createCalendarGrid, formatNotificationTime, getLocalDateKey } from "../startSearch";
 import { type AppDefinition, type ToastMessage, type WindowInstance } from "../types";
 import { BrandMark, StartGlyph } from "./Branding";
@@ -741,8 +742,7 @@ export function TaskbarPreview({
   onSelectWindow: (windowId: string) => void;
   windows: WindowInstance[];
 }) {
-  const documentLabel = getDocumentLabel(app.id);
-  const windowTitle = documentLabel ? `${documentLabel} - ${app.title}` : app.title;
+  const windowTitle = formatWindowTitle(app.title, getDocumentLabel(app.id));
 
   /*
    * Windows shows one thumbnail per window here, and each one switches to that

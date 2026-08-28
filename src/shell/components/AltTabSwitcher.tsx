@@ -1,5 +1,6 @@
 import AppIconTile from "../../components/AppIconTile";
 import { getApp } from "../appCatalog";
+import { formatWindowTitle } from "../windowTitle";
 import { type WindowInstance } from "../types";
 import { type AppId } from "../../types";
 
@@ -34,7 +35,12 @@ export function AltTabSwitcher({
               key={windowItem.id}
             >
               <AppIconTile accent={app.accent} icon={app.icon} size="large" />
-              <strong>{getDocumentLabel?.(windowItem.appId) ?? app.title}</strong>
+              {/* The same `문서 - 앱` the title bar shows. Using the document
+                  name alone made a Paint window and a Photos window on the same
+                  canvas read identically. */}
+              <strong>
+                {formatWindowTitle(app.title, getDocumentLabel?.(windowItem.appId))}
+              </strong>
               <small>{windowItem.minimized ? "최소화됨" : "열림"}</small>
             </div>
           );
