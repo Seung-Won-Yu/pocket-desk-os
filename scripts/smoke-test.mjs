@@ -578,6 +578,58 @@ async function runSmoke(baseUrl) {
       "Documents view did not filter notes",
     );
 
+    // Windows sorts a details view from its column headers; these were inert
+    // spans, so sorting was only reachable from the background menu.
+    const nameHeader = files.locator(".file-list-header button").first();
+    const readOrder = () =>
+      files.evaluate((node) =>
+        [...node.querySelectorAll('[role="option"]')].map(
+          (option) => option.textContent?.trim().split("\n")[0] ?? "",
+        ),
+      );
+    const beforeSort = await readOrder();
+    await nameHeader.click();
+    await page.waitForTimeout(200);
+    const afterSort = await readOrder();
+    assert(
+      (await nameHeader.getAttribute("aria-sort")) === "descending",
+      "Clicking the name header did not flip the sort direction",
+    );
+    assert(
+      beforeSort.join("|") !== afterSort.join("|"),
+      "Clicking the name header did not reorder the list",
+    );
+    await nameHeader.click();
+    await page.waitForTimeout(200);
+
+    // Home/End and type-ahead are how a Windows list is walked; neither did
+    // anything here, so a long folder could only be crossed one arrow at a time.
+    const selectedName = () =>
+      files.evaluate(
+        (node) =>
+          node
+            .querySelector('[role="option"][aria-selected="true"]')
+            ?.textContent?.trim()
+            .split("\n")[0] ?? null,
+      );
+    await files.locator('[role="option"]').first().click();
+    await page.keyboard.press("End");
+    await page.waitForTimeout(150);
+    const endName = await selectedName();
+    await page.keyboard.press("Home");
+    await page.waitForTimeout(150);
+    const homeName = await selectedName();
+    assert(
+      endName !== null && homeName !== null && endName !== homeName,
+      `Home and End both selected ${homeName}`,
+    );
+    await page.keyboard.press("Shift+ArrowDown");
+    await page.waitForTimeout(150);
+    assert(
+      (await files.locator('[role="option"][aria-selected="true"]').count()) === 2,
+      "Shift+ArrowDown replaced the selection instead of extending it",
+    );
+
     await files.getByRole("button", { name: "새 파일 탐색기 창" }).click();
     const explorerWindows = page.locator('article[aria-label="파일 탐색기"]');
     await page.waitForFunction(
@@ -997,8 +1049,8 @@ async function runSmoke(baseUrl) {
     );
     assert(
       (await minesweeper.locator(".mines-counter").first().locator("strong").innerText()) ===
-        "00",
-      "Minesweeper counter did not finish at zero",
+        "000",
+      "Minesweeper counter did not finish at zero across its three digits",
     );
     const completedTime = await minesweeper
       .locator(".mines-counter.is-time strong")

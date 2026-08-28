@@ -191,7 +191,13 @@ function RegistryEditDialog({
   };
 
   return (
-    <div className="confirm-overlay" onPointerDown={onCancel}>
+    /*
+     * regedit's value editor is modal: clicking beside it does nothing.
+     * Dismissing on an outside pointerdown threw away whatever had been typed,
+     * with no warning and no way to get it back. preventDefault keeps the click
+     * from pulling focus out of the dialog, so Escape still cancels afterwards.
+     */
+    <div className="confirm-overlay" onPointerDown={(event) => event.preventDefault()}>
       <form
         aria-labelledby="registry-edit-title"
         aria-modal="true"
@@ -505,6 +511,29 @@ export default function RegistryEditorApp({ notify, playSound }: RegistryEditorA
                     if (event.key === " ") {
                       event.preventDefault();
                       setSelectedValueKey(value.storageKey);
+                      return;
+                    }
+                    /*
+                     * regedit's own shortcuts. Only Enter, Space and the arrows
+                     * were handled, so deleting, renaming and refreshing were
+                     * reachable from the toolbar alone.
+                     */
+                    if (event.key === "Delete") {
+                      event.preventDefault();
+                      setSelectedValueKey(value.storageKey);
+                      playSound("click");
+                      setDeleteTarget(value);
+                      return;
+                    }
+                    if (event.key === "F2") {
+                      event.preventDefault();
+                      setSelectedValueKey(value.storageKey);
+                      openEditor(value);
+                      return;
+                    }
+                    if (event.key === "F5") {
+                      event.preventDefault();
+                      refresh();
                       return;
                     }
                     const next = getNextRovingIndex(event.key, index, activeKey.values.length);

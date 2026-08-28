@@ -627,9 +627,14 @@ function formatDuration(seconds: number) {
   return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
 }
 
+/*
+ * Windows drives this readout with three seven-segment digits, so 99 mines read
+ * 099 and the counter never changes width as it counts down. Two digits made it
+ * jump between 100 and 99 on the 고급 board.
+ */
 function formatMineCounter(value: number) {
   if (value < 0) {
-    return `-${Math.abs(value).toString().padStart(1, "0")}`;
+    return `-${Math.min(99, Math.abs(value)).toString().padStart(2, "0")}`;
   }
-  return value.toString().padStart(2, "0");
+  return Math.min(999, value).toString().padStart(3, "0");
 }

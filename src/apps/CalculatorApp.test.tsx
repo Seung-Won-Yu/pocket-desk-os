@@ -84,11 +84,25 @@ describe("계산기 상태", () => {
 
   it("오류 상태에서 백스페이스는 오류를 지운다", async () => {
     const { display, press } = renderCalculator();
-    // 1/x of 0 is the shortest way to a genuine error state.
+    // Windows names the fault instead of printing one word for all of them.
     await press("0", "1/x");
-    expect(display()).toBe("Error");
+    expect(display()).toBe("0으로 나눌 수 없습니다");
     await press("⌫");
     expect(display()).toBe("0");
+  });
+
+  it("잘못된 입력과 0으로 나누기를 구분한다", async () => {
+    const { display, press } = renderCalculator();
+    await press("9", "±", "²√x");
+    expect(display()).toBe("잘못된 입력입니다");
+  });
+
+  it("표준 모드는 Windows처럼 왼쪽부터 계산한다", async () => {
+    const { display, press } = renderCalculator();
+    // Windows' standard calculator has no operator precedence; ×4 applies to
+    // the 5 already showing. The scientific mode is the one that gives 14.
+    await press("2", "+", "3", "×", "4", "=");
+    expect(display()).toBe("20");
   });
 
   it("버튼에 포커스한 채 Enter를 누르면 그 버튼이 눌린다", async () => {

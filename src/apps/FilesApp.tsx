@@ -6,6 +6,7 @@ import {
   Bomb,
   Check,
   ChevronRight,
+  ChevronUp,
   ClipboardPaste,
   Copy,
   Download,
@@ -55,6 +56,7 @@ import {
   clamp,
   formatVfsEntrySize,
   formatVfsPropertyDate,
+  getVfsEntrySize,
   normalizeSearchText,
 } from "../utils/format";
 import {
@@ -74,7 +76,7 @@ import {
 import { handleMenuKeyboard } from "../shell/keyboardNav";
 
 type FileSortDirection = "asc" | "desc";
-type FileSortKey = "name" | "type" | "modified";
+type FileSortKey = "name" | "type" | "modified" | "size";
 type FileViewMode = "details" | "list" | "icons";
 
 type FileContextMenuState = {
@@ -138,6 +140,13 @@ const FILE_VIEW_OPTIONS: Array<[FileViewMode, string]> = [
 // What a menu needs to stay on screen: 204px of menu width plus a margin, that
 // again with its 190px submenu beside it, and the height of the rows each of the
 // two menus carries.
+const FILE_COLUMNS: [FileSortKey, string][] = [
+  ["name", "이름"],
+  ["modified", "수정한 날짜"],
+  ["type", "유형"],
+  ["size", "크기"],
+];
+
 const FILE_CONTEXT_MENU_RESERVE_X = 212;
 const FILE_FOLDER_MENU_RESERVE_X = 410;
 const FILE_CONTEXT_MENU_RESERVE_Y = 226;
@@ -171,6 +180,7 @@ export default function FilesApp({
   const propertiesConfirmRef = useRef<HTMLButtonElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const selectionAnchorRef = useRef<string | null>(null);
+  const typeAheadRef = useRef({ at: 0, query: "" });
   const sortControlRef = useRef<HTMLDivElement | null>(null);
   const [navigationHistory, setNavigationHistory] = useState([VFS_ROOT_ID]);
   const [navigationIndex, setNavigationIndex] = useState(0);
@@ -241,6 +251,9 @@ export default function FilesApp({
       if (first.item.kind !== "folder" && second.item.kind === "folder") return 1;
       let order = 0;
       if (sortKey === "modified") order = first.updatedAt - second.updatedAt;
+      if (sortKey === "size") {
+        order = getVfsEntrySize(first.item) - getVfsEntrySize(second.item);
+      }
       if (sortKey === "type") {
         order = first.type.localeCompare(second.type, "ko", {
           numeric: true,
@@ -774,6 +787,57 @@ export default function FilesApp({
       openFile(selectedFile.item);
       return;
     }
+    /*
+     * Typing jumps to the next item starting with that letter, the way every
+     * Windows list does. Nothing happened before, so a long folder could only be
+     * walked one arrow press at a time.
+     */
+    if (
+      event.key.length === 1 &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      visibleFiles.length > 0
+    ) {
+      const now = performance.now();
+      const prefix =
+        now - typeAheadRef.current.at < 900
+          ? typeAheadRef.current.query + event.key.toLowerCase()
+          : event.key.toLowerCase();
+      typeAheadRef.current = { at: now, query: prefix };
+
+      const startIndex = Math.max(
+        0,
+        visibleFiles.findIndex((file) => file.id === activeFileId),
+      );
+      // Repeating one letter steps through the matches rather than sticking on
+      // the first, which is what Windows does.
+      const offsetStart = prefix.length === 1 ? startIndex + 1 : startIndex;
+      const ordered = [
+        ...visibleFiles.slice(offsetStart),
+        ...visibleFiles.slice(0, offsetStart),
+      ];
+      const match = ordered.find((file) => file.item.name.toLowerCase().startsWith(prefix));
+      if (match) {
+        event.preventDefault();
+        setActiveFileId(match.id);
+        setSelectedIds([match.id]);
+        selectionAnchorRef.current = match.id;
+        return;
+      }
+    }
+
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      const edge =
+        event.key === "Home" ? visibleFiles[0] : visibleFiles[visibleFiles.length - 1];
+      if (!edge) return;
+      setActiveFileId(edge.id);
+      setSelectedIds([edge.id]);
+      selectionAnchorRef.current = edge.id;
+      return;
+    }
+
     if (!["ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(event.key)) return;
 
     event.preventDefault();
@@ -798,6 +862,24 @@ export default function FilesApp({
         : visibleFiles[rowIndex];
     if (!nextFile) return;
     setActiveFileId(nextFile.id);
+
+    /*
+     * Shift extends the selection from the anchor instead of replacing it.
+     * Shift+↓ used to move the selection like a plain arrow, so a range could
+     * only be built with the mouse.
+     */
+    if (event.shiftKey) {
+      const anchorId = selectionAnchorRef.current ?? visibleFiles[currentIndex]?.id;
+      const anchorIndex = visibleFiles.findIndex((file) => file.id === anchorId);
+      const nextIndex = visibleFiles.findIndex((file) => file.id === nextFile.id);
+      if (anchorIndex !== -1 && nextIndex !== -1) {
+        const [from, to] =
+          anchorIndex <= nextIndex ? [anchorIndex, nextIndex] : [nextIndex, anchorIndex];
+        setSelectedIds(visibleFiles.slice(from, to + 1).map((file) => file.id));
+        return;
+      }
+    }
+
     setSelectedIds([nextFile.id]);
     selectionAnchorRef.current = nextFile.id;
   };
@@ -1277,12 +1359,43 @@ export default function FilesApp({
                 being sliced. Syncing the two scroll positions instead would
                 have kept the sideways scrolling that Explorer does not have at
                 this size. */}
+            {/*
+              Windows sorts a details view from its column headers. These were
+              inert spans, so sorting was only reachable from the background
+              menu — and 크기 was not offered there at all. */}
             {viewMode === "details" && (
-              <div aria-hidden="true" className="file-list-header">
-                <span>이름</span>
-                <span>수정한 날짜</span>
-                <span>유형</span>
-                <span>크기</span>
+              <div className="file-list-header" role="row">
+                {FILE_COLUMNS.map(([key, label]) => (
+                  <button
+                    aria-sort={
+                      sortKey === key
+                        ? sortDirection === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                    }
+                    key={key}
+                    onClick={() => {
+                      if (sortKey === key) {
+                        setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+                        return;
+                      }
+                      setSortKey(key);
+                      setSortDirection("asc");
+                    }}
+                    role="columnheader"
+                    type="button"
+                  >
+                    {label}
+                    {sortKey === key && (
+                      <ChevronUp
+                        aria-hidden="true"
+                        className={sortDirection === "asc" ? "" : "is-descending"}
+                        size={13}
+                      />
+                    )}
+                  </button>
+                ))}
               </div>
             )}
             <div
@@ -1321,6 +1434,12 @@ export default function FilesApp({
                       aria-selected={selectedIds.includes(file.id)}
                       className={`${selectedIds.includes(file.id) ? "is-selected" : ""}${
                         dragOverFolderId === file.id ? " is-drop-target" : ""
+                      }${
+                        // Windows dims an item waiting to be moved. Nothing marked
+                        // a cut item here, so Ctrl+X looked like it did nothing.
+                        clipboard.mode === "cut" && clipboard.itemIds.includes(file.id)
+                          ? " is-cut"
+                          : ""
                       }`}
                       data-file-id={file.id}
                       draggable={!isVfsSystemFolderId(file.id)}

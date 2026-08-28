@@ -9316,3 +9316,33 @@ button {
   gap: 10px;
   padding: 6px;
 }
+
+/* An item cut to the clipboard, dimmed the way Explorer dims one. */
+.file-list [role="option"].is-cut {
+  opacity: 0.5;
+}
+
+/* Sortable details-view column headers. */
+.file-list-header button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: inherit;
+  display: flex;
+  font: inherit;
+  gap: 4px;
+  justify-content: flex-start;
+  overflow: hidden;
+  padding: 2px 6px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.file-list-header button:hover {
+  background: rgba(127, 127, 127, 0.16);
+}
+
+.file-list-header .is-descending {
+  transform: rotate(180deg);
+}

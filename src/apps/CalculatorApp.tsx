@@ -87,8 +87,10 @@ export default function CalculatorApp() {
     setDisplay((current) => appendCalculatorValue(current, value));
   };
 
+  const usesPrecedence = mode === "scientific";
+
   const applyUnary = (operation: (value: number) => number) => {
-    setDisplay((current) => applyCalculatorUnary(current, operation));
+    setDisplay((current) => applyCalculatorUnary(current, operation, usesPrecedence));
   };
 
   const runAction = (action: CalculatorAction) => {
@@ -101,14 +103,14 @@ export default function CalculatorApp() {
       // Windows clears the error rather than editing its text: backspacing
       // "Error" used to leave "Erro", then "Err", as if it were an entry.
       setDisplay((current) =>
-        current === "Error" || current.length <= 1 ? "0" : current.slice(0, -1),
+        isCalculatorError(current) || current.length <= 1 ? "0" : current.slice(0, -1),
       );
       return;
     }
 
     if (action === "equals") {
       setDisplay((current) => {
-        const result = evaluateExpression(current);
+        const result = evaluateExpression(current, usesPrecedence);
         const formatted = formatCalculatorResult(result);
         setCalculationHistory((historyItems) =>
           [{ expression: current, result: formatted }, ...historyItems].slice(0, 20),
@@ -124,7 +126,7 @@ export default function CalculatorApp() {
     }
 
     if (action === "percent") {
-      setDisplay((current) => applyCalculatorPercent(current));
+      setDisplay((current) => applyCalculatorPercent(current, usesPrecedence));
       return;
     }
 
@@ -144,7 +146,7 @@ export default function CalculatorApp() {
   };
 
   const getCurrentCalculatorValue = () => {
-    const value = evaluateExpression(display);
+    const value = evaluateExpression(display, usesPrecedence);
     return Number.isFinite(value) ? value : 0;
   };
 
@@ -359,9 +361,28 @@ export default function CalculatorApp() {
   );
 }
 
-function evaluateExpression(expression: string) {
+/*
+ * Windows' standard calculator runs left to right — `2+3×4` is 20, because ×4
+ * applies to the 5 already on the display — and only the scientific one applies
+ * precedence, where the same keys give 14. This gave 14 in both modes, so the
+ * standard mode answered a question the user had not asked.
+ */
+function evaluateExpression(expression: string, precedence = true) {
   const tokens = tokenizeExpression(expression);
   if (tokens.length === 0) return Number.NaN;
+
+  if (!precedence) {
+    let running = Number(tokens[0]);
+    for (let index = 1; index < tokens.length; index += 2) {
+      const operator = tokens[index];
+      const next = Number(tokens[index + 1]);
+      if (operator === "+") running += next;
+      else if (operator === "-") running -= next;
+      else if (operator === "*") running *= next;
+      else if (operator === "/") running /= next;
+    }
+    return running;
+  }
 
   const firstPass: Array<number | string> = [];
   for (let index = 0; index < tokens.length; index += 1) {
@@ -421,7 +442,7 @@ function tokenizeExpression(expression: string): string[] {
 function appendCalculatorValue(current: string, value: string) {
   const operators = ["+", "-", "*", "/"];
 
-  if (current === "Error") {
+  if (isCalculatorError(current)) {
     return operators.includes(value) ? `0${value}` : value === "." ? "0." : value;
   }
 
@@ -458,8 +479,8 @@ function appendCalculatorValue(current: string, value: string) {
  * calculator for. With × and ÷ the percentage is the plain fraction, and a
  * percentage of nothing is 0.
  */
-function applyCalculatorPercent(expression: string) {
-  if (expression === "Error") return "Error";
+function applyCalculatorPercent(expression: string, precedence: boolean) {
+  if (isCalculatorError(expression)) return expression;
 
   const fragment = getCurrentCalculatorFragment(expression);
   const entry = Number(fragment);
@@ -469,23 +490,27 @@ function applyCalculatorPercent(expression: string) {
   const operator = head[head.length - 1];
   if (!operator) return "0";
 
-  const left = evaluateExpression(head.slice(0, -1));
+  const left = evaluateExpression(head.slice(0, -1), precedence);
   if (!Number.isFinite(left)) return expression;
 
   const share = operator === "+" || operator === "-" ? (left * entry) / 100 : entry / 100;
   return `${head}${formatCalculatorResult(share)}`;
 }
 
-function applyCalculatorUnary(expression: string, operation: (value: number) => number) {
-  const input = evaluateExpression(expression);
-  if (!Number.isFinite(input)) return "Error";
+function applyCalculatorUnary(
+  expression: string,
+  operation: (value: number) => number,
+  precedence: boolean,
+) {
+  const input = evaluateExpression(expression, precedence);
+  if (!Number.isFinite(input)) return formatCalculatorResult(input);
   return formatCalculatorResult(operation(input));
 }
 
 function toggleCalculatorSign(expression: string) {
   // Negating nothing is still nothing on Windows. Returning "-" left the
   // display in a state where the next = answered Error.
-  if (expression === "Error" || expression === "0") return "0";
+  if (isCalculatorError(expression) || expression === "0") return "0";
   const fragment = getCurrentCalculatorFragment(expression);
   if (!fragment || fragment === "-") return expression;
 
@@ -496,7 +521,7 @@ function toggleCalculatorSign(expression: string) {
 
 function insertCalculatorPi(expression: string) {
   const pi = trimNumber(Math.PI);
-  if (expression === "Error" || expression === "0") return pi;
+  if (isCalculatorError(expression) || expression === "0") return pi;
   const last = expression[expression.length - 1];
   if (!last || ["+", "-", "*", "/"].includes(last)) return `${expression}${pi}`;
   return `${expression}*${pi}`;
@@ -522,8 +547,21 @@ function getCurrentCalculatorFragment(expression: string) {
   return expression.slice(start);
 }
 
+/*
+ * Windows names the fault instead of printing one word for all of them: the
+ * display used to read "Error" whether the user divided by zero, asked for the
+ * root of a negative number, or typed something the parser could not read.
+ */
+const CALCULATOR_DIVIDE_BY_ZERO = "0으로 나눌 수 없습니다";
+const CALCULATOR_INVALID_INPUT = "잘못된 입력입니다";
+
+export function isCalculatorError(display: string) {
+  return display === CALCULATOR_DIVIDE_BY_ZERO || display === CALCULATOR_INVALID_INPUT;
+}
+
 function formatCalculatorResult(value: number) {
-  return Number.isFinite(value) ? trimNumber(value) : "Error";
+  if (Number.isFinite(value)) return trimNumber(value);
+  return Number.isNaN(value) ? CALCULATOR_INVALID_INPUT : CALCULATOR_DIVIDE_BY_ZERO;
 }
 
 function degreesToRadians(value: number) {
