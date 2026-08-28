@@ -260,11 +260,8 @@ export default function TaskManagerApp({
               })
             )}
           </div>
+          {/* The totals moved to the status bar, which both tabs share. */}
           <footer className="taskmgr-actions">
-            <p>
-              프로세스 {rows.length}개 · CPU {totals.cpu.toFixed(1)}% · 메모리{" "}
-              {totals.memoryMb.toLocaleString("ko-KR")} MB
-            </p>
             <button
               disabled={!selectedId}
               onClick={() => selectedId && endTask(selectedId)}
@@ -309,6 +306,15 @@ export default function TaskManagerApp({
           </dl>
         </div>
       )}
+
+      {/* Windows keeps the same summary line under both tabs, so the totals stay
+          readable while the 성능 탭 hides the process table. */}
+      <footer className="taskmgr-statusbar">
+        <span>프로세스 {rows.length}개</span>
+        <span>CPU {totals.cpu.toFixed(1)}%</span>
+        <span>메모리 {totals.memoryMb.toLocaleString("ko-KR")} MB</span>
+        <span>디스크 {totals.disk.toFixed(1)} MB/s</span>
+      </footer>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { APP_BAR_HEIGHT, SNAP_CORNER_SIZE, SNAP_EDGE_SIZE, SNAP_GUTTER } from "./constants";
+import { APP_BAR_HEIGHT, SNAP_CORNER_SIZE, SNAP_EDGE_SIZE } from "./constants";
 import { type SnapZone, type WindowInstance } from "./types";
 
 export function getWindowSnapZone(clientX: number, clientY: number): SnapZone | null {
@@ -21,12 +21,18 @@ export function getWindowSnapZone(clientX: number, clientY: number): SnapZone | 
   return null;
 }
 
+/**
+ * Snapped windows tile against each other and against the screen edges, the way
+ * Windows does. The work area used to be inset by a gutter on every side, so two
+ * halves floated with a gap between them while a maximized window sat flush —
+ * the same gesture produced two different geometries.
+ */
 export function getDesktopWorkArea() {
   return {
-    height: Math.max(240, window.innerHeight - APP_BAR_HEIGHT - SNAP_GUTTER * 2),
-    width: Math.max(320, window.innerWidth - SNAP_GUTTER * 2),
-    x: SNAP_GUTTER,
-    y: SNAP_GUTTER,
+    height: Math.max(240, window.innerHeight - APP_BAR_HEIGHT),
+    width: Math.max(320, window.innerWidth),
+    x: 0,
+    y: 0,
   };
 }
 
@@ -36,8 +42,8 @@ export function getWindowSnapPatch(zone: SnapZone): Partial<WindowInstance> {
     return { maximized: true, minimized: false };
   }
 
-  const halfWidth = Math.max(320, Math.floor((area.width - SNAP_GUTTER) / 2));
-  const halfHeight = Math.max(220, Math.floor((area.height - SNAP_GUTTER) / 2));
+  const halfWidth = Math.max(320, Math.floor(area.width / 2));
+  const halfHeight = Math.max(220, Math.floor(area.height / 2));
   const rightX = area.x + area.width - halfWidth;
   const bottomY = area.y + area.height - halfHeight;
 

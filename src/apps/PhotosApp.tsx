@@ -383,7 +383,9 @@ export default function PhotosApp({
           >
             <ZoomOut aria-hidden="true" size={17} />
           </button>
-          <span className="photos-zoom-value">{zoom}%</span>
+          {/* The zoom buttons are locked without a photo, so the readout must not
+              keep claiming a magnification for an image nobody is looking at. */}
+          <span className="photos-zoom-value">{hasPhoto ? `${zoom}%` : "—"}</span>
           <button
             aria-label="확대"
             disabled={!hasPhoto || zoom >= MAX_ZOOM}
@@ -503,7 +505,10 @@ export default function PhotosApp({
           {naturalSize ? `${naturalSize.width} × ${naturalSize.height}px` : "크기 정보 없음"}
         </span>
         <span>{hasPhoto ? `${zoom}%` : "—"}</span>
-        <span>{total === 0 ? "0 / 0" : `${currentIndex + 1} / ${total}`}</span>
+        {/* Windows Photos shows no position while the stage holds no image, so an
+            empty library, an undrawn canvas and a broken file all drop the
+            indicator instead of counting the placeholder as a photo. */}
+        {hasPhoto && <span>{`${currentIndex + 1} / ${total}`}</span>}
       </div>
     </div>
   );

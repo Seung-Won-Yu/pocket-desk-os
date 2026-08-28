@@ -144,7 +144,7 @@ import {
 } from "./vfs/model";
 import { persistVfsEntries } from "./vfs/storage";
 import { getWallpaperStyle, wallpaperGallery, type WallpaperCssVars } from "./wallpapers";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function App() {
   const [theme, setTheme] = useState<ThemeName>(() => {
@@ -219,6 +219,7 @@ export default function App() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const windowMotionTimersRef = useRef(new Map<string, number>());
   const closeGuardsRef = useRef(new Map<string, () => boolean>());
+  const [unsavedWindowIds, setUnsavedWindowIds] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
     if (shellPhase !== "booting") return;
@@ -1627,16 +1628,33 @@ export default function App() {
    * Manager's 작업 끝내기 — so one check covers all of them. An app that wants to
    * ask the user first returns false and calls closeWindow again once answered.
    */
-  const registerCloseGuard = (windowId: string, guard: (() => boolean) | null) => {
+  const registerCloseGuard = useCallback((windowId: string, guard: (() => boolean) | null) => {
     if (guard) closeGuardsRef.current.set(windowId, guard);
     else closeGuardsRef.current.delete(windowId);
-  };
+
+    // An app only guards a close when it has work to lose, so the same signal
+    // drives the title bar's unsaved marker. Callers pass this to an effect's
+    // dependency list, so the identity has to stay stable.
+    setUnsavedWindowIds((current) => {
+      if (current.has(windowId) === Boolean(guard)) return current;
+      const next = new Set(current);
+      if (guard) next.add(windowId);
+      else next.delete(windowId);
+      return next;
+    });
+  }, []);
 
   const closeWindow = (id: string) => {
     const guard = closeGuardsRef.current.get(id);
     if (guard && !guard()) return;
 
     closeGuardsRef.current.delete(id);
+    setUnsavedWindowIds((current) => {
+      if (!current.has(id)) return current;
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
     playSound("close");
     setWindowMenu(null);
     scheduleWindowMotion(id, "closing", () => {
@@ -1850,6 +1868,21 @@ export default function App() {
   const activeWindowId = desktopWindows
     .filter((item) => !item.minimized)
     .sort((a, b) => b.z - a.z)[0]?.id;
+  /**
+   * Windows titles a window after the document, not the program: `notes.txt -
+   * 메모장`. The same string is what Alt+Tab and the taskbar preview show, so it
+   * is resolved once here and handed to all three.
+   */
+  const getWindowDocumentLabel = (appId: AppId) => {
+    if (appId === "notepad") {
+      return activeDesktopItems.find((item) => item.id === activeNoteId)?.name;
+    }
+    if (appId === "paint" || appId === "photos") {
+      return activeDesktopItems.find((item) => item.id === activeCanvasId)?.name;
+    }
+    return undefined;
+  };
+
   const openWindows = useMemo<OpenWindowInfo[]>(
     () =>
       windows.map((item) => ({
@@ -2388,6 +2421,8 @@ export default function App() {
               onFocus={() => focusWindow(item.id)}
               onMinimize={() => minimizeWindow(item.id)}
               onOpenSystemMenu={(event) => openWindowSystemMenu(event, item.id)}
+              documentLabel={getWindowDocumentLabel(item.appId)}
+              hasUnsavedChanges={unsavedWindowIds.has(item.id)}
               onSnapPreviewChange={setSnapPreview}
               onToggleMaximize={() => toggleMaximize(item.id)}
               onUpdate={(patch) => updateWindow(item.id, patch)}
@@ -2508,6 +2543,7 @@ export default function App() {
           setStartOpen((value) => !value);
         }}
         onOpenApp={openApp}
+        onOpenNewWindow={openNewAppWindow}
         onOpenRunDialog={openRunDialog}
         clock24h={clock24h}
         onSearch={(nextQuery) => {
@@ -2520,6 +2556,7 @@ export default function App() {
         onSetSoundEnabled={setSoundEnabled}
         onShowDesktop={toggleShowDesktop}
         onTogglePinnedApp={togglePinnedApp}
+        onCloseWindow={closeWindow}
         onToggleWindow={toggleFromTaskbar}
         pinnedAppIds={pinnedAppIds}
         soundEnabled={soundEnabled}
@@ -2659,7 +2696,11 @@ export default function App() {
       )}
 
       {shellPhase === "unlocked" && altTabWindowId && (
-        <AltTabSwitcher selectedWindowId={altTabWindowId} windows={desktopWindows} />
+        <AltTabSwitcher
+          getDocumentLabel={getWindowDocumentLabel}
+          selectedWindowId={altTabWindowId}
+          windows={desktopWindows}
+        />
       )}
 
       {shellPhase === "unlocked" && taskViewOpen && (

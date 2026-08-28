@@ -1,11 +1,14 @@
 import AppIconTile from "../../components/AppIconTile";
 import { getApp } from "../appCatalog";
 import { type WindowInstance } from "../types";
+import { type AppId } from "../../types";
 
 export function AltTabSwitcher({
+  getDocumentLabel,
   selectedWindowId,
   windows,
 }: {
+  getDocumentLabel?: (appId: AppId) => string | undefined;
   selectedWindowId: string;
   windows: WindowInstance[];
 }) {
@@ -31,7 +34,7 @@ export function AltTabSwitcher({
               key={windowItem.id}
             >
               <AppIconTile accent={app.accent} icon={app.icon} size="large" />
-              <strong>{app.title}</strong>
+              <strong>{getDocumentLabel?.(windowItem.appId) ?? app.title}</strong>
               <small>{windowItem.minimized ? "최소화됨" : "열림"}</small>
             </div>
           );

@@ -31,6 +31,7 @@ function makeHandlers() {
   return {
     onClearNotifications: vi.fn(),
     onOpenApp: vi.fn(),
+    onOpenNewWindow: vi.fn(),
     onOpenRunDialog: vi.fn(),
     onOpenStart: vi.fn(),
     onSearch: vi.fn(),
@@ -39,6 +40,7 @@ function makeHandlers() {
     onShowDesktop: vi.fn(),
     onTogglePinnedApp: vi.fn(),
     onToggleTaskView: vi.fn(),
+    onCloseWindow: vi.fn(),
     onToggleWindow: vi.fn(),
   };
 }
@@ -211,7 +213,9 @@ describe("Taskbar 앱 버튼 우클릭 메뉴", () => {
       target: screen.getByRole("button", { name: "Microsoft Edge" }),
     });
 
-    expect(screen.getAllByRole("menuitem")).toHaveLength(1);
+    // The app's own jump list: 새 창 plus the pin toggle, and nothing from the
+    // taskbar's shell menu.
+    expect(screen.getAllByRole("menuitem")).toHaveLength(2);
     expect(screen.queryByRole("menuitem", { name: /작업 관리자/ })).toBeNull();
 
     await user.click(screen.getByRole("menuitem", { name: "작업 표시줄에서 제거" }));
@@ -302,5 +306,69 @@ describe("Taskbar 배경 우클릭 셸 메뉴", () => {
     await user.click(screen.getByRole("menuitem", { name: "바탕 화면 보기" }));
 
     expect(handlers.onShowDesktop).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Taskbar 앱 메뉴 닫기", () => {
+  it("실행 중인 앱의 창을 모두 닫는다", async () => {
+    const { handlers, user } = renderTaskbar({
+      pinnedAppIds: ["browser"],
+      windows: [makeWindow("win-edge", "browser"), makeWindow("win-edge-2", "browser")],
+    });
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("button", { name: /Microsoft Edge/ }),
+    });
+    await user.click(screen.getByRole("menuitem", { name: "창 닫기" }));
+
+    // Windows closes every window of the app from this menu, not just one.
+    expect(handlers.onCloseWindow).toHaveBeenCalledWith("win-edge");
+    expect(handlers.onCloseWindow).toHaveBeenCalledWith("win-edge-2");
+    expect(handlers.onCloseWindow).toHaveBeenCalledTimes(2);
+  });
+
+  it("창이 없는 고정 앱에는 닫기를 보여주지 않는다", async () => {
+    const { user } = renderTaskbar();
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("button", { name: "파일 탐색기" }),
+    });
+
+    expect(screen.queryByRole("menuitem", { name: "창 닫기" })).toBeNull();
+  });
+});
+
+describe("Taskbar 새 창", () => {
+  it("점프 목록에서 새 인스턴스를 연다", async () => {
+    const { handlers, user } = renderTaskbar({
+      pinnedAppIds: ["browser"],
+      windows: [makeWindow("win-edge", "browser")],
+    });
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("button", { name: /Microsoft Edge/ }),
+    });
+    await user.click(screen.getByRole("menuitem", { name: "새 창" }));
+
+    // Raising the running window would be the taskbar click; this must not.
+    expect(handlers.onOpenNewWindow).toHaveBeenCalledWith("browser");
+    expect(handlers.onToggleWindow).not.toHaveBeenCalled();
+  });
+
+  it("가운데 클릭으로도 새 인스턴스를 연다", async () => {
+    const { handlers, user } = renderTaskbar({
+      pinnedAppIds: ["browser"],
+      windows: [makeWindow("win-edge", "browser")],
+    });
+
+    await user.pointer({
+      keys: "[MouseMiddle]",
+      target: screen.getByRole("button", { name: /Microsoft Edge/ }),
+    });
+
+    expect(handlers.onOpenNewWindow).toHaveBeenCalledWith("browser");
   });
 });

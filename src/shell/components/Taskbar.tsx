@@ -19,10 +19,12 @@ import {
   Search,
   Play,
   Settings,
+  SquarePlus,
   SquareTerminal,
   Sun,
   Volume2,
   Wifi,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -40,6 +42,7 @@ export function Taskbar({
   onClearNotifications,
   onOpenStart,
   onOpenApp,
+  onOpenNewWindow,
   onOpenRunDialog,
   clock24h,
   onSearch,
@@ -48,6 +51,7 @@ export function Taskbar({
   onSetSoundEnabled,
   onShowDesktop,
   onTogglePinnedApp,
+  onCloseWindow,
   onToggleWindow,
   pinnedAppIds,
   soundEnabled,
@@ -65,6 +69,7 @@ export function Taskbar({
   onClearNotifications: () => void;
   onOpenStart: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onOpenApp: (appId: AppId) => void;
+  onOpenNewWindow: (appId: AppId) => void;
   onOpenRunDialog: () => void;
   clock24h: boolean;
   onSearch: (query: string) => void;
@@ -73,6 +78,7 @@ export function Taskbar({
   onSetSoundEnabled: (enabled: boolean) => void;
   onShowDesktop: () => void;
   onTogglePinnedApp: (appId: AppId) => void;
+  onCloseWindow: (id: string) => void;
   onToggleWindow: (id: string) => void;
   pinnedAppIds: AppId[];
   soundEnabled: boolean;
@@ -290,6 +296,13 @@ export function Taskbar({
                       onOpenApp(app.id);
                     }
                   }}
+                  onAuxClick={(event) => {
+                    // Windows opens another instance on a middle click.
+                    if (event.button !== 1) return;
+                    event.preventDefault();
+                    hidePreview();
+                    onOpenNewWindow(app.id);
+                  }}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     // Keep the taskbar's own shell menu from replacing this one.
@@ -326,12 +339,24 @@ export function Taskbar({
           role="menu"
           style={{ left: clamp(taskbarMenu.left, 112, window.innerWidth - 112) }}
         >
+          {/* Windows puts the app itself at the top of a jump list; picking it
+              opens a fresh instance rather than raising the running one. */}
+          <button
+            onClick={() => {
+              setTaskbarMenu(null);
+              onOpenNewWindow(taskbarMenu.appId);
+            }}
+            ref={taskbarMenuButtonRef}
+            role="menuitem"
+            type="button"
+          >
+            <SquarePlus aria-hidden="true" size={15} />새 창
+          </button>
           <button
             onClick={() => {
               onTogglePinnedApp(taskbarMenu.appId);
               setTaskbarMenu(null);
             }}
-            ref={taskbarMenuButtonRef}
             role="menuitem"
             type="button"
           >
@@ -344,6 +369,22 @@ export function Taskbar({
               ? "작업 표시줄에서 제거"
               : "작업 표시줄에 고정"}
           </button>
+          {windows.some((item) => item.appId === taskbarMenu.appId) && (
+            // Closing from the taskbar is a routine Windows action and had no
+            // equivalent here. Closes every window of that app, as Windows does.
+            <button
+              onClick={() => {
+                setTaskbarMenu(null);
+                windows
+                  .filter((item) => item.appId === taskbarMenu.appId)
+                  .forEach((item) => onCloseWindow(item.id));
+              }}
+              role="menuitem"
+              type="button"
+            >
+              <X aria-hidden="true" size={15} />창 닫기
+            </button>
+          )}
         </div>
       )}
       {shellMenu && (

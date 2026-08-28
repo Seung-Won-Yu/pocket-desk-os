@@ -114,14 +114,14 @@ describe("getWindowSnapZone", () => {
 });
 
 describe("getDesktopWorkArea", () => {
-  it("insets the viewport by the gutter and reserves the app bar", () => {
+  it("spans the viewport and reserves the app bar", () => {
     setViewport(1280, 800);
-    expect(getDesktopWorkArea()).toEqual({ height: 732, width: 1260, x: 10, y: 10 });
+    expect(getDesktopWorkArea()).toEqual({ height: 752, width: 1280, x: 0, y: 0 });
   });
 
   it("floors the work area at the minimum window size on tiny viewports", () => {
     setViewport(200, 200);
-    expect(getDesktopWorkArea()).toEqual({ height: 240, width: 320, x: 10, y: 10 });
+    expect(getDesktopWorkArea()).toEqual({ height: 240, width: 320, x: 0, y: 0 });
   });
 });
 
@@ -134,76 +134,78 @@ describe("getWindowSnapPatch", () => {
   it("fills a full-height half for the left and right zones", () => {
     setViewport(1280, 800);
     expect(getWindowSnapPatch("left")).toEqual({
-      height: 732,
+      height: 752,
       maximized: false,
       minimized: false,
-      width: 625,
-      x: 10,
-      y: 10,
+      width: 640,
+      x: 0,
+      y: 0,
     });
     expect(getWindowSnapPatch("right")).toEqual({
-      height: 732,
+      height: 752,
       maximized: false,
       minimized: false,
-      width: 625,
-      x: 645,
-      y: 10,
+      width: 640,
+      x: 640,
+      y: 0,
     });
   });
 
   it("fills a quarter for each corner zone", () => {
     setViewport(1280, 800);
     expect(getWindowSnapPatch("top-left")).toEqual({
-      height: 361,
+      height: 376,
       maximized: false,
       minimized: false,
-      width: 625,
-      x: 10,
-      y: 10,
+      width: 640,
+      x: 0,
+      y: 0,
     });
     expect(getWindowSnapPatch("top-right")).toEqual({
-      height: 361,
+      height: 376,
       maximized: false,
       minimized: false,
-      width: 625,
-      x: 645,
-      y: 10,
+      width: 640,
+      x: 640,
+      y: 0,
     });
     expect(getWindowSnapPatch("bottom-left")).toEqual({
-      height: 361,
+      height: 376,
       maximized: false,
       minimized: false,
-      width: 625,
-      x: 10,
-      y: 381,
+      width: 640,
+      x: 0,
+      y: 376,
     });
     expect(getWindowSnapPatch("bottom-right")).toEqual({
-      height: 361,
+      height: 376,
       maximized: false,
       minimized: false,
-      width: 625,
-      x: 645,
-      y: 381,
+      width: 640,
+      x: 640,
+      y: 376,
     });
   });
 
-  it("leaves exactly one gutter between the halves and the viewport edges", () => {
+  it("tiles the halves flush against each other and the viewport edges", () => {
     setViewport(1280, 800);
     const left = getWindowSnapPatch("left");
     const right = getWindowSnapPatch("right");
 
-    expect(left.x).toBe(10);
-    expect((right.x ?? 0) - ((left.x ?? 0) + (left.width ?? 0))).toBe(10);
-    expect(1280 - ((right.x ?? 0) + (right.width ?? 0))).toBe(10);
+    // Windows leaves no seam: the two halves meet, and together they cover the
+    // full width. A maximized window is flush, so a snapped one must be too.
+    expect(left.x).toBe(0);
+    expect((right.x ?? 0) - ((left.x ?? 0) + (left.width ?? 0))).toBe(0);
+    expect(1280 - ((right.x ?? 0) + (right.width ?? 0))).toBe(0);
   });
 
-  it("leaves exactly one gutter between the quarter rows and above the app bar", () => {
+  it("tiles the quarter rows flush against each other and the app bar", () => {
     setViewport(1280, 800);
     const top = getWindowSnapPatch("top-left");
     const bottom = getWindowSnapPatch("bottom-left");
 
-    expect((bottom.y ?? 0) - ((top.y ?? 0) + (top.height ?? 0))).toBe(10);
-    expect(800 - 48 - ((bottom.y ?? 0) + (bottom.height ?? 0))).toBe(10);
+    expect((bottom.y ?? 0) - ((top.y ?? 0) + (top.height ?? 0))).toBe(0);
+    expect(800 - 48 - ((bottom.y ?? 0) + (bottom.height ?? 0))).toBe(0);
   });
 
   it("always clears the maximized and minimized flags for geometry zones", () => {
@@ -224,29 +226,30 @@ describe("getWindowSnapPatch", () => {
   it("keeps halves and quarters side by side at the narrowest snap-enabled viewport", () => {
     setViewport(720, 420);
     expect(getWindowSnapPatch("left")).toEqual({
-      height: 352,
+      height: 372,
       maximized: false,
       minimized: false,
-      width: 345,
-      x: 10,
-      y: 10,
+      width: 360,
+      x: 0,
+      y: 0,
     });
     expect(getWindowSnapPatch("right")).toEqual({
-      height: 352,
+      height: 372,
       maximized: false,
       minimized: false,
-      width: 345,
-      x: 365,
-      y: 10,
+      width: 360,
+      x: 360,
+      y: 0,
     });
-    // The 220px minimum quarter height wins over half of the 352px work area.
+    // The 220px minimum quarter height wins over half of the 372px work area,
+    // so the bottom row is pushed up to keep its full height on screen.
     expect(getWindowSnapPatch("bottom-right")).toEqual({
       height: 220,
       maximized: false,
       minimized: false,
-      width: 345,
-      x: 365,
-      y: 142,
+      width: 360,
+      x: 360,
+      y: 152,
     });
   });
 
@@ -257,31 +260,31 @@ describe("getWindowSnapPatch", () => {
     expect(left.width).toBe(320);
     expect(right.width).toBe(320);
     // The floored width fills the whole work area, so both halves share one origin.
-    expect(left.x).toBe(10);
-    expect(right.x).toBe(10);
+    expect(left.x).toBe(0);
+    expect(right.x).toBe(0);
   });
 });
 
 describe("getSnapPreviewStyle", () => {
   it("previews the whole work area for the top zone", () => {
     setViewport(1280, 800);
-    expect(getSnapPreviewStyle("top")).toEqual({ height: 732, left: 10, top: 10, width: 1260 });
+    expect(getSnapPreviewStyle("top")).toEqual({ height: 752, left: 0, top: 0, width: 1280 });
   });
 
   it("mirrors the half and quarter patches", () => {
     setViewport(1280, 800);
-    expect(getSnapPreviewStyle("left")).toEqual({ height: 732, left: 10, top: 10, width: 625 });
+    expect(getSnapPreviewStyle("left")).toEqual({ height: 752, left: 0, top: 0, width: 640 });
     expect(getSnapPreviewStyle("right")).toEqual({
-      height: 732,
-      left: 645,
-      top: 10,
-      width: 625,
+      height: 752,
+      left: 640,
+      top: 0,
+      width: 640,
     });
     expect(getSnapPreviewStyle("bottom-right")).toEqual({
-      height: 361,
-      left: 645,
-      top: 381,
-      width: 625,
+      height: 376,
+      left: 640,
+      top: 376,
+      width: 640,
     });
   });
 

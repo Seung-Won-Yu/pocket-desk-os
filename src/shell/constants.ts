@@ -37,7 +37,6 @@ export const DEFAULT_USER_NAME = "PocketDesk";
 export const MAX_VIRTUAL_DESKTOPS = 6;
 export const SNAP_EDGE_SIZE = 24;
 export const SNAP_CORNER_SIZE = 72;
-export const SNAP_GUTTER = 10;
 export const WINDOW_EXIT_MOTION_MS = 170;
 export const appSearchKeywords: Record<AppId, string[]> = {
   thispc: [

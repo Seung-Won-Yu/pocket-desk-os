@@ -23,6 +23,8 @@ const WINDOW_RESIZE_EDGES: WindowResizeEdge[] = ["n", "s", "e", "w", "ne", "nw",
 export function WindowFrame({
   active,
   app,
+  documentLabel,
+  hasUnsavedChanges = false,
   children,
   instance,
   motion,
@@ -36,6 +38,8 @@ export function WindowFrame({
 }: {
   active: boolean;
   app: AppDefinition;
+  documentLabel?: string;
+  hasUnsavedChanges?: boolean;
   children: React.ReactNode;
   instance: WindowInstance;
   motion?: WindowMotion;
@@ -78,12 +82,36 @@ export function WindowFrame({
       };
 
   const startMove = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || instance.maximized) return;
+    if (event.button !== 0) return;
     event.preventDefault();
     onFocus();
     const startX = event.clientX;
     const startY = event.clientY;
-    const { x, y, width, height } = instance;
+
+    /*
+     * Dragging a maximized window restores it and lets it follow the cursor, as
+     * Windows does. The restored window is placed so the pointer keeps the same
+     * proportional grip on its title bar, rather than jumping to a corner.
+     */
+    const restoring = instance.maximized;
+    const width = restoring ? Math.min(instance.width, window.innerWidth - 16) : instance.width;
+    const height = restoring
+      ? Math.min(instance.height, window.innerHeight - APP_BAR_HEIGHT - 16)
+      : instance.height;
+    const grip = restoring ? Math.min(0.9, startX / Math.max(1, window.innerWidth)) : 0;
+    const x = restoring ? startX - width * grip : instance.x;
+    const y = restoring ? 0 : instance.y;
+    if (restoring) {
+      onUpdate({
+        height,
+        maximized: false,
+        snapZone: undefined,
+        width,
+        x: clamp(x, 8, Math.max(8, window.innerWidth - width - 8)),
+        y: 8,
+      });
+    }
+
     let activeSnapZone: SnapZone | null = null;
 
     const onPointerMove = (moveEvent: globalThis.PointerEvent) => {
@@ -194,7 +222,13 @@ export function WindowFrame({
       >
         <div className="window-title">
           <AppIconTile accent={app.accent} icon={app.icon} size="tiny" />
-          <span>{app.title}</span>
+          {/* Windows names the window after the document it holds. */}
+          {/* Windows marks an unsaved document with a leading asterisk. */}
+          <span>
+            {documentLabel
+              ? `${hasUnsavedChanges ? "*" : ""}${documentLabel} - ${app.title}`
+              : app.title}
+          </span>
         </div>
         <div className="window-controls">
           <button

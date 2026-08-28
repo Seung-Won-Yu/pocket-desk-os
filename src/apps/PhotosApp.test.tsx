@@ -312,7 +312,8 @@ describe("PhotosApp 빈 상태", () => {
     renderPhotos({ activeCanvasId: "", entries: [] });
 
     expect(screen.getByText("사진이 없습니다")).toBeVisible();
-    expect(screen.getByText("0 / 0")).toBeVisible();
+    // Windows Photos shows no position indicator with nothing on the stage.
+    expect(screen.queryByText(/\d+ \/ \d+/)).toBeNull();
     expect(screen.getByText("선택한 사진 없음")).toBeVisible();
     expect(screen.getByRole("button", { name: "삭제" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "편집" })).toBeDisabled();
@@ -330,6 +331,9 @@ describe("PhotosApp 빈 상태", () => {
     expect(screen.queryByRole("img", { name: "empty.png" })).toBeNull();
     expect(screen.getByRole("button", { name: "축소" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "창에 맞춤" })).toBeDisabled();
+    // A canvas file with no image is still nothing to show: no "1 / 1", no 배율.
+    expect(screen.queryByText(/\d+ \/ \d+/)).toBeNull();
+    expect(screen.getByRole("group", { name: "확대/축소" })).toHaveTextContent("—");
 
     // The placeholder repeats the toolbar's 편집 action.
     const editButtons = screen.getAllByRole("button", { name: "편집" });

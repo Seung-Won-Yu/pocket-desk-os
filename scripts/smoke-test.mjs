@@ -1429,6 +1429,41 @@ async function runSmoke(baseUrl) {
         .catch(() => {});
     }
 
+    // Snapped halves tile flush, as a maximized window does. They used to float
+    // with a 10px gutter, so the same gesture produced two different geometries.
+    await page.keyboard.press("Meta+ArrowLeft");
+    if (await page.locator(".snap-assist").count()) await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    const snappedLeft = await page.locator(".window-frame.is-active").boundingBox();
+    await page.keyboard.press("Meta+ArrowRight");
+    if (await page.locator(".snap-assist").count()) await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    const snappedRight = await page.locator(".window-frame.is-active").boundingBox();
+    const seam = Math.round(snappedRight.x - (snappedLeft.x + snappedLeft.width));
+    assert(seam === 0, `Snapped halves left a ${seam}px seam`);
+    assert(
+      Math.round(snappedLeft.x) === 0 &&
+        Math.round(snappedRight.x + snappedRight.width) === 1280,
+      "Snapped halves did not reach the viewport edges",
+    );
+
+    // Task View leaves the taskbar reachable, as Windows does.
+    await page.getByRole("button", { name: /작업 보기/ }).click();
+    await page.locator(".task-view").waitFor({ state: "visible" });
+    // The open animation scales the panel past its final size, so a bounding box
+    // read mid-flight is 2% too tall. Settle first, then measure.
+    await page.locator(".task-view").evaluate(async (node) => {
+      await Promise.all(node.getAnimations().map((animation) => animation.finished));
+    });
+    const taskViewBox = await page.locator(".task-view").boundingBox();
+    const taskbarBox = await page.locator(".taskbar").boundingBox();
+    assert(
+      Math.round(taskViewBox.y + taskViewBox.height) <= Math.round(taskbarBox.y) + 1,
+      `Task View bottom ${Math.round(taskViewBox.y + taskViewBox.height)} covered the taskbar at ${Math.round(taskbarBox.y)}`,
+    );
+    await page.keyboard.press("Escape");
+    await page.locator(".task-view").waitFor({ state: "hidden" });
+
     // Snap Assist offers the opposite half once a window takes one side.
     await page.keyboard.press("Meta+ArrowLeft");
     const snapAssist = page.locator(".snap-assist");
@@ -1592,6 +1627,16 @@ async function runSmoke(baseUrl) {
     const draftEditor = draftNotepad.getByLabel("메모 내용");
     await draftEditor.fill("SMOKE UNSAVED DRAFT");
 
+    // Windows marks an unsaved document with a leading asterisk and drops it
+    // once the save lands. The title bar carried no dirty signal at all before.
+    const draftTitle = draftNotepad.locator(".window-titlebar").first();
+    await page.waitForTimeout(120);
+    const dirtyTitle = await draftTitle.innerText();
+    assert(
+      dirtyTitle.startsWith("*") && dirtyTitle.endsWith("- 메모장"),
+      `Unsaved Notepad title lacked the asterisk: ${JSON.stringify(dirtyTitle)}`,
+    );
+
     for (const hide of ["minimize", "Meta+m", "Meta+d"]) {
       if (hide === "minimize") {
         await draftNotepad.getByRole("button", { name: "메모장 최소화" }).click();
@@ -1610,6 +1655,12 @@ async function runSmoke(baseUrl) {
         `Hiding the window with ${hide} discarded the unsaved draft`,
       );
     }
+    const savedTitle = await draftTitle.innerText();
+    assert(
+      !savedTitle.startsWith("*") && savedTitle.endsWith("- 메모장"),
+      `Saved Notepad title kept the asterisk: ${JSON.stringify(savedTitle)}`,
+    );
+
     await draftNotepad.getByRole("button", { name: "메모장 닫기" }).click();
     await page.waitForTimeout(200);
 
