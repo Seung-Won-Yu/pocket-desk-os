@@ -28,6 +28,10 @@ type PhotosAppProps = {
   activateVfsEntry: (item: DesktopItem) => void;
   playSound: (effect: "click" | "error" | "open" | "success" | "toggle") => void;
   renameVfsEntry: (itemId: string, name: string) => void;
+  savePaintImage: (
+    content: string,
+    options?: { existingItemId?: string; name?: string; parentId?: string },
+  ) => DesktopItem;
   windowId: string;
 };
 
@@ -53,6 +57,7 @@ export default function PhotosApp({
   activateVfsEntry,
   playSound,
   renameVfsEntry,
+  savePaintImage,
   windowId,
 }: PhotosAppProps) {
   const viewerRef = useRef<HTMLDivElement | null>(null);
@@ -62,7 +67,6 @@ export default function PhotosApp({
   const [viewingId, setViewingId] = useState(activeCanvasId);
   const [zoomMode, setZoomMode] = useState<"custom" | "fit">("fit");
   const [customZoom, setCustomZoom] = useState(100);
-  const [rotation, setRotation] = useState(0);
   const [naturalSize, setNaturalSize] = useState<PhotoSize | null>(null);
   const [stageSize, setStageSize] = useState<PhotoSize>({ height: 0, width: 0 });
   const [loadFailed, setLoadFailed] = useState(false);
@@ -97,7 +101,6 @@ export default function PhotosApp({
   useEffect(() => {
     setNaturalSize(null);
     setLoadFailed(false);
-    setRotation(0);
     setZoomMode("fit");
     setCustomZoom(100);
     setRenaming(false);
@@ -129,9 +132,8 @@ export default function PhotosApp({
   }, [renaming]);
 
   const hasPhoto = Boolean(currentEntry?.content) && !loadFailed;
-  const isQuarterTurn = rotation % 180 !== 0;
-  const boxWidth = naturalSize ? (isQuarterTurn ? naturalSize.height : naturalSize.width) : 0;
-  const boxHeight = naturalSize ? (isQuarterTurn ? naturalSize.width : naturalSize.height) : 0;
+  const boxWidth = naturalSize?.width ?? 0;
+  const boxHeight = naturalSize?.height ?? 0;
   const fitZoom =
     boxWidth > 0 && boxHeight > 0 && stageSize.width > 0 && stageSize.height > 0
       ? clamp(
@@ -144,13 +146,10 @@ export default function PhotosApp({
   const displayWidth = naturalSize ? Math.round((naturalSize.width * zoom) / 100) : 0;
   const displayHeight = naturalSize ? Math.round((naturalSize.height * zoom) / 100) : 0;
   const frameStyle: React.CSSProperties = naturalSize
-    ? {
-        height: `${isQuarterTurn ? displayWidth : displayHeight}px`,
-        width: `${isQuarterTurn ? displayHeight : displayWidth}px`,
-      }
+    ? { height: `${displayHeight}px`, width: `${displayWidth}px` }
     : {};
   const imageStyle: React.CSSProperties = {
-    transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+    transform: "translate(-50%, -50%)",
     ...(naturalSize ? { height: `${displayHeight}px`, width: `${displayWidth}px` } : {}),
   };
 
@@ -170,10 +169,30 @@ export default function PhotosApp({
     setCustomZoom(100);
   };
 
+  /*
+   * Rotation is written into the file, the way the Windows photo viewer saves
+   * it — so Explorer, Paint and the next session all see the turned image. It
+   * used to be a CSS transform on the <img>, which quietly evaporated the
+   * moment the reader moved to another photo and never reached the file.
+   */
   const rotateBy = (degrees: number) => {
-    if (!hasPhoto) return;
-    playSound("toggle");
-    setRotation((current) => (current + degrees + 360) % 360);
+    if (!hasPhoto || !currentEntry?.content) return;
+
+    const source = new Image();
+    source.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = source.naturalHeight;
+      canvas.height = source.naturalWidth;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+
+      context.translate(canvas.width / 2, canvas.height / 2);
+      context.rotate((degrees * Math.PI) / 180);
+      context.drawImage(source, -source.naturalWidth / 2, -source.naturalHeight / 2);
+      savePaintImage(canvas.toDataURL("image/png"), { existingItemId: currentEntry.id });
+      playSound("toggle");
+    };
+    source.src = currentEntry.content;
   };
 
   const goToOffset = (offset: number) => {

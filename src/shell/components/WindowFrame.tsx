@@ -83,6 +83,7 @@ export function WindowFrame({
       };
 
   const frameRef = useRef<HTMLElement | null>(null);
+  const focusBeforeMinimizeRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!active || instance.minimized) return;
@@ -92,6 +93,11 @@ export function WindowFrame({
     // A frame later, so a control the window itself focuses on mount wins.
     const frameId = window.requestAnimationFrame(() => {
       if (frameRef.current?.contains(document.activeElement)) return;
+      const remembered = focusBeforeMinimizeRef.current;
+      if (remembered?.isConnected && frameRef.current?.contains(remembered)) {
+        remembered.focus({ preventScroll: true });
+        return;
+      }
       frameRef.current?.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(frameId);
@@ -239,6 +245,27 @@ export function WindowFrame({
       className={`window-frame ${active ? "is-active" : ""} ${
         instance.maximized ? "is-maximized" : ""
       } ${instance.minimized ? "is-minimized" : ""} ${motion ? `is-${motion}` : ""}`}
+      /*
+       * Minimizing hides the frame with `visibility: hidden`, and the browser
+       * drops focus from the hidden control before React can look — so the
+       * restore effect above could only give the frame its generic focus and
+       * Notepad's caret was gone until the reader clicked back into the text.
+       * The last focused control is remembered as focus moves, and handed the
+       * focus back when the window returns, the way Windows restores a
+       * window's focus with the window.
+       */
+      onFocusCapture={(event) => {
+        if (
+          event.target instanceof HTMLElement &&
+          event.target !== frameRef.current &&
+          // The minimize button is focused by the very click that hides the
+          // window; remembering it would hand focus back to the title bar
+          // instead of the control the reader was working in.
+          !event.target.closest(".window-titlebar")
+        ) {
+          focusBeforeMinimizeRef.current = event.target;
+        }
+      }}
       onPointerDown={onFocus}
       ref={frameRef}
       style={frameStyle}

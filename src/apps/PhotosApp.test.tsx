@@ -34,6 +34,7 @@ function renderPhotos(options: { activeCanvasId?: string; entries?: DesktopItem[
     openApp: vi.fn(),
     playSound: vi.fn(),
     renameVfsEntry: vi.fn(),
+    savePaintImage: vi.fn(() => makeCanvas("saved", "saved.png")),
   };
   const entries = options.entries ?? [
     makeCanvas("photo-c", "c.png"),
@@ -52,6 +53,7 @@ function renderPhotos(options: { activeCanvasId?: string; entries?: DesktopItem[
       openApp={handlers.openApp}
       playSound={handlers.playSound}
       renameVfsEntry={handlers.renameVfsEntry}
+      savePaintImage={handlers.savePaintImage}
       windowId="window-photos"
     />,
   );

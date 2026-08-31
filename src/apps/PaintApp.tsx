@@ -25,6 +25,10 @@ type PaintTool = "brush" | "line" | "rect" | "ellipse";
 const PAINT_SAVE_EVENT = "pocket-desk-save-paint";
 const PAINT_OPEN_EVENT = "pocket-desk-open-paint";
 const PAINT_SAVE_AS_EVENT = "pocket-desk-save-paint-as";
+/** The bitmap's own size; the display scales from it, never from the window. */
+const PAINT_CANVAS_WIDTH = 1120;
+const PAINT_CANVAS_HEIGHT = 720;
+
 const PAINT_UNDO_EVENT = "pocket-desk-undo-paint";
 const PAINT_REDO_EVENT = "pocket-desk-redo-paint";
 
@@ -643,7 +647,7 @@ export default function PaintApp({
         <canvas
           aria-label="그림판 캔버스"
           className="paint-canvas"
-          height="720"
+          height={PAINT_CANVAS_HEIGHT}
           onPointerDown={startDrawing}
           onPointerLeave={() => {
             drawing.current = false;
@@ -654,12 +658,19 @@ export default function PaintApp({
           onPointerMove={draw}
           onPointerUp={finishDrawing}
           ref={canvasRef}
-          style={{ width: `${zoom}%` }}
-          width="1120"
+          /*
+           * The zoom is anchored to the bitmap, so 100% means one bitmap pixel
+           * per CSS pixel — what 100% means in Paint. It used to be a
+           * percentage of the stage, so the status bar claimed 100% while the
+           * real scale was 71%, and maximizing the window silently rescaled
+           * the drawing to 126% with the readout unchanged.
+           */
+          style={{ width: `${Math.round((PAINT_CANVAS_WIDTH * zoom) / 100)}px` }}
+          width={PAINT_CANVAS_WIDTH}
         />
       </div>
       <div className="paint-statusbar">
-        <span>1120 × 720px</span>
+        <span>{`${PAINT_CANVAS_WIDTH} × ${PAINT_CANVAS_HEIGHT}px`}</span>
         <span>{zoom}%</span>
       </div>
       {fileDialogMode && (
