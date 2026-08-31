@@ -321,7 +321,7 @@ describe("Taskbar 앱 메뉴 닫기", () => {
 
     await user.pointer({
       keys: "[MouseRight]",
-      target: screen.getByRole("button", { name: /Microsoft Edge/ }),
+      target: screen.getByRole("button", { name: "Microsoft Edge, 2개 창" }),
     });
     await user.click(screen.getByRole("menuitem", { name: "창 닫기" }));
 
@@ -352,7 +352,7 @@ describe("Taskbar 새 창", () => {
 
     await user.pointer({
       keys: "[MouseRight]",
-      target: screen.getByRole("button", { name: /파일 탐색기/ }),
+      target: screen.getByRole("button", { name: "파일 탐색기" }),
     });
     await user.click(screen.getByRole("menuitem", { name: "새 창" }));
 
@@ -369,7 +369,7 @@ describe("Taskbar 새 창", () => {
 
     await user.pointer({
       keys: "[MouseMiddle]",
-      target: screen.getByRole("button", { name: /파일 탐색기/ }),
+      target: screen.getByRole("button", { name: "파일 탐색기" }),
     });
 
     expect(handlers.onOpenNewWindow).toHaveBeenCalledWith("files");
@@ -385,7 +385,7 @@ describe("Taskbar 새 창", () => {
     // context menu from opening a window every time it is summoned.
     await user.pointer({
       keys: "[MouseRight]",
-      target: screen.getByRole("button", { name: /파일 탐색기/ }),
+      target: screen.getByRole("button", { name: "파일 탐색기" }),
     });
 
     expect(handlers.onOpenNewWindow).not.toHaveBeenCalled();
@@ -398,17 +398,19 @@ describe("Taskbar 새 창", () => {
     });
 
     // Two Notepad windows read one shell-level note id, so the autosave of one
-    // overwrites the unsaved text of the other.
+    // overwrites the unsaved text of the other. The name is matched exactly:
+    // hovering the button opens the preview card, whose own "메모장 전환"
+    // button a /메모장/ regex also catches.
     await user.pointer({
       keys: "[MouseRight]",
-      target: screen.getByRole("button", { name: /메모장/ }),
+      target: screen.getByRole("button", { name: "메모장" }),
     });
     expect(screen.queryByRole("menuitem", { name: "새 창" })).toBeNull();
 
     await user.keyboard("{Escape}");
     await user.pointer({
       keys: "[MouseMiddle]",
-      target: screen.getByRole("button", { name: /메모장/ }),
+      target: screen.getByRole("button", { name: "메모장" }),
     });
     expect(handlers.onOpenNewWindow).not.toHaveBeenCalled();
   });
