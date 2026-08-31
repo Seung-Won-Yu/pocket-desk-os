@@ -259,61 +259,34 @@ describe("getResultIconTileTone", () => {
 });
 
 describe("getStartPinnedApps", () => {
-  it("pins the priority apps in priority order, not catalog order", () => {
-    expect(getStartPinnedApps(appCatalog).map((app) => app.id)).toEqual([
-      "thispc",
-      "files",
-      "browser",
-      "notepad",
-      "photos",
-      "terminal",
-      "taskmanager",
-      "paint",
-      "calculator",
-      "minesweeper",
-      "eventviewer",
-      "registry",
-      "recycle",
-      "settings",
-    ]);
+  it("shows the pinned ids in their pinned order", () => {
+    expect(
+      getStartPinnedApps(appCatalog, ["calculator", "files", "browser"]).map((app) => app.id),
+    ).toEqual(["calculator", "files", "browser"]);
   });
 
-  it("pins the whole catalog while it stays under the slot limit", () => {
-    expect(getStartPinnedApps(appCatalog)).toHaveLength(appCatalog.length);
-    expect(getStartPinnedApps(appCatalog).length).toBeLessThanOrEqual(18);
+  it("drops a pinned id whose app is not installed", () => {
+    expect(
+      getStartPinnedApps(appsWithIds(["files"]), ["files", "notepad"]).map((app) => app.id),
+    ).toEqual(["files"]);
   });
 
-  it("caps the pinned grid once the catalog outgrows it", () => {
+  it("caps the grid at its slot limit", () => {
     const oversized = [
       ...appCatalog,
       ...appCatalog.map((app, index) => ({ ...app, id: `extra-${index}` as AppId })),
     ];
-    expect(getStartPinnedApps(oversized)).toHaveLength(18);
-  });
-
-  it("reorders a small subset into priority order", () => {
     expect(
-      getStartPinnedApps(appsWithIds(["browser", "calculator", "files"])).map((a) => a.id),
-    ).toEqual(["files", "browser", "calculator"]);
+      getStartPinnedApps(
+        oversized,
+        oversized.map((app) => app.id),
+      ),
+    ).toHaveLength(18);
   });
 
-  it("deduplicates repeated apps", () => {
-    const notepad = appsWithIds(["notepad"]);
-    expect(getStartPinnedApps([...notepad, ...notepad]).map((app) => app.id)).toEqual([
-      "notepad",
-    ]);
-  });
-
-  it("returns nothing for an empty catalog", () => {
-    expect(getStartPinnedApps([])).toEqual([]);
-  });
-
-  it("still pins an app that the priority list does not mention", () => {
-    const unlisted = { ...appCatalog[0], id: "unlisted" as AppId };
-    expect(getStartPinnedApps([unlisted, ...appsWithIds(["files"])]).map((a) => a.id)).toEqual([
-      "files",
-      "unlisted",
-    ]);
+  it("returns nothing when nothing is pinned", () => {
+    // 고정됨 used to be every installed app, indistinguishable from 모든 앱.
+    expect(getStartPinnedApps(appCatalog, [])).toEqual([]);
   });
 });
 

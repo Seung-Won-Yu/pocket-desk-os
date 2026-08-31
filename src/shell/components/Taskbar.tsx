@@ -795,6 +795,17 @@ export function NotificationCenterPanel({
             );
           })}
         </div>
+        {/* Windows shows the picked day under the grid; picking one here used
+            to change nothing visible at all. No agenda exists to show, and it
+            says so instead of pretending. */}
+        <p className="tray-calendar-selection">
+          {selectedDate.toLocaleDateString("ko-KR", {
+            month: "long",
+            day: "numeric",
+            weekday: "long",
+          })}
+          <span>일정 없음</span>
+        </p>
       </section>
     </section>
   );

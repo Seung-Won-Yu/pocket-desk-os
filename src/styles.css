@@ -9446,3 +9446,51 @@ button {
 .system-tray-clock-button {
   position: relative;
 }
+
+/* The pinned tile's own menu — pin and unpin, the way Windows offers them. */
+.start-tile-menu {
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
+  display: grid;
+  min-width: 172px;
+  padding: 4px;
+  position: fixed;
+  z-index: 9900;
+}
+
+.start-tile-menu button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--text);
+  display: flex;
+  font: inherit;
+  font-size: 0.8rem;
+  gap: 8px;
+  padding: 7px 10px;
+  text-align: left;
+}
+
+.start-tile-menu button:hover,
+.start-tile-menu button:focus-visible {
+  background: var(--control-hover);
+}
+
+/* The picked calendar day, named under the grid. */
+.tray-calendar-selection {
+  border-top: 1px solid var(--line);
+  color: var(--text);
+  display: flex;
+  font-size: 0.78rem;
+  gap: 8px;
+  justify-content: space-between;
+  margin: 8px 0 0;
+  padding: 8px 2px 0;
+}
+
+.tray-calendar-selection span {
+  color: var(--muted);
+}

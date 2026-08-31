@@ -2,7 +2,7 @@ import { type AppId, type DesktopItem, type ThemeName } from "../types";
 import { normalizeSearchText } from "../utils/format";
 import { getVfsEntryAssociation } from "../vfs/model";
 import { appCatalog } from "./appCatalog";
-import { appSearchKeywords, runCommandAliases } from "./constants";
+import { START_PINNED_APPS_KEY, appSearchKeywords, runCommandAliases } from "./constants";
 import { type AppDefinition, type RunCommandResolution, type StartSearchResult } from "./types";
 
 export function getResultIconTileTone(result: StartSearchResult) {
@@ -126,33 +126,43 @@ export function buildStartSearchResults(
 // bound. Keep it above the catalog size so a newly added app still lands there.
 const START_PINNED_APP_LIMIT = 18;
 
-export function getStartPinnedApps(apps: AppDefinition[]) {
-  const priority: AppId[] = [
-    "thispc",
-    "files",
-    "browser",
-    "notepad",
-    "photos",
-    "terminal",
-    "taskmanager",
-    "paint",
-    "calculator",
-    "minesweeper",
-    "eventviewer",
-    "registry",
-    "recycle",
-    "settings",
-  ];
+/**
+ * The set Windows ships pinned before anyone touches it. 고정됨 used to be
+ * every installed app in a fixed order — indistinguishable from 모든 앱, with
+ * nothing to pin or unpin — so it said nothing about what the user reaches for.
+ */
+const DEFAULT_START_PINS: AppId[] = [
+  "thispc",
+  "files",
+  "browser",
+  "notepad",
+  "photos",
+  "terminal",
+  "calculator",
+  "paint",
+  "settings",
+];
+
+export function loadStartPinnedAppIds(): AppId[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(START_PINNED_APPS_KEY) ?? "null");
+    if (!Array.isArray(parsed)) return [...DEFAULT_START_PINS];
+    return parsed.filter((value): value is AppId => typeof value === "string");
+  } catch {
+    return [...DEFAULT_START_PINS];
+  }
+}
+
+export function persistStartPinnedAppIds(appIds: AppId[]) {
+  localStorage.setItem(START_PINNED_APPS_KEY, JSON.stringify(appIds));
+}
+
+export function getStartPinnedApps(apps: AppDefinition[], pinnedIds: AppId[]) {
   const appMap = new Map(apps.map((app) => [app.id, app]));
-  const pinned = priority
+  return pinnedIds
     .map((appId) => appMap.get(appId))
-    .filter((app): app is AppDefinition => Boolean(app));
-  // Anything absent from the priority list still gets a slot, so a newly added
-  // app is never permanently unreachable from the pinned grid.
-  return [...pinned, ...apps.filter((app) => !priority.includes(app.id))].slice(
-    0,
-    START_PINNED_APP_LIMIT,
-  );
+    .filter((app): app is AppDefinition => Boolean(app))
+    .slice(0, START_PINNED_APP_LIMIT);
 }
 
 export function resolveRunCommand(command: string): RunCommandResolution {

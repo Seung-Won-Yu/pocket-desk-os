@@ -850,7 +850,15 @@ export default function App() {
     );
     if (needsMove.length > 0 && !moveVfsEntries(needsMove, VFS_ROOT_ID)) return;
 
-    const position = clampIconPosition(event.clientX - 40, event.clientY - 40, desktopViewMode);
+    // The one placement path that skipped the grid: with 그리드 맞춤 on, a file
+    // dropped out of Explorer landed wherever the pointer was while every other
+    // placement snapped.
+    const position = alignDesktopIcons
+      ? snapDesktopIconPosition(
+          { x: event.clientX - 40, y: event.clientY - 40 },
+          desktopViewMode,
+        )
+      : clampIconPosition(event.clientX - 40, event.clientY - 40, desktopViewMode);
     // moveVfsEntries clears showOnDesktop, so a desktop drop has to restore it.
     setDesktopItems((current) =>
       current.map((item) =>
@@ -1208,8 +1216,28 @@ export default function App() {
   };
 
   const refreshDesktop = () => {
-    setIconLayout((current) => ({ ...current }));
-    setDesktopItems((current) => [...current]);
+    /*
+     * Windows' refresh re-applies the current arrangement. Copying the arrays
+     * into new ones repainted nothing anyone could measure — with 그리드 맞춤
+     * on, an icon nudged off the grid now snaps back to it.
+     */
+    if (alignDesktopIcons) {
+      setIconLayout((current) => {
+        const next = { ...current };
+        for (const app of desktopApps) {
+          const position = current[app.id];
+          if (position) next[app.id] = snapDesktopIconPosition(position, desktopViewMode);
+        }
+        return next;
+      });
+      setDesktopItems((current) =>
+        current.map((item) =>
+          item.showOnDesktop
+            ? { ...item, ...snapDesktopIconPosition(item, desktopViewMode) }
+            : item,
+        ),
+      );
+    }
     setDesktopMenu(null);
     playSound("toggle");
   };

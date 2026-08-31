@@ -1,7 +1,12 @@
 import AppIconTile from "../../components/AppIconTile";
 import { type AppId, type DesktopItem } from "../../types";
 import { getVfsEntryAssociation } from "../../vfs/model";
-import { getResultIconTileTone, getStartPinnedApps } from "../startSearch";
+import {
+  getResultIconTileTone,
+  getStartPinnedApps,
+  loadStartPinnedAppIds,
+  persistStartPinnedAppIds,
+} from "../startSearch";
 import { type AppDefinition, type StartSearchResult } from "../types";
 import {
   ChevronLeft,
@@ -13,6 +18,8 @@ import {
   Search,
   UserRound,
   X,
+  Pin,
+  PinOff,
 } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { handleMenuKeyboard } from "../keyboardNav";
@@ -40,7 +47,7 @@ export function StartMenu({
   onOpenApp: (appId: AppId) => void;
   onRestart: () => void;
   onShutdown: () => void;
-  onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
   onRecentItemOpen: (item: DesktopItem) => void;
   onResultOpen: (result: StartSearchResult) => void;
   query: string;
@@ -56,7 +63,21 @@ export function StartMenu({
   const [powerMenuOpen, setPowerMenuOpen] = useState(false);
   const [allAppsOpen, setAllAppsOpen] = useState(false);
   const hasQuery = query.trim().length > 0;
-  const pinnedApps = getStartPinnedApps(apps);
+  const [pinnedAppIds, setPinnedAppIds] = useState<AppId[]>(() => loadStartPinnedAppIds());
+  const [tileMenu, setTileMenu] = useState<{ appId: AppId; x: number; y: number } | null>(null);
+  const pinnedApps = getStartPinnedApps(apps, pinnedAppIds);
+
+  const setPins = (updater: (current: AppId[]) => AppId[]) => {
+    setPinnedAppIds((current) => {
+      const next = updater(current);
+      persistStartPinnedAppIds(next);
+      return next;
+    });
+  };
+
+  const unpinApp = (appId: AppId) => setPins((current) => current.filter((id) => id !== appId));
+  const pinApp = (appId: AppId) =>
+    setPins((current) => (current.includes(appId) ? current : [...current, appId]));
   const allApps = [...apps].sort((a, b) => a.title.localeCompare(b.title));
 
   useEffect(() => {
@@ -89,7 +110,11 @@ export function StartMenu({
       // Tab used to walk off the end of the menu and carry on into the desktop
       // behind it, leaving the menu open with focus outside it.
       onKeyDown={(event) => trapDialogFocus(event, event.currentTarget)}
-      onPointerDown={onPointerDown}
+      onPointerDown={(event) => {
+        // A click anywhere else in the menu puts the tile menu away.
+        setTileMenu(null);
+        onPointerDown(event);
+      }}
     >
       <label className="start-search">
         <Search aria-hidden="true" size={17} />
@@ -157,7 +182,16 @@ export function StartMenu({
             <section className="start-all-apps start-all-apps-panel">
               <div className="start-app-list">
                 {allApps.map((app) => (
-                  <button key={app.id} onClick={() => onOpenApp(app.id)} type="button">
+                  <button
+                    key={app.id}
+                    onClick={() => onOpenApp(app.id)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setTileMenu({ appId: app.id, x: event.clientX, y: event.clientY });
+                    }}
+                    type="button"
+                  >
                     <AppIconTile accent={app.accent} icon={app.icon} size="small" />
                     <span>
                       <strong>{app.title}</strong>
@@ -171,11 +205,25 @@ export function StartMenu({
             <>
               <div className="start-pinned-grid" aria-label="고정된 앱">
                 {pinnedApps.map((app) => (
-                  <button key={app.id} onClick={() => onOpenApp(app.id)} type="button">
+                  <button
+                    key={app.id}
+                    onClick={() => onOpenApp(app.id)}
+                    onContextMenu={(event) => {
+                      // Windows unpins a tile from its own right-click menu;
+                      // these tiles had no menu at all.
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setTileMenu({ appId: app.id, x: event.clientX, y: event.clientY });
+                    }}
+                    type="button"
+                  >
                     <AppIconTile accent={app.accent} icon={app.icon} size="medium" />
                     <strong>{app.title}</strong>
                   </button>
                 ))}
+                {pinnedApps.length === 0 && (
+                  <p className="start-empty-compact">고정된 앱이 없습니다.</p>
+                )}
               </div>
               <section className="start-recommended">
                 <div className="start-section-title start-subsection-title">
@@ -267,6 +315,41 @@ export function StartMenu({
           </div>
         </div>
       </div>
+      {tileMenu && (
+        <div
+          className="start-tile-menu"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              setTileMenu(null);
+              return;
+            }
+            handleMenuKeyboard(event, event.currentTarget);
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          role="menu"
+          style={{ left: tileMenu.x, top: tileMenu.y }}
+        >
+          <button
+            autoFocus
+            onClick={() => {
+              if (pinnedAppIds.includes(tileMenu.appId)) unpinApp(tileMenu.appId);
+              else pinApp(tileMenu.appId);
+              setTileMenu(null);
+            }}
+            role="menuitem"
+            type="button"
+          >
+            {pinnedAppIds.includes(tileMenu.appId) ? (
+              <PinOff aria-hidden="true" size={15} />
+            ) : (
+              <Pin aria-hidden="true" size={15} />
+            )}
+            {pinnedAppIds.includes(tileMenu.appId) ? "시작 화면에서 제거" : "시작 화면에 고정"}
+          </button>
+        </div>
+      )}
     </aside>
   );
 }
