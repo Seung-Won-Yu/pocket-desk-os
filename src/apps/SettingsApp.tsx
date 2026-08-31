@@ -61,28 +61,63 @@ export default function SettingsApp({
     { id: "ember", label: "회색", detail: "청록색 강조색" },
   ];
   const settingsSections = [
-    { id: "system" as const, icon: Monitor, label: "시스템", keywords: "창 바탕 화면 배치" },
+    {
+      id: "system" as const,
+      icon: Monitor,
+      label: "시스템",
+      keywords: "창 바탕 화면 배치",
+      aliases: "system display window desktop",
+    },
     {
       id: "personalization" as const,
       icon: Palette,
       label: "개인 설정",
       keywords: "테마 배경 화면",
+      aliases: "personalization theme wallpaper background",
     },
-    { id: "sound" as const, icon: Volume2, label: "소리", keywords: "시스템 소리" },
-    { id: "apps" as const, icon: LayoutGrid, label: "앱", keywords: "기본 앱 연결 프로그램" },
-    { id: "accounts" as const, icon: UserRound, label: "계정", keywords: "사용자 이름 로컬" },
+    {
+      id: "sound" as const,
+      icon: Volume2,
+      label: "소리",
+      keywords: "시스템 소리",
+      aliases: "sound audio volume",
+    },
+    {
+      id: "apps" as const,
+      icon: LayoutGrid,
+      label: "앱",
+      keywords: "기본 앱 연결 프로그램",
+      aliases: "apps default programs",
+    },
+    {
+      id: "accounts" as const,
+      icon: UserRound,
+      label: "계정",
+      keywords: "사용자 이름 로컬",
+      aliases: "account user name",
+    },
     {
       id: "time" as const,
       icon: Clock3,
       label: "시간 및 언어",
       keywords: "시계 24시간 표시 형식",
+      aliases: "time language clock format",
     },
   ];
-  const filteredSettingsSections = settingsSections.filter((item) =>
-    normalizeSearchText(`${item.label} ${item.keywords}`).includes(
-      normalizeSearchText(settingsQuery),
-    ),
-  );
+  /*
+   * Windows' settings search offers matches and leaves the navigation alone.
+   * Filtering the navigation itself removed the page the reader was on from
+   * the list — the content stayed put with no way back to its own entry.
+   */
+  const normalizedSettingsQuery = normalizeSearchText(settingsQuery);
+  const settingsMatches = normalizedSettingsQuery
+    ? settingsSections.filter(
+        (item) =>
+          normalizeSearchText(`${item.label} ${item.keywords} ${item.aliases ?? ""}`).includes(
+            normalizedSettingsQuery,
+          ) || normalizedSettingsQuery.startsWith(normalizeSearchText(item.label)),
+      )
+    : [];
 
   return (
     <div className="settings-app">
@@ -103,8 +138,30 @@ export default function SettingsApp({
             value={settingsQuery}
           />
         </label>
+        {normalizedSettingsQuery !== "" && (
+          <div className="settings-search-results" role="listbox">
+            {settingsMatches.length === 0 ? (
+              <span className="settings-no-results">결과 없음</span>
+            ) : (
+              settingsMatches.map((item) => (
+                <button
+                  key={`result-${item.id}`}
+                  onClick={() => {
+                    setSection(item.id);
+                    setSettingsQuery("");
+                  }}
+                  role="option"
+                  aria-selected={section === item.id}
+                  type="button"
+                >
+                  {item.label}
+                </button>
+              ))
+            )}
+          </div>
+        )}
         <nav aria-label="설정 범주">
-          {filteredSettingsSections.map((item) => {
+          {settingsSections.map((item) => {
             const SectionIcon = item.icon;
             return (
               <button
@@ -118,9 +175,6 @@ export default function SettingsApp({
               </button>
             );
           })}
-          {filteredSettingsSections.length === 0 && (
-            <span className="settings-no-results">결과 없음</span>
-          )}
         </nav>
       </aside>
       <section className="settings-content">

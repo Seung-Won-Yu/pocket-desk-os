@@ -94,6 +94,12 @@ export function Taskbar({
 }) {
   const taskbarRef = useRef<HTMLElement | null>(null);
   const [rovingAppId, setRovingAppId] = useState<AppId | null>(null);
+  const [readNotificationId, setReadNotificationId] = useState<string | null>(null);
+  const unreadNotificationCount = (() => {
+    if (!readNotificationId) return notificationHistory.length;
+    const index = notificationHistory.findIndex((item) => item.id === readNotificationId);
+    return index === -1 ? notificationHistory.length : index;
+  })();
   const trayRef = useRef<HTMLDivElement | null>(null);
   const [preview, setPreview] = useState<{
     app: AppDefinition;
@@ -519,14 +525,31 @@ export function Taskbar({
           </button>
           <button
             aria-expanded={trayPanel === "notifications"}
-            aria-label="알림 센터 열기"
+            aria-label={
+              unreadNotificationCount > 0
+                ? `알림 센터 열기, 읽지 않은 알림 ${unreadNotificationCount}개`
+                : "알림 센터 열기"
+            }
             className="system-tray system-tray-clock-button"
             onClick={() =>
-              setTrayPanel((current) => (current === "notifications" ? null : "notifications"))
+              setTrayPanel((current) => {
+                const next = current === "notifications" ? null : "notifications";
+                if (next === "notifications") {
+                  setReadNotificationId(notificationHistory[0]?.id ?? null);
+                }
+                return next;
+              })
             }
             type="button"
           >
             <Clock hour24={clock24h} />
+            {/* Windows shows the unread count on the tray; nothing here said a
+                notification had arrived unless the panel happened to be open. */}
+            {unreadNotificationCount > 0 && (
+              <span aria-hidden="true" className="tray-notification-badge">
+                {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
+              </span>
+            )}
           </button>
         </div>
         {trayPanel === "quick" && (

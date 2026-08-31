@@ -530,6 +530,9 @@ async function runSmoke(baseUrl) {
     await page.locator('[aria-label="부팅 화면"]').waitFor({ state: "visible" });
     await unlockPocketDesk(page);
     await page.waitForTimeout(250);
+    // Windows closes every app on restart; this used to bring the whole
+    // session back as if nothing had happened.
+    assert((await page.locator(".window-frame").count()) === 0, "Restart left windows running");
 
     await page.getByRole("button", { name: "시작 메뉴" }).click();
     await startMenu.waitFor({ state: "visible" });
@@ -1642,7 +1645,15 @@ async function runSmoke(baseUrl) {
     // Alt+Tab walks every window in one hold and switches on release. Focusing
     // on each press instead raised the selection to the top of the z-order, so
     // re-sorting by z put it back at index 0 and Tab bounced between two
-    // windows no matter how many were open.
+    // windows no matter how many were open. Power actions now close every
+    // window, so this opens its own three instead of leaning on leftovers.
+    for (const command of ["notepad", "calc"]) {
+      await page.keyboard.press("Control+Alt+R");
+      await runDialog.waitFor({ state: "visible" });
+      await runDialog.getByLabel("열기").fill(command);
+      await runDialog.getByRole("button", { name: "확인" }).click();
+      await page.waitForTimeout(300);
+    }
     const openWindowCount = await page.locator(".window-frame").count();
     assert(openWindowCount >= 3, `Alt+Tab check needs 3 windows, found ${openWindowCount}`);
     await page.keyboard.down("Alt");

@@ -470,7 +470,31 @@ export default function App() {
     setToasts([]);
   };
 
+  /*
+   * Windows closes every app when the machine goes down, and asks first when a
+   * document has unsaved work. Both power actions used to leave the whole
+   * session standing, so the same windows were still there on the other side.
+   * A guard returning false means an app has put a question on screen, so the
+   * power action waits for the answer instead of overruling it.
+   */
+  const closeAllWindowsForPowerAction = () => {
+    const blocked = windows.filter((item) => {
+      const guard = closeGuardsRef.current.get(item.id);
+      return guard ? !guard() : false;
+    });
+    if (blocked.length > 0) return false;
+
+    closeGuardsRef.current.clear();
+    setUnsavedWindowIds(new Set());
+    setWindows([]);
+    return true;
+  };
+
   const restartDesktop = () => {
+    // The menu closes either way: when a save prompt blocks the action, the
+    // question has to be on top, not under the Start menu that asked for it.
+    setStartOpen(false);
+    if (!closeAllWindowsForPowerAction()) return;
     playSound("toggle");
     setShellPhase("booting");
     setStartOpen(false);
@@ -484,6 +508,8 @@ export default function App() {
   };
 
   const shutdownDesktop = () => {
+    setStartOpen(false);
+    if (!closeAllWindowsForPowerAction()) return;
     playSound("close");
     setShellPhase("shutdown");
     setStartOpen(false);
@@ -2436,65 +2462,6 @@ export default function App() {
         return;
       }
 
-      /*
-       * While a keyboard move or resize is running it owns the arrow keys, so
-       * it has to be checked before the snap shortcuts below.
-       */
-      if (windowKeyboardDrag) {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          endWindowKeyboardDrag(false);
-          return;
-        }
-        if (event.key === "Enter" || event.key === "Tab") {
-          event.preventDefault();
-          endWindowKeyboardDrag(true);
-          return;
-        }
-        if (event.key.startsWith("Arrow")) {
-          event.preventDefault();
-          const step = event.shiftKey ? 1 : WINDOW_KEYBOARD_STEP;
-          const target = windows.find((item) => item.id === windowKeyboardDrag.windowId);
-          if (!target) return;
-
-          if (windowKeyboardDrag.mode === "move") {
-            const dx =
-              event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0;
-            const dy = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0;
-            updateWindow(target.id, {
-              snapZone: undefined,
-              x: clamp(target.x + dx, 8, Math.max(8, window.innerWidth - target.width - 8)),
-              y: clamp(
-                target.y + dy,
-                8,
-                Math.max(8, window.innerHeight - APP_BAR_HEIGHT - target.height - 8),
-              ),
-            });
-            return;
-          }
-
-          // Windows picks the edge with the first arrow, then moves that edge.
-          const edge =
-            windowKeyboardDrag.edge ??
-            (event.key === "ArrowUp"
-              ? "top"
-              : event.key === "ArrowDown"
-                ? "bottom"
-                : event.key === "ArrowLeft"
-                  ? "left"
-                  : "right");
-          if (!windowKeyboardDrag.edge) {
-            setWindowKeyboardDrag((current) => (current ? { ...current, edge } : current));
-            return;
-          }
-          updateWindow(target.id, {
-            ...resizeWindowEdge(target, edge, event.key, step),
-            snapZone: undefined,
-          });
-          return;
-        }
-      }
-
       if (event.altKey && event.key === " " && activeWindowId) {
         event.preventDefault();
         openWindowSystemMenuForKeyboard(activeWindowId);
@@ -2740,6 +2707,81 @@ export default function App() {
   // field out of the tab order.
   const desktopTabStopId =
     desktopIconIds.find((id) => selectedDesktopIds.includes(id)) ?? desktopIconIds[0] ?? null;
+
+  /*
+   * Windows' 이동 / 크기 조정 is modal: while it runs, the arrow keys belong to
+   * the move loop and the app underneath never sees them. Handling this in the
+   * bubbling shortcut handler let a focused app eat the keys first — the
+   * calculator binds Escape to clear and stops propagation, so the mode could
+   * neither be cancelled nor committed while its window held focus. A
+   * capture-phase listener runs before any app handler and stops the event
+   * there.
+   */
+  useEffect(() => {
+    if (!windowKeyboardDrag) return;
+
+    const handleDragKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        endWindowKeyboardDrag(false);
+        return;
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault();
+        event.stopPropagation();
+        endWindowKeyboardDrag(true);
+        return;
+      }
+      if (!event.key.startsWith("Arrow")) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      const step = event.shiftKey ? 1 : WINDOW_KEYBOARD_STEP;
+      const target = windows.find((item) => item.id === windowKeyboardDrag.windowId);
+      if (!target) return;
+
+      if (windowKeyboardDrag.mode === "move") {
+        const dx = event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0;
+        const dy = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0;
+        updateWindow(target.id, {
+          snapZone: undefined,
+          x: clamp(target.x + dx, 8, Math.max(8, window.innerWidth - target.width - 8)),
+          y: clamp(
+            target.y + dy,
+            8,
+            Math.max(8, window.innerHeight - APP_BAR_HEIGHT - target.height - 8),
+          ),
+        });
+        return;
+      }
+
+      // Windows picks the edge with the first arrow, then moves that edge.
+      const edge =
+        windowKeyboardDrag.edge ??
+        (event.key === "ArrowUp"
+          ? "top"
+          : event.key === "ArrowDown"
+            ? "bottom"
+            : event.key === "ArrowLeft"
+              ? "left"
+              : "right");
+      if (!windowKeyboardDrag.edge) {
+        setWindowKeyboardDrag((current) => (current ? { ...current, edge } : current));
+        return;
+      }
+      updateWindow(target.id, {
+        ...resizeWindowEdge(target, edge, event.key, step),
+        snapZone: undefined,
+      });
+    };
+
+    window.addEventListener("keydown", handleDragKey, true);
+    return () => window.removeEventListener("keydown", handleDragKey, true);
+    // updateWindow and endWindowKeyboardDrag are stable enough per render; the
+    // listener re-binds whenever the drag state or window list changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windowKeyboardDrag, windows]);
 
   const openStartSearchResult = (result: StartSearchResult) => {
     if (result.kind === "app") {

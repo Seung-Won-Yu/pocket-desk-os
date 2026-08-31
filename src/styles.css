@@ -9403,3 +9403,46 @@ button {
 .taskmgr-row.is-head .is-descending {
   transform: rotate(180deg);
 }
+
+/* Settings search results, shown beside the navigation rather than replacing it. */
+.settings-search-results {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+
+.settings-search-results button {
+  background: rgba(127, 127, 127, 0.1);
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.settings-search-results button:hover {
+  background: rgba(127, 127, 127, 0.2);
+}
+
+/* Unread notification count on the tray clock. */
+.tray-notification-badge {
+  align-items: center;
+  background: #c42b1c;
+  border-radius: 999px;
+  color: #fff;
+  display: flex;
+  font-size: 0.62rem;
+  font-weight: 600;
+  height: 15px;
+  justify-content: center;
+  min-width: 15px;
+  padding: 0 3px;
+  position: absolute;
+  right: 2px;
+  top: 3px;
+}
+
+.system-tray-clock-button {
+  position: relative;
+}
