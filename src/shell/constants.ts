@@ -40,6 +40,7 @@ export const START_PINNED_APPS_KEY = "pocket-desk-start-pins-v1";
 /** Records the shell keeps before the oldest falls off, like a Windows log's size cap. */
 export const EVENT_LOG_LIMIT = 200;
 export const NOTIFICATION_HISTORY_KEY = "pocket-desk-notifications-v1";
+export const NOTIFICATIONS_READ_KEY = "pocket-desk-notifications-read-v1";
 /** How many notifications the action centre keeps — and shows. */
 export const NOTIFICATION_HISTORY_LIMIT = 12;
 export const VIRTUAL_DESKTOPS_KEY = "pocket-desk-virtual-desktops-v1";

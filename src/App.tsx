@@ -128,6 +128,7 @@ import {
   SHELL_EVENT_PROCESS_STARTED,
   SHELL_EVENT_WORKSTATION_LOCKED,
   appendShellEvent,
+  createShellEvent,
   loadShellEventLog,
   persistShellEventLog,
 } from "./shell/eventLog";
@@ -192,7 +193,11 @@ export default function App() {
    * nothing was stored.
    */
   const [soundVolume, setSoundVolume] = useState(() => {
-    const stored = Number(localStorage.getItem(SOUND_VOLUME_KEY));
+    const raw = localStorage.getItem(SOUND_VOLUME_KEY);
+    // Number(null) is 0, which passed the >= 0 check — so a fresh profile
+    // booted muted and then wrote that 0 back as if it were a choice.
+    if (raw === null) return 72;
+    const stored = Number(raw);
     return Number.isFinite(stored) && stored >= 0 && stored <= 100 ? stored : 72;
   });
 
@@ -281,6 +286,7 @@ export default function App() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const windowMotionTimersRef = useRef(new Map<string, number>());
   const closeGuardsRef = useRef(new Map<string, () => boolean>());
+  const closingLoggedRef = useRef(new Set<string>());
   const [unsavedWindowIds, setUnsavedWindowIds] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
@@ -329,9 +335,11 @@ export default function App() {
 
   useEffect(() => {
     soundEnabledRef.current = soundEnabled;
+    // Keyed on soundEnabled alone, dragging the slider never reached this ref
+    // and playback stayed at the mount volume until a mute toggle flushed it.
     soundVolumeRef.current = soundVolume;
     localStorage.setItem(SOUND_ENABLED_KEY, soundEnabled ? "on" : "off");
-  }, [soundEnabled]);
+  }, [soundEnabled, soundVolume]);
 
   useEffect(() => {
     localStorage.setItem(DISPLAY_BRIGHTNESS_KEY, String(displayBrightness));
@@ -498,13 +506,62 @@ export default function App() {
    * A guard returning false means an app has put a question on screen, so the
    * power action waits for the answer instead of overruling it.
    */
-  const closeAllWindowsForPowerAction = () => {
-    const blocked = windows.filter((item) => {
-      const guard = closeGuardsRef.current.get(item.id);
-      return guard ? !guard() : false;
-    });
-    if (blocked.length > 0) return false;
+  /*
+   * One rule for every sound toggle: switching sound on with the volume parked
+   * at 0 would report "on" and stay silent, so the toggle brings the volume
+   * back the way the Windows one does.
+   */
+  const toggleSoundEnabled = (enabled: boolean) => {
+    setSoundEnabled(enabled);
+    if (enabled) setSoundVolume((current) => (current === 0 ? 72 : current));
+  };
 
+  /*
+   * Calling every guard at once stacked one save prompt per dirty document on
+   * top of each other, and a blocked power action simply evaporated — the
+   * reader answered the prompt and nothing resumed. Only the first blocking
+   * guard fires now, so one question is on screen at a time, and the shell
+   * says the restart was cancelled instead of forgetting it was asked for.
+   * Windows queues the shutdown behind the prompts; a spoken cancellation is
+   * the honest version of that without a resume that could fire by surprise.
+   */
+  const surfaceWindowForPrompt = (id: string) => {
+    const target = windows.find((item) => item.id === id);
+    if (!target) return;
+    if (target.desktopIndex !== activeDesktopIndex) {
+      setActiveDesktopIndex(target.desktopIndex);
+    }
+    cancelWindowMotion(id);
+    if (target.minimized) updateWindow(id, { minimized: false });
+    focusWindow(id);
+  };
+
+  const closeAllWindowsForPowerAction = (actionLabel: string) => {
+    for (const item of windows) {
+      const guard = closeGuardsRef.current.get(item.id);
+      if (!guard) continue;
+      surfaceWindowForPrompt(item.id);
+      if (!guard()) {
+        notify({
+          detail: `저장하지 않은 작업이 있어 ${actionLabel}이(가) 취소되었습니다. 저장 후 다시 시도하세요.`,
+          title: `${actionLabel} 취소됨`,
+        });
+        return false;
+      }
+    }
+
+    // Every window closed by the power action gets its ended record; wiping
+    // the array silently left the log with starts and no ends.
+    for (const item of windows) {
+      const app = getApp(item.appId);
+      logShellEvent(
+        "system",
+        SHELL_EVENT_PROCESS_ENDED,
+        app.title,
+        "프로세스 종료",
+        `"${formatWindowTitle(app.title, getWindowDocumentLabel(item.appId))}" 창이 닫혔습니다.\n앱: ${app.title}\n창 ID: ${item.id}`,
+      );
+    }
     closeGuardsRef.current.clear();
     setUnsavedWindowIds(new Set());
     setWindows([]);
@@ -515,7 +572,15 @@ export default function App() {
     // The menu closes either way: when a save prompt blocks the action, the
     // question has to be on top, not under the Start menu that asked for it.
     setStartOpen(false);
-    if (!closeAllWindowsForPowerAction()) return;
+    if (!closeAllWindowsForPowerAction("다시 시작")) return;
+    // Shutdown wrote its 1074; a restart left no trace at all.
+    logShellEvent(
+      "system",
+      SHELL_EVENT_POWER_OFF,
+      "PocketDesk 셸",
+      "시스템 종료",
+      `사용자가 다시 시작을 시작했습니다.\n계정: ${userName}`,
+    );
     playSound("toggle");
     setShellPhase("booting");
     setStartOpen(false);
@@ -530,7 +595,7 @@ export default function App() {
 
   const shutdownDesktop = () => {
     setStartOpen(false);
-    if (!closeAllWindowsForPowerAction()) return;
+    if (!closeAllWindowsForPowerAction("시스템 종료")) return;
     logShellEvent(
       "system",
       SHELL_EVENT_POWER_OFF,
@@ -1903,10 +1968,12 @@ export default function App() {
   };
 
   const endWindowKeyboardDrag = (commit: boolean) => {
-    setWindowKeyboardDrag((current) => {
-      if (current && !commit) updateWindow(current.windowId, current.origin);
-      return null;
-    });
+    // Read the state, then update — restoring inside the updater made the
+    // updater impure and double-ran the restore under StrictMode.
+    if (windowKeyboardDrag && !commit) {
+      updateWindow(windowKeyboardDrag.windowId, windowKeyboardDrag.origin);
+    }
+    setWindowKeyboardDrag(null);
   };
 
   const restoreWindow = (id: string) => {
@@ -2039,21 +2106,27 @@ export default function App() {
     taskCategory: string,
     detail: string,
   ) => {
-    setShellEventLog((current) =>
-      appendShellEvent(current, {
-        channel,
-        detail,
-        eventId,
-        level: "information",
-        source,
-        taskCategory,
-      }),
-    );
+    const record = createShellEvent({
+      channel,
+      detail,
+      eventId,
+      level: "information",
+      source,
+      taskCategory,
+    });
+    setShellEventLog((current) => appendShellEvent(current, record));
   };
 
   const closeWindow = (id: string) => {
     const guard = closeGuardsRef.current.get(id);
-    if (guard && !guard()) return;
+    if (guard) {
+      // The save prompt renders inside the window it guards. Asking a
+      // minimized window — or one on another desktop — put the question in a
+      // visibility:hidden subtree: nothing on screen, the close silently
+      // refused, Task Manager appearing to do nothing.
+      surfaceWindowForPrompt(id);
+      if (!guard()) return;
+    }
 
     closeGuardsRef.current.delete(id);
     setUnsavedWindowIds((current) => {
@@ -2063,7 +2136,10 @@ export default function App() {
       return next;
     });
     const closing = windows.find((item) => item.id === id);
-    if (closing) {
+    // The window stays listed for its 150ms closing animation, so holding
+    // Alt+F4 logged the same window's end once per key repeat.
+    if (closing && !closingLoggedRef.current.has(id)) {
+      closingLoggedRef.current.add(id);
       const app = getApp(closing.appId);
       logShellEvent(
         "system",
@@ -2829,6 +2905,19 @@ export default function App() {
    * capture-phase listener runs before any app handler and stops the event
    * there.
    */
+  /*
+   * The mode's target can vanish under it — Alt+F4, Task Manager's 작업
+   * 끝내기, a desktop switch. The capture listener kept eating every arrow key
+   * for a window that no longer existed, with the hint still on screen.
+   */
+  useEffect(() => {
+    if (!windowKeyboardDrag) return;
+    const target = windows.find((item) => item.id === windowKeyboardDrag.windowId);
+    if (!target || target.desktopIndex !== activeDesktopIndex || target.minimized) {
+      setWindowKeyboardDrag(null);
+    }
+  }, [activeDesktopIndex, windowKeyboardDrag, windows]);
+
   useEffect(() => {
     if (!windowKeyboardDrag) return;
 
@@ -3074,7 +3163,7 @@ export default function App() {
                 savePaintImage={savePaintImage}
                 saveNoteAs={saveNoteAs}
                 saveNoteContent={saveNoteContent}
-                setSoundEnabled={setSoundEnabled}
+                setSoundEnabled={toggleSoundEnabled}
                 setTheme={changeTheme}
                 setWallpaper={changeWallpaper}
                 soundEnabled={soundEnabled}
@@ -3176,7 +3265,7 @@ export default function App() {
         }}
         searchQuery={query}
         onSetBrightness={setDisplayBrightness}
-        onSetSoundEnabled={setSoundEnabled}
+        onSetSoundEnabled={toggleSoundEnabled}
         onSetVolume={(volume) => {
           setSoundVolume(volume);
           // Dragging to zero mutes, and dragging away from zero unmutes — the

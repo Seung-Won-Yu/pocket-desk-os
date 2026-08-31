@@ -22,7 +22,9 @@ import {
   PinOff,
 } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { createPortal } from "react-dom";
 import { handleMenuKeyboard } from "../keyboardNav";
+import { clampContextMenuPosition } from "../desktopLayout";
 import { trapDialogFocus, useReturnFocus } from "../dialogFocus";
 
 export function StartMenu({
@@ -67,12 +69,14 @@ export function StartMenu({
   const [tileMenu, setTileMenu] = useState<{ appId: AppId; x: number; y: number } | null>(null);
   const pinnedApps = getStartPinnedApps(apps, pinnedAppIds);
 
+  // Persisting inside the updater made it impure — StrictMode runs updaters
+  // twice, so every pin wrote storage twice. The effect writes once per change.
+  useEffect(() => {
+    persistStartPinnedAppIds(pinnedAppIds);
+  }, [pinnedAppIds]);
+
   const setPins = (updater: (current: AppId[]) => AppId[]) => {
-    setPinnedAppIds((current) => {
-      const next = updater(current);
-      persistStartPinnedAppIds(next);
-      return next;
-    });
+    setPinnedAppIds(updater);
   };
 
   const unpinApp = (appId: AppId) => setPins((current) => current.filter((id) => id !== appId));
@@ -315,41 +319,55 @@ export function StartMenu({
           </div>
         </div>
       </div>
-      {tileMenu && (
-        <div
-          className="start-tile-menu"
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              event.stopPropagation();
-              setTileMenu(null);
-              return;
-            }
-            handleMenuKeyboard(event, event.currentTarget);
-          }}
-          onPointerDown={(event) => event.stopPropagation()}
-          role="menu"
-          style={{ left: tileMenu.x, top: tileMenu.y }}
-        >
-          <button
-            autoFocus
-            onClick={() => {
-              if (pinnedAppIds.includes(tileMenu.appId)) unpinApp(tileMenu.appId);
-              else pinApp(tileMenu.appId);
-              setTileMenu(null);
+      {/*
+       * Portaled to <body>: the aside's backdrop-filter makes it the
+       * containing block for position: fixed, so the menu opened offset by
+       * the menu's own position and the aside's overflow clipped it entirely
+       * on the right-hand tiles — the only pin/unpin UI, unreachable exactly
+       * where it was needed.
+       */}
+      {tileMenu &&
+        createPortal(
+          <div
+            className="start-tile-menu"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                setTileMenu(null);
+                return;
+              }
+              handleMenuKeyboard(event, event.currentTarget);
             }}
-            role="menuitem"
-            type="button"
+            onPointerDown={(event) => event.stopPropagation()}
+            role="menu"
+            style={(() => {
+              const clamped = clampContextMenuPosition(tileMenu.x, tileMenu.y);
+              return { left: clamped.x, top: clamped.y };
+            })()}
           >
-            {pinnedAppIds.includes(tileMenu.appId) ? (
-              <PinOff aria-hidden="true" size={15} />
-            ) : (
-              <Pin aria-hidden="true" size={15} />
-            )}
-            {pinnedAppIds.includes(tileMenu.appId) ? "시작 화면에서 제거" : "시작 화면에 고정"}
-          </button>
-        </div>
-      )}
+            <button
+              autoFocus
+              onClick={() => {
+                if (pinnedAppIds.includes(tileMenu.appId)) unpinApp(tileMenu.appId);
+                else pinApp(tileMenu.appId);
+                setTileMenu(null);
+              }}
+              role="menuitem"
+              type="button"
+            >
+              {pinnedAppIds.includes(tileMenu.appId) ? (
+                <PinOff aria-hidden="true" size={15} />
+              ) : (
+                <Pin aria-hidden="true" size={15} />
+              )}
+              {pinnedAppIds.includes(tileMenu.appId)
+                ? "시작 화면에서 제거"
+                : "시작 화면에 고정"}
+            </button>
+          </div>,
+          document.body,
+        )}
     </aside>
   );
 }

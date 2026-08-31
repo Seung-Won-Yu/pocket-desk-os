@@ -1,6 +1,7 @@
 import AppIconTile from "../../components/AppIconTile";
 import { type AppId } from "../../types";
 import { clamp } from "../../utils/format";
+import { NOTIFICATIONS_READ_KEY } from "../constants";
 import { getApp } from "../appCatalog";
 import { formatWindowTitle } from "../windowTitle";
 import { createCalendarGrid, formatNotificationTime, getLocalDateKey } from "../startSearch";
@@ -94,7 +95,15 @@ export function Taskbar({
 }) {
   const taskbarRef = useRef<HTMLElement | null>(null);
   const [rovingAppId, setRovingAppId] = useState<AppId | null>(null);
-  const [readNotificationId, setReadNotificationId] = useState<string | null>(null);
+  const [readNotificationId, setReadNotificationId] = useState<string | null>(() =>
+    localStorage.getItem(NOTIFICATIONS_READ_KEY),
+  );
+
+  useEffect(() => {
+    // The history survives a reload, so the read marker has to as well — the
+    // badge used to resurrect for notifications read before the refresh.
+    if (readNotificationId) localStorage.setItem(NOTIFICATIONS_READ_KEY, readNotificationId);
+  }, [readNotificationId]);
   const unreadNotificationCount = (() => {
     if (!readNotificationId) return notificationHistory.length;
     const index = notificationHistory.findIndex((item) => item.id === readNotificationId);

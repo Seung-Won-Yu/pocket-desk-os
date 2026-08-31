@@ -80,31 +80,32 @@ const paintTools: Array<{ id: PaintTool; label: string }> = [
  * colour takes the fill colour. Scanline flood so a full-canvas fill stays a
  * few milliseconds instead of a recursion.
  */
-function floodFill(
+export function floodFill(
   context: CanvasRenderingContext2D,
   startX: number,
   startY: number,
   fillColor: string,
-) {
+): boolean {
   const { width, height } = context.canvas;
   const x0 = Math.floor(startX);
   const y0 = Math.floor(startY);
-  if (x0 < 0 || y0 < 0 || x0 >= width || y0 >= height) return;
+  if (x0 < 0 || y0 < 0 || x0 >= width || y0 >= height) return false;
 
-  const probe = document.createElement("canvas");
-  probe.width = probe.height = 1;
-  const probeContext = probe.getContext("2d");
-  if (!probeContext) return;
-  probeContext.fillStyle = fillColor;
-  probeContext.fillRect(0, 0, 1, 1);
-  const [fr, fg, fb] = probeContext.getImageData(0, 0, 1, 1).data;
+  // Every colour this app hands out is #rrggbb (the palette and the colour
+  // input), so parsing beats bouncing through a probe canvas — which also
+  // keeps this function testable where no real canvas exists.
+  const parsed = /^#([0-9a-f]{6})$/i.exec(fillColor);
+  if (!parsed) return false;
+  const fr = parseInt(parsed[1].slice(0, 2), 16);
+  const fg = parseInt(parsed[1].slice(2, 4), 16);
+  const fb = parseInt(parsed[1].slice(4, 6), 16);
 
   const image = context.getImageData(0, 0, width, height);
   const data = image.data;
   const at = (x: number, y: number) => (y * width + x) * 4;
   const start = at(x0, y0);
   const [tr, tg, tb, ta] = [data[start], data[start + 1], data[start + 2], data[start + 3]];
-  if (tr === fr && tg === fg && tb === fb && ta === 255) return;
+  if (tr === fr && tg === fg && tb === fb && ta === 255) return false;
 
   const matches = (index: number) =>
     data[index] === tr &&
@@ -151,6 +152,7 @@ function floodFill(
     }
   }
   context.putImageData(image, 0, 0);
+  return true;
 }
 
 export default function PaintApp({
@@ -183,6 +185,10 @@ export default function PaintApp({
   const [zoom, setZoom] = useState(100);
   const [historyState, setHistoryState] = useState({ redo: 0, undo: 0 });
   const [fileDialogMode, setFileDialogMode] = useState<"open" | "save" | null>(null);
+  const [canvasSize, setCanvasSize] = useState({
+    height: PAINT_CANVAS_HEIGHT,
+    width: PAINT_CANVAS_WIDTH,
+  });
   const [dirty, setDirty] = useState(false);
   const [closePromptOpen, setClosePromptOpen] = useState(false);
   const dirtyRef = useRef(false);
@@ -195,6 +201,7 @@ export default function PaintApp({
   };
 
   const loadedCanvasIdRef = useRef<string | null>(null);
+  const loadedContentRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -212,6 +219,7 @@ export default function PaintApp({
       savePaintImage(canvas.toDataURL("image/png"), { existingItemId: previousId });
     }
     loadedCanvasIdRef.current = activeCanvas?.id ?? null;
+    loadedContentRef.current = activeCanvas?.content;
     dirtyRef.current = false;
     setDirty(false);
 
@@ -221,16 +229,62 @@ export default function PaintApp({
     redoStack.current = [];
     setHistoryState({ redo: 0, undo: 0 });
 
-    if (!activeCanvas?.content) return;
+    if (!activeCanvas?.content) {
+      canvas.width = PAINT_CANVAS_WIDTH;
+      canvas.height = PAINT_CANVAS_HEIGHT;
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      setCanvasSize({ height: PAINT_CANVAS_HEIGHT, width: PAINT_CANVAS_WIDTH });
+      return;
+    }
 
     const image = new Image();
     image.onload = () => {
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      /*
+       * Paint sizes its canvas to the document. Drawing every image into a
+       * fixed 1120×720 stretched a rotated portrait photo — 720×1120 became
+       * 1120×720 the moment Paint saved it, squashing the photo for good.
+       */
+      canvas.width = image.naturalWidth || PAINT_CANVAS_WIDTH;
+      canvas.height = image.naturalHeight || PAINT_CANVAS_HEIGHT;
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0);
+      setCanvasSize({ height: canvas.height, width: canvas.width });
     };
     image.src = activeCanvas.content;
     // Keyed on the document, not its bytes: saving rewrites `content`, and
     // re-running here wiped the undo stack every time the drawing was saved.
   }, [activeCanvas?.id, activeCanvasOpenKey]);
+
+  /*
+   * Another app can write the open document — the photo viewer's rotation does.
+   * With the load keyed on the id alone, this canvas kept the pre-rotation
+   * bitmap and its next flush quietly overwrote the rotation. A clean canvas
+   * follows the file; unsaved strokes win, as they do when a file changes
+   * under any editor.
+   */
+  useEffect(() => {
+    if (!activeCanvas || activeCanvas.content === loadedContentRef.current) return;
+    if (dirtyRef.current) return;
+
+    loadedContentRef.current = activeCanvas.content;
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context || !activeCanvas.content) return;
+    const image = new Image();
+    image.onload = () => {
+      canvas.width = image.naturalWidth || PAINT_CANVAS_WIDTH;
+      canvas.height = image.naturalHeight || PAINT_CANVAS_HEIGHT;
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0);
+      setCanvasSize({ height: canvas.height, width: canvas.width });
+    };
+    image.src = activeCanvas.content;
+    // The dirty guard replaces `content` in the dependency list on purpose.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCanvas?.content]);
 
   const updateHistoryState = () => {
     markDirty();
@@ -245,17 +299,25 @@ export default function PaintApp({
     updateHistoryState();
   };
 
+  const restoreInFlightRef = useRef(false);
+
   const restoreSnapshot = (snapshot: string) => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
 
+    restoreInFlightRef.current = true;
     const image = new Image();
+    const finish = () => {
+      restoreInFlightRef.current = false;
+    };
+    image.onerror = finish;
     image.onload = () => {
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.fillStyle = "#ffffff";
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      finish();
     };
     image.src = snapshot;
   };
@@ -341,7 +403,9 @@ export default function PaintApp({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    savePaintImage(canvas.toDataURL("image/png"));
+    const savedContent = canvas.toDataURL("image/png");
+    savePaintImage(savedContent);
+    loadedContentRef.current = savedContent;
     dirtyRef.current = false;
     setDirty(false);
     setSaved(true);
@@ -431,6 +495,9 @@ export default function PaintApp({
 
   const undo = () => {
     const canvas = canvasRef.current;
+    // A restore still decoding means toDataURL would capture the stale frame;
+    // held-down Ctrl+Z used to fill the redo stack with copies of it.
+    if (restoreInFlightRef.current) return;
     if (!canvas || undoStack.current.length === 0) return;
     const previous = undoStack.current.pop();
     if (!previous) return;
@@ -441,6 +508,7 @@ export default function PaintApp({
 
   const redo = () => {
     const canvas = canvasRef.current;
+    if (restoreInFlightRef.current) return;
     if (!canvas || redoStack.current.length === 0) return;
     const next = redoStack.current.pop();
     if (!next) return;
@@ -465,15 +533,23 @@ export default function PaintApp({
     const context = canvas.getContext("2d");
     if (!context) return;
 
-    pushUndoSnapshot();
-    markDirty();
     const point = getPoint(event);
 
     if (tool === "fill") {
-      floodFill(context, point.x, point.y, color);
+      /*
+       * Snapshot first — undo needs the pre-fill bitmap — but a click on an
+       * area already the fill colour changes nothing, and it used to dirty the
+       * document, clear the redo stack and arm the unload warning anyway.
+       */
+      const before = canvas.toDataURL("image/png");
+      if (!floodFill(context, point.x, point.y, color)) return;
+      undoStack.current = [...undoStack.current.slice(-29), before];
+      redoStack.current = [];
+      updateHistoryState();
       return;
     }
 
+    pushUndoSnapshot();
     drawing.current = true;
     lastPoint.current = point;
     shapeStart.current = point;
@@ -756,12 +832,12 @@ export default function PaintApp({
            * real scale was 71%, and maximizing the window silently rescaled
            * the drawing to 126% with the readout unchanged.
            */
-          style={{ width: `${Math.round((PAINT_CANVAS_WIDTH * zoom) / 100)}px` }}
+          style={{ width: `${Math.round((canvasSize.width * zoom) / 100)}px` }}
           width={PAINT_CANVAS_WIDTH}
         />
       </div>
       <div className="paint-statusbar">
-        <span>{`${PAINT_CANVAS_WIDTH} × ${PAINT_CANVAS_HEIGHT}px`}</span>
+        <span>{`${canvasSize.width} × ${canvasSize.height}px`}</span>
         <span>{zoom}%</span>
       </div>
       {fileDialogMode && (

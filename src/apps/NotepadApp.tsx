@@ -918,21 +918,24 @@ export default function NotepadApp({
             /*
              * Notepad inserts a tab; here it walked focus out of the window and
              * onto the Start button, four presses ending up in the taskbar.
+             * Both edits go through replaceEditorRange so they land in the undo
+             * history like any other keystroke — the first version wrote
+             * setText directly, and its Shift+Tab spliced the text as
+             * `before-the-tab + after-the-selection`, deleting the selected
+             * text itself with no way to undo and an autosave 850ms away.
              */
             event.preventDefault();
             const editor = event.currentTarget;
             const start = editor.selectionStart;
             const end = editor.selectionEnd;
             if (event.shiftKey) {
-              // Shift+Tab removes one level of indentation before the caret.
-              const before = text.slice(0, start);
-              if (!before.endsWith("\t")) return;
-              setText(`${before.slice(0, -1)}${text.slice(end)}`);
-              selectInEditor(start - 1, start - 1);
+              // Shift+Tab removes one level of indentation before the caret
+              // and never touches the selected text.
+              if (!text.slice(0, start).endsWith("\t")) return;
+              replaceEditorRange(start - 1, start, "");
               return;
             }
-            setText(`${text.slice(0, start)}\t${text.slice(end)}`);
-            selectInEditor(start + 1, start + 1);
+            replaceEditorRange(start, end, "\t");
           }}
           onKeyUp={updateCursorPosition}
           ref={noteEditorRef}

@@ -40,7 +40,17 @@ export function loadShellEventLog(): ShellLogEvent[] {
           item !== null &&
           typeof (item as ShellLogEvent).id === "string" &&
           typeof (item as ShellLogEvent).detail === "string" &&
-          Number.isFinite((item as ShellLogEvent).timestamp),
+          Number.isFinite((item as ShellLogEvent).timestamp) &&
+          // The viewer calls source.trim() and taskCategory renders as the
+          // type column, so a record missing either killed the whole shell
+          // the moment a search ran. Every field the viewer reads is checked.
+          ((item as ShellLogEvent).channel === "security" ||
+            (item as ShellLogEvent).channel === "system") &&
+          ((item as ShellLogEvent).level === "information" ||
+            (item as ShellLogEvent).level === "warning") &&
+          Number.isFinite((item as ShellLogEvent).eventId) &&
+          typeof (item as ShellLogEvent).source === "string" &&
+          typeof (item as ShellLogEvent).taskCategory === "string",
       )
       .slice(-EVENT_LOG_LIMIT);
   } catch {
@@ -49,16 +59,27 @@ export function loadShellEventLog(): ShellLogEvent[] {
 }
 
 export function persistShellEventLog(log: ShellLogEvent[]) {
-  localStorage.setItem(EVENT_LOG_KEY, JSON.stringify(log.slice(-EVENT_LOG_LIMIT)));
+  /*
+   * Writes were unguarded while reads were wrapped — so the first quota
+   * failure, thrown from a passive effect on any window open or close, took
+   * the whole desktop down through the error boundary. Losing a log write is
+   * an acceptable outcome; losing the session is not.
+   */
+  try {
+    localStorage.setItem(EVENT_LOG_KEY, JSON.stringify(log.slice(-EVENT_LOG_LIMIT)));
+  } catch {
+    // Storage is full or blocked; the in-memory log keeps working.
+  }
+}
+
+/** Builds the finished record so state updaters stay pure. */
+export function createShellEvent(
+  event: Omit<ShellLogEvent, "id" | "timestamp">,
+): ShellLogEvent {
+  return { ...event, id: `shell-${crypto.randomUUID()}`, timestamp: Date.now() };
 }
 
 /** Append-only: the new record goes on the end and old ones are never touched. */
-export function appendShellEvent(
-  log: ShellLogEvent[],
-  event: Omit<ShellLogEvent, "id" | "timestamp">,
-): ShellLogEvent[] {
-  return [
-    ...log,
-    { ...event, id: `shell-${crypto.randomUUID()}`, timestamp: Date.now() },
-  ].slice(-EVENT_LOG_LIMIT);
+export function appendShellEvent(log: ShellLogEvent[], event: ShellLogEvent): ShellLogEvent[] {
+  return [...log, event].slice(-EVENT_LOG_LIMIT);
 }

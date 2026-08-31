@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type AppId, type DesktopItem } from "../types";
 import { appCatalog } from "./appCatalog";
@@ -11,7 +12,9 @@ import {
   getStartPinnedApps,
   getThemeLabel,
   isBrowserRunTarget,
+  loadStartPinnedAppIds,
   normalizeRunCommand,
+  persistStartPinnedAppIds,
   rankSearchCandidate,
   resolveRunCommand,
 } from "./startSearch";
@@ -287,6 +290,30 @@ describe("getStartPinnedApps", () => {
   it("returns nothing when nothing is pinned", () => {
     // 고정됨 used to be every installed app, indistinguishable from 모든 앱.
     expect(getStartPinnedApps(appCatalog, [])).toEqual([]);
+  });
+});
+
+describe("start pin persistence", () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("round-trips the pinned set", () => {
+    persistStartPinnedAppIds(["files", "calculator"]);
+    expect(loadStartPinnedAppIds()).toEqual(["files", "calculator"]);
+  });
+
+  it("falls back to the defaults for garbage storage", () => {
+    localStorage.setItem("pocket-desk-start-pins-v1", "{broken");
+    expect(loadStartPinnedAppIds().length).toBeGreaterThan(0);
+  });
+
+  it("deduplicates a stored id so no two tiles share a key", () => {
+    localStorage.setItem(
+      "pocket-desk-start-pins-v1",
+      JSON.stringify(["files", "files", "notepad"]),
+    );
+    expect(loadStartPinnedAppIds()).toEqual(["files", "notepad"]);
   });
 });
 

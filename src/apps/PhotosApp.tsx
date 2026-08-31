@@ -175,22 +175,50 @@ export default function PhotosApp({
    * used to be a CSS transform on the <img>, which quietly evaporated the
    * moment the reader moved to another photo and never reached the file.
    */
+  const rotationInFlightRef = useRef(false);
+  const canvasEntriesRef = useRef(canvasEntries);
+  canvasEntriesRef.current = canvasEntries;
+
   const rotateBy = (degrees: number) => {
     if (!hasPhoto || !currentEntry?.content) return;
+    /*
+     * The decode is asynchronous, so a fast second click used to read the same
+     * source as the first — two presses, one quarter turn — and a save could
+     * land after its entry had been deleted, which made savePaintImage mint a
+     * brand-new file and steal the active canvas. One rotation runs at a time,
+     * and a save whose target vanished is abandoned.
+     */
+    if (rotationInFlightRef.current) return;
+    rotationInFlightRef.current = true;
+    const targetId = currentEntry.id;
 
     const source = new Image();
+    const finish = () => {
+      rotationInFlightRef.current = false;
+    };
+    source.onerror = finish;
     source.onload = () => {
       const canvas = document.createElement("canvas");
       canvas.width = source.naturalHeight;
       canvas.height = source.naturalWidth;
       const context = canvas.getContext("2d");
-      if (!context) return;
+      if (!context) return finish();
 
       context.translate(canvas.width / 2, canvas.height / 2);
       context.rotate((degrees * Math.PI) / 180);
       context.drawImage(source, -source.naturalWidth / 2, -source.naturalHeight / 2);
-      savePaintImage(canvas.toDataURL("image/png"), { existingItemId: currentEntry.id });
-      playSound("toggle");
+      const rotated = canvas.toDataURL("image/png");
+      // An oversized source can exceed the canvas area limit, and toDataURL
+      // then returns a blank result — writing that over the photo would
+      // destroy it to no purpose.
+      if (
+        rotated.length > 24 &&
+        canvasEntriesRef.current.some((entry) => entry.id === targetId)
+      ) {
+        savePaintImage(rotated, { existingItemId: targetId });
+        playSound("toggle");
+      }
+      finish();
     };
     source.src = currentEntry.content;
   };

@@ -147,7 +147,8 @@ export function loadStartPinnedAppIds(): AppId[] {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem(START_PINNED_APPS_KEY) ?? "null");
     if (!Array.isArray(parsed)) return [...DEFAULT_START_PINS];
-    return parsed.filter((value): value is AppId => typeof value === "string");
+    // A duplicated id would render two tiles with the same React key.
+    return [...new Set(parsed.filter((value): value is AppId => typeof value === "string"))];
   } catch {
     return [...DEFAULT_START_PINS];
   }

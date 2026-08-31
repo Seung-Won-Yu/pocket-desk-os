@@ -107,10 +107,21 @@ export function resizeWindowEdge(
   const maxBottom = Math.max(minHeight, window.innerHeight - APP_BAR_HEIGHT - 8);
 
   if (edge === "right") {
-    return { width: clamp(instance.width + delta, minWidth, maxRight - instance.x) };
+    // The ceiling never drops below the floor: with the window hard against
+    // the screen edge, clamp(v, 320, <320) returned 320 and one arrow press
+    // snapped a wide window to its minimum.
+    return {
+      width: clamp(instance.width + delta, minWidth, Math.max(minWidth, maxRight - instance.x)),
+    };
   }
   if (edge === "bottom") {
-    return { height: clamp(instance.height + delta, minHeight, maxBottom - instance.y) };
+    return {
+      height: clamp(
+        instance.height + delta,
+        minHeight,
+        Math.max(minHeight, maxBottom - instance.y),
+      ),
+    };
   }
   if (edge === "left") {
     const right = instance.x + instance.width;
