@@ -1786,7 +1786,13 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("Meta+e");
     const dragExplorer = page.locator('article[aria-label="파일 탐색기"]').first();
     await dragExplorer.waitFor({ state: "visible" });
-    const dragSource = dragExplorer.getByRole("option").first();
+    // Pick a draggable file by name, not `.first()`: the row order depends on
+    // collation, so the first row was a folder on CI and a file locally — the
+    // same test dragging different things on different machines.
+    const dragSource = dragExplorer
+      .locator('[role="option"][draggable="true"]')
+      .filter({ hasNotText: "파일 폴더" })
+      .first();
     await dragSource.waitFor({ state: "visible" });
     const draggedName = (await dragSource.innerText()).split("\n")[0].trim();
     // Drop clear of the Explorer window, or the window itself takes the drop.
