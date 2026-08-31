@@ -2,6 +2,42 @@
 
 All notable changes to PocketDesk OS are documented here.
 
+## 0.11.0
+
+Two behavioral audits and two adversarial reviews, every finding reproduced in a real browser before the fix and re-measured after. The theme: gestures that existed but produced the wrong result, state the shell forgot, and readouts that reported numbers nothing computed.
+
+### Fixed
+
+- **The shell could crash itself.** A window-growth request that could never be satisfied — a maximized Minesweeper asking for room — looped React past its update depth and the error boundary replaced the whole desktop. The session, not a document, was the blast radius.
+- **Two windows of one document destroyed each other's work.** The taskbar's new-window paths opened a second Notepad on the same shell-level note, and one window's 850ms autosave overwrote the other's unsaved text with no prompt. Multi-instance is now declared per app and only where per-window state is genuinely window-local.
+- **Paint had no idea its work was unsaved.** Closing the window, switching virtual desktops, or the photo viewer's 편집 swapping the document all discarded the drawing in silence. It now tracks dirty state, flushes on the way out, registers the shell's close guard, and the page warns before unload while any window holds unsaved work.
+- **Notepad lost the last 850ms of typing** when the reader switched documents inside the window — the autosave timer had not fired and the incoming document replaced the text. The outgoing document is flushed first.
+- **Every subtraction in the calculator answered Error.** The tokenizer read the minus as a sign because the left operand was still in the digit buffer. `%` divided the whole expression by 100 instead of reading the pending operand; 1/x, x² and √ had the same fault; standard mode applied operator precedence Windows reserves for the scientific one (`2+3×4` is 20 there, not 14); every fault printed the single word "Error".
+- **Alt+Tab could not reach most windows.** Focusing on every press re-sorted the candidate list, so Tab bounced between the two newest windows however many were open. The order now freezes for the hold and commits on release — and the idle timer that self-committed after 1.2 seconds is gone; only losing the page commits early.
+- **Snapped windows did not survive a resize or a reload**, coming back 8px inside their own edges and 18px short of the taskbar, and every window drifted 2px when a control near the screen edge took focus. Restoring a maximized window teleported it; the window controls' pointerdown was being read as a drag.
+- **The keyboard could not do what the mouse could.** Alt+Space existed nowhere; 이동/크기 조정 did not exist at all, and the resize handles are hidden from assistive technology — a keyboard user could not move or resize a window, period. Both exist now, arrow-driven, Enter to commit, Escape to put the window back, and the mode's keys are taken in the capture phase so an app that binds Escape cannot swallow the cancel. Desktop icons and the taskbar are one tab stop each with arrow movement; Tab in Notepad inserts a tab instead of walking onto the taskbar; Ctrl+A works on a Mac; Paint answers Ctrl+Z/Y; the photo viewer answers Delete; Task Manager ends the selected task with Delete; the registry answers Delete/F2/F5.
+- **The Event Viewer was a live mirror wearing a log's clothes.** Closing a window deleted its "process started" record; maximizing one rewrote the text of an event claiming a past timestamp; the 보안 channel could never fill. The shell now keeps an append-only, size-capped, persisted log: window open/close, logon, lock, power-off.
+- **다시 시작 and 시스템 종료 left every app running.** Both now close every window through the same guards the ✕ uses, so unsaved work gets its question first — and the question appears on top of the desktop, not under the Start menu that asked it.
+- **The shell forgot which desktop you were on and what it had told you.** The active virtual desktop and the notification backlog now survive a reload; the action centre renders everything its own header counts; a badge on the tray clock says notifications arrived.
+- **Readouts stopped inventing numbers.** Task Manager showed two CPU figures for one moment and a process table frozen since mount; the tray volume slider was a mute toggle that sprang back from any value; the lock screen ignored the 24-hour clock setting; the lock screen and Start menu showed a name baked into the build instead of the 설정 account name; Paint's zoom claimed 100% while rendering at 71% — and silently rescaled with the window. The photo viewer went blank after a round trip to Paint; its title bar named the first photo forever; its counter claimed `1 / 1` of an image it was not showing.
+- **Explorer grew up.** Column headers sort (크기 included), type-ahead jumps, Home/End and Shift ranges select, a cut item dims, F2 preselects the base name instead of the extension, forbidden filename characters are refused with the Windows error, the file menu no longer opens 속성 under the taskbar, and ↓ in icon view moves down instead of sideways.
+- **Edge had no tabs and a habit of blank pages.** The tab strip was one hardcoded tab; tabs are real now, each with its own address, view mode and history. A frame blocked by the site's own policy fires no error event, so the recovery offer appears on its own — at the bottom, dismissible per address, instead of covering pages that rendered fine.
+
+### Added
+
+- Task View cards carry the window's title over a proportional placement preview, and close their window in place.
+- The taskbar hover preview is interactive: one entry per window, switch or close from the card. A jump-list 새 창 and middle-click open another instance of multi-instance apps.
+- Paint gained the two tools it was half made of — an eraser and a scanline paint bucket — plus a zoom anchored to the bitmap. Photo rotation is written into the file, as the Windows viewer saves it.
+- The Start menu's 고정됨 is a real, persisted list: unpin from a tile's menu, pin from 모든 앱. Search finds apps by the names people type (`notepad`, `mspaint`); 설정 검색 shows results without hiding the navigation.
+- The desktop makes folders from 새로 만들기, moves a whole multi-selection in one drag, extends selection with Shift, and 새로 고침 re-snaps to the grid it claims to keep.
+- 창 배치 초기화 restores geometry instead of ending every process it could find.
+
+- **The release gate itself caught one more round.** A pre-tag review and runtime audit found: Shift+Tab deleting the selected text (unrecoverable, autosave pending); Paint stretching the portrait file a rotation had just written; rotations racing themselves; save prompts asked of minimized windows rendering invisibly, so Task Manager's 작업 끝내기 looked like it did nothing; an unguarded event-log write that let a storage-quota failure take down the desktop; the volume slider never reaching playback and fresh profiles booting muted; the Start tile menu displaced and clipped by its own containing block. All fixed and re-measured before this tag.
+
+### Testing
+
+- 710 unit tests across 23 files (calculator, Task View, event log, flood fill, and Notepad Tab suites are new), plus browser-measured smoke assertions for each behavior above. Two CI-only failures were both test nondeterminism — a drag test that trusted collation order, a role query that raced a hover card's grace timer — fixed by naming targets exactly.
+
 ## 0.10.0
 
 Every finding from a behavioral audit that drove the real app and measured element geometry, plus a shipped regression.
