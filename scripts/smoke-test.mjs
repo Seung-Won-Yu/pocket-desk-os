@@ -980,8 +980,44 @@ async function runSmoke(baseUrl) {
       (await clock.getByRole("timer").innerText()) === "00:02",
       "Fired timer did not reset to its configured length",
     );
+    // 세계 시계: real Intl timezones — the default trio renders a reading,
+    // and an added city appears and persists through the app's own storage.
+    await clock.getByRole("tab", { name: "세계 시계" }).click();
+    const worldList = clock.getByLabel("세계 시계 목록");
+    assert((await worldList.innerText()).includes("서울"), "Default world clocks missing");
+    await clock.getByLabel("추가할 도시").selectOption("Asia/Tokyo");
+    await clock.getByRole("button", { name: "도시 추가" }).click();
+    assert((await worldList.innerText()).includes("도쿄"), "Added world clock did not appear");
+    assert(
+      /\d{2}:\d{2}/.test(await worldList.innerText()),
+      "World clock rows show no time reading",
+    );
     await page.keyboard.press("Alt+F4");
     await clock.waitFor({ state: "detached" });
+
+    // 점프 리스트: right-clicking a taskbar button lists the documents that
+    // app would open; picking one opens it in that app.
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("notepad");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const jumpNotepad = page.locator('article[aria-label="메모장"]');
+    await jumpNotepad.waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "메모장", exact: true }).click({ button: "right" });
+    const jumpMenu = page.locator(".taskbar-context-menu");
+    await jumpMenu.waitFor({ state: "visible" });
+    assert(
+      (await jumpMenu.innerText()).includes("최근 항목"),
+      "Taskbar jump list has no recent-items section",
+    );
+    await jumpMenu.getByRole("menuitem", { name: "notes.txt" }).click();
+    await jumpMenu.waitFor({ state: "detached" });
+    assert(
+      (await jumpNotepad.locator(".window-titlebar").innerText()).includes("notes.txt"),
+      "Jump list pick did not open the document in Notepad",
+    );
+    await page.keyboard.press("Alt+F4");
+    await jumpNotepad.waitFor({ state: "detached" });
 
     await page.keyboard.press("Control+Alt+R");
     await runDialog.waitFor({ state: "visible" });

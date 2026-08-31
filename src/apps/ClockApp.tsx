@@ -1,6 +1,7 @@
 import {
   AlarmClock,
   Flag,
+  Globe2,
   Pause,
   Play,
   Plus,
@@ -24,6 +25,10 @@ import {
   setClockAlarmEnabled,
   setClockTimerDuration,
   startClockTimer,
+  loadWorldClocks,
+  persistWorldClocks,
+  readWorldClock,
+  WORLD_CLOCK_CITIES,
   type ClockAlarm,
   type ClockTimer,
 } from "../shell/clock";
@@ -38,11 +43,12 @@ type ClockAppProps = {
   updateClockTimer: (timer: ClockTimer) => void;
 };
 
-type ClockTab = "alarm" | "timer" | "stopwatch";
+type ClockTab = "alarm" | "timer" | "world" | "stopwatch";
 
 const CLOCK_TABS: { icon: typeof AlarmClock; id: ClockTab; label: string }[] = [
   { icon: AlarmClock, id: "alarm", label: "알람" },
   { icon: Timer, id: "timer", label: "타이머" },
+  { icon: Globe2, id: "world", label: "세계 시계" },
   { icon: Watch, id: "stopwatch", label: "스톱워치" },
 ];
 
@@ -73,6 +79,12 @@ export default function ClockApp({
   const [newAlarmTime, setNewAlarmTime] = useState("07:30");
   const [newAlarmLabel, setNewAlarmLabel] = useState("");
   const [stopwatch, setStopwatch] = useState<StopwatchState>(IDLE_STOPWATCH);
+  const [worldClocks, setWorldClocks] = useState<string[]>(() => loadWorldClocks());
+  const [newCityId, setNewCityId] = useState("");
+
+  useEffect(() => {
+    persistWorldClocks(worldClocks);
+  }, [worldClocks]);
   const [now, setNow] = useState(() => Date.now());
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -106,6 +118,13 @@ export default function ClockApp({
       createClockAlarm(newAlarmTime, newAlarmLabel, Date.now()),
     ]);
     setNewAlarmLabel("");
+    playSound("toggle");
+  };
+
+  const addWorldClock = () => {
+    if (!newCityId || worldClocks.includes(newCityId)) return;
+    setWorldClocks([...worldClocks, newCityId]);
+    setNewCityId("");
     playSound("toggle");
   };
 
@@ -407,6 +426,72 @@ export default function ClockApp({
           <p className="clock-hint">
             타이머는 셸에서 동작하므로 창을 닫거나 새로 고쳐도 이어집니다.
           </p>
+        </section>
+      )}
+
+      {tab === "world" && (
+        <section
+          aria-labelledby="clock-tab-world"
+          className="clock-panel"
+          id="clock-panel-world"
+          role="tabpanel"
+        >
+          <form
+            className="clock-world-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              addWorldClock();
+            }}
+          >
+            <select
+              aria-label="추가할 도시"
+              onChange={(event) => setNewCityId(event.target.value)}
+              value={newCityId}
+            >
+              <option value="">도시 선택…</option>
+              {WORLD_CLOCK_CITIES.filter((city) => !worldClocks.includes(city.id)).map(
+                (city) => (
+                  <option key={city.id} value={city.id}>
+                    {city.label}
+                  </option>
+                ),
+              )}
+            </select>
+            <button disabled={!newCityId} type="submit">
+              <Plus aria-hidden size={15} /> 도시 추가
+            </button>
+          </form>
+          {worldClocks.length === 0 ? (
+            <p className="clock-empty">도시를 추가하면 해당 시간대의 현재 시각을 보여줍니다.</p>
+          ) : (
+            <ul aria-label="세계 시계 목록" className="clock-world-list">
+              {worldClocks.map((cityId) => {
+                const city = WORLD_CLOCK_CITIES.find((item) => item.id === cityId);
+                if (!city) return null;
+                const reading = readWorldClock(cityId, now);
+                return (
+                  <li key={cityId}>
+                    <div className="clock-world-meta">
+                      <strong>{city.label}</strong>
+                      <small>
+                        {reading.dayLabel} · {reading.offsetLabel}
+                      </small>
+                    </div>
+                    <span className="clock-world-time">{reading.time}</span>
+                    <button
+                      aria-label={`도시 삭제: ${city.label}`}
+                      className="clock-icon-button"
+                      onClick={() => setWorldClocks(worldClocks.filter((id) => id !== cityId))}
+                      title="도시 삭제"
+                      type="button"
+                    >
+                      <Trash2 aria-hidden size={15} />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </section>
       )}
 

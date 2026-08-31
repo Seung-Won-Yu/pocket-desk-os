@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ClockApp from "./ClockApp";
 import { createIdleClockTimer, type ClockAlarm, type ClockTimer } from "../shell/clock";
+import { CLOCK_WORLD_KEY } from "../shell/constants";
 
 // 09:30 local on a fixed day, so "10:00" is always 오늘 and "09:00" always 내일.
 const NOW = new Date(2026, 7, 31, 9, 30, 0, 0);
@@ -23,6 +24,7 @@ function Harness({ initialAlarms = [] as ClockAlarm[] }) {
 }
 
 beforeEach(() => {
+  localStorage.clear();
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
 });
@@ -94,6 +96,33 @@ describe("타이머", () => {
     expect(screen.getByRole("timer").textContent).toBe("01:00");
     expect((screen.getByLabelText("타이머 시간 (분)") as HTMLInputElement).disabled).toBe(
       false,
+    );
+  });
+});
+
+describe("세계 시계", () => {
+  it("adds and removes cities and persists the list for the next open", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("tab", { name: "세계 시계" }));
+
+    // The default trio, each with a live reading next to it.
+    const list = () => within(screen.getByLabelText("세계 시계 목록"));
+    for (const city of ["서울", "런던", "뉴욕"]) {
+      expect(list().getByText(city)).toBeTruthy();
+    }
+
+    fireEvent.change(screen.getByLabelText("추가할 도시"), {
+      target: { value: "Asia/Tokyo" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /도시 추가/ }));
+    expect(list().getByText("도쿄")).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem(CLOCK_WORLD_KEY) ?? "[]")).toContain("Asia/Tokyo");
+
+    fireEvent.click(screen.getByLabelText("도시 삭제: 런던"));
+    // 런던 leaves the list — and goes back to being offered by the picker.
+    expect(list().queryByText("런던")).toBeNull();
+    expect(JSON.parse(localStorage.getItem(CLOCK_WORLD_KEY) ?? "[]")).not.toContain(
+      "Europe/London",
     );
   });
 });

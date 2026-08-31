@@ -16,8 +16,12 @@ import {
   loadClockAlarms,
   loadClockTimer,
   pauseClockTimer,
+  getTimeZoneOffsetMinutes,
+  loadWorldClocks,
   persistClockAlarms,
   persistClockTimer,
+  persistWorldClocks,
+  readWorldClock,
   rescheduleClockAlarm,
   resetClockTimer,
   setClockAlarmEnabled,
@@ -26,7 +30,7 @@ import {
   tickClockTimer,
   type ClockAlarm,
 } from "./clock";
-import { CLOCK_ALARMS_KEY, CLOCK_TIMER_KEY } from "./constants";
+import { CLOCK_ALARMS_KEY, CLOCK_TIMER_KEY, CLOCK_WORLD_KEY } from "./constants";
 
 // A fixed local morning so "today vs tomorrow" is deterministic.
 const NOW = new Date(2026, 7, 31, 9, 30, 0, 0).getTime();
@@ -215,5 +219,56 @@ describe("persistence", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe("세계 시계", () => {
+  it("reads real timezone offsets out of Intl", () => {
+    expect(getTimeZoneOffsetMinutes("Asia/Seoul", NOW)).toBe(540);
+    expect(getTimeZoneOffsetMinutes("Asia/Kolkata", NOW)).toBe(330);
+    // August: New York sits on daylight time.
+    expect(getTimeZoneOffsetMinutes("America/New_York", NOW)).toBe(-240);
+  });
+
+  it("describes a city relative to an explicit local zone", () => {
+    const morning = Date.UTC(2026, 7, 31, 0, 30); // 09:30 in Seoul
+    expect(readWorldClock("Asia/Seoul", morning, "Asia/Seoul")).toEqual({
+      dayLabel: "오늘",
+      offsetLabel: "현지와 같음",
+      time: "09:30",
+    });
+    expect(readWorldClock("America/New_York", morning, "Asia/Seoul")).toEqual({
+      dayLabel: "어제",
+      offsetLabel: "-13시간",
+      time: "20:30",
+    });
+    expect(readWorldClock("Asia/Kolkata", morning, "Asia/Seoul")).toEqual({
+      dayLabel: "오늘",
+      offsetLabel: "-3시간 30분",
+      time: "06:00",
+    });
+  });
+
+  it("crosses midnight into 내일", () => {
+    const lateEvening = Date.UTC(2026, 7, 31, 14, 30); // 23:30 in Seoul
+    expect(readWorldClock("Pacific/Auckland", lateEvening, "Asia/Seoul")).toEqual({
+      dayLabel: "내일",
+      offsetLabel: "+3시간",
+      time: "02:30",
+    });
+  });
+
+  it("round-trips stored cities, drops unknown ids, and falls back on garbage", () => {
+    persistWorldClocks(["Asia/Tokyo", "Europe/Paris"]);
+    expect(loadWorldClocks()).toEqual(["Asia/Tokyo", "Europe/Paris"]);
+
+    localStorage.setItem(
+      CLOCK_WORLD_KEY,
+      JSON.stringify(["Asia/Tokyo", "Asia/Tokyo", "Mars/Base", 7]),
+    );
+    expect(loadWorldClocks()).toEqual(["Asia/Tokyo"]);
+
+    localStorage.setItem(CLOCK_WORLD_KEY, "{not json");
+    expect(loadWorldClocks()).toEqual(["Asia/Seoul", "Europe/London", "America/New_York"]);
   });
 });

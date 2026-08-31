@@ -1926,6 +1926,26 @@ button {
   width: 100%;
 }
 
+.taskbar-menu-caption {
+  color: var(--muted);
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 10px 2px;
+}
+
+.taskbar-menu-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.taskbar-menu-separator {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 5px 4px;
+}
+
 .system-tray-wrap {
   grid-column: 3;
   justify-self: end;
@@ -9775,4 +9795,87 @@ button {
 .clock-laps th {
   color: var(--muted);
   font-weight: 500;
+}
+
+.clock-world-form {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr auto;
+}
+
+.clock-world-form select {
+  background: var(--control-hover);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 7px 9px;
+}
+
+.clock-world-form select:focus-visible {
+  border-color: var(--active);
+  outline: none;
+}
+
+.clock-world-form button {
+  align-items: center;
+  background: var(--control-hover);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  gap: 6px;
+  padding: 7px 14px;
+}
+
+.clock-world-form button:hover:not(:disabled) {
+  background: var(--control-active);
+}
+
+.clock-world-form button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.clock-world-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.clock-world-list li {
+  align-items: center;
+  background: var(--control-hover);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr auto auto;
+  padding: 10px 12px;
+}
+
+.clock-world-meta {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.clock-world-meta strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.clock-world-meta small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.clock-world-time {
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 300;
 }

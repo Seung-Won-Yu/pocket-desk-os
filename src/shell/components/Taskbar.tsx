@@ -1,8 +1,9 @@
 import AppIconTile from "../../components/AppIconTile";
-import { type AppId } from "../../types";
+import { type AppId, type DesktopItem } from "../../types";
 import { clamp } from "../../utils/format";
 import { NOTIFICATIONS_READ_KEY } from "../constants";
 import { getApp } from "../appCatalog";
+import { getVfsEntryAssociation } from "../../vfs/model";
 import { formatWindowTitle } from "../windowTitle";
 import { createCalendarGrid, formatNotificationTime, getLocalDateKey } from "../startSearch";
 import { type AppDefinition, type ToastMessage, type WindowInstance } from "../types";
@@ -56,8 +57,10 @@ export function Taskbar({
   onShowDesktop,
   onTogglePinnedApp,
   onCloseWindow,
+  onOpenRecentDocument,
   onToggleWindow,
   pinnedAppIds,
+  recentDocumentsByApp,
   soundEnabled,
   volume,
   startOpen,
@@ -86,8 +89,11 @@ export function Taskbar({
   onShowDesktop: () => void;
   onTogglePinnedApp: (appId: AppId) => void;
   onCloseWindow: (id: string) => void;
+  onOpenRecentDocument: (item: DesktopItem) => void;
   onToggleWindow: (id: string) => void;
   pinnedAppIds: AppId[];
+  /** Per-app 최근 항목 for the jump list; see src/shell/jumpList.ts. */
+  recentDocumentsByApp: Map<AppId, DesktopItem[]>;
   soundEnabled: boolean;
   volume: number;
   startOpen: boolean;
@@ -446,6 +452,31 @@ export function Taskbar({
           role="menu"
           style={{ left: clamp(taskbarMenu.left, 112, window.innerWidth - 112) }}
         >
+          {/* 최근 항목 — the documents this app would open, newest first. */}
+          {(recentDocumentsByApp.get(taskbarMenu.appId) ?? []).length > 0 && (
+            <>
+              <strong className="taskbar-menu-caption">최근 항목</strong>
+              {(recentDocumentsByApp.get(taskbarMenu.appId) ?? []).map((item, index) => {
+                const ItemIcon = getVfsEntryAssociation(item).icon;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setTaskbarMenu(null);
+                      onOpenRecentDocument(item);
+                    }}
+                    ref={index === 0 ? taskbarMenuButtonRef : undefined}
+                    role="menuitem"
+                    type="button"
+                  >
+                    <ItemIcon aria-hidden="true" size={15} />
+                    <span className="taskbar-menu-item-name">{item.name}</span>
+                  </button>
+                );
+              })}
+              <hr aria-hidden="true" className="taskbar-menu-separator" />
+            </>
+          )}
           {/* Windows puts the app itself at the top of a jump list; picking it
               opens a fresh instance rather than raising the running one. Apps
               whose document lives in shell state cannot have a second window,
@@ -456,7 +487,11 @@ export function Taskbar({
                 setTaskbarMenu(null);
                 onOpenNewWindow(taskbarMenu.appId);
               }}
-              ref={taskbarMenuButtonRef}
+              ref={
+                (recentDocumentsByApp.get(taskbarMenu.appId) ?? []).length > 0
+                  ? undefined
+                  : taskbarMenuButtonRef
+              }
               role="menuitem"
               type="button"
             >
@@ -468,7 +503,12 @@ export function Taskbar({
               onTogglePinnedApp(taskbarMenu.appId);
               setTaskbarMenu(null);
             }}
-            ref={getApp(taskbarMenu.appId).multiInstance ? undefined : taskbarMenuButtonRef}
+            ref={
+              getApp(taskbarMenu.appId).multiInstance ||
+              (recentDocumentsByApp.get(taskbarMenu.appId) ?? []).length > 0
+                ? undefined
+                : taskbarMenuButtonRef
+            }
             role="menuitem"
             type="button"
           >

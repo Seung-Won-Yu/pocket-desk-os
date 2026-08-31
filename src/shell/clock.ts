@@ -1,4 +1,4 @@
-import { CLOCK_ALARMS_KEY, CLOCK_TIMER_KEY } from "./constants";
+import { CLOCK_ALARMS_KEY, CLOCK_TIMER_KEY, CLOCK_WORLD_KEY } from "./constants";
 
 /**
  * The shell half of 알람 및 시계. Alarms and the timer live at the shell, not in
@@ -262,6 +262,141 @@ export function loadClockTimer(): ClockTimer {
 export function persistClockTimer(timer: ClockTimer) {
   try {
     localStorage.setItem(CLOCK_TIMER_KEY, JSON.stringify(timer));
+  } catch {
+    // Same rule as the alarms: losing the write must not lose the session.
+  }
+}
+
+/**
+ * 세계 시계. Real timezone math through Intl — the same tz database the OS
+ * uses — so DST transitions and half-hour offsets (Kolkata, Adelaide) are
+ * right by construction instead of by a hand-maintained offset table.
+ */
+export type WorldClockCity = {
+  /** IANA timezone id; doubles as the stored identifier. */
+  id: string;
+  label: string;
+};
+
+export const WORLD_CLOCK_CITIES: WorldClockCity[] = [
+  { id: "Asia/Seoul", label: "서울" },
+  { id: "Asia/Tokyo", label: "도쿄" },
+  { id: "Asia/Shanghai", label: "상하이" },
+  { id: "Asia/Singapore", label: "싱가포르" },
+  { id: "Asia/Kolkata", label: "뉴델리" },
+  { id: "Asia/Dubai", label: "두바이" },
+  { id: "Europe/Moscow", label: "모스크바" },
+  { id: "Europe/Istanbul", label: "이스탄불" },
+  { id: "Europe/Berlin", label: "베를린" },
+  { id: "Europe/Paris", label: "파리" },
+  { id: "Europe/London", label: "런던" },
+  { id: "America/Sao_Paulo", label: "상파울루" },
+  { id: "America/New_York", label: "뉴욕" },
+  { id: "America/Chicago", label: "시카고" },
+  { id: "America/Denver", label: "덴버" },
+  { id: "America/Los_Angeles", label: "로스앤젤레스" },
+  { id: "Pacific/Honolulu", label: "호놀룰루" },
+  { id: "Pacific/Auckland", label: "오클랜드" },
+  { id: "Australia/Sydney", label: "시드니" },
+];
+
+const WORLD_CLOCK_CITY_IDS = new Set(WORLD_CLOCK_CITIES.map((city) => city.id));
+const DEFAULT_WORLD_CLOCKS = ["Asia/Seoul", "Europe/London", "America/New_York"];
+
+/**
+ * The zone's UTC offset at a given moment, in minutes. Formats the moment in
+ * that zone and reads the wall-clock fields back — the standard way to get an
+ * offset out of Intl, which exposes no direct accessor.
+ */
+export function getTimeZoneOffsetMinutes(timeZone: string, at: number) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone,
+    year: "numeric",
+  }).formatToParts(new Date(at));
+  const read = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  const asUtc = Date.UTC(
+    read("year"),
+    read("month") - 1,
+    read("day"),
+    read("hour"),
+    read("minute"),
+    read("second"),
+  );
+  // The seconds field is the finest the parts carry, so compare at that grain.
+  return Math.round((asUtc - (at - (at % 1000))) / 60000);
+}
+
+export type WorldClockReading = {
+  /** "어제" | "오늘" | "내일" relative to the local calendar. */
+  dayLabel: string;
+  /** Signed difference to local time, e.g. "+5시간 30분", or "현지와 같음". */
+  offsetLabel: string;
+  /** Wall-clock "HH:MM" in that zone. */
+  time: string;
+};
+
+export function readWorldClock(
+  timeZone: string,
+  now: number,
+  localZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
+): WorldClockReading {
+  const time = new Intl.DateTimeFormat("ko-KR", {
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+    timeZone,
+  }).format(new Date(now));
+
+  const diffMinutes =
+    getTimeZoneOffsetMinutes(timeZone, now) - getTimeZoneOffsetMinutes(localZone, now);
+  const magnitude = Math.abs(diffMinutes);
+  const hours = Math.floor(magnitude / 60);
+  const minutes = magnitude % 60;
+  const offsetLabel =
+    diffMinutes === 0
+      ? "현지와 같음"
+      : `${diffMinutes > 0 ? "+" : "-"}${hours > 0 ? `${hours}시간` : ""}${
+          minutes > 0 ? `${hours > 0 ? " " : ""}${minutes}분` : ""
+        }`;
+
+  const dateIn = (zone: string) =>
+    new Intl.DateTimeFormat("en-CA", {
+      day: "2-digit",
+      month: "2-digit",
+      timeZone: zone,
+      year: "numeric",
+    }).format(new Date(now));
+  const localDate = dateIn(localZone);
+  const remoteDate = dateIn(timeZone);
+  // The two calendars are never more than one day apart.
+  const dayLabel = remoteDate === localDate ? "오늘" : remoteDate > localDate ? "내일" : "어제";
+
+  return { dayLabel, offsetLabel, time };
+}
+
+export function loadWorldClocks(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(CLOCK_WORLD_KEY) ?? "null");
+    if (!Array.isArray(parsed)) return [...DEFAULT_WORLD_CLOCKS];
+    const known = parsed.filter(
+      (value): value is string => typeof value === "string" && WORLD_CLOCK_CITY_IDS.has(value),
+    );
+    return [...new Set(known)];
+  } catch {
+    return [...DEFAULT_WORLD_CLOCKS];
+  }
+}
+
+export function persistWorldClocks(cityIds: string[]) {
+  try {
+    localStorage.setItem(CLOCK_WORLD_KEY, JSON.stringify(cityIds));
   } catch {
     // Same rule as the alarms: losing the write must not lose the session.
   }

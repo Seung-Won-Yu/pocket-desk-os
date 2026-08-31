@@ -144,6 +144,7 @@ import {
   loadShellEventLog,
   persistShellEventLog,
 } from "./shell/eventLog";
+import { buildRecentDocumentsByApp } from "./shell/jumpList";
 import { clamp } from "./utils/format";
 import {
   type AppId,
@@ -1379,6 +1380,11 @@ export default function App() {
   const noteEntries = useMemo(() => {
     return activeDesktopItems.filter((item) => item.kind === "note");
   }, [activeDesktopItems]);
+
+  const recentDocumentsByApp = useMemo(
+    () => buildRecentDocumentsByApp(activeDesktopItems, defaultApps),
+    [activeDesktopItems, defaultApps],
+  );
 
   const canvasEntries = useMemo(() => {
     return activeDesktopItems.filter((item) => item.kind === "canvas");
@@ -3342,6 +3348,8 @@ export default function App() {
         volume={soundVolume}
         onShowDesktop={toggleShowDesktop}
         onTogglePinnedApp={togglePinnedApp}
+        onOpenRecentDocument={openVfsEntry}
+        recentDocumentsByApp={recentDocumentsByApp}
         onCloseWindow={closeWindow}
         onToggleWindow={toggleFromTaskbar}
         pinnedAppIds={pinnedAppIds}

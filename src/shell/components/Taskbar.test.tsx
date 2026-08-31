@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Taskbar } from "./Taskbar";
 import { appCatalog } from "../appCatalog";
 import type { WindowInstance } from "../types";
-import type { AppId } from "../../types";
+import type { AppId, DesktopItem } from "../../types";
 
 type TaskbarProps = ComponentProps<typeof Taskbar>;
 
@@ -43,6 +43,7 @@ function makeHandlers() {
     onTogglePinnedApp: vi.fn(),
     onToggleTaskView: vi.fn(),
     onCloseWindow: vi.fn(),
+    onOpenRecentDocument: vi.fn(),
     onToggleWindow: vi.fn(),
   };
 }
@@ -54,6 +55,7 @@ function makeProps(
   const props: TaskbarProps = {
     activeDesktopIndex: 0,
     availableApps: appCatalog,
+    recentDocumentsByApp: new Map(),
     brightness: 100,
     clock24h: true,
     desktopCount: 1,
@@ -204,6 +206,59 @@ describe("Taskbar 앱 버튼", () => {
     });
 
     expect(screen.getByRole("button", { name: "Microsoft Edge, 2개 창" })).toBeVisible();
+  });
+});
+
+describe("Taskbar 점프 리스트", () => {
+  function makeDocument(id: string, name: string): DesktopItem {
+    return {
+      createdAt: 0,
+      id,
+      kind: "note",
+      name,
+      parentId: "desktop",
+      showOnDesktop: false,
+      updatedAt: 0,
+      x: 0,
+      y: 0,
+    };
+  }
+
+  it("우클릭 메뉴 맨 위에 최근 항목을 보여주고, 고르면 그 문서를 연다", async () => {
+    const report = makeDocument("note-report", "보고서.txt");
+    const memo = makeDocument("note-memo", "메모.txt");
+    const { handlers, user } = renderTaskbar({
+      pinnedAppIds: ["browser"],
+      recentDocumentsByApp: new Map([["notepad", [report, memo]]]),
+      windows: [makeWindow("win-notepad", "notepad")],
+    });
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("button", { name: "메모장" }),
+    });
+
+    const items = screen.getAllByRole("menuitem");
+    // 최근 두 항목이 앱 동작(새 창·고정·창 닫기)보다 먼저 온다.
+    expect(items.slice(0, 2).map((item) => item.textContent)).toEqual([
+      "보고서.txt",
+      "메모.txt",
+    ]);
+
+    await user.click(screen.getByRole("menuitem", { name: "보고서.txt" }));
+    expect(handlers.onOpenRecentDocument).toHaveBeenCalledWith(report);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("최근 항목이 없는 앱 메뉴는 그대로다", async () => {
+    const { user } = renderTaskbar({ pinnedAppIds: ["browser"] });
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("button", { name: "Microsoft Edge" }),
+    });
+
+    expect(screen.queryByText("최근 항목")).toBeNull();
   });
 });
 
