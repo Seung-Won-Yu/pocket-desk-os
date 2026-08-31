@@ -46,6 +46,8 @@ export const NOTIFICATION_HISTORY_LIMIT = 12;
 export const VIRTUAL_DESKTOPS_KEY = "pocket-desk-virtual-desktops-v1";
 export const USER_NAME_KEY = "pocket-desk-user-name-v1";
 export const CLOCK_24H_KEY = "pocket-desk-clock-24h-v1";
+export const CLOCK_ALARMS_KEY = "pocket-desk-clock-alarms-v1";
+export const CLOCK_TIMER_KEY = "pocket-desk-clock-timer-v1";
 export const DEFAULT_APPS_KEY = "pocket-desk-default-apps-v1";
 export const DEFAULT_USER_NAME = "PocketDesk";
 export const MAX_VIRTUAL_DESKTOPS = 6;
@@ -92,6 +94,17 @@ export const appSearchKeywords: Record<AppId, string[]> = {
     "cpu",
   ],
   calculator: ["calc", "calculator", "계산", "계산기", "수학", "사칙연산"],
+  clock: [
+    "clock",
+    "alarm",
+    "timer",
+    "stopwatch",
+    "시계",
+    "알람",
+    "타이머",
+    "스톱워치",
+    "초시계",
+  ],
   paint: ["paint", "sketch", "draw", "그림", "그림판", "스케치", "드로잉", "캔버스"],
   notepad: ["note", "notes", "memo", "txt", "메모", "메모장", "문서", "글쓰기"],
   files: ["file", "files", "folder", "explorer", "파일", "폴더", "탐색기", "desktop"],
@@ -103,6 +116,7 @@ export const runCommandAliases: Partial<Record<AppId, string[]>> = {
   thispc: ["computer", "this pc", "my computer", "내 pc", "내컴퓨터"],
   browser: ["edge", "iexplore", "msedge", "chrome", "www"],
   calculator: ["calc", "calc.exe", "calculator"],
+  clock: ["clock", "ms-clock", "알람 및 시계", "알람", "타이머"],
   photos: ["photo", "photos", "사진", "사진 앱"],
   terminal: ["cmd", "cmd.exe", "command", "powershell", "terminal", "명령 프롬프트"],
   taskmanager: ["taskmgr", "taskmgr.exe", "task manager", "작업 관리자"],

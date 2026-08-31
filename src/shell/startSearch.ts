@@ -1,6 +1,6 @@
 import { type AppId, type DesktopItem, type ThemeName } from "../types";
 import { normalizeSearchText } from "../utils/format";
-import { getVfsEntryAssociation } from "../vfs/model";
+import { VFS_ROOT_ID, getVfsEntryAssociation, getVfsFolderPath } from "../vfs/model";
 import { appCatalog } from "./appCatalog";
 import { START_PINNED_APPS_KEY, appSearchKeywords, runCommandAliases } from "./constants";
 import { type AppDefinition, type RunCommandResolution, type StartSearchResult } from "./types";
@@ -86,16 +86,25 @@ export function buildStartSearchResults(
     })
     .filter((result): result is StartSearchResult => Boolean(result));
 
-  const desktopResults = desktopItems
+  const fileResults = desktopItems
     .map((item): StartSearchResult | null => {
       const association = getVfsEntryAssociation(item);
+      /*
+       * Where the file actually lives. Every entry used to carry the literal
+       * keywords "desktop"/"바탕화면" and the label 바탕화면 — so searching
+       * 바탕화면 returned the whole disk, and a file three folders deep gave no
+       * hint where opening it would land. Now the real folder chain is both the
+       * caption and a match field, the way Windows search shows the path.
+       */
+      const pathSegments = getVfsFolderPath(desktopItems, item.parentId);
+      const onDesktop = item.parentId === VFS_ROOT_ID;
       const rank = rankSearchCandidate(normalizedQuery, [
         item.name,
         association.typeLabel,
         association.appTitle,
         item.kind,
-        "desktop",
-        "바탕화면",
+        ...pathSegments.slice(1).map((segment) => segment.name),
+        ...(onDesktop ? ["desktop", "바탕화면"] : []),
       ]);
       if (!rank) {
         return null;
@@ -109,14 +118,16 @@ export function buildStartSearchResults(
         kind: "desktopItem",
         matchLabel: rank.matchLabel,
         score: rank.score,
-        sourceLabel: "바탕화면",
-        subtitle: `${association.typeLabel} · ${association.appTitle}`,
+        sourceLabel: item.kind === "folder" ? "폴더" : "파일",
+        subtitle: `${association.typeLabel} · ${pathSegments
+          .map((segment) => segment.name)
+          .join(" > ")}`,
         title: item.name,
       };
     })
     .filter((result): result is StartSearchResult => Boolean(result));
 
-  return [...appResults, ...desktopResults].sort((a, b) => {
+  return [...appResults, ...fileResults].sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     return a.title.localeCompare(b.title);
   });

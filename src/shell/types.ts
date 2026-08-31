@@ -15,6 +15,7 @@ import {
 } from "../types";
 import { type LucideIcon } from "lucide-react";
 import { type DefaultAppMap } from "./preferences";
+import { type ClockAlarm, type ClockTimer } from "./clock";
 import { type ShellLogEvent } from "./eventLog";
 
 export type WindowMotion = "closing" | "minimizing";
@@ -180,6 +181,14 @@ export type AppContentProps = {
   noteEntries: DesktopItem[];
   trashedItems: DesktopItem[];
   notify: (toast: ToastInput) => void;
+  /**
+   * 알람 및 시계's shared state. It lives at the shell so the scheduler can
+   * ring with the app window closed; the app edits it through these setters.
+   */
+  clockAlarms: ClockAlarm[];
+  clockTimer: ClockTimer;
+  updateClockAlarms: (alarms: ClockAlarm[]) => void;
+  updateClockTimer: (timer: ClockTimer) => void;
   deleteVfsEntry: (itemId: string) => void;
   emptyRecycleBin: () => void;
   exportVfsZip: () => void;

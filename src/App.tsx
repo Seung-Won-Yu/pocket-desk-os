@@ -122,6 +122,18 @@ import {
 import { getNeighbourByPosition } from "./shell/keyboardNav";
 import { formatWindowTitle } from "./shell/windowTitle";
 import {
+  collectDueClockAlarms,
+  formatClockDuration,
+  isMissedAlarmFire,
+  loadClockAlarms,
+  loadClockTimer,
+  persistClockAlarms,
+  persistClockTimer,
+  tickClockTimer,
+  type ClockAlarm,
+  type ClockTimer,
+} from "./shell/clock";
+import {
   SHELL_EVENT_LOGON,
   SHELL_EVENT_POWER_OFF,
   SHELL_EVENT_PROCESS_ENDED,
@@ -192,6 +204,17 @@ export default function App() {
    * slider reported only `> 0` back, so 35 and 60 both sprang back to 72 and
    * nothing was stored.
    */
+  const [clockAlarms, setClockAlarms] = useState<ClockAlarm[]>(() => loadClockAlarms());
+  const [clockTimer, setClockTimer] = useState<ClockTimer>(() => loadClockTimer());
+
+  useEffect(() => {
+    persistClockAlarms(clockAlarms);
+  }, [clockAlarms]);
+
+  useEffect(() => {
+    persistClockTimer(clockTimer);
+  }, [clockTimer]);
+
   const [soundVolume, setSoundVolume] = useState(() => {
     const raw = localStorage.getItem(SOUND_VOLUME_KEY);
     // Number(null) is 0, which passed the >= 0 check — so a fresh profile
@@ -478,6 +501,46 @@ export default function App() {
     audioContextRef.current = audioContext;
     playPocketDeskSound(audioContext, effect, soundVolumeRef.current);
   };
+
+  /*
+   * 알람 및 시계 fires from the shell, not from its app window — an alarm that
+   * only rings while its window is open is a countdown display, not an alarm.
+   * The tick body lives in a ref so one interval survives every re-render yet
+   * always reads current state; the first tick after boot also delivers
+   * anything that came due while the tab was closed, flagged as missed.
+   */
+  const clockTickRef = useRef<() => void>(() => {});
+  clockTickRef.current = () => {
+    const timestamp = Date.now();
+    const { due, next } = collectDueClockAlarms(clockAlarms, timestamp);
+    if (due.length > 0) {
+      setClockAlarms(next);
+      for (const alarm of due) {
+        notify({
+          detail: `${alarm.time}${alarm.label ? ` · ${alarm.label}` : ""}`,
+          title: isMissedAlarmFire(alarm, timestamp) ? "놓친 알람" : "알람",
+          tone: "info",
+        });
+      }
+      playSound("success");
+    }
+
+    const timerTick = tickClockTimer(clockTimer, timestamp);
+    if (timerTick.fired) {
+      setClockTimer(timerTick.next);
+      notify({
+        detail: `${formatClockDuration(clockTimer.durationMs)} 타이머가 끝났습니다.`,
+        title: "타이머 완료",
+        tone: "success",
+      });
+      playSound("success");
+    }
+  };
+
+  useEffect(() => {
+    const interval = window.setInterval(() => clockTickRef.current(), 500);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const lockDesktop = () => {
     playSound("close");
@@ -3144,6 +3207,10 @@ export default function App() {
                 noteEntries={noteEntries}
                 trashedItems={trashedItems}
                 notify={notify}
+                clockAlarms={clockAlarms}
+                clockTimer={clockTimer}
+                updateClockAlarms={setClockAlarms}
+                updateClockTimer={setClockTimer}
                 deleteVfsEntry={deleteVfsEntry}
                 emptyRecycleBin={emptyRecycleBin}
                 exportVfsZip={exportVfsZip}

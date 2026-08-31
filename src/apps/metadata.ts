@@ -1,5 +1,6 @@
 import {
   Activity,
+  AlarmClock,
   Bomb,
   Calculator,
   Database,
@@ -45,6 +46,7 @@ export const appOrder: AppId[] = [
   "browser",
   "minesweeper",
   "calculator",
+  "clock",
   "paint",
   "notepad",
   "files",
@@ -93,6 +95,15 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     accent: "#7bc96f",
     defaultSize: { width: 400, height: 570 },
     minSize: { width: 330, height: 520 },
+  },
+  clock: {
+    id: "clock",
+    title: "알람 및 시계",
+    subtitle: "알람, 타이머와 스톱워치",
+    icon: AlarmClock,
+    accent: "#5ab7c4",
+    defaultSize: { width: 520, height: 640 },
+    minSize: { width: 420, height: 520 },
   },
   paint: {
     id: "paint",

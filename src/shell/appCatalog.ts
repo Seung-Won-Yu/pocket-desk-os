@@ -1,5 +1,6 @@
 import BrowserApp from "../apps/BrowserApp";
 import CalculatorApp from "../apps/CalculatorApp";
+import ClockApp from "../apps/ClockApp";
 import EventViewerApp from "../apps/EventViewerApp";
 import FilesApp from "../apps/FilesApp";
 import MinesweeperApp from "../apps/MinesweeperApp";
@@ -20,6 +21,7 @@ import { type AppDefinition } from "./types";
 export const appComponents: Record<AppId, AppDefinition["component"]> = {
   browser: BrowserApp,
   calculator: CalculatorApp,
+  clock: ClockApp,
   eventviewer: EventViewerApp,
   files: FilesApp,
   minesweeper: MinesweeperApp,

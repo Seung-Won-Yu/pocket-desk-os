@@ -3,6 +3,7 @@ export type AppId =
   | "browser"
   | "minesweeper"
   | "calculator"
+  | "clock"
   | "paint"
   | "notepad"
   | "files"

@@ -953,6 +953,36 @@ async function runSmoke(baseUrl) {
       "Calculator history is empty",
     );
 
+    // 알람 및 시계: the timer must fire from the shell — the app window is
+    // closed before the deadline, and the completion toast still has to appear.
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("알람");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const clock = page.locator('article[aria-label="알람 및 시계"]');
+    await clock.waitFor({ state: "visible" });
+    await clock.getByRole("tab", { name: "타이머" }).click();
+    await clock.getByLabel("타이머 시간 (분)").fill("0");
+    await clock.getByLabel("타이머 시간 (초)").fill("2");
+    await clock.getByRole("button", { name: "시작" }).click();
+    await page.keyboard.press("Alt+F4");
+    await clock.waitFor({ state: "detached" });
+    await page
+      .locator(".toast", { hasText: "타이머 완료" })
+      .waitFor({ state: "visible", timeout: 8000 });
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("알람 및 시계");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    await clock.waitFor({ state: "visible" });
+    await clock.getByRole("tab", { name: "타이머" }).click();
+    assert(
+      (await clock.getByRole("timer").innerText()) === "00:02",
+      "Fired timer did not reset to its configured length",
+    );
+    await page.keyboard.press("Alt+F4");
+    await clock.waitFor({ state: "detached" });
+
     await page.keyboard.press("Control+Alt+R");
     await runDialog.waitFor({ state: "visible" });
     await runDialog.getByLabel("열기").fill("지뢰찾기");

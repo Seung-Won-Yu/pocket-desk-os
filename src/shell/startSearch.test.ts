@@ -181,8 +181,8 @@ describe("buildStartSearchResults", () => {
       id: "desktop-note-1",
       kind: "desktopItem",
       matchLabel: "회의록.txt",
-      sourceLabel: "바탕화면",
-      subtitle: "텍스트 문서 · 메모장",
+      sourceLabel: "파일",
+      subtitle: "텍스트 문서 · 바탕 화면",
       title: "회의록.txt",
     });
   });
@@ -202,7 +202,8 @@ describe("buildStartSearchResults", () => {
     expect(results).toHaveLength(1);
     expect(results[0]).toMatchObject({
       matchLabel: "파일 폴더",
-      subtitle: "파일 폴더 · 파일 탐색기",
+      sourceLabel: "폴더",
+      subtitle: "파일 폴더 · 바탕 화면",
       title: "사진",
     });
   });
@@ -215,6 +216,39 @@ describe("buildStartSearchResults", () => {
     expect(buildStartSearchResults("바탕화면", items, []).map((r) => r.id)).toEqual([
       "desktop-a",
       "desktop-b",
+    ]);
+  });
+
+  it("shows the real folder chain and keeps the desktop keyword off nested files", () => {
+    const folder = createDesktopItem({
+      id: "folder-1",
+      kind: "folder",
+      name: "보고서",
+      showOnDesktop: false,
+    });
+    const nested = createDesktopItem({
+      id: "note-2",
+      name: "8월 결산.txt",
+      parentId: "folder-1",
+      showOnDesktop: false,
+    });
+    const items = [folder, nested];
+
+    const byName = buildStartSearchResults("결산", items, []);
+    expect(byName.map((result) => result.id)).toEqual(["desktop-note-2"]);
+    expect(byName[0]).toMatchObject({
+      sourceLabel: "파일",
+      subtitle: "텍스트 문서 · 바탕 화면 > 보고서",
+    });
+
+    // The folder chain is itself a match field…
+    expect(buildStartSearchResults("보고서", items, []).map((result) => result.id)).toEqual([
+      "desktop-folder-1",
+      "desktop-note-2",
+    ]);
+    // …while 바탕화면 no longer returns the whole disk, only what sits on it.
+    expect(buildStartSearchResults("바탕화면", items, []).map((result) => result.id)).toEqual([
+      "desktop-folder-1",
     ]);
   });
 
