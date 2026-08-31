@@ -1,6 +1,7 @@
 import {
   Check,
   Eraser,
+  PaintBucket,
   FileText,
   FolderOpen,
   Minus,
@@ -21,7 +22,7 @@ import type { DesktopItem } from "../types";
 import { VFS_PICTURES_ID } from "../vfs/model";
 import { handleMenuKeyboard } from "../shell/keyboardNav";
 
-type PaintTool = "brush" | "line" | "rect" | "ellipse";
+type PaintTool = "brush" | "eraser" | "fill" | "line" | "rect" | "ellipse";
 const PAINT_SAVE_EVENT = "pocket-desk-save-paint";
 const PAINT_OPEN_EVENT = "pocket-desk-open-paint";
 const PAINT_SAVE_AS_EVENT = "pocket-desk-save-paint-as";
@@ -67,10 +68,90 @@ const paintPalette = [
 
 const paintTools: Array<{ id: PaintTool; label: string }> = [
   { id: "brush", label: "브러시" },
+  { id: "eraser", label: "지우개" },
+  { id: "fill", label: "채우기" },
   { id: "line", label: "선" },
   { id: "rect", label: "사각형" },
   { id: "ellipse", label: "타원" },
 ];
+
+/**
+ * Paint's paint-bucket: every pixel connected to the click that shares its
+ * colour takes the fill colour. Scanline flood so a full-canvas fill stays a
+ * few milliseconds instead of a recursion.
+ */
+function floodFill(
+  context: CanvasRenderingContext2D,
+  startX: number,
+  startY: number,
+  fillColor: string,
+) {
+  const { width, height } = context.canvas;
+  const x0 = Math.floor(startX);
+  const y0 = Math.floor(startY);
+  if (x0 < 0 || y0 < 0 || x0 >= width || y0 >= height) return;
+
+  const probe = document.createElement("canvas");
+  probe.width = probe.height = 1;
+  const probeContext = probe.getContext("2d");
+  if (!probeContext) return;
+  probeContext.fillStyle = fillColor;
+  probeContext.fillRect(0, 0, 1, 1);
+  const [fr, fg, fb] = probeContext.getImageData(0, 0, 1, 1).data;
+
+  const image = context.getImageData(0, 0, width, height);
+  const data = image.data;
+  const at = (x: number, y: number) => (y * width + x) * 4;
+  const start = at(x0, y0);
+  const [tr, tg, tb, ta] = [data[start], data[start + 1], data[start + 2], data[start + 3]];
+  if (tr === fr && tg === fg && tb === fb && ta === 255) return;
+
+  const matches = (index: number) =>
+    data[index] === tr &&
+    data[index + 1] === tg &&
+    data[index + 2] === tb &&
+    data[index + 3] === ta;
+  const paint = (index: number) => {
+    data[index] = fr;
+    data[index + 1] = fg;
+    data[index + 2] = fb;
+    data[index + 3] = 255;
+  };
+
+  const stack: Array<[number, number]> = [[x0, y0]];
+  while (stack.length > 0) {
+    const [x, y] = stack.pop()!;
+    let left = x;
+    while (left >= 0 && matches(at(left, y))) left -= 1;
+    left += 1;
+    let spanUp = false;
+    let spanDown = false;
+    let cursor = left;
+    while (cursor < width && matches(at(cursor, y))) {
+      paint(at(cursor, y));
+      if (y > 0) {
+        const up = matches(at(cursor, y - 1));
+        if (up && !spanUp) {
+          stack.push([cursor, y - 1]);
+          spanUp = true;
+        } else if (!up) {
+          spanUp = false;
+        }
+      }
+      if (y < height - 1) {
+        const down = matches(at(cursor, y + 1));
+        if (down && !spanDown) {
+          stack.push([cursor, y + 1]);
+          spanDown = true;
+        } else if (!down) {
+          spanDown = false;
+        }
+      }
+      cursor += 1;
+    }
+  }
+  context.putImageData(image, 0, 0);
+}
 
 export default function PaintApp({
   activeCanvasId,
@@ -222,7 +303,7 @@ export default function PaintApp({
     if (!canvas || !context) return;
     const point = getPoint(event);
 
-    if (tool !== "brush") {
+    if (tool !== "brush" && tool !== "eraser") {
       const from = shapeStart.current;
       const snapshot = shapeSnapshot.current;
       if (!from || !snapshot) return;
@@ -232,7 +313,9 @@ export default function PaintApp({
     }
 
     const from = lastPoint.current ?? point;
-    context.strokeStyle = color;
+    // The eraser is the brush dipped in the paper: Paint erases to the
+    // background colour, and this canvas's paper is white.
+    context.strokeStyle = tool === "eraser" ? "#ffffff" : color;
     context.lineWidth = size;
     context.lineCap = "round";
     context.lineJoin = "round";
@@ -384,8 +467,14 @@ export default function PaintApp({
 
     pushUndoSnapshot();
     markDirty();
-    drawing.current = true;
     const point = getPoint(event);
+
+    if (tool === "fill") {
+      floodFill(context, point.x, point.y, color);
+      return;
+    }
+
+    drawing.current = true;
     lastPoint.current = point;
     shapeStart.current = point;
     shapeSnapshot.current = context.getImageData(0, 0, canvas.width, canvas.height);
@@ -393,7 +482,7 @@ export default function PaintApp({
   };
 
   const finishDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (drawing.current && tool !== "brush") {
+    if (drawing.current && tool !== "brush" && tool !== "eraser") {
       draw(event);
     }
     drawing.current = false;
@@ -547,6 +636,8 @@ export default function PaintApp({
                     type="button"
                   >
                     {option.id === "brush" && <Paintbrush aria-hidden="true" size={18} />}
+                    {option.id === "eraser" && <Eraser aria-hidden="true" size={18} />}
+                    {option.id === "fill" && <PaintBucket aria-hidden="true" size={18} />}
                     {option.id === "line" && <Minus aria-hidden="true" size={18} />}
                     {option.id === "rect" && <Square aria-hidden="true" size={17} />}
                     {option.id === "ellipse" && (
