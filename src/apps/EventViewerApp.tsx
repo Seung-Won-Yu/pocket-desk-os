@@ -7,9 +7,9 @@ import {
   ShieldCheck,
   TriangleAlert,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { appMetadata } from "./metadata";
-import type { DesktopItem, OpenWindowInfo, SoundEffectName, ToastInput } from "../types";
+import { useMemo, useRef, useState } from "react";
+import type { DesktopItem, SoundEffectName, ToastInput } from "../types";
+import type { ShellLogEvent } from "../shell/eventLog";
 import { normalizeSearchText } from "../utils/format";
 import { VFS_ROOT_ID, getVfsEntryAssociation } from "../vfs/model";
 import { getNextRovingIndex } from "../shell/keyboardNav";
@@ -17,8 +17,8 @@ import { getNextRovingIndex } from "../shell/keyboardNav";
 type EventViewerAppProps = {
   desktopItems: DesktopItem[];
   notify: (toast: ToastInput) => void;
-  openWindows: OpenWindowInfo[];
   playSound: (effect: SoundEffectName) => void;
+  shellEvents: ShellLogEvent[];
   trashedItems: DesktopItem[];
 };
 
@@ -41,20 +41,12 @@ type LogEvent = {
   typeLabel: string;
 };
 
-type WindowSighting = {
-  approximate: boolean;
-  at: number;
-};
-
-/** One stable id per event kind, the way Windows keeps a fixed id per audit type. */
 const EVENT_ID_CREATED = 4656;
 const EVENT_ID_UPDATED = 4663;
 const EVENT_ID_TRASHED = 4660;
-const EVENT_ID_APP_STARTED = 4688;
 
 const SOURCE_VFS = "PocketDesk-Vfs";
 const SOURCE_RECYCLE_BIN = "PocketDesk-RecycleBin";
-const SOURCE_SHELL = "PocketDesk-Shell";
 
 const LEVEL_RANK: Record<EventLevel, number> = { information: 0, warning: 1 };
 const LEVEL_LABEL: Record<EventLevel, string> = { information: "정보", warning: "경고" };
@@ -77,12 +69,6 @@ function formatEventTime(timestamp: number) {
     dateStyle: "short",
     timeStyle: "medium",
   });
-}
-
-function getWindowStateLabel(info: OpenWindowInfo) {
-  if (info.minimized) return "최소화됨";
-  if (info.maximized) return "최대화됨";
-  return "일반";
 }
 
 /**
@@ -160,42 +146,11 @@ function buildFileEvents(entries: DesktopItem[], trashedEntries: DesktopItem[]) 
   return events;
 }
 
-function buildWindowEvents(
-  windows: OpenWindowInfo[],
-  sightings: Record<string, WindowSighting>,
-) {
-  return windows.map<LogEvent>((info) => {
-    const sighting = sightings[info.id];
-    const approximate = sighting?.approximate ?? true;
-    const detail = [
-      `"${info.title}" 창이 열렸습니다.`,
-      `앱: ${appMetadata[info.appId].title}`,
-      `창 ID: ${info.id}`,
-      `상태: ${getWindowStateLabel(info)}`,
-    ];
-    if (approximate) {
-      detail.push("※ 이벤트 뷰어보다 먼저 열린 창이라 기록 시각은 관찰을 시작한 시각입니다.");
-    }
-    return {
-      approximate,
-      channel: "system",
-      detail: detail.join("\n"),
-      eventId: EVENT_ID_APP_STARTED,
-      id: `${info.id}:started`,
-      level: "information",
-      source: SOURCE_SHELL,
-      taskCategory: "프로세스 만들기",
-      timestamp: sighting?.at ?? Date.now(),
-      typeLabel: "앱 시작됨",
-    };
-  });
-}
-
 export default function EventViewerApp({
   desktopItems,
   notify,
-  openWindows,
   playSound,
+  shellEvents,
   trashedItems,
 }: EventViewerAppProps) {
   const [channel, setChannel] = useState<EventChannel>("application");
@@ -208,34 +163,30 @@ export default function EventViewerApp({
   const [activeIndex, setActiveIndex] = useState(0);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const [logsExpanded, setLogsExpanded] = useState(true);
-  const [windowSightings, setWindowSightings] = useState<Record<string, WindowSighting>>(() => {
-    const openedAt = Date.now();
-    const initial: Record<string, WindowSighting> = {};
-    for (const info of openWindows) initial[info.id] = { approximate: true, at: openedAt };
-    return initial;
-  });
-
-  // Windows opened while this app runs get a real timestamp; earlier ones stay approximate.
-  useEffect(() => {
-    setWindowSightings((current) => {
-      const seenAt = Date.now();
-      let changed = false;
-      const next = { ...current };
-      for (const info of openWindows) {
-        if (next[info.id]) continue;
-        next[info.id] = { approximate: false, at: seenAt };
-        changed = true;
-      }
-      return changed ? next : current;
-    });
-  }, [openWindows]);
-
+  /*
+   * File events derive from timestamps the virtual file system persists; the
+   * window and security records come from the shell's append-only log. This
+   * viewer used to mirror the list of open windows instead, so closing one
+   * deleted its "process started" record and maximizing one rewrote an event
+   * that claimed a past timestamp — a log where history changes under you.
+   */
   const events = useMemo(
     () => [
       ...buildFileEvents(desktopItems, trashedItems),
-      ...buildWindowEvents(openWindows, windowSightings),
+      ...shellEvents.map<LogEvent>((event) => ({
+        approximate: false,
+        channel: event.channel,
+        detail: event.detail,
+        eventId: event.eventId,
+        id: event.id,
+        level: event.level,
+        source: event.source,
+        taskCategory: event.taskCategory,
+        timestamp: event.timestamp,
+        typeLabel: event.taskCategory,
+      })),
     ],
-    [desktopItems, openWindows, trashedItems, windowSightings],
+    [desktopItems, shellEvents, trashedItems],
   );
 
   const channelEvents = useMemo(

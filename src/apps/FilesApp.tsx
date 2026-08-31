@@ -829,10 +829,23 @@ export default function FilesApp({
 
     if (event.key === "Home" || event.key === "End") {
       event.preventDefault();
-      const edge =
-        event.key === "Home" ? visibleFiles[0] : visibleFiles[visibleFiles.length - 1];
+      const edgeIndex = event.key === "Home" ? 0 : visibleFiles.length - 1;
+      const edge = visibleFiles[edgeIndex];
       if (!edge) return;
       setActiveFileId(edge.id);
+      // Shift+Home/End select everything between the anchor and that end,
+      // matching Explorer; they used to collapse the selection to one item.
+      if (event.shiftKey && selectionAnchorRef.current) {
+        const anchorIndex = visibleFiles.findIndex(
+          (file) => file.id === selectionAnchorRef.current,
+        );
+        if (anchorIndex !== -1) {
+          const [from, to] =
+            anchorIndex <= edgeIndex ? [anchorIndex, edgeIndex] : [edgeIndex, anchorIndex];
+          setSelectedIds(visibleFiles.slice(from, to + 1).map((file) => file.id));
+          return;
+        }
+      }
       setSelectedIds([edge.id]);
       selectionAnchorRef.current = edge.id;
       return;
@@ -1480,7 +1493,13 @@ export default function FilesApp({
                         <input
                           aria-label="파일 이름"
                           onBlur={() => {
-                            if (!cancelRenameRef.current) commitRename(file.id, draftName);
+                            if (!cancelRenameRef.current && !commitRename(file.id, draftName)) {
+                              // The name was refused: keep editing rather than
+                              // silently discarding what was typed. Submit
+                              // already behaves this way; blur did not.
+                              renameInputRef.current?.focus();
+                              return;
+                            }
                             cancelRenameRef.current = false;
                             setRenaming(false);
                           }}

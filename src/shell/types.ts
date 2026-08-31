@@ -15,6 +15,7 @@ import {
 } from "../types";
 import { type LucideIcon } from "lucide-react";
 import { type DefaultAppMap } from "./preferences";
+import { type ShellLogEvent } from "./eventLog";
 
 export type WindowMotion = "closing" | "minimizing";
 
@@ -169,6 +170,8 @@ export type AppContentProps = {
    * first image indefinitely.
    */
   reportDocument: (appId: AppId, itemId: string | undefined) => void;
+  /** The shell's append-only event log; see src/shell/eventLog.ts. */
+  shellEvents: ShellLogEvent[];
   createVfsFolder: (parentId?: string, name?: string) => DesktopItem;
   onImportLocalEntries: (entries: DesktopItem[]) => void;
   createVfsTextFile: (parentId?: string) => DesktopItem;

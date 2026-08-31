@@ -313,6 +313,9 @@ export function Taskbar({
           aria-label="열린 앱"
           className="taskbar-windows"
           onKeyDown={(event) => {
+            // A horizontal toolbar: up and down belong to whatever else wants
+            // them, so only the keys that mean something here are claimed.
+            if (event.key === "ArrowUp" || event.key === "ArrowDown") return;
             const nextIndex = getNextRovingIndex(
               event.key,
               taskbarApps.findIndex(({ app }) => app.id === rovingAppId),
@@ -327,6 +330,7 @@ export function Taskbar({
               event.currentTarget.querySelectorAll<HTMLButtonElement>(".taskbar-app");
             buttons[nextIndex]?.focus({ preventScroll: true });
           }}
+          aria-orientation="horizontal"
           role="toolbar"
         >
           {taskbarApps.map(({ app, windows: appWindows }) => {

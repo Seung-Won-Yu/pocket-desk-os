@@ -35,6 +35,9 @@ export const DISPLAY_BRIGHTNESS_KEY = "pocket-desk-display-brightness-v1";
 export const TASKBAR_PINNED_APPS_KEY = "pocket-desk-taskbar-pinned-v2";
 export const VFS_DRAG_MIME = "application/x-pocketdesk-vfs";
 export const ACTIVE_DESKTOP_KEY = "pocket-desk-active-desktop-v1";
+export const EVENT_LOG_KEY = "pocket-desk-event-log-v1";
+/** Records the shell keeps before the oldest falls off, like a Windows log's size cap. */
+export const EVENT_LOG_LIMIT = 200;
 export const NOTIFICATION_HISTORY_KEY = "pocket-desk-notifications-v1";
 /** How many notifications the action centre keeps — and shows. */
 export const NOTIFICATION_HISTORY_LIMIT = 12;

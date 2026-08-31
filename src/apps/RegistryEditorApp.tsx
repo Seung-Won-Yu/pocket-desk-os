@@ -303,6 +303,12 @@ export default function RegistryEditorApp({ notify, playSound }: RegistryEditorA
   const [selectedValueKey, setSelectedValueKey] = useState<string | null>(null);
   // The grid is one tab stop; arrows move the active row.
   const [activeIndex, setActiveIndex] = useState(0);
+
+  // A fresh key starts at its first row; the clamp in the render kept Tab from
+  // dying, but the stop still sat on whatever row number the last key used.
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [selectedKeyId]);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const [treeExpanded, setTreeExpanded] = useState(true);
   const [editTarget, setEditTarget] = useState<RegistryValue | null>(null);

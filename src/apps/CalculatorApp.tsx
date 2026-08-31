@@ -497,14 +497,29 @@ function applyCalculatorPercent(expression: string, precedence: boolean) {
   return `${head}${formatCalculatorResult(share)}`;
 }
 
+/*
+ * Windows applies 1/x, x² and √ to the entry, not to the whole expression:
+ * `2 + 3` then `1/x` shows `2 + 0.333…`, keeping the pending `2 +`. Evaluating
+ * everything first answered 0.2 and silently dropped the operator — and it
+ * disagreed with %, which already worked on the pending operand.
+ */
 function applyCalculatorUnary(
   expression: string,
   operation: (value: number) => number,
   precedence: boolean,
 ) {
-  const input = evaluateExpression(expression, precedence);
-  if (!Number.isFinite(input)) return formatCalculatorResult(input);
-  return formatCalculatorResult(operation(input));
+  if (isCalculatorError(expression)) return expression;
+
+  const fragment = getCurrentCalculatorFragment(expression);
+  const entry = fragment ? Number(fragment) : evaluateExpression(expression, precedence);
+  if (!Number.isFinite(entry)) return formatCalculatorResult(entry);
+
+  const head = expression.slice(0, expression.length - fragment.length);
+  const result = formatCalculatorResult(operation(entry));
+  // A fault in the middle of an expression replaces the display, as it does on
+  // Windows — "2+0으로 나눌 수 없습니다" would be nonsense.
+  if (!/^-?[\d.]/.test(result)) return result;
+  return `${head}${result}`;
 }
 
 function toggleCalculatorSign(expression: string) {

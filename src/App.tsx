@@ -121,6 +121,16 @@ import {
 } from "./shell/preferences";
 import { getNeighbourByPosition } from "./shell/keyboardNav";
 import { formatWindowTitle } from "./shell/windowTitle";
+import {
+  SHELL_EVENT_LOGON,
+  SHELL_EVENT_POWER_OFF,
+  SHELL_EVENT_PROCESS_ENDED,
+  SHELL_EVENT_PROCESS_STARTED,
+  SHELL_EVENT_WORKSTATION_LOCKED,
+  appendShellEvent,
+  loadShellEventLog,
+  persistShellEventLog,
+} from "./shell/eventLog";
 import { clamp } from "./utils/format";
 import {
   type AppId,
@@ -248,6 +258,7 @@ export default function App() {
   const [pinnedAppIds, setPinnedAppIds] = useState<AppId[]>(() => loadPinnedTaskbarApps());
   const [snapPreview, setSnapPreview] = useState<SnapPreviewState | null>(null);
   const [snapAssistZone, setSnapAssistZone] = useState<SnapZone | null>(null);
+  const [shellEventLog, setShellEventLog] = useState(() => loadShellEventLog());
   const [notificationHistory, setNotificationHistory] = useState<ToastMessage[]>(() =>
     loadNotificationHistory(),
   );
@@ -259,7 +270,6 @@ export default function App() {
   );
   const [taskViewOpen, setTaskViewOpen] = useState(false);
   const [windowMotions, setWindowMotions] = useState<Record<string, WindowMotion>>({});
-  const altTabTimerRef = useRef<number | null>(null);
   const altTabOrderRef = useRef<string[]>([]);
   const altTabSelectionRef = useRef<string | null>(null);
   const desktopRenameGuardRef = useRef(false);
@@ -376,6 +386,10 @@ export default function App() {
   }, [notificationHistory]);
 
   useEffect(() => {
+    persistShellEventLog(shellEventLog);
+  }, [shellEventLog]);
+
+  useEffect(() => {
     persistDesktopIconLayout(iconLayout);
   }, [iconLayout]);
 
@@ -459,6 +473,13 @@ export default function App() {
 
   const lockDesktop = () => {
     playSound("close");
+    logShellEvent(
+      "security",
+      SHELL_EVENT_WORKSTATION_LOCKED,
+      "PocketDesk 보안",
+      "워크스테이션 잠금",
+      `워크스테이션이 잠겼습니다.\n계정: ${userName}`,
+    );
     setShellPhase("locked");
     setStartOpen(false);
     setRunOpen(false);
@@ -510,6 +531,13 @@ export default function App() {
   const shutdownDesktop = () => {
     setStartOpen(false);
     if (!closeAllWindowsForPowerAction()) return;
+    logShellEvent(
+      "system",
+      SHELL_EVENT_POWER_OFF,
+      "PocketDesk 셸",
+      "시스템 종료",
+      `사용자가 시스템 종료를 시작했습니다.\n계정: ${userName}`,
+    );
     playSound("close");
     setShellPhase("shutdown");
     setStartOpen(false);
@@ -530,6 +558,13 @@ export default function App() {
   };
 
   const unlockDesktop = () => {
+    logShellEvent(
+      "security",
+      SHELL_EVENT_LOGON,
+      "PocketDesk 보안",
+      "로그온",
+      `계정이 로그온했습니다.\n계정: ${userName}\n로그온 유형: 대화형`,
+    );
     playSound("unlock");
     setShellPhase("unlocked");
   };
@@ -617,6 +652,16 @@ export default function App() {
       }
     }
     playSound("open");
+    if (!existingWindow) {
+      const app = getApp(appId);
+      logShellEvent(
+        "system",
+        SHELL_EVENT_PROCESS_STARTED,
+        app.title,
+        "프로세스 생성",
+        `"${app.title}" 창이 열렸습니다.\n앱: ${app.title}\n창 ID: ${nextWindowId}`,
+      );
+    }
     setTaskViewOpen(false);
     setDesktopIconMenu(null);
     setDesktopMenu(null);
@@ -1954,6 +1999,30 @@ export default function App() {
     return () => window.removeEventListener("beforeunload", warnBeforeUnload);
   }, [unsavedWindowIds]);
 
+  /*
+   * The Event Viewer reads this log instead of mirroring the open-window list,
+   * so a record outlives the window it describes and its text stays what it
+   * said when it was written.
+   */
+  const logShellEvent = (
+    channel: "security" | "system",
+    eventId: number,
+    source: string,
+    taskCategory: string,
+    detail: string,
+  ) => {
+    setShellEventLog((current) =>
+      appendShellEvent(current, {
+        channel,
+        detail,
+        eventId,
+        level: "information",
+        source,
+        taskCategory,
+      }),
+    );
+  };
+
   const closeWindow = (id: string) => {
     const guard = closeGuardsRef.current.get(id);
     if (guard && !guard()) return;
@@ -1965,6 +2034,17 @@ export default function App() {
       next.delete(id);
       return next;
     });
+    const closing = windows.find((item) => item.id === id);
+    if (closing) {
+      const app = getApp(closing.appId);
+      logShellEvent(
+        "system",
+        SHELL_EVENT_PROCESS_ENDED,
+        app.title,
+        "프로세스 종료",
+        `"${formatWindowTitle(app.title, getWindowDocumentLabel(closing.appId))}" 창이 닫혔습니다.\n앱: ${app.title}\n창 ID: ${closing.id}`,
+      );
+    }
     playSound("close");
     setWindowMenu(null);
     scheduleWindowMotion(id, "closing", () => {
@@ -2324,10 +2404,6 @@ export default function App() {
 
   useEffect(() => {
     const clearAltTab = () => {
-      if (altTabTimerRef.current !== null) {
-        window.clearTimeout(altTabTimerRef.current);
-        altTabTimerRef.current = null;
-      }
       altTabOrderRef.current = [];
       altTabSelectionRef.current = null;
       setAltTabWindowId(null);
@@ -2338,15 +2414,6 @@ export default function App() {
       const selectedId = altTabSelectionRef.current;
       clearAltTab();
       if (selectedId) focusWindow(selectedId);
-    };
-
-    const scheduleAltTabClose = () => {
-      if (altTabTimerRef.current !== null) {
-        window.clearTimeout(altTabTimerRef.current);
-      }
-      // A keyup that never arrives (focus left the page mid-hold) still has to
-      // land on the window the user picked.
-      altTabTimerRef.current = window.setTimeout(commitAltTab, 1200);
     };
 
     /*
@@ -2374,7 +2441,6 @@ export default function App() {
 
       altTabSelectionRef.current = order[nextIndex];
       setAltTabWindowId(order[nextIndex]);
-      scheduleAltTabClose();
     };
 
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
@@ -2663,11 +2729,29 @@ export default function App() {
       }
     };
 
+    /*
+     * The keyup is what commits Alt+Tab — but it never arrives when focus
+     * leaves the page mid-hold. An idle timer used to stand in for it, which
+     * meant holding Alt for 1.2 seconds committed by itself, threw the frozen
+     * window order away, and brought the two-window bounce back for the rest
+     * of the hold. Losing the page is the only real signal a keyup was lost.
+     */
+    const commitAltTabOnLostFocus = () => {
+      if (altTabSelectionRef.current) commitAltTab();
+    };
+    const commitAltTabOnHide = () => {
+      if (document.visibilityState === "hidden") commitAltTabOnLostFocus();
+    };
+
     window.addEventListener("keydown", handleGlobalKeyDown);
     window.addEventListener("keyup", handleGlobalKeyUp);
+    window.addEventListener("blur", commitAltTabOnLostFocus);
+    document.addEventListener("visibilitychange", commitAltTabOnHide);
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
       window.removeEventListener("keyup", handleGlobalKeyUp);
+      window.removeEventListener("blur", commitAltTabOnLostFocus);
+      document.removeEventListener("visibilitychange", commitAltTabOnHide);
     };
   }, [
     // Missing from this list, the handler kept the values it closed over on
@@ -2931,6 +3015,7 @@ export default function App() {
                 openWindows={openWindows}
                 growWindow={growWindow}
                 reportDocument={reportDocument}
+                shellEvents={shellEventLog}
                 registerCloseGuard={registerCloseGuard}
                 createVfsFolder={createVfsFolder}
                 onImportLocalEntries={(imported) =>

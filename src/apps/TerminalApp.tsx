@@ -267,14 +267,28 @@ export default function TerminalApp({
   return (
     <div
       className="terminal-app"
-      onClick={() => {
+      onClick={(event) => {
         /*
          * Clicking the window puts the caret back in the prompt — but a click
          * also ends a drag, and focusing collapses the selection. Dragging
          * across the output therefore deselected it on mouseup, leaving no way
          * to copy anything the terminal had printed.
          */
-        if (!window.getSelection()?.isCollapsed) return;
+        const selection = window.getSelection();
+        const anchor = selection?.anchorNode;
+        // Only a live selection inside this terminal blocks the refocus. A null
+        // selection blocked it forever, and one left in another window blocked
+        // it from here.
+        if (
+          selection &&
+          !selection.isCollapsed &&
+          anchor &&
+          event.currentTarget.contains(
+            anchor instanceof Element ? anchor : anchor.parentElement,
+          )
+        ) {
+          return;
+        }
         inputRef.current?.focus();
       }}
       onContextMenu={(event) => {
