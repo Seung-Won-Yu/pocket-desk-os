@@ -3,6 +3,7 @@ import { appMetadata } from "../apps/metadata";
 import type { DesktopItem } from "../types";
 import {
   VFS_DOCUMENTS_ID,
+  VFS_DOWNLOADS_ID,
   VFS_GAMES_ID,
   VFS_PICTURES_ID,
   VFS_ROOT_ID,
@@ -65,10 +66,12 @@ describe("module constants", () => {
     expect(VFS_DOCUMENTS_ID).toBe("vfs-system-documents");
     expect(VFS_PICTURES_ID).toBe("vfs-system-pictures");
     expect(VFS_GAMES_ID).toBe("vfs-system-games");
+    expect(VFS_DOWNLOADS_ID).toBe("vfs-system-downloads");
     expect([...VFS_SYSTEM_FOLDER_IDS]).toEqual([
       VFS_DOCUMENTS_ID,
       VFS_PICTURES_ID,
       VFS_GAMES_ID,
+      VFS_DOWNLOADS_ID,
     ]);
   });
 });
@@ -89,15 +92,16 @@ describe("isVfsSystemFolderId", () => {
 });
 
 describe("createVfsSystemFolders", () => {
-  it("seeds the three default folders directly under the desktop", () => {
+  it("seeds the default folders directly under the desktop", () => {
     const folders = createVfsSystemFolders(1_000_000);
 
     expect(folders.map((folder) => folder.id)).toEqual([
       VFS_DOCUMENTS_ID,
       VFS_PICTURES_ID,
       VFS_GAMES_ID,
+      VFS_DOWNLOADS_ID,
     ]);
-    expect(folders.map((folder) => folder.name)).toEqual(["문서", "사진", "게임"]);
+    expect(folders.map((folder) => folder.name)).toEqual(["문서", "사진", "게임", "다운로드"]);
     for (const folder of folders) {
       expect(folder.kind).toBe("folder");
       expect(folder.parentId).toBe(VFS_ROOT_ID);
@@ -110,7 +114,9 @@ describe("createVfsSystemFolders", () => {
 
   it("staggers createdAt so the folders keep a stable ascending order", () => {
     const folders = createVfsSystemFolders(1_000_000);
-    expect(folders.map((folder) => folder.createdAt)).toEqual([990_000, 991_000, 992_000]);
+    expect(folders.map((folder) => folder.createdAt)).toEqual([
+      990_000, 991_000, 992_000, 993_000,
+    ]);
   });
 
   it("uses the current clock when no timestamp is supplied", () => {

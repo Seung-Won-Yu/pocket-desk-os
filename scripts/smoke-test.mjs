@@ -745,16 +745,24 @@ async function runSmoke(baseUrl) {
     const firstExplorerFileName = await firstExplorerFile.locator("span").innerText();
     await firstExplorerFile.click();
     await page.keyboard.press("Control+a");
+    // Select-all must cover every row — compare to the live row count instead
+    // of a literal, which broke the day a new system folder shipped.
     assert(
-      (await files.locator(".file-list button.is-selected").count()) === 4,
+      (await files.locator(".file-list button.is-selected").count()) ===
+        (await files.locator(".file-list button").count()),
       "Explorer Ctrl+A did not select all files",
     );
+    assert(
+      (await files.locator(".file-list button.is-selected").count()) >= 4,
+      "Explorer Ctrl+A selected suspiciously few rows",
+    );
+    const selectAllCount = await files.locator(".file-list button.is-selected").count();
     await firstExplorerFile.click({ modifiers: [multiSelectModifier] });
     const ctrlClickSelectionCount = await files
       .locator(".file-list button.is-selected")
       .count();
     assert(
-      ctrlClickSelectionCount === 3,
+      ctrlClickSelectionCount === selectAllCount - 1,
       `Explorer Ctrl+click did not toggle selection: ${ctrlClickSelectionCount}`,
     );
     assert(
@@ -1277,6 +1285,22 @@ async function runSmoke(baseUrl) {
       (await taskbarPreview.innerText()).includes("Microsoft Edge"),
       "Taskbar preview did not show browser",
     );
+    // Edge 다운로드: outside reader view the honest download is the address —
+    // a .url shortcut written into the real 다운로드 system folder, which the
+    // start search then finds with its folder chain.
+    await edge.getByRole("button", { name: "페이지 다운로드" }).click();
+    await page
+      .locator(".toast", { hasText: "다운로드 완료" })
+      .waitFor({ state: "visible", timeout: 5000 });
+    await page.getByRole("button", { name: "시작 메뉴" }).click();
+    await page.getByLabel("앱과 바탕화면 항목 검색").fill("github");
+    const startMenuPanel = page.locator(".start-menu");
+    await startMenuPanel
+      .locator(".start-result-list button", { hasText: "바탕 화면 > 다운로드" })
+      .first()
+      .waitFor({ state: "visible" });
+    await page.keyboard.press("Escape");
+
     await page.getByRole("button", { name: "알림 센터 열기" }).click();
     const notificationCenter = page.locator(".notification-center-panel");
     await notificationCenter.waitFor({ state: "visible" });

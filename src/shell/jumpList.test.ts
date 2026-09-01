@@ -1,6 +1,20 @@
-import { describe, expect, it } from "vitest";
-import { JUMP_LIST_LIMIT, buildRecentDocumentsByApp } from "./jumpList";
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  JUMP_LIST_LIMIT,
+  RECENT_OPENS_LIMIT,
+  buildRecentDocumentsByApp,
+  loadRecentOpens,
+  persistRecentOpens,
+  recordRecentOpen,
+  type RecentOpensMap,
+} from "./jumpList";
+import { RECENT_OPENS_KEY } from "./constants";
 import type { DesktopItem } from "../types";
+
+beforeEach(() => {
+  localStorage.clear();
+});
 
 function makeItem(overrides: Partial<DesktopItem>): DesktopItem {
   return {
@@ -51,5 +65,53 @@ describe("buildRecentDocumentsByApp", () => {
     expect(notepad).toHaveLength(JUMP_LIST_LIMIT);
     expect(notepad?.[0].id).toBe(`note-${JUMP_LIST_LIMIT + 2}`);
     expect(notepad?.some((item) => item.id === "trashed")).toBe(false);
+  });
+});
+
+describe("recent opens", () => {
+  it("an explicit open outranks a fresher modification stamp", () => {
+    const edited = makeItem({ id: "edited", name: "edited.txt", updatedAt: 100 });
+    const opened = makeItem({ id: "opened", name: "opened.txt", updatedAt: 10 });
+
+    // Modification order without any opens…
+    expect(
+      buildRecentDocumentsByApp([edited, opened], {})
+        .get("notepad")
+        ?.map((item) => item.id),
+    ).toEqual(["edited", "opened"]);
+
+    // …and use order once the older file was actually opened.
+    expect(
+      buildRecentDocumentsByApp([edited, opened], {}, { opened: 200 })
+        .get("notepad")
+        ?.map((item) => item.id),
+    ).toEqual(["opened", "edited"]);
+  });
+
+  it("stamps opens and drops the oldest stamp past the cap", () => {
+    let opens: RecentOpensMap = {};
+    for (let index = 0; index < RECENT_OPENS_LIMIT; index += 1) {
+      opens = recordRecentOpen(opens, `item-${index}`, index);
+    }
+    opens = recordRecentOpen(opens, "newest", 999);
+    expect(Object.keys(opens)).toHaveLength(RECENT_OPENS_LIMIT);
+    expect(opens["item-0"]).toBeUndefined();
+    expect(opens.newest).toBe(999);
+
+    // Re-stamping an existing id refreshes without growing.
+    opens = recordRecentOpen(opens, "newest", 1000);
+    expect(Object.keys(opens)).toHaveLength(RECENT_OPENS_LIMIT);
+    expect(opens.newest).toBe(1000);
+  });
+
+  it("round-trips the store and drops garbage entries", () => {
+    persistRecentOpens({ a: 1 });
+    expect(loadRecentOpens()).toEqual({ a: 1 });
+
+    localStorage.setItem(RECENT_OPENS_KEY, JSON.stringify({ a: "x", b: 2, c: null }));
+    expect(loadRecentOpens()).toEqual({ b: 2 });
+
+    localStorage.setItem(RECENT_OPENS_KEY, "{not json");
+    expect(loadRecentOpens()).toEqual({});
   });
 });

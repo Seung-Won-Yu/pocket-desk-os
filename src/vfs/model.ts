@@ -6,7 +6,13 @@ export const VFS_ROOT_ID = "desktop";
 export const VFS_DOCUMENTS_ID = "vfs-system-documents";
 export const VFS_PICTURES_ID = "vfs-system-pictures";
 export const VFS_GAMES_ID = "vfs-system-games";
-export const VFS_SYSTEM_FOLDER_IDS = [VFS_DOCUMENTS_ID, VFS_PICTURES_ID, VFS_GAMES_ID] as const;
+export const VFS_DOWNLOADS_ID = "vfs-system-downloads";
+export const VFS_SYSTEM_FOLDER_IDS = [
+  VFS_DOCUMENTS_ID,
+  VFS_PICTURES_ID,
+  VFS_GAMES_ID,
+  VFS_DOWNLOADS_ID,
+] as const;
 
 export type VfsPathSegment = {
   id: string;
@@ -366,6 +372,7 @@ export function createVfsSystemFolders(now = Date.now()): DesktopItem[] {
     [VFS_DOCUMENTS_ID, "문서"],
     [VFS_PICTURES_ID, "사진"],
     [VFS_GAMES_ID, "게임"],
+    [VFS_DOWNLOADS_ID, "다운로드"],
   ].map(([id, name], index) => ({
     createdAt: now - (10 - index) * 1000,
     id,

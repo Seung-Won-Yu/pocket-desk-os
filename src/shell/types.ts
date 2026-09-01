@@ -216,6 +216,8 @@ export type AppContentProps = {
     existingItemId?: string,
     options?: { activate?: boolean },
   ) => DesktopItem;
+  /** Creates a .url internet shortcut entry (Edge's 다운로드). */
+  createVfsShortcut: (parentId: string, name: string, target: string) => DesktopItem;
   saveNoteContent: (noteId: string, content: string) => void;
   setSoundEnabled: (enabled: boolean) => void;
   setWallpaper: (wallpaper: WallpaperName) => void;

@@ -3,6 +3,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Download,
   ExternalLink,
   Globe2,
   History,
@@ -30,6 +31,8 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import { useReturnFocus } from "../shell/dialogFocus";
 import { isSafeHttpUrl, toSafeHttpUrl } from "../utils/safeUrl";
 import { handleMenuKeyboard } from "../shell/keyboardNav";
+import { type DesktopItem } from "../types";
+import { VFS_DOWNLOADS_ID, truncateVfsName } from "../vfs/model";
 
 type BrowserSearchEngineId = "duckduckgo" | "google" | "bing";
 type BrowserViewMode = "reader" | "web";
@@ -98,7 +101,15 @@ type BrowserToast = {
 
 type BrowserAppProps = {
   browserLaunchRequest: BrowserLaunchRequest | null;
+  createVfsShortcut: (parentId: string, name: string, target: string) => DesktopItem;
   notify: (toast: BrowserToast) => void;
+  saveNoteAs: (
+    parentId: string,
+    name: string,
+    content: string,
+    existingItemId?: string,
+    options?: { activate?: boolean },
+  ) => DesktopItem;
 };
 
 const BROWSER_BOOKMARKS_KEY = "pocket-desk-browser-bookmarks-v1";
@@ -192,7 +203,12 @@ const browserReaderPreferredHosts = [
   "youtube.com",
 ];
 
-export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppProps) {
+export default function BrowserApp({
+  browserLaunchRequest,
+  createVfsShortcut,
+  notify,
+  saveNoteAs,
+}: BrowserAppProps) {
   const [searchEngine, setSearchEngine] = useState<BrowserSearchEngineId>(() =>
     loadBrowserSearchEngine(),
   );
@@ -209,6 +225,7 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
   const [navigationIndex, setNavigationIndex] = useState(0);
   const [browserMenuOpen, setBrowserMenuOpen] = useState(false);
   const [frameIssue, setFrameIssue] = useState<BrowserFrameIssue | null>(null);
+  const [readerDocument, setReaderDocument] = useState<BrowserReaderDocument | null>(null);
   const [frameSettledAt, setFrameSettledAt] = useState<number | null>(null);
   const [dismissedOfferUrl, setDismissedOfferUrl] = useState<string | null>(null);
   const [tabs, setTabs] = useState<BrowserTab[]>(() => [createBrowserTab()]);
@@ -534,6 +551,57 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
           <Star aria-hidden="true" fill={isBookmarked ? "currentColor" : "none"} size={16} />
         </button>
         <button
+          aria-label="페이지 다운로드"
+          disabled={!url}
+          onClick={() => {
+            if (!url) return;
+            if (viewMode === "reader" && readerDocument) {
+              /*
+               * The reader already holds the page as Markdown, so the download
+               * is the real content — it opens in Notepad, whose preview
+               * renders it. Outside reader view the frame is cross-origin and
+               * unreadable, so the honest download is the address itself as a
+               * .url shortcut, the way "바로 가기 저장" works.
+               */
+              const cleanTitle =
+                truncateVfsName(
+                  readerDocument.title.replace(/[\\/:*?"<>|]/g, " ").trim(),
+                  40,
+                ) || "저장된 페이지";
+              const item = saveNoteAs(
+                VFS_DOWNLOADS_ID,
+                `${cleanTitle}.md`,
+                readerDocument.markdown,
+                undefined,
+                { activate: false },
+              );
+              notify({
+                detail: `${item.name} — 다운로드 폴더에 저장했습니다.`,
+                title: "다운로드 완료",
+                tone: "success",
+              });
+              return;
+            }
+            const host = (() => {
+              try {
+                return new URL(url).hostname;
+              } catch {
+                return "페이지";
+              }
+            })();
+            const item = createVfsShortcut(VFS_DOWNLOADS_ID, `${host}.url`, url);
+            notify({
+              detail: `${item.name} — 다운로드 폴더에 바로 가기를 저장했습니다.`,
+              title: "다운로드 완료",
+              tone: "success",
+            });
+          }}
+          title="페이지 다운로드"
+          type="button"
+        >
+          <Download aria-hidden="true" size={16} />
+        </button>
+        <button
           aria-label={viewMode === "reader" ? "웹 보기" : "읽기 보기"}
           aria-pressed={viewMode === "reader"}
           className={viewMode === "reader" ? "is-active" : ""}
@@ -622,6 +690,7 @@ export default function BrowserApp({ browserLaunchRequest, notify }: BrowserAppP
           ) : viewMode === "reader" ? (
             <BrowserReader
               key={`${pageLoadKey}-${url}`}
+              onDocument={setReaderDocument}
               onNavigate={navigateReader}
               onOpenWeb={() => changeViewMode("web")}
               url={url}
@@ -885,10 +954,12 @@ function BrowserSettingsMenu({
 }
 
 function BrowserReader({
+  onDocument,
   onNavigate,
   onOpenWeb,
   url,
 }: {
+  onDocument: (document: BrowserReaderDocument | null) => void;
   onNavigate: (url: string) => void;
   onOpenWeb: () => void;
   url: string;
@@ -896,6 +967,17 @@ function BrowserReader({
   const [document, setDocument] = useState<BrowserReaderDocument | null>(null);
   const [error, setError] = useState("");
   const [retryKey, setRetryKey] = useState(0);
+
+  useEffect(() => {
+    onDocument(document);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- report on content change only
+  }, [document]);
+
+  useEffect(
+    () => () => onDocument(null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only
+    [],
+  );
 
   useEffect(() => {
     const controller = new AbortController();

@@ -144,7 +144,12 @@ import {
   loadShellEventLog,
   persistShellEventLog,
 } from "./shell/eventLog";
-import { buildRecentDocumentsByApp } from "./shell/jumpList";
+import {
+  buildRecentDocumentsByApp,
+  loadRecentOpens,
+  persistRecentOpens,
+  recordRecentOpen,
+} from "./shell/jumpList";
 import { clamp } from "./utils/format";
 import {
   type AppId,
@@ -938,6 +943,7 @@ export default function App() {
     const association = getVfsEntryAssociation(item);
     const override = defaultApps[getVfsEntryExtension(item)];
     const targetAppId = override ?? association.appId;
+    setRecentOpens((current) => recordRecentOpen(current, item.id, Date.now()));
     if (item.kind === "folder") {
       const windowId = openApp("files");
       setFilesLaunchRequest({ folderId: item.id, id: crypto.randomUUID(), windowId });
@@ -1396,9 +1402,15 @@ export default function App() {
     return activeDesktopItems.filter((item) => item.kind === "note");
   }, [activeDesktopItems]);
 
+  const [recentOpens, setRecentOpens] = useState(() => loadRecentOpens());
+
+  useEffect(() => {
+    persistRecentOpens(recentOpens);
+  }, [recentOpens]);
+
   const recentDocumentsByApp = useMemo(
-    () => buildRecentDocumentsByApp(activeDesktopItems, defaultApps),
-    [activeDesktopItems, defaultApps],
+    () => buildRecentDocumentsByApp(activeDesktopItems, defaultApps, recentOpens),
+    [activeDesktopItems, defaultApps, recentOpens],
   );
 
   const canvasEntries = useMemo(() => {
@@ -1956,6 +1968,25 @@ export default function App() {
         tone: "success",
       });
     }
+    return item;
+  };
+
+  /** Creates a .url internet shortcut, the way Edge's 다운로드 saves a page's address. */
+  const createVfsShortcut = (parentId: string, name: string, target: string) => {
+    const now = Date.now();
+    const item: DesktopItem = {
+      content: target,
+      createdAt: now,
+      id: `shortcut-${crypto.randomUUID()}`,
+      kind: "shortcut",
+      name: getUniqueVfsEntryName(activeDesktopItems, parentId, name),
+      parentId,
+      showOnDesktop: false,
+      updatedAt: now,
+      x: 0,
+      y: 0,
+    };
+    setDesktopItems((current) => [...current, item]);
     return item;
   };
 
@@ -3261,6 +3292,7 @@ export default function App() {
                 restoreVfsEntry={restoreVfsEntry}
                 savePaintImage={savePaintImage}
                 saveNoteAs={saveNoteAs}
+                createVfsShortcut={createVfsShortcut}
                 saveNoteContent={saveNoteContent}
                 setSoundEnabled={toggleSoundEnabled}
                 setTheme={changeTheme}

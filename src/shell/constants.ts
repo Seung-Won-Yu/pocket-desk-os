@@ -49,6 +49,7 @@ export const CLOCK_24H_KEY = "pocket-desk-clock-24h-v1";
 export const CLOCK_ALARMS_KEY = "pocket-desk-clock-alarms-v1";
 export const CLOCK_TIMER_KEY = "pocket-desk-clock-timer-v1";
 export const CLOCK_WORLD_KEY = "pocket-desk-clock-world-v1";
+export const RECENT_OPENS_KEY = "pocket-desk-recent-opens-v1";
 export const DEFAULT_APPS_KEY = "pocket-desk-default-apps-v1";
 export const DEFAULT_USER_NAME = "PocketDesk";
 export const MAX_VIRTUAL_DESKTOPS = 6;
