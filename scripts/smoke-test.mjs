@@ -2423,7 +2423,9 @@ async function runSmoke(baseUrl) {
       Math.abs(touchAfter.y - touchBefore.y) > 40,
       `Touch drag did not move the window (Δy=${Math.round(touchAfter.y - touchBefore.y)})`,
     );
-    await touchNotepad.getByRole("button", { name: "닫기" }).tap();
+    // Closing is not the touch behavior under test, and headless CI's tap
+    // synthesis on this small control proved flaky — Alt+F4 is deterministic.
+    await touchPage.keyboard.press("Alt+F4");
     await touchNotepad.waitFor({ state: "detached" });
 
     // 롱프레스 = 우클릭: 데스크톱과 아이콘 모두.
