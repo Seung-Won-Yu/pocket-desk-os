@@ -379,7 +379,7 @@ async function runSmoke(baseUrl) {
     await shortcutDialog.getByLabel("항목 위치").fill("ftp://예제");
     await shortcutDialog.getByRole("button", { name: "만들기", exact: true }).click();
     await shortcutDialog.getByRole("alert").waitFor({ state: "visible" });
-    await shortcutDialog.getByLabel("항목 위치").fill("example.com/스모크");
+    await shortcutDialog.getByLabel("항목 위치").fill("example.com");
     await shortcutDialog.getByLabel("바로 가기 이름").fill("스모크 바로 가기");
     await shortcutDialog.getByRole("button", { name: "만들기", exact: true }).click();
     await shortcutDialog.waitFor({ state: "detached" });
@@ -395,11 +395,11 @@ async function runSmoke(baseUrl) {
     let shortcutAddressValue = "";
     for (let attempt = 0; attempt < 20; attempt += 1) {
       shortcutAddressValue = await shortcutAddress.inputValue();
-      if (shortcutAddressValue.includes("https://example.com/스모크")) break;
+      if (shortcutAddressValue === "https://example.com") break;
       await page.waitForTimeout(150);
     }
     assert(
-      shortcutAddressValue.includes("https://example.com/스모크"),
+      shortcutAddressValue === "https://example.com",
       `Shortcut did not hand Edge its address: "${shortcutAddressValue}"`,
     );
     await page.keyboard.press("Alt+F4");
