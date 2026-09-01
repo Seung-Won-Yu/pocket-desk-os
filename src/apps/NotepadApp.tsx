@@ -95,6 +95,24 @@ export default function NotepadApp({
   const [text, setText] = useState(activeNote?.content ?? "");
   const [saveStatus, setSaveStatus] = useState<NoteSaveStatus>("saved");
   const [noteMenu, setNoteMenu] = useState<"file" | "edit" | "view" | null>(null);
+
+  /*
+   * The menu bar's dropdowns open under the button, but focus used to stay on
+   * the button — handleMenuKeyboard listens on the menu, so the arrow keys
+   * did nothing and Escape closed nothing. Focus the first item on mount and
+   * close one layer on Escape, exactly like the context menu already did.
+   */
+  const focusFirstMenuItem = (node: HTMLDivElement | null) => {
+    node?.querySelector<HTMLElement>("[role='menuitem'], [role='menuitemcheckbox']")?.focus();
+  };
+  const handleNoteMenuKeys = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      setNoteMenu(null);
+      return;
+    }
+    handleMenuKeyboard(event, event.currentTarget);
+  };
   const [wordWrap, setWordWrap] = useState(true);
   const [fontSize, setFontSize] = useState(15);
   const [cursorPosition, setCursorPosition] = useState({ column: 1, line: 1 });
@@ -669,6 +687,7 @@ export default function NotepadApp({
       <div className="note-menu-bar">
         <button
           aria-expanded={noteMenu === "file"}
+          aria-haspopup="menu"
           onClick={() => setNoteMenu((current) => (current === "file" ? null : "file"))}
           type="button"
         >
@@ -676,6 +695,7 @@ export default function NotepadApp({
         </button>
         <button
           aria-expanded={noteMenu === "edit"}
+          aria-haspopup="menu"
           onClick={() => setNoteMenu((current) => (current === "edit" ? null : "edit"))}
           type="button"
         >
@@ -683,6 +703,7 @@ export default function NotepadApp({
         </button>
         <button
           aria-expanded={noteMenu === "view"}
+          aria-haspopup="menu"
           onClick={() => setNoteMenu((current) => (current === "view" ? null : "view"))}
           type="button"
         >
@@ -691,9 +712,11 @@ export default function NotepadApp({
       </div>
       {noteMenu === "file" && (
         <div
+          aria-label="파일 메뉴"
           className="note-menu"
+          ref={focusFirstMenuItem}
           role="menu"
-          onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+          onKeyDown={(event) => handleNoteMenuKeys(event)}
         >
           <button
             onClick={() => {
@@ -740,9 +763,11 @@ export default function NotepadApp({
       )}
       {noteMenu === "edit" && (
         <div
+          aria-label="편집 메뉴"
           className="note-menu"
+          ref={focusFirstMenuItem}
           role="menu"
-          onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+          onKeyDown={(event) => handleNoteMenuKeys(event)}
         >
           <button disabled={history.length === 0} onClick={undo} role="menuitem" type="button">
             실행 취소 <kbd>Ctrl+Z</kbd>
@@ -768,9 +793,11 @@ export default function NotepadApp({
       )}
       {noteMenu === "view" && (
         <div
+          aria-label="보기 메뉴"
           className="note-menu"
+          ref={focusFirstMenuItem}
           role="menu"
-          onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+          onKeyDown={(event) => handleNoteMenuKeys(event)}
         >
           <button
             aria-checked={wordWrap}
@@ -830,6 +857,7 @@ export default function NotepadApp({
               aria-controls="note-editor-panel"
               aria-selected={note.id === activeNote?.id}
               className={note.id === activeNote?.id ? "is-selected" : ""}
+              id={`note-tab-${note.id}`}
               key={note.id}
               onClick={() => activateVfsEntry(note)}
               role="tab"
@@ -898,6 +926,7 @@ export default function NotepadApp({
         </div>
       )}
       <div
+        aria-labelledby={activeNote ? `note-tab-${activeNote.id}` : undefined}
         className={`note-workspace${showMarkdownPreview ? " is-split" : ""}`}
         id="note-editor-panel"
         role="tabpanel"
@@ -1038,13 +1067,16 @@ export default function NotepadApp({
       {closePromptOpen && (
         <div className="note-close-overlay">
           <section
-            aria-label="저장 확인"
+            aria-describedby="note-close-warning"
+            aria-labelledby="note-close-question"
             aria-modal="true"
             onKeyDown={(event) => trapDialogFocus(event, event.currentTarget)}
             role="alertdialog"
           >
-            <strong>{activeNote?.name ?? "제목 없음"}의 변경 내용을 저장하시겠습니까?</strong>
-            <p>저장하지 않으면 지금까지 입력한 내용이 사라집니다.</p>
+            <strong id="note-close-question">
+              {activeNote?.name ?? "제목 없음"}의 변경 내용을 저장하시겠습니까?
+            </strong>
+            <p id="note-close-warning">저장하지 않으면 지금까지 입력한 내용이 사라집니다.</p>
             <div>
               <button
                 className="is-primary"

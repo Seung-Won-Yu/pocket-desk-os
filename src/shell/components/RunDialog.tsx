@@ -72,7 +72,7 @@ export function RunDialog({
             value={command}
           />
         </label>
-        <div className="run-suggestions" aria-label="실행 명령어">
+        <div aria-label="실행 명령어" className="run-suggestions" role="group">
           {runCommandSuggestions.map((suggestion) => (
             <button
               key={suggestion.command}

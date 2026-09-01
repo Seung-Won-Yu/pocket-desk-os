@@ -19,6 +19,19 @@
   box-sizing: border-box;
 }
 
+/* Screen-reader-only text: rendered for assistive tech, invisible on screen. */
+.sr-only {
+  border: 0;
+  clip-path: inset(50%);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
 /*
  * A visible focus ring for every focusable control. Many rules below tint the
  * background on :focus-visible, but that wash is the same colour as :hover and
@@ -254,7 +267,9 @@ button {
   padding: 8px 6px;
   pointer-events: auto;
   position: absolute;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.9),
+    0 0 6px rgba(0, 0, 0, 0.65);
   touch-action: none;
   width: 86px;
 }
@@ -334,7 +349,10 @@ button {
 }
 
 .desktop-icon-rename input:focus {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7);
+  /* A white ring on a white field was invisible; pair it with a dark one. */
+  box-shadow:
+    0 0 0 2px #1f4d70,
+    0 0 0 3px rgba(255, 255, 255, 0.85);
   outline: none;
 }
 
@@ -1756,7 +1774,7 @@ button {
   transform: scale(0.92);
 }
 
-.taskbar-app > span:not(.app-icon-tile),
+.taskbar-app > span:not(.app-icon-tile):not(.taskbar-window-count):not(.sr-only),
 .taskbar-pin-icon {
   display: none;
 }
@@ -2892,7 +2910,11 @@ button {
 }
 
 .run-input-row input:focus {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--active) 40%, transparent);
+  /* This input sits on a near-white field, where the translucent --active
+     wash fails 3:1. A solid dark ring carries the state on bright surfaces. */
+  box-shadow:
+    0 0 0 2px #1f4d70,
+    0 0 0 4px color-mix(in srgb, var(--active) 55%, transparent);
 }
 
 .run-suggestions {

@@ -84,9 +84,17 @@ export function StartMenu({
     setPins((current) => (current.includes(appId) ? current : [...current, appId]));
   const allApps = [...apps].sort((a, b) => a.title.localeCompare(b.title));
 
+  const powerMenuFirstItemRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (powerMenuOpen) powerMenuFirstItemRef.current?.focus();
+  }, [powerMenuOpen]);
+
   useEffect(() => {
     const frameId = window.requestAnimationFrame(() => {
-      inputRef.current?.focus();
+      // Opened by typing into the taskbar search box: the query is already
+      // here and the user is mid-word out there — stealing focus would cut
+      // their typing off. Only an empty open takes focus.
+      if (inputRef.current && !inputRef.current.value) inputRef.current.focus();
     });
     return () => window.cancelAnimationFrame(frameId);
   }, []);
@@ -154,7 +162,7 @@ export function StartMenu({
       </div>
       {hasQuery ? (
         results.length > 0 ? (
-          <div className="start-result-list" role="listbox">
+          <div aria-label="검색 결과" className="start-result-list" role="group">
             {results.map((result) => {
               const ResultIcon = result.icon;
               return (
@@ -207,7 +215,7 @@ export function StartMenu({
             </section>
           ) : (
             <>
-              <div className="start-pinned-grid" aria-label="고정된 앱">
+              <div aria-label="고정된 앱" className="start-pinned-grid" role="group">
                 {pinnedApps.map((app) => (
                   <button
                     key={app.id}
@@ -294,11 +302,26 @@ export function StartMenu({
             </button>
             {powerMenuOpen && (
               <div
+                aria-label="전원 옵션 메뉴"
                 className="power-menu"
                 role="menu"
-                onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    // One Escape closes one layer: the submenu, not the whole
+                    // Start menu it lives in.
+                    event.stopPropagation();
+                    setPowerMenuOpen(false);
+                    return;
+                  }
+                  handleMenuKeyboard(event, event.currentTarget);
+                }}
               >
-                <button onClick={() => runPowerAction(onLock)} role="menuitem" type="button">
+                <button
+                  onClick={() => runPowerAction(onLock)}
+                  ref={powerMenuFirstItemRef}
+                  role="menuitem"
+                  type="button"
+                >
                   <Lock aria-hidden="true" size={15} />
                   잠금
                 </button>

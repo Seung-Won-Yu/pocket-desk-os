@@ -185,7 +185,8 @@ export function LockScreen({
           <small className="lock-hint">클릭하거나 위로 밀어 로그인</small>
         </>
       )}
-      <div className="lock-system-status" aria-label="네트워크와 소리 상태">
+      <div className="lock-system-status" role="group" aria-label="네트워크와 소리 상태">
+        <span className="sr-only">네트워크 연결됨, 소리 켜짐</span>
         <Wifi aria-hidden="true" size={17} />
         <Volume2 aria-hidden="true" size={17} />
       </div>

@@ -1379,16 +1379,24 @@ export default function FilesApp({
               inert spans, so sorting was only reachable from the background
               menu — and 크기 was not offered there at all. */}
             {viewMode === "details" && (
-              <div className="file-list-header" role="row">
+              /*
+               * Not row/columnheader: those roles demand a table or grid
+               * ancestor, and the list below is a listbox — the mixed
+               * semantics were the shell's one axe violation. The header is a
+               * plain group of sort buttons; the sort state rides on each
+               * button's name instead of aria-sort, which is only valid
+               * inside a real table.
+               */
+              <div aria-label="파일 정렬 기준" className="file-list-header" role="group">
                 {FILE_COLUMNS.map(([key, label]) => (
                   <button
-                    aria-sort={
+                    aria-label={`${label} 정렬${
                       sortKey === key
                         ? sortDirection === "asc"
-                          ? "ascending"
-                          : "descending"
-                        : "none"
-                    }
+                          ? " (오름차순)"
+                          : " (내림차순)"
+                        : ""
+                    }`}
                     key={key}
                     onClick={() => {
                       if (sortKey === key) {
@@ -1398,7 +1406,6 @@ export default function FilesApp({
                       setSortKey(key);
                       setSortDirection("asc");
                     }}
-                    role="columnheader"
                     type="button"
                   >
                     {label}
@@ -1444,7 +1451,7 @@ export default function FilesApp({
               {visibleFiles.map((file, index) => {
                 const FileIcon = file.icon;
                 return (
-                  <div className="file-list-item" key={file.id}>
+                  <div className="file-list-item" key={file.id} role="presentation">
                     <button
                       aria-selected={selectedIds.includes(file.id)}
                       className={`${selectedIds.includes(file.id) ? "is-selected" : ""}${
@@ -1526,7 +1533,7 @@ export default function FilesApp({
                 );
               })}
               {visibleFiles.length === 0 && (
-                <div className="file-empty-state">
+                <div className="file-empty-state" role="presentation">
                   {fileQuery ? (
                     <Search aria-hidden="true" size={24} />
                   ) : (

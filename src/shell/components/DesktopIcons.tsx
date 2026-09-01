@@ -236,7 +236,6 @@ export function DesktopIconButton({
       // One tab stop for the whole desktop, arrows to move within it. Every icon
       // used to be its own stop, so Tab walked through all of them.
       tabIndex={tabStop ? 0 : -1}
-      title={title}
       type="button"
     >
       <AppIconTile accent={accent} icon={Icon} size="large" tone={tone} />

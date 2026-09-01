@@ -4,15 +4,25 @@ import { X } from "lucide-react";
 
 export function ToastStack({
   onDismiss,
+  onHoldChange,
   toasts,
 }: {
   onDismiss: (id: string) => void;
+  /** Pointer or focus is on the toast — its auto-dismiss timer should wait. */
+  onHoldChange?: (id: string, held: boolean) => void;
   toasts: ToastMessage[];
 }) {
   return (
     <section aria-atomic="false" aria-label="알림" className="toast-stack" role="status">
       {toasts.map((toast) => (
-        <article className={`toast toast-${toast.tone}`} key={toast.id}>
+        <article
+          className={`toast toast-${toast.tone}`}
+          key={toast.id}
+          onBlurCapture={() => onHoldChange?.(toast.id, false)}
+          onFocusCapture={() => onHoldChange?.(toast.id, true)}
+          onPointerEnter={() => onHoldChange?.(toast.id, true)}
+          onPointerLeave={() => onHoldChange?.(toast.id, false)}
+        >
           <header className="toast-header">
             <BrandMark className="toast-app-mark" />
             <strong>PocketDesk</strong>

@@ -187,7 +187,7 @@ export default function ClockApp({
   return (
     <div className="clock-app">
       <header className="clock-header">
-        <div aria-label="현재 시각" className="clock-now">
+        <div aria-label="현재 시각" className="clock-now" role="group">
           {new Date(now).toLocaleTimeString("ko-KR", {
             hour: "2-digit",
             hour12: false,
@@ -203,7 +203,7 @@ export default function ClockApp({
         >
           {CLOCK_TABS.map((item, index) => (
             <button
-              aria-controls={`clock-panel-${item.id}`}
+              aria-controls={tab === item.id ? `clock-panel-${item.id}` : undefined}
               aria-selected={tab === item.id}
               className={tab === item.id ? "is-active" : undefined}
               id={`clock-tab-${item.id}`}

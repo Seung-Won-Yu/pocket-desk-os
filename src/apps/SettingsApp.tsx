@@ -139,7 +139,7 @@ export default function SettingsApp({
           />
         </label>
         {normalizedSettingsQuery !== "" && (
-          <div className="settings-search-results" role="listbox">
+          <div aria-label="설정 검색 결과" className="settings-search-results" role="group">
             {settingsMatches.length === 0 ? (
               <span className="settings-no-results">결과 없음</span>
             ) : (
@@ -150,8 +150,6 @@ export default function SettingsApp({
                     setSection(item.id);
                     setSettingsQuery("");
                   }}
-                  role="option"
-                  aria-selected={section === item.id}
                   type="button"
                 >
                   {item.label}

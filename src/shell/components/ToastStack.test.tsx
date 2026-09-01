@@ -43,6 +43,26 @@ describe("ToastStack actions", () => {
     expect(onDismiss).toHaveBeenCalledWith("toast-1");
   });
 
+  it("reports pointer and focus holds so the dismiss timer can wait", () => {
+    const onHoldChange = vi.fn();
+    render(
+      <ToastStack
+        onDismiss={vi.fn()}
+        onHoldChange={onHoldChange}
+        toasts={[makeToast({ actions: [{ id: "a", label: "확인" }], onAction: vi.fn() })]}
+      />,
+    );
+
+    const article = document.querySelector(".toast");
+    if (!article) throw new Error("toast not rendered");
+    fireEvent.pointerEnter(article);
+    expect(onHoldChange).toHaveBeenLastCalledWith("toast-1", true);
+    fireEvent.pointerLeave(article);
+    expect(onHoldChange).toHaveBeenLastCalledWith("toast-1", false);
+    fireEvent.focus(screen.getByRole("button", { name: "확인" }));
+    expect(onHoldChange).toHaveBeenLastCalledWith("toast-1", true);
+  });
+
   it("renders no action row for a plain statement toast", () => {
     render(<ToastStack onDismiss={vi.fn()} toasts={[makeToast()]} />);
     expect(document.querySelector(".toast-actions")).toBeNull();

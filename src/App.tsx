@@ -481,7 +481,32 @@ export default function App() {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [desktopIconMenu, desktopMenu]);
 
+  /*
+   * One always-mounted polite live region for shell narration. A region that
+   * mounts together with its content (the old pattern for Alt+Tab and the
+   * keyboard-move hint) is ignored by most screen readers — the region must
+   * exist first, then its text must change. The zero-width toggle forces a
+   * change even when the same message repeats.
+   */
+  const [srAnnouncement, setSrAnnouncement] = useState("");
+  const announceNonceRef = useRef(false);
+  const announce = (message: string) => {
+    announceNonceRef.current = !announceNonceRef.current;
+    setSrAnnouncement(message + (announceNonceRef.current ? "\u200b" : ""));
+  };
+
+  const heldToastsRef = useRef(new Set<string>());
+
+  const setToastHeld = (id: string, held: boolean) => {
+    if (held) {
+      heldToastsRef.current.add(id);
+    } else {
+      heldToastsRef.current.delete(id);
+    }
+  };
+
   const dismissToast = (id: string) => {
+    heldToastsRef.current.delete(id);
     setToasts((current) => current.filter((toast) => toast.id !== id));
   };
 
@@ -498,6 +523,17 @@ export default function App() {
     };
 
     setToasts((current) => [...current.slice(-3), nextToast]);
+    const scheduleToastDismiss = (delay: number) => {
+      window.setTimeout(() => {
+        // Reading or reaching for a button must not race the timer: while the
+        // pointer or focus is on the toast, check again later instead.
+        if (heldToastsRef.current.has(id)) {
+          scheduleToastDismiss(1500);
+          return;
+        }
+        dismissToast(id);
+      }, delay);
+    };
     // The history is a record, not a control surface: its entries persist to
     // storage, where a callback cannot follow.
     setNotificationHistory((current) =>
@@ -507,7 +543,7 @@ export default function App() {
       ),
     );
     // A toast asking a question needs longer on screen than one stating a fact.
-    window.setTimeout(() => dismissToast(id), nextToast.actions.length > 0 ? 9000 : 3400);
+    scheduleToastDismiss(nextToast.actions.length > 0 ? 9000 : 3400);
   };
 
   const clearNotificationHistory = () => {
@@ -589,6 +625,34 @@ export default function App() {
     const interval = window.setInterval(() => clockTickRef.current(), 500);
     return () => window.clearInterval(interval);
   }, []);
+
+  // Alt+Tab moves aria-current between items, which changes no text — so the
+  // cycling was silent. Say the selected window's title through the shared
+  // live region instead.
+  useEffect(() => {
+    if (!altTabWindowId) return;
+    const target = windows.find((item) => item.id === altTabWindowId);
+    if (!target) return;
+    const app = getApp(target.appId);
+    announce(
+      `${formatWindowTitle(app.title, getWindowDocumentLabel(target.appId))}${
+        target.minimized ? ", 최소화됨" : ""
+      }`,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- narrate on selection change only
+  }, [altTabWindowId]);
+
+  // The keyboard move/resize hint used to be a conditionally-rendered
+  // role=status, which mounts with its content and stays silent.
+  useEffect(() => {
+    if (!windowKeyboardDrag) return;
+    announce(
+      windowKeyboardDrag.mode === "move"
+        ? "창 이동 모드. 화살표로 이동, Enter 확정, Esc 취소"
+        : "창 크기 조정 모드. 화살표로 조정, Enter 확정, Esc 취소",
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- narrate on mode change only
+  }, [windowKeyboardDrag?.mode, windowKeyboardDrag?.windowId]);
 
   /*
    * Long-press is the touch world's right click. Every context menu here
@@ -1828,6 +1892,7 @@ export default function App() {
     playSound("minimize");
     showDesktopRestoreRef.current = visibleIds;
     visibleIds.forEach((id) => {
+      moveFocusOutOfWindow(id);
       scheduleWindowMotion(id, "minimizing", () => updateWindow(id, { minimized: true }));
     });
   };
@@ -2469,9 +2534,26 @@ export default function App() {
     });
   };
 
+  /**
+   * Minimizing hides a visibility:hidden subtree; focus left inside it falls
+   * to <body> and the next Tab restarts from the top of the page. Hand focus
+   * to the app's own taskbar button — but only when focus was actually inside
+   * the window being hidden, so a pointer user's focus is never stolen.
+   */
+  const moveFocusOutOfWindow = (windowId: string, appId?: AppId) => {
+    const frame = document.querySelector(`[data-window-id="${windowId}"]`);
+    const active = document.activeElement;
+    if (!frame || !active || !frame.contains(active)) return;
+    const fallback =
+      (appId && document.querySelector<HTMLElement>(`.taskbar-app[data-app-id="${appId}"]`)) ||
+      document.querySelector<HTMLElement>(".desktop-icon[tabindex='0']");
+    fallback?.focus();
+  };
+
   const minimizeWindow = (id: string) => {
     playSound("minimize");
     setWindowMenu(null);
+    moveFocusOutOfWindow(id, windows.find((item) => item.id === id)?.appId);
     scheduleWindowMotion(id, "minimizing", () => {
       updateWindow(id, { minimized: true });
     });
@@ -2640,6 +2722,7 @@ export default function App() {
     if (visibleIds.length > 0) {
       showDesktopRestoreRef.current = visibleIds;
       visibleIds.forEach((id) => {
+        moveFocusOutOfWindow(id);
         scheduleWindowMotion(id, "minimizing", () => updateWindow(id, { minimized: true }));
       });
       return;
@@ -3548,8 +3631,11 @@ export default function App() {
        * page cannot do for the OS pointer. A status line says the same thing
        * and, being role=status, reaches a screen reader too.
        */}
+      <div aria-live="polite" className="sr-only">
+        {srAnnouncement}
+      </div>
       {windowKeyboardDrag && (
-        <p className="window-keyboard-drag-hint" role="status">
+        <p className="window-keyboard-drag-hint">
           {windowKeyboardDrag.mode === "move"
             ? "화살표로 창 이동 · Enter 확정 · Esc 취소"
             : windowKeyboardDrag.edge
@@ -3781,7 +3867,7 @@ export default function App() {
         />
       )}
 
-      <ToastStack onDismiss={dismissToast} toasts={toasts} />
+      <ToastStack onDismiss={dismissToast} onHoldChange={setToastHeld} toasts={toasts} />
       <PwaUpdatePrompt />
     </main>
   );

@@ -373,7 +373,11 @@ export function Taskbar({
                 onMouseLeave={hidePreview}
               >
                 <button
+                  aria-current={
+                    appWindows.some((item) => item.id === activeWindowId) ? "true" : undefined
+                  }
                   aria-label={`${app.title}${appWindows.length > 1 ? `, ${appWindows.length}개 창` : ""}`}
+                  data-app-id={app.id}
                   className={`taskbar-app ${activeAppWindow ? "is-current" : ""} ${
                     allMinimized ? "is-minimized" : ""
                   } ${isPinned ? "is-pinned" : ""} ${windowItem ? "is-open" : ""}`}
@@ -446,6 +450,7 @@ export function Taskbar({
       )}
       {taskbarMenu && (
         <div
+          aria-label={`${getApp(taskbarMenu.appId).title} 점프 목록`}
           className="taskbar-context-menu"
           onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
           onPointerDown={(event) => event.stopPropagation()}
@@ -548,6 +553,7 @@ export function Taskbar({
       )}
       {shellMenu && (
         <div
+          aria-label="작업 표시줄 메뉴"
           className="taskbar-context-menu is-shell-menu"
           onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
           onPointerDown={(event) => event.stopPropagation()}
@@ -575,6 +581,7 @@ export function Taskbar({
         <div className="system-tray-buttons">
           <button
             aria-expanded={trayPanel === "quick"}
+            aria-haspopup="dialog"
             aria-label="빠른 설정 열기"
             className="system-tray system-tray-status"
             onClick={() => setTrayPanel((current) => (current === "quick" ? null : "quick"))}
@@ -585,11 +592,7 @@ export function Taskbar({
           </button>
           <button
             aria-expanded={trayPanel === "notifications"}
-            aria-label={
-              unreadNotificationCount > 0
-                ? `알림 센터 열기, 읽지 않은 알림 ${unreadNotificationCount}개`
-                : "알림 센터 열기"
-            }
+            aria-haspopup="dialog"
             className="system-tray system-tray-clock-button"
             onClick={() =>
               setTrayPanel((current) => {
@@ -602,6 +605,14 @@ export function Taskbar({
             }
             type="button"
           >
+            {/* Name from contents, purpose first: an aria-label here hid the
+                clock, so a screen reader could not read the time off the
+                taskbar at all. */}
+            <span className="sr-only">
+              {unreadNotificationCount > 0
+                ? `알림 센터 열기, 읽지 않은 알림 ${unreadNotificationCount}개, `
+                : "알림 센터 열기, "}
+            </span>
             <Clock hour24={clock24h} />
             {/* Windows shows the unread count on the tray; nothing here said a
                 notification had arrived unless the panel happened to be open. */}
@@ -838,6 +849,7 @@ export function NotificationCenterPanel({
                 aria-label={date.toLocaleDateString("ko-KR", {
                   day: "numeric",
                   month: "long",
+                  weekday: "short",
                   year: "numeric",
                 })}
                 aria-pressed={isSelected}
@@ -897,7 +909,13 @@ export function TaskbarPreview({
    */
   return (
     <div
+      aria-label={`${app.title} 창 미리보기`}
       className="taskbar-preview-card"
+      onBlurCapture={onPointerLeave}
+      // Tab reaches these buttons too; without the focus pair, the hide-grace
+      // timer unmounted the card 220ms after focus entered and dropped the
+      // keyboard user onto <body>.
+      onFocusCapture={onPointerEnter}
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
       role="group"

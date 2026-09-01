@@ -637,8 +637,10 @@ async function runSmoke(baseUrl) {
     await nameHeader.click();
     await page.waitForTimeout(200);
     const afterSort = await readOrder();
+    // The sort state rides on the accessible name now (aria-sort is only
+    // valid inside a real table, and this header is a group of buttons).
     assert(
-      (await nameHeader.getAttribute("aria-sort")) === "descending",
+      (await nameHeader.getAttribute("aria-label")) === "이름 정렬 (내림차순)",
       "Clicking the name header did not flip the sort direction",
     );
     assert(
@@ -765,11 +767,11 @@ async function runSmoke(baseUrl) {
     await projectFolder.waitFor({ state: "visible" });
     await explorerSidebar.getByRole("button", { name: "바탕 화면", exact: true }).click();
 
-    await files.getByRole("button", { name: "정렬" }).click();
+    await files.getByRole("button", { name: "정렬", exact: true }).click();
     const explorerSortMenu = files.getByRole("menu", { name: "파일 정렬" });
     await explorerSortMenu.waitFor({ state: "visible" });
     await explorerSortMenu.getByRole("menuitemradio", { name: "이름" }).click();
-    await files.getByRole("button", { name: "정렬" }).click();
+    await files.getByRole("button", { name: "정렬", exact: true }).click();
     await explorerSortMenu.getByRole("menuitemradio", { name: "내림차순" }).click();
     const descendingNames = await files.locator(".file-list button > span").allInnerTexts();
     // Folders stay grouped above files whatever the direction — so with a
@@ -830,7 +832,7 @@ async function runSmoke(baseUrl) {
       `Explorer arrow navigation did not move selection: ${arrowSelectedName}`,
     );
     await files.getByRole("button", { name: "자세히 보기" }).click();
-    await files.getByRole("button", { name: "정렬" }).click();
+    await files.getByRole("button", { name: "정렬", exact: true }).click();
     await files.locator(".file-address").click();
     await explorerSortMenu.waitFor({ state: "hidden" });
 

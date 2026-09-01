@@ -135,7 +135,11 @@ export function TaskView({
         )}
       </div>
 
-      <div className="task-view-windows" aria-label={`데스크톱 ${activeDesktopIndex + 1}의 창`}>
+      <div
+        aria-label={`데스크톱 ${activeDesktopIndex + 1}의 창`}
+        className="task-view-windows"
+        role="group"
+      >
         {windows.filter((item) => item.desktopIndex === activeDesktopIndex).length === 0 ? (
           <p className="task-view-empty">이 데스크톱에는 열린 창이 없습니다.</p>
         ) : (
@@ -182,6 +186,10 @@ export function TaskView({
                     <label>
                       이동
                       <select
+                        aria-label={`${formatWindowTitle(
+                          getApp(item.appId).title,
+                          getDocumentLabel(item.appId),
+                        )} 이동`}
                         onChange={(event) =>
                           onMoveWindowToDesktop(item.id, Number(event.target.value))
                         }

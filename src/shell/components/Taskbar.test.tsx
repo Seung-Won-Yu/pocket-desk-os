@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Taskbar } from "./Taskbar";
+import { Taskbar, TaskbarPreview } from "./Taskbar";
 import { appCatalog } from "../appCatalog";
 import type { WindowInstance } from "../types";
 import type { AppId, DesktopItem } from "../../types";
@@ -206,6 +206,31 @@ describe("Taskbar 앱 버튼", () => {
     });
 
     expect(screen.getByRole("button", { name: "Microsoft Edge, 2개 창" })).toBeVisible();
+  });
+});
+
+describe("TaskbarPreview 포커스 유지", () => {
+  it("카드 안으로 포커스가 들어오면 hover와 같은 유지 신호를 보낸다", () => {
+    const onPointerEnter = vi.fn();
+    const onPointerLeave = vi.fn();
+    render(
+      <TaskbarPreview
+        app={appCatalog[0]}
+        getDocumentLabel={() => undefined}
+        left={100}
+        onCloseWindow={vi.fn()}
+        onPointerEnter={onPointerEnter}
+        onPointerLeave={onPointerLeave}
+        onSelectWindow={vi.fn()}
+        windows={[makeWindow("win-1", appCatalog[0].id)]}
+      />,
+    );
+
+    // Tab이 카드 버튼에 닿는 순간 — 220ms 은닉 타이머가 취소돼야 한다.
+    fireEvent.focus(screen.getAllByRole("button")[0]);
+    expect(onPointerEnter).toHaveBeenCalled();
+    fireEvent.blur(screen.getAllByRole("button")[0]);
+    expect(onPointerLeave).toHaveBeenCalled();
   });
 });
 

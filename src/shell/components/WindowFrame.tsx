@@ -338,12 +338,18 @@ export function WindowFrame({
             onMouseLeave={() => setSnapFlyoutOpen(false)}
           >
             <button
-              aria-expanded={snapFlyoutOpen}
-              aria-haspopup="menu"
-              aria-label={`${app.title} 최대화`}
+              /*
+               * No aria-haspopup here: clicking this button maximizes — it
+               * never opens the snap flyout, which appears on hover/focus by
+               * itself. Claiming a popup misdescribed the click. The label
+               * follows the state, since a maximized window's button restores.
+               */
+              aria-label={
+                instance.maximized ? `${app.title} 이전 크기로 복원` : `${app.title} 최대화`
+              }
               onClick={onToggleMaximize}
               onFocus={() => !instance.maximized && setSnapFlyoutOpen(true)}
-              title="최대화"
+              title={instance.maximized ? "이전 크기로 복원" : "최대화"}
               type="button"
             >
               {instance.maximized ? (
