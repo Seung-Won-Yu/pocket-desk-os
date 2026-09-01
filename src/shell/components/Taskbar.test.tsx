@@ -30,7 +30,10 @@ function makeWindow(id: string, appId: AppId, overrides: Partial<WindowInstance>
 function makeHandlers() {
   return {
     onClearNotifications: vi.fn(),
-    getDocumentLabel: vi.fn(() => undefined) as (appId: AppId) => string | undefined,
+    getDocumentLabel: vi.fn(() => undefined) as (
+      windowId: string,
+      appId: AppId,
+    ) => string | undefined,
     onOpenApp: vi.fn(),
     onOpenNewWindow: vi.fn(),
     onOpenRunDialog: vi.fn(),

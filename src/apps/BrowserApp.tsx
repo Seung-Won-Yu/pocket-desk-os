@@ -101,6 +101,11 @@ type BrowserToast = {
 
 type BrowserAppProps = {
   browserLaunchRequest: BrowserLaunchRequest | null;
+  reportDocument: (
+    windowId: string,
+    ref: { itemId?: string; title?: string } | undefined,
+  ) => void;
+  windowId: string;
   createVfsShortcut: (parentId: string, name: string, target: string) => DesktopItem | null;
   notify: (toast: BrowserToast) => void;
   saveNoteAs: (
@@ -207,7 +212,9 @@ export default function BrowserApp({
   browserLaunchRequest,
   createVfsShortcut,
   notify,
+  reportDocument,
   saveNoteAs,
+  windowId,
 }: BrowserAppProps) {
   const [searchEngine, setSearchEngine] = useState<BrowserSearchEngineId>(() =>
     loadBrowserSearchEngine(),
@@ -226,6 +233,12 @@ export default function BrowserApp({
   const [browserMenuOpen, setBrowserMenuOpen] = useState(false);
   const [frameIssue, setFrameIssue] = useState<BrowserFrameIssue | null>(null);
   const [readerDocument, setReaderDocument] = useState<BrowserReaderDocument | null>(null);
+
+  useEffect(() => {
+    // Edge titles its window after the page, which also tells two browser
+    // windows apart in Alt+Tab and the taskbar preview.
+    reportDocument(windowId, url ? { title: getBrowserPageTitle(url) } : undefined);
+  }, [reportDocument, url, windowId]);
   const [frameSettledAt, setFrameSettledAt] = useState<number | null>(null);
   const [dismissedOfferUrl, setDismissedOfferUrl] = useState<string | null>(null);
   const [tabs, setTabs] = useState<BrowserTab[]>(() => [createBrowserTab()]);

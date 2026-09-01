@@ -31,6 +31,10 @@ type TerminalAppProps = {
     existingItemId?: string,
     options?: { activate?: boolean },
   ) => DesktopItem;
+  reportDocument: (
+    windowId: string,
+    ref: { itemId?: string; title?: string } | undefined,
+  ) => void;
   windowId: string;
 };
 
@@ -47,6 +51,7 @@ function createBanner(): ShellLine[] {
 }
 
 export default function TerminalApp({
+  reportDocument,
   closeWindow,
   createVfsFolder,
   deleteVfsEntry,
@@ -85,6 +90,11 @@ export default function TerminalApp({
   }, [lines]);
 
   const prompt = useMemo(() => formatShellPath(desktopItems, cwdId), [cwdId, desktopItems]);
+
+  useEffect(() => {
+    // cmd titles its window after the working directory.
+    reportDocument(windowId, { title: prompt });
+  }, [prompt, reportDocument, windowId]);
 
   const processes = useMemo<ShellProcess[]>(
     () =>

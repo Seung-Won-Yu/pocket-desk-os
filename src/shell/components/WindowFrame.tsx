@@ -256,7 +256,16 @@ export function WindowFrame({
 
   return (
     <article
-      aria-label={app.title}
+      /*
+       * The accessible name matches the visible title — document first, the
+       * way Windows names windows — so two windows of one app finally sound
+       * different in Alt+Tab and the Task View. Tests address frames by the
+       * stable data-app-id instead of this changing name.
+       */
+      aria-label={`${formatWindowTitle(app.title, documentLabel)}${
+        hasUnsavedChanges && documentLabel ? " (저장되지 않음)" : ""
+      }`}
+      data-app-id={app.id}
       data-window-id={instance.id}
       aria-hidden={instance.minimized ? "true" : undefined}
       className={`window-frame ${active ? "is-active" : ""} ${

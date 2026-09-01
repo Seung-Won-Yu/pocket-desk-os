@@ -122,6 +122,7 @@ import {
   type DefaultAppMap,
 } from "./shell/preferences";
 import { getNeighbourByPosition } from "./shell/keyboardNav";
+import { type WindowDocumentRef } from "./shell/types";
 import { formatWindowTitle } from "./shell/windowTitle";
 import {
   collectDueClockAlarms,
@@ -287,14 +288,24 @@ export default function App() {
   const [activeCanvasId, setActiveCanvasId] = useState(VFS_PRIMARY_CANVAS_ID);
   const [activeCanvasOpenKey, setActiveCanvasOpenKey] = useState(0);
   const [activeNoteId, setActiveNoteId] = useState(VFS_PRIMARY_NOTE_ID);
+  /*
+   * What each WINDOW is showing — keyed by window id, not app id. The old
+   * per-app key meant two windows of one app shared a single document slot,
+   * so Alt+Tab, Task View and the taskbar preview gave both the same name.
+   * A reference is either a VFS item (renames stay live because the name is
+   * resolved at render) or a plain title for documents that are not files —
+   * a browser page, a terminal path.
+   */
   const [reportedDocuments, setReportedDocuments] = useState<
-    Partial<Record<AppId, string | undefined>>
+    Record<string, WindowDocumentRef | undefined>
   >({});
 
-  const reportDocument = useCallback((appId: AppId, itemId: string | undefined) => {
-    setReportedDocuments((current) =>
-      current[appId] === itemId ? current : { ...current, [appId]: itemId },
-    );
+  const reportDocument = useCallback((windowId: string, ref: WindowDocumentRef | undefined) => {
+    setReportedDocuments((current) => {
+      const existing = current[windowId];
+      if (existing?.itemId === ref?.itemId && existing?.title === ref?.title) return current;
+      return { ...current, [windowId]: ref };
+    });
   }, []);
   const [altTabWindowId, setAltTabWindowId] = useState<string | null>(null);
   const [pinnedAppIds, setPinnedAppIds] = useState<AppId[]>(() => loadPinnedTaskbarApps());
@@ -635,7 +646,7 @@ export default function App() {
     if (!target) return;
     const app = getApp(target.appId);
     announce(
-      `${formatWindowTitle(app.title, getWindowDocumentLabel(target.appId))}${
+      `${formatWindowTitle(app.title, getWindowDocumentLabel(target.id, target.appId))}${
         target.minimized ? ", 최소화됨" : ""
       }`,
     );
@@ -844,7 +855,7 @@ export default function App() {
         SHELL_EVENT_PROCESS_ENDED,
         app.title,
         "프로세스 종료",
-        `"${formatWindowTitle(app.title, getWindowDocumentLabel(item.appId))}" 창이 닫혔습니다.\n앱: ${app.title}\n창 ID: ${item.id}`,
+        `"${formatWindowTitle(app.title, getWindowDocumentLabel(item.id, item.appId))}" 창이 닫혔습니다.\n앱: ${app.title}\n창 ID: ${item.id}`,
       );
     }
     closeGuardsRef.current.clear();
@@ -2524,7 +2535,7 @@ export default function App() {
         SHELL_EVENT_PROCESS_ENDED,
         app.title,
         "프로세스 종료",
-        `"${formatWindowTitle(app.title, getWindowDocumentLabel(closing.appId))}" 창이 닫혔습니다.\n앱: ${app.title}\n창 ID: ${closing.id}`,
+        `"${formatWindowTitle(app.title, getWindowDocumentLabel(closing.id, closing.appId))}" 창이 닫혔습니다.\n앱: ${app.title}\n창 ID: ${closing.id}`,
       );
     }
     playSound("close");
@@ -2766,14 +2777,16 @@ export default function App() {
    * 메모장`. The same string is what Alt+Tab and the taskbar preview show, so it
    * is resolved once here and handed to all three.
    */
-  const getWindowDocumentLabel = (appId: AppId) => {
-    // What the app says it is showing wins; the ids below are only the shell's
-    // opening guess, and an app that navigates on its own leaves them behind.
-    const reported = reportedDocuments[appId];
-    if (reported) {
-      const match = activeDesktopItems.find((item) => item.id === reported);
+  const getWindowDocumentLabel = (windowId: string, appId: AppId) => {
+    // What the window says it is showing wins; the ids below are only the
+    // shell's opening guess, and an app that navigates on its own leaves them
+    // behind.
+    const reported = reportedDocuments[windowId];
+    if (reported?.itemId) {
+      const match = activeDesktopItems.find((item) => item.id === reported.itemId);
       if (match) return match.name;
     }
+    if (reported?.title) return reported.title;
     if (appId === "notepad") {
       return activeDesktopItems.find((item) => item.id === activeNoteId)?.name;
     }
@@ -2793,7 +2806,10 @@ export default function App() {
         // Windows' Task Manager lists window titles, so two windows of one app
         // can be told apart before one of them is ended. This listed the app
         // name, leaving two identical rows.
-        title: formatWindowTitle(getApp(item.appId).title, getWindowDocumentLabel(item.appId)),
+        title: formatWindowTitle(
+          getApp(item.appId).title,
+          getWindowDocumentLabel(item.id, item.appId),
+        ),
       })),
     // getWindowDocumentLabel closes over the item list and the reported ids.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3508,7 +3524,7 @@ export default function App() {
               onFocus={() => focusWindow(item.id)}
               onMinimize={() => minimizeWindow(item.id)}
               onOpenSystemMenu={(event) => openWindowSystemMenu(event, item.id)}
-              documentLabel={getWindowDocumentLabel(item.appId)}
+              documentLabel={getWindowDocumentLabel(item.id, item.appId)}
               hasUnsavedChanges={unsavedWindowIds.has(item.id)}
               onSnapPreviewChange={setSnapPreview}
               onToggleMaximize={() => toggleMaximize(item.id)}

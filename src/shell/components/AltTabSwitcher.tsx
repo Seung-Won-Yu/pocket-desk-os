@@ -9,7 +9,7 @@ export function AltTabSwitcher({
   selectedWindowId,
   windows,
 }: {
-  getDocumentLabel?: (appId: AppId) => string | undefined;
+  getDocumentLabel?: (windowId: string, appId: AppId) => string | undefined;
   selectedWindowId: string;
   windows: WindowInstance[];
 }) {
@@ -39,7 +39,10 @@ export function AltTabSwitcher({
                   name alone made a Paint window and a Photos window on the same
                   canvas read identically. */}
               <strong>
-                {formatWindowTitle(app.title, getDocumentLabel?.(windowItem.appId))}
+                {formatWindowTitle(
+                  app.title,
+                  getDocumentLabel?.(windowItem.id, windowItem.appId),
+                )}
               </strong>
               <small>{windowItem.minimized ? "최소화됨" : "열림"}</small>
             </div>

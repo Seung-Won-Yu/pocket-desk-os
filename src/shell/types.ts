@@ -17,6 +17,13 @@ import {
 import { type LucideIcon } from "lucide-react";
 import { type DefaultAppMap } from "./preferences";
 import { type ClockAlarm, type ClockTimer } from "./clock";
+
+/**
+ * What one window reports itself as showing: a VFS item (name resolved live,
+ * so renames follow) or a plain title for non-file documents — a web page,
+ * a terminal path.
+ */
+export type WindowDocumentRef = { itemId?: string; title?: string };
 import { type ShellLogEvent } from "./eventLog";
 
 export type WindowMotion = "closing" | "minimizing";
@@ -173,7 +180,7 @@ export type AppContentProps = {
    * itself — the photo viewer's next/previous left the title bar naming the
    * first image indefinitely.
    */
-  reportDocument: (appId: AppId, itemId: string | undefined) => void;
+  reportDocument: (windowId: string, ref: WindowDocumentRef | undefined) => void;
   /** The shell's append-only event log; see src/shell/eventLog.ts. */
   shellEvents: ShellLogEvent[];
   createVfsFolder: (parentId?: string, name?: string) => DesktopItem;

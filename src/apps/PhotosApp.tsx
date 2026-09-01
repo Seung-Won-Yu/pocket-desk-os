@@ -18,7 +18,10 @@ import type { DesktopItem } from "../types";
 import { clamp } from "../utils/format";
 
 type PhotosAppProps = {
-  reportDocument: (appId: "photos", itemId: string | undefined) => void;
+  reportDocument: (
+    windowId: string,
+    ref: { itemId?: string; title?: string } | undefined,
+  ) => void;
   activeCanvasId: string;
   activeCanvasOpenKey: number;
   canvasEntries: DesktopItem[];
@@ -95,7 +98,7 @@ export default function PhotosApp({
   }, [activeCanvasOpenKey]);
 
   useEffect(() => {
-    reportDocument("photos", currentEntry?.id);
+    reportDocument(windowId, currentEntry ? { itemId: currentEntry.id } : undefined);
   }, [currentEntry?.id, reportDocument]);
 
   useEffect(() => {

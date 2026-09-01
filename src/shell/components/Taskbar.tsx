@@ -76,7 +76,7 @@ export function Taskbar({
   notificationHistory: ToastMessage[];
   onClearNotifications: () => void;
   onOpenStart: (event: React.MouseEvent<HTMLButtonElement>) => void;
-  getDocumentLabel: (appId: AppId) => string | undefined;
+  getDocumentLabel: (windowId: string, appId: AppId) => string | undefined;
   onOpenApp: (appId: AppId) => void;
   onOpenNewWindow: (appId: AppId) => void;
   onOpenRunDialog: () => void;
@@ -890,7 +890,7 @@ export function TaskbarPreview({
   windows,
 }: {
   app: AppDefinition;
-  getDocumentLabel: (appId: AppId) => string | undefined;
+  getDocumentLabel: (windowId: string, appId: AppId) => string | undefined;
   left: number;
   onCloseWindow: (windowId: string) => void;
   onPointerEnter: () => void;
@@ -898,8 +898,6 @@ export function TaskbarPreview({
   onSelectWindow: (windowId: string) => void;
   windows: WindowInstance[];
 }) {
-  const windowTitle = formatWindowTitle(app.title, getDocumentLabel(app.id));
-
   /*
    * Windows shows one thumbnail per window here, and each one switches to that
    * window or closes it. This card was aria-hidden and inert — it listed
@@ -930,42 +928,48 @@ export function TaskbarPreview({
           </div>
         </div>
       ) : (
-        windows.map((windowItem) => (
-          <div className="taskbar-preview-window" key={windowItem.id}>
-            <button
-              aria-label={`${windowTitle} 전환`}
-              className="taskbar-preview-select"
-              onClick={() => onSelectWindow(windowItem.id)}
-              type="button"
-            >
-              <span
-                aria-hidden="true"
-                className="taskbar-preview-thumb"
-                style={{ "--active": app.accent } as React.CSSProperties}
+        windows.map((windowItem) => {
+          const windowTitle = formatWindowTitle(
+            app.title,
+            getDocumentLabel(windowItem.id, app.id),
+          );
+          return (
+            <div className="taskbar-preview-window" key={windowItem.id}>
+              <button
+                aria-label={`${windowTitle} 전환`}
+                className="taskbar-preview-select"
+                onClick={() => onSelectWindow(windowItem.id)}
+                type="button"
               >
-                <AppIconTile accent={app.accent} icon={app.icon} size="large" />
-              </span>
-              <span className="taskbar-preview-meta">
-                <strong>{windowTitle}</strong>
-                <small>
-                  {windowItem.minimized
-                    ? "최소화됨"
-                    : windowItem.maximized
-                      ? "최대화됨"
-                      : "열림"}
-                </small>
-              </span>
-            </button>
-            <button
-              aria-label={`${windowTitle} 미리보기에서 닫기`}
-              className="taskbar-preview-close"
-              onClick={() => onCloseWindow(windowItem.id)}
-              type="button"
-            >
-              <X aria-hidden="true" size={13} />
-            </button>
-          </div>
-        ))
+                <span
+                  aria-hidden="true"
+                  className="taskbar-preview-thumb"
+                  style={{ "--active": app.accent } as React.CSSProperties}
+                >
+                  <AppIconTile accent={app.accent} icon={app.icon} size="large" />
+                </span>
+                <span className="taskbar-preview-meta">
+                  <strong>{windowTitle}</strong>
+                  <small>
+                    {windowItem.minimized
+                      ? "최소화됨"
+                      : windowItem.maximized
+                        ? "최대화됨"
+                        : "열림"}
+                  </small>
+                </span>
+              </button>
+              <button
+                aria-label={`${windowTitle} 미리보기에서 닫기`}
+                className="taskbar-preview-close"
+                onClick={() => onCloseWindow(windowItem.id)}
+                type="button"
+              >
+                <X aria-hidden="true" size={13} />
+              </button>
+            </div>
+          );
+        })
       )}
     </div>
   );

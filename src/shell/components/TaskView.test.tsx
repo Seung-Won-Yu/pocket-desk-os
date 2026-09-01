@@ -25,7 +25,10 @@ function makeWindow(id: string, appId: AppId, overrides: Partial<WindowInstance>
 
 function renderTaskView(overrides: Partial<Parameters<typeof TaskView>[0]> = {}) {
   const handlers = {
-    getDocumentLabel: vi.fn(() => undefined) as (appId: AppId) => string | undefined,
+    getDocumentLabel: vi.fn(() => undefined) as (
+      windowId: string,
+      appId: AppId,
+    ) => string | undefined,
     onAddDesktop: vi.fn(),
     onCloseDesktop: vi.fn(),
     onCloseWindow: vi.fn(),
@@ -57,6 +60,20 @@ describe("TaskView 창 카드", () => {
     // Windows never shows a window's pixel size here; it told you nothing about
     // which of two Notepad windows a card belonged to.
     expect(screen.queryByText(/640 × 480/)).toBeNull();
+  });
+
+  it("같은 앱의 두 창이 창 단위 문서 라벨로 구분된다", () => {
+    renderTaskView({
+      getDocumentLabel: ((windowId: string) =>
+        windowId === "win-a" ? "회의록.txt" : "메모.txt") as (
+        windowId: string,
+        appId: AppId,
+      ) => string | undefined,
+      windows: [makeWindow("win-a", "notepad"), makeWindow("win-b", "notepad")],
+    });
+
+    expect(screen.getByText("회의록.txt - 메모장")).toBeTruthy();
+    expect(screen.getByText("메모.txt - 메모장")).toBeTruthy();
   });
 
   it("문서가 없으면 앱 이름만 쓴다", () => {

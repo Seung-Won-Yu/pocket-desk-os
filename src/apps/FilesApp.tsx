@@ -115,6 +115,10 @@ type FilesAppProps = {
   openNewAppWindow: (appId: AppId) => string;
   openVfsEntry: (item: DesktopItem) => void;
   renameVfsEntry: (itemId: string, name: string) => void;
+  reportDocument: (
+    windowId: string,
+    ref: { itemId?: string; title?: string } | undefined,
+  ) => void;
   windowId: string;
 };
 
@@ -154,6 +158,7 @@ const FILE_CONTEXT_MENU_RESERVE_Y = 226;
 const FILE_FOLDER_MENU_RESERVE_Y = 214;
 
 export default function FilesApp({
+  reportDocument,
   clipboard,
   copyToClipboard,
   pasteFromClipboard,
@@ -212,6 +217,16 @@ export default function FilesApp({
     [currentFolderId, desktopItems],
   );
   const locationLabel = folderPath[folderPath.length - 1]?.name ?? "바탕 화면";
+
+  useEffect(() => {
+    // Windows titles an Explorer window after the folder it shows, which is
+    // also what tells two Explorer windows apart in Alt+Tab and the preview.
+    reportDocument(
+      windowId,
+      currentFolderId === VFS_ROOT_ID ? { title: "바탕 화면" } : { itemId: currentFolderId },
+    );
+  }, [currentFolderId, reportDocument, windowId]);
+
   const locationItems = useMemo(() => {
     return desktopItems.filter((item) => !item.trashed && item.parentId === currentFolderId);
   }, [currentFolderId, desktopItems]);

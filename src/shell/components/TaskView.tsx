@@ -26,7 +26,7 @@ export function TaskView({
 }: {
   activeDesktopIndex: number;
   desktopCount: number;
-  getDocumentLabel: (appId: WindowInstance["appId"]) => string | undefined;
+  getDocumentLabel: (windowId: string, appId: WindowInstance["appId"]) => string | undefined;
   onAddDesktop: () => void;
   onCloseDesktop: (index: number) => void;
   onCloseWindow: (windowId: string) => void;
@@ -148,7 +148,7 @@ export function TaskView({
             .sort((first, second) => second.z - first.z)
             .map((item) => {
               const app = getApp(item.appId);
-              const documentLabel = getDocumentLabel(item.appId);
+              const documentLabel = getDocumentLabel(item.id, item.appId);
               const windowTitle = formatWindowTitle(app.title, documentLabel);
               return (
                 <div className="task-view-card" key={item.id}>
@@ -188,7 +188,7 @@ export function TaskView({
                       <select
                         aria-label={`${formatWindowTitle(
                           getApp(item.appId).title,
-                          getDocumentLabel(item.appId),
+                          getDocumentLabel(item.id, item.appId),
                         )} 이동`}
                         onChange={(event) =>
                           onMoveWindowToDesktop(item.id, Number(event.target.value))

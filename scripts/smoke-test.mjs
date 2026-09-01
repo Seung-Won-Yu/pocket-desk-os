@@ -282,11 +282,11 @@ async function runSmoke(baseUrl) {
     const desktopThisPc = page.locator(".desktop-icon", { hasText: "내 PC" });
     await desktopThisPc.click();
     assert(
-      (await page.locator('article[aria-label="내 PC"]').count()) === 0,
+      (await page.locator('article[data-app-id="thispc"]').count()) === 0,
       "Desktop icon opened on a single click",
     );
     await desktopThisPc.dblclick();
-    const desktopThisPcWindow = page.locator('article[aria-label="내 PC"]');
+    const desktopThisPcWindow = page.locator('article[data-app-id="thispc"]');
     await desktopThisPcWindow.waitFor({ state: "visible" });
     assert(
       (
@@ -307,7 +307,7 @@ async function runSmoke(baseUrl) {
     await desktopThisPcWindow.waitFor({ state: "hidden" });
 
     await page.keyboard.press("Meta+e");
-    const shortcutExplorer = page.locator('article[aria-label="파일 탐색기"]');
+    const shortcutExplorer = page.locator('article[data-app-id="files"]');
     await shortcutExplorer.waitFor({ state: "visible" });
     await page.keyboard.press("Alt+F4");
     await shortcutExplorer.waitFor({ state: "hidden" });
@@ -388,7 +388,7 @@ async function runSmoke(baseUrl) {
     });
     await desktopShortcutIcon.waitFor({ state: "visible" });
     await desktopShortcutIcon.dblclick();
-    const shortcutEdge = page.locator('article[aria-label="Microsoft Edge"]');
+    const shortcutEdge = page.locator('article[data-app-id="browser"]');
     await shortcutEdge.waitFor({ state: "visible" });
     // The launch request lands through an effect; poll instead of racing it.
     const shortcutAddress = shortcutEdge.getByLabel("웹 주소 또는 검색어");
@@ -423,11 +423,11 @@ async function runSmoke(baseUrl) {
     await desktopNote.waitFor({ state: "visible" });
     await desktopNote.click();
     assert(
-      (await page.locator('article[aria-label="메모장"]').count()) === 0,
+      (await page.locator('article[data-app-id="notepad"]').count()) === 0,
       "Desktop file opened on a single click",
     );
     await desktopNote.dblclick();
-    const desktopNotepad = page.locator('article[aria-label="메모장"]');
+    const desktopNotepad = page.locator('article[data-app-id="notepad"]');
     await desktopNotepad.waitFor({ state: "visible" });
     await desktopNotepad.getByRole("button", { name: "보기", exact: true }).click();
     const noteViewMenu = desktopNotepad.getByRole("menu");
@@ -480,7 +480,7 @@ async function runSmoke(baseUrl) {
     await earlyRunDialog.waitFor({ state: "visible" });
     await earlyRunDialog.getByLabel("열기").fill("mspaint");
     await earlyRunDialog.getByRole("button", { name: "확인" }).click();
-    const paint = page.locator('article[aria-label="그림판"]');
+    const paint = page.locator('article[data-app-id="paint"]');
     await paint.waitFor({ state: "visible" });
     await page.keyboard.press("Control+Shift+s");
     const paintSaveDialog = paint.getByRole("dialog", { name: "다른 이름으로 저장" });
@@ -584,7 +584,7 @@ async function runSmoke(baseUrl) {
       .locator(".start-pinned-grid")
       .getByRole("button", { name: /내 PC/ })
       .click();
-    const thisPc = page.locator('article[aria-label="내 PC"]');
+    const thisPc = page.locator('article[data-app-id="thispc"]');
     await thisPc.waitFor({ state: "visible" });
     const thisPcText = await thisPc.innerText();
     assert(thisPcText.includes("장치 및 드라이브"), "This PC did not show drive section");
@@ -609,8 +609,8 @@ async function runSmoke(baseUrl) {
       "This PC Open command stayed disabled",
     );
     await thisPc.getByRole("button", { name: /바탕 화면/ }).click();
-    await page.locator('article[aria-label="파일 탐색기"]').waitFor({ state: "visible" });
-    const files = page.locator('article[aria-label="파일 탐색기"]');
+    await page.locator('article[data-app-id="files"]').waitFor({ state: "visible" });
+    const files = page.locator('article[data-app-id="files"]');
     const explorerSidebar = files.locator("aside");
     // The details pane now starts closed, the way the Windows preview pane does,
     // so the assertions below that read it open it first. That also covers the
@@ -702,9 +702,9 @@ async function runSmoke(baseUrl) {
     );
 
     await files.getByRole("button", { name: "새 파일 탐색기 창" }).click();
-    const explorerWindows = page.locator('article[aria-label="파일 탐색기"]');
+    const explorerWindows = page.locator('article[data-app-id="files"]');
     await page.waitForFunction(
-      () => document.querySelectorAll('article[aria-label="파일 탐색기"]').length === 2,
+      () => document.querySelectorAll('article[data-app-id="files"]').length === 2,
     );
     const secondExplorer = explorerWindows.nth(1);
     await secondExplorer.waitFor({ state: "visible" });
@@ -726,7 +726,7 @@ async function runSmoke(baseUrl) {
     );
     await secondExplorer.getByRole("button", { name: "파일 탐색기 닫기" }).click();
     await page.waitForFunction(
-      () => document.querySelectorAll('article[aria-label="파일 탐색기"]').length === 1,
+      () => document.querySelectorAll('article[data-app-id="files"]').length === 1,
     );
 
     await files.getByRole("button", { name: "새로 만들기" }).click();
@@ -988,7 +988,7 @@ async function runSmoke(baseUrl) {
     await runDialog.waitFor({ state: "visible" });
     await runDialog.getByLabel("열기").fill("calc");
     await runDialog.getByRole("button", { name: "확인" }).click();
-    const calculator = page.locator('article[aria-label="계산기"]');
+    const calculator = page.locator('article[data-app-id="calculator"]');
     await calculator.waitFor({ state: "visible" });
     for (const key of ["7", "+", "5", "="]) {
       await calculator.getByRole("button", { name: key, exact: true }).click();
@@ -1016,7 +1016,7 @@ async function runSmoke(baseUrl) {
     await runDialog.waitFor({ state: "visible" });
     await runDialog.getByLabel("열기").fill("알람");
     await runDialog.getByRole("button", { name: "확인" }).click();
-    const clock = page.locator('article[aria-label="알람 및 시계"]');
+    const clock = page.locator('article[data-app-id="clock"]');
     await clock.waitFor({ state: "visible" });
     await clock.getByRole("tab", { name: "타이머" }).click();
     await clock.getByLabel("타이머 시간 (분)").fill("0");
@@ -1058,7 +1058,7 @@ async function runSmoke(baseUrl) {
     await runDialog.waitFor({ state: "visible" });
     await runDialog.getByLabel("열기").fill("notepad");
     await runDialog.getByRole("button", { name: "확인" }).click();
-    const jumpNotepad = page.locator('article[aria-label="메모장"]');
+    const jumpNotepad = page.locator('article[data-app-id="notepad"]');
     await jumpNotepad.waitFor({ state: "visible" });
     await page.getByRole("button", { name: "메모장", exact: true }).click({ button: "right" });
     const jumpMenu = page.locator(".taskbar-context-menu");
@@ -1084,7 +1084,7 @@ async function runSmoke(baseUrl) {
     await runDialog.waitFor({ state: "visible" });
     await runDialog.getByLabel("열기").fill("지뢰찾기");
     await runDialog.getByRole("button", { name: "확인" }).click();
-    const minesweeper = page.locator('article[aria-label="지뢰찾기"]');
+    const minesweeper = page.locator('article[data-app-id="minesweeper"]');
     await minesweeper.waitFor({ state: "visible" });
     const difficultySelect = minesweeper.getByLabel("지뢰찾기 난이도");
     await difficultySelect.selectOption("medium");
@@ -1233,10 +1233,10 @@ async function runSmoke(baseUrl) {
       "File Explorer did not show URL association",
     );
     await page.keyboard.press("Enter");
-    const edge = page.locator('article[aria-label="Microsoft Edge"]');
+    const edge = page.locator('article[data-app-id="browser"]');
     await edge.waitFor({ state: "visible" });
     await page.waitForFunction(() => {
-      const browser = document.querySelector('article[aria-label="Microsoft Edge"]');
+      const browser = document.querySelector('article[data-app-id="browser"]');
       const input = browser?.querySelector('input[aria-label="웹 주소 또는 검색어"]');
       return input instanceof HTMLInputElement && input.value.includes("https://example.com");
     });
@@ -1262,27 +1262,27 @@ async function runSmoke(baseUrl) {
     );
     await readerView.getByRole("link", { name: "Learn more" }).click();
     await page.waitForFunction(() => {
-      const browser = document.querySelector('article[aria-label="Microsoft Edge"]');
+      const browser = document.querySelector('article[data-app-id="browser"]');
       const input = browser?.querySelector('input[aria-label="웹 주소 또는 검색어"]');
       return input instanceof HTMLInputElement && input.value.includes("iana.org");
     });
     await edge.getByRole("button", { name: "뒤로" }).click();
     await page.waitForFunction(() => {
-      const browser = document.querySelector('article[aria-label="Microsoft Edge"]');
+      const browser = document.querySelector('article[data-app-id="browser"]');
       const input = browser?.querySelector('input[aria-label="웹 주소 또는 검색어"]');
       return input instanceof HTMLInputElement && input.value === "https://example.com";
     });
     await readerView.waitFor({ state: "visible" });
     await edge.getByRole("button", { name: "앞으로" }).click();
     await page.waitForFunction(() => {
-      const browser = document.querySelector('article[aria-label="Microsoft Edge"]');
+      const browser = document.querySelector('article[data-app-id="browser"]');
       const input = browser?.querySelector('input[aria-label="웹 주소 또는 검색어"]');
       return input instanceof HTMLInputElement && input.value.includes("iana.org");
     });
     await readerView.waitFor({ state: "visible" });
     await edge.getByRole("button", { name: "뒤로" }).click();
     await page.waitForFunction(() => {
-      const browser = document.querySelector('article[aria-label="Microsoft Edge"]');
+      const browser = document.querySelector('article[data-app-id="browser"]');
       const input = browser?.querySelector('input[aria-label="웹 주소 또는 검색어"]');
       return input instanceof HTMLInputElement && input.value === "https://example.com";
     });
@@ -1316,7 +1316,7 @@ async function runSmoke(baseUrl) {
     await edge.getByRole("button", { name: "홈" }).click();
     await edge.getByRole("button", { name: "사과게임" }).click();
     await page.waitForFunction(() => {
-      const browser = document.querySelector('article[aria-label="Microsoft Edge"]');
+      const browser = document.querySelector('article[data-app-id="browser"]');
       const input = browser?.querySelector('input[aria-label="웹 주소 또는 검색어"]');
       return input instanceof HTMLInputElement && input.value.includes("/apple-burst/");
     });
@@ -1334,6 +1334,56 @@ async function runSmoke(baseUrl) {
       (await taskbarPreview.innerText()).includes("Microsoft Edge"),
       "Taskbar preview did not show browser",
     );
+    // 창 단위 문서 라벨: 같은 앱의 두 창이 폴더에 따라 서로 다른 이름을 갖고,
+    // 그 이름이 미리보기·Alt+Tab·제목 표시줄에 함께 쓰인다.
+    // Hover moves on; the single preview card swaps its content per slot, so
+    // nothing below depends on the hide-grace timing.
+    await page.mouse.move(640, 300);
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("explorer");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const firstExplorer = page.locator('article[data-app-id="files"]').first();
+    await firstExplorer.waitFor({ state: "visible" });
+    await page.locator(".taskbar-app", { hasText: "파일 탐색기" }).click({ button: "right" });
+    const filesJumpMenu = page.locator(".taskbar-context-menu");
+    await filesJumpMenu.waitFor({ state: "visible" });
+    await filesJumpMenu.getByRole("menuitem", { name: "새 창" }).click();
+    await filesJumpMenu.waitFor({ state: "detached" });
+    const explorerFrames = page.locator('article[data-app-id="files"]');
+    await explorerFrames.nth(1).waitFor({ state: "visible" });
+    await explorerFrames
+      .nth(1)
+      .locator("aside")
+      .getByRole("button", { name: "문서", exact: true })
+      .click();
+    await page.waitForTimeout(300);
+    assert(
+      (await explorerFrames.nth(1).getAttribute("aria-label"))?.startsWith(
+        "문서 - 파일 탐색기",
+      ),
+      "The second Explorer window is not titled after its folder",
+    );
+    await page.locator(".taskbar-app", { hasText: "파일 탐색기" }).hover();
+    await page
+      .locator('.taskbar-preview-card[aria-label="파일 탐색기 창 미리보기"]')
+      .waitFor({ state: "visible" });
+    const previewText = await taskbarPreview.innerText();
+    assert(
+      previewText.includes("바탕 화면 - 파일 탐색기") &&
+        previewText.includes("문서 - 파일 탐색기"),
+      `Taskbar preview did not tell the two Explorer windows apart: ${previewText.replace(/\s+/g, " ").slice(0, 120)}`,
+    );
+    await page.mouse.move(640, 300);
+    // Only the window this block opened goes away; later sections keep using
+    // the original Explorer window.
+    await explorerFrames.nth(1).getByRole("button", { name: "파일 탐색기 닫기" }).click();
+    await explorerFrames.nth(1).waitFor({ state: "detached" });
+    // Put Edge back on top — the sections below were written with the
+    // Explorer window underneath, and a raised Explorer intercepts their clicks.
+    await page.locator(".taskbar-app", { hasText: "Microsoft Edge" }).click();
+    await page.waitForTimeout(250);
+
     // Edge 다운로드: outside reader view the honest download is the address —
     // a .url shortcut written into the real 다운로드 system folder, which the
     // start search then finds with its folder chain.
@@ -1393,7 +1443,7 @@ async function runSmoke(baseUrl) {
     );
     await brightnessSlider.fill("100");
     await quickSettings.getByRole("button", { name: "설정", exact: true }).click();
-    const settings = page.locator('article[aria-label="설정"]');
+    const settings = page.locator('article[data-app-id="settings"]');
     await settings.waitFor({ state: "visible" });
     await settings.getByRole("button", { name: "시스템", exact: true }).click();
     assert(
@@ -1437,7 +1487,7 @@ async function runSmoke(baseUrl) {
     await runDialog.waitFor({ state: "visible" });
     await runDialog.getByLabel("열기").fill("recycle");
     await runDialog.getByRole("button", { name: "확인" }).click();
-    const recycle = page.locator('article[aria-label="휴지통"]');
+    const recycle = page.locator('article[data-app-id="recycle"]');
     await recycle.waitFor({ state: "visible" });
     assert(
       (await recycle.innerText()).includes(trashedFileName),
@@ -1492,7 +1542,7 @@ async function runSmoke(baseUrl) {
     );
 
     await page.locator(".taskbar-app", { hasText: "Microsoft Edge" }).click();
-    const frame = page.locator('article[aria-label="Microsoft Edge"]');
+    const frame = page.locator('article[data-app-id="browser"]');
     const titlebar = frame.locator(".window-titlebar");
     await frame.getByRole("button", { name: "Microsoft Edge 최대화" }).hover();
     const snapLayoutMenu = frame.getByRole("menu", { name: "스냅 레이아웃" });
@@ -1546,7 +1596,7 @@ async function runSmoke(baseUrl) {
     await runDialog.waitFor({ state: "visible" });
     await runDialog.getByLabel("열기").fill("cmd");
     await runDialog.getByRole("button", { name: "확인" }).click();
-    const terminal = page.locator('article[aria-label="명령 프롬프트"]');
+    const terminal = page.locator('article[data-app-id="terminal"]');
     await terminal.waitFor({ state: "visible" });
     const terminalPrompt = terminal.locator(".terminal-path");
     assert(
@@ -1654,7 +1704,7 @@ async function runSmoke(baseUrl) {
     await unlockPocketDesk(page);
     await terminal.waitFor({ state: "visible" });
 
-    const explorerAfterShell = page.locator('article[aria-label="파일 탐색기"]').first();
+    const explorerAfterShell = page.locator('article[data-app-id="files"]').first();
     if (await explorerAfterShell.isVisible()) {
       await explorerAfterShell
         .getByRole("button", { name: "새로 고침" })
@@ -1744,7 +1794,7 @@ async function runSmoke(baseUrl) {
     await runDialog.waitFor({ state: "visible" });
     await runDialog.getByLabel("열기").fill("calc");
     await runDialog.getByRole("button", { name: "확인" }).click();
-    const dragTarget = page.locator('article[aria-label="계산기"]').first();
+    const dragTarget = page.locator('article[data-app-id="calculator"]').first();
     await dragTarget.waitFor({ state: "visible" });
     await page.waitForTimeout(250);
     const beforeKeyboardMove = await dragTarget.boundingBox();
@@ -1939,7 +1989,7 @@ async function runSmoke(baseUrl) {
 
     // A file dragged out of Explorer lands on the desktop.
     await page.keyboard.press("Meta+e");
-    const dragExplorer = page.locator('article[aria-label="파일 탐색기"]').first();
+    const dragExplorer = page.locator('article[data-app-id="files"]').first();
     await dragExplorer.waitFor({ state: "visible" });
     // Pick a draggable file by name, not `.first()`: the row order depends on
     // collation, so the first row was a folder on CI and a file locally — the
@@ -1970,7 +2020,7 @@ async function runSmoke(baseUrl) {
     await runDialog.waitFor({ state: "visible" });
     await runDialog.getByLabel("열기").fill("지뢰찾기");
     await runDialog.getByRole("button", { name: "확인" }).click();
-    const minesLayout = page.locator('article[aria-label="지뢰찾기"]');
+    const minesLayout = page.locator('article[data-app-id="minesweeper"]');
     await minesLayout.waitFor({ state: "visible" });
     const cellHeights = () =>
       minesLayout
@@ -1999,7 +2049,7 @@ async function runSmoke(baseUrl) {
     await runDialog.waitFor({ state: "visible" });
     await runDialog.getByLabel("열기").fill("notepad");
     await runDialog.getByRole("button", { name: "확인" }).click();
-    const guardNotepad = page.locator('article[aria-label="메모장"]').first();
+    const guardNotepad = page.locator('article[data-app-id="notepad"]').first();
     await guardNotepad.waitFor({ state: "visible" });
     const guardEditor = guardNotepad.getByLabel("메모 내용");
     const closePrompt = page.getByRole("alertdialog");
@@ -2044,7 +2094,7 @@ async function runSmoke(baseUrl) {
     // grow past the content box, which clips, so the content pane never had a
     // bounded track and 86px of 개인 설정 was unreachable on first open.
     await page.keyboard.press("Meta+i");
-    const settingsWindow = page.locator('article[aria-label="설정"]');
+    const settingsWindow = page.locator('article[data-app-id="settings"]');
     await settingsWindow.waitFor({ state: "visible" });
     const settingsFit = await settingsWindow.evaluate((frame) => {
       const content = frame.querySelector(".window-content");
@@ -2081,7 +2131,7 @@ async function runSmoke(baseUrl) {
     await runDialog.waitFor({ state: "visible" });
     await runDialog.getByLabel("열기").fill("notepad");
     await runDialog.getByRole("button", { name: "확인" }).click();
-    const draftNotepad = page.locator('article[aria-label="메모장"]').first();
+    const draftNotepad = page.locator('article[data-app-id="notepad"]').first();
     await draftNotepad.waitFor({ state: "visible" });
     const draftEditor = draftNotepad.getByLabel("메모 내용");
     await draftEditor.fill("SMOKE UNSAVED DRAFT");
@@ -2126,17 +2176,17 @@ async function runSmoke(baseUrl) {
     // A window shrunk to its own minimum must leave every control reachable —
     // either inside the content box, or scrollable into view. The calculator
     // used to lose its whole keypad to a single shared 320x240 floor.
-    for (const [command, label] of [
-      ["calc", "계산기"],
-      ["mspaint", "그림판"],
-      ["regedit", "레지스트리 편집기"],
-      ["사진", "사진"],
+    for (const [command, label, appId] of [
+      ["calc", "계산기", "calculator"],
+      ["mspaint", "그림판", "paint"],
+      ["regedit", "레지스트리 편집기", "registry"],
+      ["사진", "사진", "photos"],
     ]) {
       await page.keyboard.press("Control+Alt+R");
       await runDialog.waitFor({ state: "visible" });
       await runDialog.getByLabel("열기").fill(command);
       await runDialog.getByRole("button", { name: "확인" }).click();
-      const shrinkTarget = page.locator(`article[aria-label="${label}"]`).first();
+      const shrinkTarget = page.locator(`article[data-app-id="${appId}"]`).first();
       await shrinkTarget.waitFor({ state: "visible" });
 
       const startBox = await shrinkTarget.boundingBox();
@@ -2190,7 +2240,7 @@ async function runSmoke(baseUrl) {
     }
 
     await page.keyboard.press("Control+Shift+Escape");
-    const taskManager = page.locator('article[aria-label="작업 관리자"]');
+    const taskManager = page.locator('article[data-app-id="taskmanager"]');
     await taskManager.waitFor({ state: "visible" });
     const terminalRow = taskManager
       .locator(".taskmgr-row", { hasText: "명령 프롬프트" })
@@ -2296,7 +2346,10 @@ async function runSmoke(baseUrl) {
     await runDialog.waitFor({ state: "visible" });
     await runDialog.getByLabel("열기").fill("calc");
     await runDialog.getByRole("button", { name: "확인" }).click();
-    await page.locator('article[aria-label="계산기"]').first().waitFor({ state: "visible" });
+    await page
+      .locator('article[data-app-id="calculator"]')
+      .first()
+      .waitFor({ state: "visible" });
     await page.getByRole("button", { name: /작업 보기/ }).click();
     await page.locator(".task-view").waitFor({ state: "visible" });
     const cardsBefore = await page.locator(".task-view-card").count();
@@ -2325,7 +2378,7 @@ async function runSmoke(baseUrl) {
     await runDialog.waitFor({ state: "visible" });
     await runDialog.getByLabel("열기").fill("msedge");
     await runDialog.getByRole("button", { name: "확인" }).click();
-    const edgeTabs = page.locator('article[aria-label="Microsoft Edge"]').first();
+    const edgeTabs = page.locator('article[data-app-id="browser"]').first();
     await edgeTabs.waitFor({ state: "visible" });
     await page.waitForTimeout(300);
     const addressBar = edgeTabs.locator(".browser-toolbar input").first();
@@ -2410,7 +2463,7 @@ async function runSmoke(baseUrl) {
     await touchPage.getByRole("button", { name: "시작 메뉴" }).tap();
     await touchPage.getByLabel("앱과 바탕화면 항목 검색").fill("메모장");
     await touchPage.locator(".start-result-list button").first().tap();
-    const touchNotepad = touchPage.locator('article[aria-label="메모장"]');
+    const touchNotepad = touchPage.locator('article[data-app-id="notepad"]');
     await touchNotepad.waitFor({ state: "visible" });
     const touchBefore = await touchNotepad.boundingBox();
     const touchBar = await touchNotepad.locator(".window-titlebar").boundingBox();
