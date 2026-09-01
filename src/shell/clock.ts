@@ -181,6 +181,17 @@ export function collectDueClockAlarms(alarms: ClockAlarm[], now: number) {
   };
 }
 
+export const ALARM_SNOOZE_MS = 5 * 60 * 1000;
+
+/**
+ * 다시 알림: re-arms a just-fired alarm a few minutes out, regardless of its
+ * repeat schedule — Windows snoozes the ring, not the calendar. A repeating
+ * alarm's next scheduled day is recomputed again when the snooze fires.
+ */
+export function snoozeClockAlarm(alarm: ClockAlarm, now: number): ClockAlarm {
+  return { ...alarm, enabled: true, nextFireAt: now + ALARM_SNOOZE_MS };
+}
+
 /** True when the ring time passed long ago — a reload finding a stale deadline. */
 export function isMissedAlarmFire(alarm: ClockAlarm, now: number) {
   return now - alarm.nextFireAt > MISSED_ALARM_GRACE_MS;

@@ -161,6 +161,29 @@ describe("resolveShellParent", () => {
   });
 });
 
+describe("runShellCommand: power", () => {
+  it("maps shutdown flags onto the shell's power actions", () => {
+    expect(runShellCommand("shutdown /s", makeContext()).effects).toEqual([
+      { kind: "power", action: "off" },
+    ]);
+    expect(runShellCommand("shutdown /r /t 0", makeContext()).effects).toEqual([
+      { kind: "power", action: "restart" },
+    ]);
+    expect(runShellCommand("shutdown /l", makeContext()).effects).toEqual([
+      { kind: "power", action: "lock" },
+    ]);
+    expect(runShellCommand("logoff", makeContext()).effects).toEqual([
+      { kind: "power", action: "lock" },
+    ]);
+  });
+
+  it("prints usage instead of acting when no flag is given", () => {
+    const result = runShellCommand("shutdown", makeContext());
+    expect(result.effects).toEqual([]);
+    expect(result.lines.map((line) => line.text).join("\n")).toContain("/s");
+  });
+});
+
 describe("runShellCommand: navigation", () => {
   it("ignores an empty line", () => {
     expect(runShellCommand("   ", makeContext())).toEqual({ effects: [], lines: [] });

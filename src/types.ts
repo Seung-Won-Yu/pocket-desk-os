@@ -71,8 +71,18 @@ export type VfsDuplicateOptions = {
 
 export type ToastTone = "info" | "success";
 
+/** A button on a toast, the way Windows notifications carry actions. */
+export type ToastAction = {
+  id: string;
+  label: string;
+};
+
 export type ToastInput = {
+  /** Buttons rendered on the toast; clicking one also dismisses it. */
+  actions?: ToastAction[];
   detail?: string;
+  /** Called with the clicked action's id. Lives only on the live toast. */
+  onAction?: (actionId: string) => void;
   title: string;
   tone?: ToastTone;
 };

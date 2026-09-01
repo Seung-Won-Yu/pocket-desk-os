@@ -1641,6 +1641,17 @@ async function runSmoke(baseUrl) {
       "cls did not clear the Command Prompt buffer",
     );
 
+    // shutdown /l goes through the same path as the Start menu's 잠금 — the
+    // lock screen appears, and unlocking brings the session back with the
+    // terminal still running.
+    await terminal.getByLabel("명령 입력").fill("shutdown /l");
+    await terminal.getByLabel("명령 입력").press("Enter");
+    await page
+      .locator('[aria-label="PocketDesk 잠금 화면"]')
+      .waitFor({ state: "visible", timeout: 5000 });
+    await unlockPocketDesk(page);
+    await terminal.waitFor({ state: "visible" });
+
     const explorerAfterShell = page.locator('article[aria-label="파일 탐색기"]').first();
     if (await explorerAfterShell.isVisible()) {
       await explorerAfterShell

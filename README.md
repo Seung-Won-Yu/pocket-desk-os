@@ -97,7 +97,7 @@ C:\Users\PocketDesk\Desktop\프로젝트> type 메모.txt
 | ------ | ----------------------------------------------------------------------------------------------------- |
 | 탐색   | `dir`(`ls`), `cd`(`chdir`), `pwd`, `tree`, `find`(`findstr`)                                          |
 | 파일   | `type`(`cat`), `echo` + `>`·`>>`, `md`(`mkdir`), `del`(`erase`), `rd`(`rmdir`), `copy`, `move`, `ren` |
-| 실행   | `start`, `call`, `tasklist`, `taskkill /pid <번호>`, `exit`                                           |
+| 실행   | `start`, `call`, `tasklist`, `taskkill /pid <번호>`, `shutdown /s /r /l`, `logoff`, `exit`                                           |
 | 시스템 | `set`, `systeminfo`, `ver`, `vol`, `whoami`, `hostname`, `date`, `time`, `cls`                        |
 
 `↑`·`↓`로 명령 기록을 넘기고 `Tab`으로 현재 폴더의 이름을 자동 완성합니다. `help`가 전체 목록을 표시합니다.
@@ -262,6 +262,7 @@ DEPLOYMENT.md         정적 호스팅과 배포 안내
 - [x] 다운로드 시스템 폴더와 Edge 페이지 다운로드
 - [x] 점프 리스트가 실제 열람 이력 순으로 정렬
 - [x] 새로 만들기 > 인터넷 바로 가기 마법사 (http/https 검증)
+- [x] 알림 토스트 액션과 알람 다시 알림, 터미널 shutdown 연동
 
 구현 과정과 설계 기준은 [개발 기록](./docs/DEVELOPMENT-NOTES.md)에 정리했습니다.
 

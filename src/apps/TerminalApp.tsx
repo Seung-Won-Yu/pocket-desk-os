@@ -18,6 +18,7 @@ type TerminalAppProps = {
   createVfsFolder: (parentId?: string, name?: string) => DesktopItem;
   moveVfsEntries: (itemIds: string[], parentId: string) => boolean;
   openApp: (appId: AppId) => void;
+  requestPowerAction: (action: "lock" | "off" | "restart") => void;
   openVfsEntry: (item: DesktopItem) => void;
   openWindows: OpenWindowInfo[];
   userName: string;
@@ -53,6 +54,7 @@ export default function TerminalApp({
   duplicateVfsEntries,
   moveVfsEntries,
   openApp,
+  requestPowerAction,
   openVfsEntry,
   openWindows,
   playSound,
@@ -132,6 +134,11 @@ export default function TerminalApp({
         case "launch":
           openApp(effect.appId);
           break;
+        case "power":
+          requestPowerAction(effect.action);
+          // A blocked action (a guard said no) simply leaves the desktop as
+          // is; nothing further for this line to do either way.
+          return;
         case "mkdir":
           // Name it on creation: a follow-up rename would not see this folder,
           // because the callback still reads the pre-update entry list.

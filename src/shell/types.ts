@@ -9,6 +9,7 @@ import {
   type SoundEffectName,
   type SystemClipboard,
   type ThemeName,
+  type ToastAction,
   type ToastInput,
   type VfsDuplicateOptions,
   type WallpaperName,
@@ -102,9 +103,11 @@ export type StartSearchResult =
       subtitle: string;
       title: string;
     };
-export type ToastMessage = Required<ToastInput> & {
+export type ToastMessage = Required<Omit<ToastInput, "actions" | "onAction">> & {
+  actions: ToastAction[];
   createdAt: number;
   id: string;
+  onAction?: (actionId: string) => void;
 };
 export type ShellPhase = "booting" | "locked" | "shutdown" | "unlocked";
 export type SnapZone =
@@ -196,6 +199,8 @@ export type AppContentProps = {
   importVfsZip: (file: File) => Promise<void>;
   moveVfsEntries: (itemIds: string[], parentId: string) => boolean;
   openApp: (appId: AppId) => void;
+  /** The Start menu's power actions, for the terminal's shutdown command. */
+  requestPowerAction: (action: "lock" | "off" | "restart") => void;
   openNewAppWindow: (appId: AppId) => string;
   activateVfsEntry: (item: DesktopItem) => void;
   openVfsEntry: (item: DesktopItem) => void;

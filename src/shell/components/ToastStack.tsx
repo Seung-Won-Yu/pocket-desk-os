@@ -29,6 +29,24 @@ export function ToastStack({
             <strong>{toast.title}</strong>
             {toast.detail && <small>{toast.detail}</small>}
           </div>
+          {toast.actions.length > 0 && (
+            <footer className="toast-actions">
+              {toast.actions.map((action) => (
+                <button
+                  key={action.id}
+                  onClick={() => {
+                    // The action first, then the dismissal — the handler may
+                    // read state the dismissal path also touches.
+                    toast.onAction?.(action.id);
+                    onDismiss(toast.id);
+                  }}
+                  type="button"
+                >
+                  {action.label}
+                </button>
+              ))}
+            </footer>
+          )}
         </article>
       ))}
     </section>

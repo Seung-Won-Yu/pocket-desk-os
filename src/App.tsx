@@ -126,6 +126,7 @@ import { formatWindowTitle } from "./shell/windowTitle";
 import {
   collectDueClockAlarms,
   formatClockDuration,
+  snoozeClockAlarm,
   isMissedAlarmFire,
   loadClockAlarms,
   loadClockTimer,
@@ -487,18 +488,26 @@ export default function App() {
   const notify = (toast: ToastInput) => {
     const id = crypto.randomUUID();
     const nextToast: ToastMessage = {
+      actions: toast.actions ?? [],
       createdAt: Date.now(),
       detail: toast.detail ?? "",
       id,
+      onAction: toast.onAction,
       title: toast.title,
       tone: toast.tone ?? "info",
     };
 
     setToasts((current) => [...current.slice(-3), nextToast]);
+    // The history is a record, not a control surface: its entries persist to
+    // storage, where a callback cannot follow.
     setNotificationHistory((current) =>
-      [nextToast, ...current].slice(0, NOTIFICATION_HISTORY_LIMIT),
+      [{ ...nextToast, actions: [], onAction: undefined }, ...current].slice(
+        0,
+        NOTIFICATION_HISTORY_LIMIT,
+      ),
     );
-    window.setTimeout(() => dismissToast(id), 3400);
+    // A toast asking a question needs longer on screen than one stating a fact.
+    window.setTimeout(() => dismissToast(id), nextToast.actions.length > 0 ? 9000 : 3400);
   };
 
   const clearNotificationHistory = () => {
@@ -541,7 +550,21 @@ export default function App() {
         setClockAlarms(next);
         for (const alarm of due) {
           notify({
+            // 해제 just closes the toast — a one-shot is already off and a
+            // repeating alarm already re-armed for its next day.
+            actions: [
+              { id: "snooze", label: "다시 알림 (5분)" },
+              { id: "dismiss", label: "해제" },
+            ],
             detail: `${alarm.time}${alarm.label ? ` · ${alarm.label}` : ""}`,
+            onAction: (actionId) => {
+              if (actionId !== "snooze") return;
+              setClockAlarms((current) =>
+                current.map((item) =>
+                  item.id === alarm.id ? snoozeClockAlarm(item, Date.now()) : item,
+                ),
+              );
+            },
             title: isMissedAlarmFire(alarm, timestamp) ? "놓친 알람" : "알람",
             tone: "info",
           });
@@ -622,6 +645,22 @@ export default function App() {
     cancelWindowMotion(id);
     if (target.minimized) updateWindow(id, { minimized: false });
     focusWindow(id);
+  };
+
+  /**
+   * cmd's shutdown command, routed through the exact same paths the Start
+   * menu's power buttons take — guards ask their questions first.
+   */
+  const requestPowerAction = (action: "lock" | "off" | "restart") => {
+    if (action === "lock") {
+      lockDesktop();
+      return;
+    }
+    if (action === "restart") {
+      restartDesktop();
+      return;
+    }
+    shutdownDesktop();
   };
 
   const closeAllWindowsForPowerAction = (actionLabel: string) => {
@@ -3335,6 +3374,7 @@ export default function App() {
                 importVfsZip={importVfsZip}
                 moveVfsEntries={moveVfsEntries}
                 openApp={openApp}
+                requestPowerAction={requestPowerAction}
                 openNewAppWindow={openNewAppWindow}
                 activateVfsEntry={activateVfsEntry}
                 openVfsEntry={openVfsEntry}

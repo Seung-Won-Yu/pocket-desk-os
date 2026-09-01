@@ -20,6 +20,7 @@ export type ShellEffect =
   | { kind: "delete"; itemIds: string[] }
   | { kind: "exit" }
   | { kind: "killWindow"; windowId: string }
+  | { kind: "power"; action: "lock" | "off" | "restart" }
   | { kind: "launch"; appId: AppId }
   | { kind: "mkdir"; name: string; parentId: string }
   | { kind: "move"; itemIds: string[]; parentId: string }
@@ -113,6 +114,8 @@ const COMMAND_HELP: Array<[string, string]> = [
   ["whoami / hostname", "사용자와 컴퓨터 이름을 표시합니다."],
   ["vol", "드라이브 볼륨 정보를 표시합니다."],
   ["cls (clear)", "화면을 지웁니다."],
+  ["shutdown", "/s 시스템 종료, /r 다시 시작, /l 세션 잠금."],
+  ["logoff", "세션을 잠급니다."],
   ["exit", "명령 프롬프트를 닫습니다."],
 ];
 
@@ -618,6 +621,46 @@ function runSingleCommand(input: string, context: ShellContext): ShellResult {
           out(` 볼륨 일련 번호: ${SHELL_VOLUME_SERIAL}`),
         ],
       };
+
+    case "logoff":
+      return {
+        effects: [{ kind: "power", action: "lock" }],
+        lines: [out("세션을 잠급니다.")],
+      };
+
+    case "shutdown": {
+      // Windows semantics, sized to this shell: /s ends the session, /r
+      // restarts it, /l locks it. The /t delay is accepted and ignored — the
+      // real command's scheduler has no counterpart here.
+      const flags = new Set(args.map((value) => value.toLowerCase()));
+      if (flags.has("/s")) {
+        return {
+          effects: [{ kind: "power", action: "off" }],
+          lines: [out("시스템을 종료합니다. 저장하지 않은 작업은 각 창이 먼저 묻습니다.")],
+        };
+      }
+      if (flags.has("/r")) {
+        return {
+          effects: [{ kind: "power", action: "restart" }],
+          lines: [out("시스템을 다시 시작합니다.")],
+        };
+      }
+      if (flags.has("/l")) {
+        return {
+          effects: [{ kind: "power", action: "lock" }],
+          lines: [out("세션을 잠급니다.")],
+        };
+      }
+      return {
+        effects: [],
+        lines: [
+          out("사용법: shutdown /s | /r | /l"),
+          out("  /s  시스템을 종료합니다."),
+          out("  /r  시스템을 다시 시작합니다."),
+          out("  /l  세션을 잠급니다."),
+        ],
+      };
+    }
 
     case "whoami":
       return { effects: [], lines: [out(`${context.hostName}\\${context.userName}`)] };

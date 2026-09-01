@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  ALARM_SNOOZE_MS,
   CLOCK_ALARM_LIMIT,
   CLOCK_TIMER_DEFAULT_MS,
   CLOCK_TIMER_MAX_MS,
@@ -30,6 +31,7 @@ import {
   resetClockTimer,
   setClockAlarmEnabled,
   setClockTimerDuration,
+  snoozeClockAlarm,
   startClockTimer,
   tickClockTimer,
   type ClockAlarm,
@@ -122,6 +124,17 @@ describe("alarm scheduling", () => {
 
     localStorage.setItem(CLOCK_ALARMS_KEY, JSON.stringify(many));
     expect(loadClockAlarms()).toHaveLength(CLOCK_ALARM_LIMIT);
+  });
+
+  it("snooze re-arms a fired alarm a few minutes out, whatever its schedule", () => {
+    const fired = { ...createClockAlarm("09:00", "", NOW), enabled: false };
+    const snoozed = snoozeClockAlarm(fired, NOW);
+    expect(snoozed.enabled).toBe(true);
+    expect(snoozed.nextFireAt).toBe(NOW + ALARM_SNOOZE_MS);
+    // The weekly schedule is untouched — snooze moves the ring, not the calendar.
+    const repeating = snoozeClockAlarm(createClockAlarm("09:00", "", NOW, [1, 3]), NOW);
+    expect(repeating.repeatDays).toEqual([1, 3]);
+    expect(repeating.nextFireAt).toBe(NOW + ALARM_SNOOZE_MS);
   });
 
   it("distinguishes a live ring from one found long after the fact", () => {
