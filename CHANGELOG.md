@@ -2,6 +2,31 @@
 
 All notable changes to PocketDesk OS are documented here.
 
+## 0.12.0
+
+The round where the shell learned to keep time and to remember what you use. Every behavior below was measured in a real browser before shipping — the headline measurement: an alarm set with its app window closed rang 387ms after its minute, on the deployed site.
+
+### Added
+
+- **알람 및 시계** — built as a shell service, not a window feature. Alarms and the timer live in shell state as absolute deadlines and a shell scheduler fires them whether or not the app window exists; both survive a reload, a deadline that passed while the tab was closed is delivered as 놓친 알람, and nothing rings on the lock screen or after power-off — it waits for unlock. Alarms repeat on weekdays (one-shot otherwise, exactly like Windows), the timer pauses where it stands and refuses length edits mid-run, the stopwatch keeps centiseconds and 플래그 laps, and 세계 시계 does real timezone math through Intl — London is -8시간 in August and -9시간 in January without a hand-maintained offset table.
+- **Taskbar jump lists** — right-clicking an app button lists the documents that app would open, newest first, grouped by the same rule a double-click uses (the file-type default app wins). Recency is real use: the shell stamps every open, so picking a document moves it up, while a terminal-written file still surfaces before anyone has opened it.
+- **다운로드, and Edge that can fill it** — a fourth system folder that old profiles gain automatically (backdated, so a 만든 날짜 sort doesn't lie about its age). Edge's 페이지 다운로드 saves the reader view's actual content as Markdown — which Notepad's preview renders — or, outside reader view, the address as a .url shortcut, because a cross-origin frame can't honestly be saved as anything else.
+- **새로 만들기 > 인터넷 바로 가기** — the desktop wizard, validating to http(s) before anything is written. The same rule now guards the write side of every shortcut: a target the shell would refuse to open is refused at creation.
+- **Start search that says where files live** — results show the real folder chain (텍스트 문서 · 바탕 화면 > 문서), the chain itself matches, and the 바탕화면 keyword stopped returning the whole disk.
+
+### Fixed
+
+- The scheduler fired on the lock screen and with the power off — a sound over a black screen, the toast under the gate, the alarm consumed. It waits now.
+- Editing a disabled alarm's time armed it, per keystroke, at intermediate times the user never chose. Rescheduling preserves the on/off state.
+- The clock app's inputs killed the global focus ring the stylesheet documents as load-bearing; stopwatch flags renumbered themselves past the 99-lap cap; the display tick kept building Intl formatters in minimized windows — ring restored, laps carry their own numbers, formatters cached and the tick stops while hidden.
+- Opening a file honored the default-app override for choosing the app but not the document pointer — a txt defaulted to the terminal silently swapped Notepad's open file. Only the app that actually opens moves its pointer. The terminal's own `echo x > 파일.txt` did the same document-yanking with a toast per redirect; it writes silently now, like cmd.
+- A web page's title becomes a filename through one shared sanitizer that also strips control and bidi-override characters, and a reader download over 2MB is refused instead of wedging the whole VFS behind its shared quota. While the reader is still fetching, the download button waits instead of silently saving a .url.
+- Smoke assertions that hardcoded Explorer row counts broke the day a fourth system folder existed; they measure the live list now.
+
+### Testing
+
+- 763 unit tests across 27 files — new suites for clock scheduling and the timer state machine, world-clock timezone reads against fixed instants, repeat-day scheduling across the week wrap, jump-list grouping and recency, recent-opens capping, the VFS hierarchy migration (including the upgrade path that adds 다운로드 to existing profiles), filename sanitizing, and shortcut-target validation. The smoke suite pins the shell-fired timer with its window closed, the jump list opening a document, the world clock rendering a live reading, Edge's download landing where search can find it, and the shortcut wizard refusing ftp://.
+
 ## 0.11.0
 
 Two behavioral audits and two adversarial reviews, every finding reproduced in a real browser before the fix and re-measured after. The theme: gestures that existed but produced the wrong result, state the shell forgot, and readouts that reported numbers nothing computed.
@@ -87,7 +112,7 @@ A security pass over the whole app, from an adversarial audit.
 - Reader mode sent the full target address — query string, fragment and any embedded credentials — to a third-party proxy, and selected itself automatically for github.com, notion.so, openai.com and others. Opening an invitation or reset link in the Edge app therefore leaked its token. The reader URL now carries only scheme, host and path, and reader mode is never auto-selected for an address whose query would be handed over.
 - The iframe granted `clipboard-read` and `clipboard-write` to every site browsed to. Chrome auto-grants the write, and attributes the read prompt to the top-level origin, so the user would see PocketDesk asking to read their clipboard. The `allow` list is gone.
 - `allow-same-origin` is gone from the iframe sandbox. A load-time origin check cannot see a frame navigating itself to this origin afterwards, because the app can never read a cross-origin frame's location. Without the flag the frame is an opaque origin and the escape is impossible. `allow-downloads` and `allow-modals` went too.
-- The service worker served `/assets/` cache-first and never revalidated, while `activate` evicted only caches with a different *name* — and that name was a hand-edited constant. A single cache write would have been served forever, offline included, outliving the fix to whatever caused it. The build now stamps a per-deploy id into the cache name.
+- The service worker served `/assets/` cache-first and never revalidated, while `activate` evicted only caches with a different _name_ — and that name was a hand-edited constant. A single cache write would have been served forever, offline included, outliving the fix to whatever caused it. The build now stamps a per-deploy id into the cache name.
 - Every URL reaching an `href`, an image `src`, a navigation or the proxy passes a shared http(s) check. Stored bookmarks and history entries are dropped on load if their URL is not http(s), since the Registry Editor exposes those keys for editing.
 - The CI workflow ran pull-request code with the repository's default token scope; it now takes `contents: read`.
 - The dev server had no CSP, which made the build with real file access the weaker of the two.
@@ -104,7 +129,6 @@ A security pass over the whole app, from an adversarial audit.
 
 Closes two real security holes in the deployed site, and brings actual local files into Explorer on the developer's own machine.
 
-
 ### Added
 
 - Import a real folder from the machine into Explorer, and write a folder's contents back out to disk. Gated to `localhost` — the deployed site never offers it, because the browser's permission prompt protects a granted handle from other sites but not from this app being compromised. The import skips credential-looking names, key stores and build directories, and caps item count, bytes and depth.
@@ -117,7 +141,6 @@ Closes two real security holes in the deployed site, and brings actual local fil
 ## 0.6.0
 
 Completes the accessibility pass: every menu, grid and tab strip now behaves the way its ARIA role promises.
-
 
 ### Fixed
 
@@ -157,7 +180,6 @@ Snap Assist, drag between Explorer and the desktop, a keyboard-accessibility pas
 ## 0.4.0
 
 One shared clipboard, a Photos viewer, taskbar search, Settings that change real behavior, two system apps built on the desktop's own data, and the first component tests.
-
 
 ### Added
 
@@ -201,7 +223,6 @@ Shell scripting over the virtual file system — variables, wildcards, pipes, an
 ## 0.2.0
 
 Desktop shell split into modules, a working command prompt, task manager, and virtual desktops, plus the project's first automated unit tests.
-
 
 ### Added
 
