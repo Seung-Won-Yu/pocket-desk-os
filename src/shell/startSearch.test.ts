@@ -252,6 +252,32 @@ describe("buildStartSearchResults", () => {
     ]);
   });
 
+  it("renders the full chain for a file two folders deep", () => {
+    const outer = createDesktopItem({
+      id: "folder-outer",
+      kind: "folder",
+      name: "프로젝트",
+      showOnDesktop: false,
+    });
+    const inner = createDesktopItem({
+      id: "folder-inner",
+      kind: "folder",
+      name: "회의록",
+      parentId: "folder-outer",
+      showOnDesktop: false,
+    });
+    const nested = createDesktopItem({
+      id: "note-deep",
+      name: "8월.txt",
+      parentId: "folder-inner",
+      showOnDesktop: false,
+    });
+
+    const results = buildStartSearchResults("8월", [outer, inner, nested], []);
+    expect(results.map((result) => result.id)).toEqual(["desktop-note-deep"]);
+    expect(results[0].subtitle).toBe("텍스트 문서 · 바탕 화면 > 프로젝트 > 회의록");
+  });
+
   it("breaks score ties by title", () => {
     const items = [
       createDesktopItem({ id: "b", name: "b.txt" }),

@@ -14,9 +14,17 @@ export type ClockAlarm = {
   label: string;
   /** Epoch ms of the next scheduled ring; recomputed whenever the alarm is armed. */
   nextFireAt: number;
+  /**
+   * Weekdays the alarm repeats on (0 = 일요일 … 6 = 토요일), sorted and unique.
+   * Empty means one-shot: ring once, then turn off — records saved before this
+   * field existed load as one-shot, which is what they were.
+   */
+  repeatDays: number[];
   /** Wall-clock ring time as 24h "HH:MM". */
   time: string;
 };
+
+export const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 
 export type ClockTimer = {
   /** Configured length in ms — what 초기화 returns to. */
@@ -45,8 +53,20 @@ export function isValidAlarmTime(value: string) {
  * otherwise tomorrow. Built through local Date math so a DST jump moves the
  * ring with the clock instead of drifting an hour off it.
  */
-export function getNextAlarmFireTime(time: string, now: number) {
+export function getNextAlarmFireTime(time: string, now: number, repeatDays: number[] = []) {
   const [hours, minutes] = time.split(":").map(Number);
+  if (repeatDays.length > 0) {
+    // The nearest future moment landing on a repeat weekday. Offset 7 covers
+    // "today is the only repeat day but its time already passed".
+    for (let offset = 0; offset <= 7; offset += 1) {
+      const candidate = new Date(now);
+      candidate.setDate(candidate.getDate() + offset);
+      candidate.setHours(hours, minutes, 0, 0);
+      if (candidate.getTime() > now && repeatDays.includes(candidate.getDay())) {
+        return candidate.getTime();
+      }
+    }
+  }
   const next = new Date(now);
   next.setHours(hours, minutes, 0, 0);
   if (next.getTime() <= now) {
@@ -56,14 +76,51 @@ export function getNextAlarmFireTime(time: string, now: number) {
   return next.getTime();
 }
 
-export function createClockAlarm(time: string, label: string, now: number): ClockAlarm {
+export function createClockAlarm(
+  time: string,
+  label: string,
+  now: number,
+  repeatDays: number[] = [],
+): ClockAlarm {
+  const days = sanitizeRepeatDays(repeatDays);
   return {
     enabled: true,
     id: `alarm-${crypto.randomUUID()}`,
     label: label.trim(),
-    nextFireAt: getNextAlarmFireTime(time, now),
+    nextFireAt: getNextAlarmFireTime(time, now, days),
+    repeatDays: days,
     time,
   };
+}
+
+export function sanitizeRepeatDays(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value.filter((day): day is number => Number.isInteger(day) && day >= 0 && day <= 6),
+    ),
+  ].sort((a, b) => a - b);
+}
+
+/** Adds or removes one weekday; an armed alarm re-schedules for the new set. */
+export function toggleAlarmRepeatDay(alarm: ClockAlarm, day: number, now: number): ClockAlarm {
+  const repeatDays = alarm.repeatDays.includes(day)
+    ? alarm.repeatDays.filter((item) => item !== day)
+    : sanitizeRepeatDays([...alarm.repeatDays, day]);
+  return {
+    ...alarm,
+    nextFireAt: alarm.enabled
+      ? getNextAlarmFireTime(alarm.time, now, repeatDays)
+      : alarm.nextFireAt,
+    repeatDays,
+  };
+}
+
+/** "매주 월·수·금" for the alarm caption; empty for a one-shot alarm. */
+export function describeAlarmRepeat(repeatDays: number[]) {
+  if (repeatDays.length === 0) return "";
+  if (repeatDays.length === 7) return "매일";
+  return `매주 ${repeatDays.map((day) => WEEKDAY_LABELS[day]).join("·")}`;
 }
 
 /** Re-arms (or disarms) an alarm; arming always schedules from the present. */
@@ -73,13 +130,28 @@ export function setClockAlarmEnabled(
   now: number,
 ): ClockAlarm {
   if (!enabled) return { ...alarm, enabled: false };
-  return { ...alarm, enabled: true, nextFireAt: getNextAlarmFireTime(alarm.time, now) };
+  return {
+    ...alarm,
+    enabled: true,
+    nextFireAt: getNextAlarmFireTime(alarm.time, now, alarm.repeatDays),
+  };
 }
 
-/** Changes an alarm's ring time and re-arms it in one step. */
+/**
+ * Changes an alarm's ring time. An armed alarm re-schedules; a disabled one
+ * keeps its state — the row's time field fires onChange per keystroke, so
+ * "editing turns the alarm on" would arm intermediate times the user never
+ * chose.
+ */
 export function rescheduleClockAlarm(alarm: ClockAlarm, time: string, now: number): ClockAlarm {
   if (!isValidAlarmTime(time)) return alarm;
-  return { ...alarm, enabled: true, nextFireAt: getNextAlarmFireTime(time, now), time };
+  return {
+    ...alarm,
+    nextFireAt: alarm.enabled
+      ? getNextAlarmFireTime(time, now, alarm.repeatDays)
+      : alarm.nextFireAt,
+    time,
+  };
 }
 
 /**
@@ -95,7 +167,17 @@ export function collectDueClockAlarms(alarms: ClockAlarm[], now: number) {
   const dueIds = new Set(due.map((alarm) => alarm.id));
   return {
     due,
-    next: alarms.map((alarm) => (dueIds.has(alarm.id) ? { ...alarm, enabled: false } : alarm)),
+    next: alarms.map((alarm) => {
+      if (!dueIds.has(alarm.id)) return alarm;
+      // A repeating alarm rides on to its next weekday; a one-shot turns off.
+      if (alarm.repeatDays.length > 0) {
+        return {
+          ...alarm,
+          nextFireAt: getNextAlarmFireTime(alarm.time, now, alarm.repeatDays),
+        };
+      }
+      return { ...alarm, enabled: false };
+    }),
   };
 }
 
@@ -200,18 +282,23 @@ export function loadClockAlarms(): ClockAlarm[] {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem(CLOCK_ALARMS_KEY) ?? "[]");
     if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter(
-        (item): item is ClockAlarm =>
-          typeof item === "object" &&
-          item !== null &&
-          typeof (item as ClockAlarm).id === "string" &&
-          typeof (item as ClockAlarm).label === "string" &&
-          typeof (item as ClockAlarm).enabled === "boolean" &&
-          Number.isFinite((item as ClockAlarm).nextFireAt) &&
-          isValidAlarmTime((item as ClockAlarm).time),
-      )
-      .slice(0, CLOCK_ALARM_LIMIT);
+    return (
+      parsed
+        .filter(
+          (item): item is ClockAlarm =>
+            typeof item === "object" &&
+            item !== null &&
+            typeof (item as ClockAlarm).id === "string" &&
+            typeof (item as ClockAlarm).label === "string" &&
+            typeof (item as ClockAlarm).enabled === "boolean" &&
+            Number.isFinite((item as ClockAlarm).nextFireAt) &&
+            isValidAlarmTime((item as ClockAlarm).time),
+        )
+        // Records saved before repeat existed carry no repeatDays; they were
+        // one-shot alarms, so they stay one-shot.
+        .map((item) => ({ ...item, repeatDays: sanitizeRepeatDays(item.repeatDays) }))
+        .slice(0, CLOCK_ALARM_LIMIT)
+    );
   } catch {
     return [];
   }
@@ -308,17 +395,32 @@ const DEFAULT_WORLD_CLOCKS = ["Asia/Seoul", "Europe/London", "America/New_York"]
  * that zone and reads the wall-clock fields back — the standard way to get an
  * offset out of Intl, which exposes no direct accessor.
  */
+const intlFormatterCache = new Map<string, Intl.DateTimeFormat>();
+
+/** Intl.DateTimeFormat construction is expensive; a display tick reuses these. */
+function getCachedFormatter(key: string, build: () => Intl.DateTimeFormat) {
+  const cached = intlFormatterCache.get(key);
+  if (cached) return cached;
+  const formatter = build();
+  intlFormatterCache.set(key, formatter);
+  return formatter;
+}
+
 export function getTimeZoneOffsetMinutes(timeZone: string, at: number) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    day: "2-digit",
-    hour: "2-digit",
-    hourCycle: "h23",
-    minute: "2-digit",
-    month: "2-digit",
-    second: "2-digit",
-    timeZone,
-    year: "numeric",
-  }).formatToParts(new Date(at));
+  const parts = getCachedFormatter(
+    `offset|${timeZone}`,
+    () =>
+      new Intl.DateTimeFormat("en-US", {
+        day: "2-digit",
+        hour: "2-digit",
+        hourCycle: "h23",
+        minute: "2-digit",
+        month: "2-digit",
+        second: "2-digit",
+        timeZone,
+        year: "numeric",
+      }),
+  ).formatToParts(new Date(at));
   const read = (type: Intl.DateTimeFormatPartTypes) =>
     Number(parts.find((part) => part.type === type)?.value ?? 0);
   const asUtc = Date.UTC(
@@ -347,12 +449,16 @@ export function readWorldClock(
   now: number,
   localZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
 ): WorldClockReading {
-  const time = new Intl.DateTimeFormat("ko-KR", {
-    hour: "2-digit",
-    hourCycle: "h23",
-    minute: "2-digit",
-    timeZone,
-  }).format(new Date(now));
+  const time = getCachedFormatter(
+    `time|${timeZone}`,
+    () =>
+      new Intl.DateTimeFormat("ko-KR", {
+        hour: "2-digit",
+        hourCycle: "h23",
+        minute: "2-digit",
+        timeZone,
+      }),
+  ).format(new Date(now));
 
   const diffMinutes =
     getTimeZoneOffsetMinutes(timeZone, now) - getTimeZoneOffsetMinutes(localZone, now);
@@ -367,12 +473,16 @@ export function readWorldClock(
         }`;
 
   const dateIn = (zone: string) =>
-    new Intl.DateTimeFormat("en-CA", {
-      day: "2-digit",
-      month: "2-digit",
-      timeZone: zone,
-      year: "numeric",
-    }).format(new Date(now));
+    getCachedFormatter(
+      `date|${zone}`,
+      () =>
+        new Intl.DateTimeFormat("en-CA", {
+          day: "2-digit",
+          month: "2-digit",
+          timeZone: zone,
+          year: "numeric",
+        }),
+    ).format(new Date(now));
   const localDate = dateIn(localZone);
   const remoteDate = dateIn(timeZone);
   // The two calendars are never more than one day apart.

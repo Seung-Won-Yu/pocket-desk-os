@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  CLOCK_ALARM_LIMIT,
   CLOCK_TIMER_DEFAULT_MS,
   CLOCK_TIMER_MAX_MS,
   collectDueClockAlarms,
@@ -16,8 +17,11 @@ import {
   loadClockAlarms,
   loadClockTimer,
   pauseClockTimer,
+  describeAlarmRepeat,
   getTimeZoneOffsetMinutes,
   loadWorldClocks,
+  sanitizeRepeatDays,
+  toggleAlarmRepeatDay,
   persistClockAlarms,
   persistClockTimer,
   persistWorldClocks,
@@ -91,18 +95,92 @@ describe("alarm scheduling", () => {
     expect(describeAlarmFireDay(getNextAlarmFireTime("09:00", NOW), NOW)).toBe("내일");
   });
 
-  it("rescheduling swaps the time, re-arms, and rejects malformed input", () => {
-    const alarm = { ...createClockAlarm("10:00", "", NOW), enabled: false };
-    const moved = rescheduleClockAlarm(alarm, "11:15", NOW);
-    expect(moved.time).toBe("11:15");
-    expect(moved.enabled).toBe(true);
-    expect(rescheduleClockAlarm(alarm, "25:00", NOW)).toBe(alarm);
+  it("rescheduling keeps the on/off state and rejects malformed input", () => {
+    // A disabled alarm keeps its state: the row's time input fires onChange
+    // per keystroke, and editing must not arm times the user never chose.
+    const off = { ...createClockAlarm("10:00", "", NOW), enabled: false, nextFireAt: 123 };
+    const movedOff = rescheduleClockAlarm(off, "11:15", NOW);
+    expect(movedOff.time).toBe("11:15");
+    expect(movedOff.enabled).toBe(false);
+    expect(movedOff.nextFireAt).toBe(123);
+
+    const on = createClockAlarm("10:00", "", NOW);
+    const movedOn = rescheduleClockAlarm(on, "11:15", NOW);
+    expect(movedOn.enabled).toBe(true);
+    expect(new Date(movedOn.nextFireAt).getHours()).toBe(11);
+
+    expect(rescheduleClockAlarm(on, "25:00", NOW)).toBe(on);
+  });
+
+  it("caps stored alarms at the limit on both write and read", () => {
+    const many = Array.from({ length: CLOCK_ALARM_LIMIT + 5 }, (_, index) => ({
+      ...createClockAlarm("10:00", `a${index}`, NOW),
+      id: `alarm-${index}`,
+    }));
+    persistClockAlarms(many);
+    expect(loadClockAlarms()).toHaveLength(CLOCK_ALARM_LIMIT);
+
+    localStorage.setItem(CLOCK_ALARMS_KEY, JSON.stringify(many));
+    expect(loadClockAlarms()).toHaveLength(CLOCK_ALARM_LIMIT);
   });
 
   it("distinguishes a live ring from one found long after the fact", () => {
     const alarm = createClockAlarm("10:00", "", NOW);
     expect(isMissedAlarmFire({ ...alarm, nextFireAt: NOW - 5000 }, NOW)).toBe(false);
     expect(isMissedAlarmFire({ ...alarm, nextFireAt: NOW - 10 * 60 * 1000 }, NOW)).toBe(true);
+  });
+});
+
+describe("반복 알람", () => {
+  // NOW is Monday 2026-08-31 09:30 local.
+  it("schedules onto the nearest repeat weekday, wrapping a full week", () => {
+    const wednesday = new Date(getNextAlarmFireTime("10:00", NOW, [3]));
+    expect([wednesday.getDate(), wednesday.getDay(), wednesday.getHours()]).toEqual([2, 3, 10]);
+
+    const stillToday = new Date(getNextAlarmFireTime("10:00", NOW, [1]));
+    expect([stillToday.getDate(), stillToday.getDay()]).toEqual([31, 1]);
+
+    // Monday 09:00 already passed — the next one is a week out.
+    const nextWeek = new Date(getNextAlarmFireTime("09:00", NOW, [1]));
+    expect([nextWeek.getMonth(), nextWeek.getDate(), nextWeek.getDay()]).toEqual([8, 7, 1]);
+  });
+
+  it("a fired repeating alarm re-arms armed instead of turning off", () => {
+    const alarm = { ...createClockAlarm("09:00", "기상", NOW, [1, 3]), nextFireAt: NOW - 1000 };
+    const { due, next } = collectDueClockAlarms([alarm], NOW);
+    expect(due).toHaveLength(1);
+    expect(next[0].enabled).toBe(true);
+    expect(next[0].nextFireAt).toBeGreaterThan(NOW);
+    expect(new Date(next[0].nextFireAt).getDay()).toBe(3);
+  });
+
+  it("toggling weekdays keeps the set sorted and re-schedules an armed alarm", () => {
+    let alarm = createClockAlarm("10:00", "", NOW);
+    alarm = toggleAlarmRepeatDay(alarm, 5, NOW);
+    alarm = toggleAlarmRepeatDay(alarm, 1, NOW);
+    expect(alarm.repeatDays).toEqual([1, 5]);
+    expect(new Date(alarm.nextFireAt).getDay()).toBe(1);
+    alarm = toggleAlarmRepeatDay(alarm, 1, NOW);
+    expect(alarm.repeatDays).toEqual([5]);
+  });
+
+  it("labels repeats and sanitizes stored day lists", () => {
+    expect(describeAlarmRepeat([])).toBe("");
+    expect(describeAlarmRepeat([1, 3, 5])).toBe("매주 월·수·금");
+    expect(describeAlarmRepeat([0, 1, 2, 3, 4, 5, 6])).toBe("매일");
+    expect(sanitizeRepeatDays([6, 1, 1, 2.5, -1, 9, "월"])).toEqual([1, 6]);
+  });
+
+  it("records saved before repeat existed load as one-shot", () => {
+    const legacy = {
+      enabled: true,
+      id: "alarm-old",
+      label: "",
+      nextFireAt: NOW,
+      time: "07:00",
+    };
+    localStorage.setItem(CLOCK_ALARMS_KEY, JSON.stringify([legacy]));
+    expect(loadClockAlarms()).toEqual([{ ...legacy, repeatDays: [] }]);
   });
 });
 
@@ -226,8 +304,9 @@ describe("세계 시계", () => {
   it("reads real timezone offsets out of Intl", () => {
     expect(getTimeZoneOffsetMinutes("Asia/Seoul", NOW)).toBe(540);
     expect(getTimeZoneOffsetMinutes("Asia/Kolkata", NOW)).toBe(330);
-    // August: New York sits on daylight time.
+    // August: New York sits on daylight time; January is standard time.
     expect(getTimeZoneOffsetMinutes("America/New_York", NOW)).toBe(-240);
+    expect(getTimeZoneOffsetMinutes("America/New_York", Date.UTC(2026, 0, 15))).toBe(-300);
   });
 
   it("describes a city relative to an explicit local zone", () => {

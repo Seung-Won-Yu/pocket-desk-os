@@ -28,6 +28,7 @@ type TerminalAppProps = {
     name: string,
     content: string,
     existingItemId?: string,
+    options?: { activate?: boolean },
   ) => DesktopItem;
   windowId: string;
 };
@@ -161,7 +162,10 @@ export default function TerminalApp({
           setEnv((current) => ({ ...current, [effect.name.toUpperCase()]: effect.value }));
           break;
         case "writeFile":
-          saveNoteAs(effect.parentId, effect.name, effect.content, effect.existingItemId);
+          // cmd writes redirects silently; the foreground document stays put.
+          saveNoteAs(effect.parentId, effect.name, effect.content, effect.existingItemId, {
+            activate: false,
+          });
           break;
       }
     }

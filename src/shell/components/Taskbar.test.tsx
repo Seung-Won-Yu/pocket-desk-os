@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -249,6 +249,51 @@ describe("Taskbar 점프 리스트", () => {
     expect(handlers.onOpenRecentDocument).toHaveBeenCalledWith(report);
     expect(screen.queryByRole("menu")).toBeNull();
   });
+
+  it("메뉴가 열리면 첫 최근 항목이 포커스를 받고 화살표·End로 전체를 돈다", async () => {
+    // jsdom lays nothing out, so offsetParent — keyboardNav's reachability
+    // probe — is always null there. Stand in the parent element for this test.
+    const offsetParent = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetParent");
+    Object.defineProperty(HTMLElement.prototype, "offsetParent", {
+      configurable: true,
+      get() {
+        return this.parentElement;
+      },
+    });
+    try {
+      await runJumpListKeyboardScenario();
+    } finally {
+      if (offsetParent) {
+        Object.defineProperty(HTMLElement.prototype, "offsetParent", offsetParent);
+      } else {
+        delete (HTMLElement.prototype as { offsetParent?: unknown }).offsetParent;
+      }
+    }
+  });
+
+  async function runJumpListKeyboardScenario() {
+    const report = makeDocument("note-report", "보고서.txt");
+    const { user } = renderTaskbar({
+      pinnedAppIds: ["browser"],
+      recentDocumentsByApp: new Map([["notepad", [report]]]),
+      windows: [makeWindow("win-notepad", "notepad")],
+    });
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("button", { name: "메모장" }),
+    });
+
+    // 최근 항목 1 + 고정 + 창 닫기.
+    const items = screen.getAllByRole("menuitem");
+    expect(items).toHaveLength(3);
+    await waitFor(() => expect(document.activeElement).toBe(items[0]));
+
+    await user.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(items[1]);
+    await user.keyboard("{End}");
+    expect(document.activeElement).toBe(items[2]);
+  }
 
   it("최근 항목이 없는 앱 메뉴는 그대로다", async () => {
     const { user } = renderTaskbar({ pinnedAppIds: ["browser"] });

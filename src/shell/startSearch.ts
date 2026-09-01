@@ -1,6 +1,11 @@
 import { type AppId, type DesktopItem, type ThemeName } from "../types";
 import { normalizeSearchText } from "../utils/format";
-import { VFS_ROOT_ID, getVfsEntryAssociation, getVfsFolderPath } from "../vfs/model";
+import {
+  VFS_ROOT_ID,
+  getVfsEntryAssociation,
+  getVfsFolderPath,
+  type VfsPathSegment,
+} from "../vfs/model";
 import { appCatalog } from "./appCatalog";
 import { START_PINNED_APPS_KEY, appSearchKeywords, runCommandAliases } from "./constants";
 import { type AppDefinition, type RunCommandResolution, type StartSearchResult } from "./types";
@@ -86,6 +91,17 @@ export function buildStartSearchResults(
     })
     .filter((result): result is StartSearchResult => Boolean(result));
 
+  // getVfsFolderPath walks the parent chain with per-ancestor scans; siblings
+  // share a folder, so one computation per distinct parent per keystroke.
+  const folderPathCache = new Map<string, VfsPathSegment[]>();
+  const getFolderPath = (parentId: string) => {
+    const cached = folderPathCache.get(parentId);
+    if (cached) return cached;
+    const path = getVfsFolderPath(desktopItems, parentId);
+    folderPathCache.set(parentId, path);
+    return path;
+  };
+
   const fileResults = desktopItems
     .map((item): StartSearchResult | null => {
       const association = getVfsEntryAssociation(item);
@@ -96,7 +112,7 @@ export function buildStartSearchResults(
        * hint where opening it would land. Now the real folder chain is both the
        * caption and a match field, the way Windows search shows the path.
        */
-      const pathSegments = getVfsFolderPath(desktopItems, item.parentId);
+      const pathSegments = getFolderPath(item.parentId);
       const onDesktop = item.parentId === VFS_ROOT_ID;
       const rank = rankSearchCandidate(normalizedQuery, [
         item.name,

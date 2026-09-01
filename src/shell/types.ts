@@ -214,6 +214,7 @@ export type AppContentProps = {
     name: string,
     content: string,
     existingItemId?: string,
+    options?: { activate?: boolean },
   ) => DesktopItem;
   saveNoteContent: (noteId: string, content: string) => void;
   setSoundEnabled: (enabled: boolean) => void;

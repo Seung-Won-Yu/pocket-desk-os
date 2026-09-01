@@ -455,26 +455,33 @@ export function Taskbar({
           {/* 최근 항목 — the documents this app would open, newest first. */}
           {(recentDocumentsByApp.get(taskbarMenu.appId) ?? []).length > 0 && (
             <>
-              <strong className="taskbar-menu-caption">최근 항목</strong>
-              {(recentDocumentsByApp.get(taskbarMenu.appId) ?? []).map((item, index) => {
-                const ItemIcon = getVfsEntryAssociation(item).icon;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      setTaskbarMenu(null);
-                      onOpenRecentDocument(item);
-                    }}
-                    ref={index === 0 ? taskbarMenuButtonRef : undefined}
-                    role="menuitem"
-                    type="button"
-                  >
-                    <ItemIcon aria-hidden="true" size={15} />
-                    <span className="taskbar-menu-item-name">{item.name}</span>
-                  </button>
-                );
-              })}
-              <hr aria-hidden="true" className="taskbar-menu-separator" />
+              {/* role=menu allows menuitem/group/separator children only, so
+                  the caption lives on a group and the <hr> keeps its implicit
+                  separator role. */}
+              <div aria-label="최근 항목" role="group">
+                <strong aria-hidden="true" className="taskbar-menu-caption">
+                  최근 항목
+                </strong>
+                {(recentDocumentsByApp.get(taskbarMenu.appId) ?? []).map((item, index) => {
+                  const ItemIcon = getVfsEntryAssociation(item).icon;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setTaskbarMenu(null);
+                        onOpenRecentDocument(item);
+                      }}
+                      ref={index === 0 ? taskbarMenuButtonRef : undefined}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <ItemIcon aria-hidden="true" size={15} />
+                      <span className="taskbar-menu-item-name">{item.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <hr className="taskbar-menu-separator" />
             </>
           )}
           {/* Windows puts the app itself at the top of a jump list; picking it

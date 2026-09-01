@@ -9597,8 +9597,8 @@ button {
 
 .clock-alarm-form input:focus-visible,
 .clock-timer-setup input:focus-visible {
+  /* Border tint as reinforcement; the global :focus-visible ring stays. */
   border-color: var(--active);
-  outline: none;
 }
 
 .clock-alarm-form button,
@@ -9684,7 +9684,6 @@ button {
 .clock-alarm-time:hover,
 .clock-alarm-time:focus-visible {
   border-color: var(--line);
-  outline: none;
 }
 
 .clock-alarm-meta {
@@ -9814,7 +9813,6 @@ button {
 
 .clock-world-form select:focus-visible {
   border-color: var(--active);
-  outline: none;
 }
 
 .clock-world-form button {
@@ -9878,4 +9876,34 @@ button {
   font-size: 26px;
   font-variant-numeric: tabular-nums;
   font-weight: 300;
+}
+
+.clock-repeat-days {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.clock-repeat-days button {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  height: 22px;
+  line-height: 1;
+  padding: 0;
+  width: 22px;
+}
+
+.clock-repeat-days button:hover {
+  background: var(--control-active);
+  color: var(--text);
+}
+
+.clock-repeat-days button.is-on {
+  background: var(--active);
+  border-color: var(--active);
+  color: #ffffff;
 }

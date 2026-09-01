@@ -16,9 +16,11 @@ function Harness({ initialAlarms = [] as ClockAlarm[] }) {
     <ClockApp
       clockAlarms={alarms}
       clockTimer={timer}
+      openWindows={[]}
       playSound={vi.fn()}
       updateClockAlarms={setAlarms}
       updateClockTimer={setTimer}
+      windowId="win-clock"
     />
   );
 }
@@ -66,6 +68,21 @@ describe("알람", () => {
     expect(
       screen.getByText("알람을 추가하면 창을 닫아도 셸이 시간에 맞춰 알립니다."),
     ).toBeTruthy();
+  });
+});
+
+describe("반복 알람", () => {
+  it("weekday chips arm a weekly schedule and the caption follows", () => {
+    render(<Harness />);
+    fireEvent.change(screen.getByLabelText("알람 시간"), { target: { value: "10:00" } });
+    fireEvent.click(screen.getByRole("button", { name: /알람 추가/ }));
+
+    fireEvent.click(screen.getByRole("button", { name: "월요일 반복: 10:00" }));
+    fireEvent.click(screen.getByRole("button", { name: "수요일 반복: 10:00" }));
+    expect(screen.getByText("매주 월·수 10:00에 울림")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "월요일 반복: 10:00" }));
+    expect(screen.getByText("매주 수 10:00에 울림")).toBeTruthy();
   });
 });
 

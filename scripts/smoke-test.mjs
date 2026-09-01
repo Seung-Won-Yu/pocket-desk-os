@@ -1010,10 +1010,14 @@ async function runSmoke(baseUrl) {
       (await jumpMenu.innerText()).includes("최근 항목"),
       "Taskbar jump list has no recent-items section",
     );
-    await jumpMenu.getByRole("menuitem", { name: "notes.txt" }).click();
+    // The top entry is whatever is newest — earlier smoke steps create files,
+    // so pin the behaviour (picked item opens) rather than one filename.
+    const firstRecent = jumpMenu.getByRole("menuitem").first();
+    const firstRecentName = (await firstRecent.innerText()).trim();
+    await firstRecent.click();
     await jumpMenu.waitFor({ state: "detached" });
     assert(
-      (await jumpNotepad.locator(".window-titlebar").innerText()).includes("notes.txt"),
+      (await jumpNotepad.locator(".window-titlebar").innerText()).includes(firstRecentName),
       "Jump list pick did not open the document in Notepad",
     );
     await page.keyboard.press("Alt+F4");

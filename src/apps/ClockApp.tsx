@@ -20,8 +20,11 @@ import {
   getClockTimerRemaining,
   isValidAlarmTime,
   pauseClockTimer,
+  describeAlarmRepeat,
   rescheduleClockAlarm,
   resetClockTimer,
+  toggleAlarmRepeatDay,
+  WEEKDAY_LABELS,
   setClockAlarmEnabled,
   setClockTimerDuration,
   startClockTimer,
@@ -33,14 +36,16 @@ import {
   type ClockTimer,
 } from "../shell/clock";
 import { getNextRovingIndex } from "../shell/keyboardNav";
-import { type SoundEffectName } from "../types";
+import { type OpenWindowInfo, type SoundEffectName } from "../types";
 
 type ClockAppProps = {
   clockAlarms: ClockAlarm[];
   clockTimer: ClockTimer;
+  openWindows: OpenWindowInfo[];
   playSound: (effect: SoundEffectName) => void;
   updateClockAlarms: (alarms: ClockAlarm[]) => void;
   updateClockTimer: (timer: ClockTimer) => void;
+  windowId: string;
 };
 
 type ClockTab = "alarm" | "timer" | "world" | "stopwatch";
@@ -59,9 +64,18 @@ const TIMER_PRESETS = [
   { label: "10분", ms: 600_000 },
 ];
 
+type StopwatchLap = {
+  /** Monotonic flag number — survives the cap dropping older laps. */
+  n: number;
+  /** This lap's own duration, fixed at flag time. */
+  split: number;
+  /** Total elapsed at flag time. */
+  total: number;
+};
+
 type StopwatchState = {
   baseMs: number;
-  laps: number[];
+  laps: StopwatchLap[];
   running: boolean;
   startedAt: number | null;
 };
@@ -71,9 +85,11 @@ const IDLE_STOPWATCH: StopwatchState = { baseMs: 0, laps: [], running: false, st
 export default function ClockApp({
   clockAlarms,
   clockTimer,
+  openWindows,
   playSound,
   updateClockAlarms,
   updateClockTimer,
+  windowId,
 }: ClockAppProps) {
   const [tab, setTab] = useState<ClockTab>("alarm");
   const [newAlarmTime, setNewAlarmTime] = useState("07:30");
@@ -90,11 +106,16 @@ export default function ClockApp({
 
   // One display clock for everything that moves: the header time, the timer
   // readout and the stopwatch. The alarms and timer themselves fire from the
-  // shell scheduler — this tick only keeps the numbers on screen honest.
+  // shell scheduler — this tick only keeps the numbers on screen honest, so it
+  // stops entirely while the window is minimized (the frame stays mounted) and
+  // catches up the moment it comes back.
+  const selfMinimized = openWindows.find((item) => item.id === windowId)?.minimized ?? false;
   useEffect(() => {
+    if (selfMinimized) return;
+    setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), stopwatch.running ? 50 : 250);
     return () => window.clearInterval(id);
-  }, [stopwatch.running]);
+  }, [selfMinimized, stopwatch.running]);
 
   const sortedAlarms = useMemo(
     () => [...clockAlarms].sort((a, b) => a.time.localeCompare(b.time)),
@@ -279,9 +300,37 @@ export default function ClockApp({
                       <strong>{alarm.label || "알람"}</strong>
                       <small>
                         {alarm.enabled
-                          ? `${describeAlarmFireDay(alarm.nextFireAt, now)} ${alarm.time}에 울림`
+                          ? alarm.repeatDays.length > 0
+                            ? `${describeAlarmRepeat(alarm.repeatDays)} ${alarm.time}에 울림`
+                            : `${describeAlarmFireDay(alarm.nextFireAt, now)} ${alarm.time}에 울림`
                           : "꺼짐"}
                       </small>
+                      <div
+                        aria-label={`반복 요일: ${alarmName}`}
+                        className="clock-repeat-days"
+                        role="group"
+                      >
+                        {WEEKDAY_LABELS.map((label, day) => (
+                          <button
+                            aria-label={`${label}요일 반복: ${alarmName}`}
+                            aria-pressed={alarm.repeatDays.includes(day)}
+                            className={alarm.repeatDays.includes(day) ? "is-on" : undefined}
+                            key={label}
+                            onClick={() =>
+                              updateClockAlarms(
+                                clockAlarms.map((item) =>
+                                  item.id === alarm.id
+                                    ? toggleAlarmRepeatDay(item, day, Date.now())
+                                    : item,
+                                ),
+                              )
+                            }
+                            type="button"
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                     <label className="settings-toggle clock-alarm-toggle">
                       <input
@@ -547,7 +596,13 @@ export default function ClockApp({
                     (current.running && current.startedAt !== null
                       ? Date.now() - current.startedAt
                       : 0);
-                  return { ...current, laps: [...current.laps, elapsed].slice(-99) };
+                  const last = current.laps[current.laps.length - 1];
+                  const lap = {
+                    n: (last?.n ?? 0) + 1,
+                    split: elapsed - (last?.total ?? 0),
+                    total: elapsed,
+                  };
+                  return { ...current, laps: [...current.laps, lap].slice(-99) };
                 })
               }
               type="button"
@@ -572,20 +627,13 @@ export default function ClockApp({
                 </tr>
               </thead>
               <tbody>
-                {stopwatch.laps
-                  .map((total, index) => ({
-                    index,
-                    split: total - (index > 0 ? stopwatch.laps[index - 1] : 0),
-                    total,
-                  }))
-                  .reverse()
-                  .map((lap) => (
-                    <tr key={lap.index}>
-                      <td>{lap.index + 1}</td>
-                      <td>{formatStopwatchDuration(lap.split)}</td>
-                      <td>{formatStopwatchDuration(lap.total)}</td>
-                    </tr>
-                  ))}
+                {[...stopwatch.laps].reverse().map((lap) => (
+                  <tr key={lap.n}>
+                    <td>{lap.n}</td>
+                    <td>{formatStopwatchDuration(lap.split)}</td>
+                    <td>{formatStopwatchDuration(lap.total)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}

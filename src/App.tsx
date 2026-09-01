@@ -511,32 +511,44 @@ export default function App() {
    * anything that came due while the tab was closed, flagged as missed.
    */
   const clockTickRef = useRef<() => void>(() => {});
-  clockTickRef.current = () => {
-    const timestamp = Date.now();
-    const { due, next } = collectDueClockAlarms(clockAlarms, timestamp);
-    if (due.length > 0) {
-      setClockAlarms(next);
-      for (const alarm of due) {
-        notify({
-          detail: `${alarm.time}${alarm.label ? ` · ${alarm.label}` : ""}`,
-          title: isMissedAlarmFire(alarm, timestamp) ? "놓친 알람" : "알람",
-          tone: "info",
-        });
+  // Assigned after commit, not during render, so a discarded concurrent render
+  // can never leave its closure driving the interval.
+  useEffect(() => {
+    clockTickRef.current = () => {
+      /*
+       * Nothing rings while the shell cannot show it: on the lock screen and
+       * with the power off, the toast stack sits under the gate, so firing
+       * there played a sound over a black screen and silently consumed the
+       * alarm. Leaving it due means the first tick after unlock delivers it —
+       * as 놓친 알람 when enough time has passed.
+       */
+      if (shellPhase !== "unlocked") return;
+      const timestamp = Date.now();
+      const { due, next } = collectDueClockAlarms(clockAlarms, timestamp);
+      if (due.length > 0) {
+        setClockAlarms(next);
+        for (const alarm of due) {
+          notify({
+            detail: `${alarm.time}${alarm.label ? ` · ${alarm.label}` : ""}`,
+            title: isMissedAlarmFire(alarm, timestamp) ? "놓친 알람" : "알람",
+            tone: "info",
+          });
+        }
+        playSound("success");
       }
-      playSound("success");
-    }
 
-    const timerTick = tickClockTimer(clockTimer, timestamp);
-    if (timerTick.fired) {
-      setClockTimer(timerTick.next);
-      notify({
-        detail: `${formatClockDuration(clockTimer.durationMs)} 타이머가 끝났습니다.`,
-        title: "타이머 완료",
-        tone: "success",
-      });
-      playSound("success");
-    }
-  };
+      const timerTick = tickClockTimer(clockTimer, timestamp);
+      if (timerTick.fired) {
+        setClockTimer(timerTick.next);
+        notify({
+          detail: `${formatClockDuration(clockTimer.durationMs)} 타이머가 끝났습니다.`,
+          title: "타이머 완료",
+          tone: "success",
+        });
+        playSound("success");
+      }
+    };
+  });
 
   useEffect(() => {
     const interval = window.setInterval(() => clockTickRef.current(), 500);
@@ -931,10 +943,13 @@ export default function App() {
       setFilesLaunchRequest({ folderId: item.id, id: crypto.randomUUID(), windowId });
       return;
     }
-    if (item.kind === "note") {
+    // Only the app that will actually open moves its document pointer. With a
+    // txt default of 명령 프롬프트, opening a note used to silently swap
+    // Notepad's active file while the terminal came up empty.
+    if (item.kind === "note" && targetAppId === "notepad") {
       setActiveNoteId(item.id);
     }
-    if (item.kind === "canvas") {
+    if (item.kind === "canvas" && (targetAppId === "paint" || targetAppId === "photos")) {
       setActiveCanvasId(item.id);
       setActiveCanvasOpenKey((current) => current + 1);
     }
@@ -1886,7 +1901,14 @@ export default function App() {
     name: string,
     content: string,
     existingItemId?: string,
+    options?: { activate?: boolean },
   ) => {
+    /*
+     * activate=false is the terminal's path: `echo x > 파일.txt` must write the
+     * file the way cmd does — silently — not switch Notepad's open document to
+     * it and raise a toast per redirect.
+     */
+    const activate = options?.activate ?? true;
     const now = Date.now();
     const existing = existingItemId
       ? activeDesktopItems.find((item) => item.id === existingItemId && item.kind === "note")
@@ -1902,12 +1924,14 @@ export default function App() {
       setDesktopItems((current) =>
         current.map((item) => (item.id === existing.id ? updatedItem : item)),
       );
-      setActiveNoteId(existing.id);
-      notify({
-        detail: "기존 문서의 내용을 새 내용으로 바꿨습니다.",
-        title: `${name} 저장됨`,
-        tone: "success",
-      });
+      if (activate) {
+        setActiveNoteId(existing.id);
+        notify({
+          detail: "기존 문서의 내용을 새 내용으로 바꿨습니다.",
+          title: `${name} 저장됨`,
+          tone: "success",
+        });
+      }
       return updatedItem;
     }
 
@@ -1924,12 +1948,14 @@ export default function App() {
       y: 0,
     };
     setDesktopItems((current) => [...current, item]);
-    setActiveNoteId(item.id);
-    notify({
-      detail: "선택한 폴더에 새 문서를 저장했습니다.",
-      title: `${item.name} 저장됨`,
-      tone: "success",
-    });
+    if (activate) {
+      setActiveNoteId(item.id);
+      notify({
+        detail: "선택한 폴더에 새 문서를 저장했습니다.",
+        title: `${item.name} 저장됨`,
+        tone: "success",
+      });
+    }
     return item;
   };
 
