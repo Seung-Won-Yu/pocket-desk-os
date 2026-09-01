@@ -257,6 +257,7 @@ export function WindowFrame({
   return (
     <article
       aria-label={app.title}
+      data-window-id={instance.id}
       aria-hidden={instance.minimized ? "true" : undefined}
       className={`window-frame ${active ? "is-active" : ""} ${
         instance.maximized ? "is-maximized" : ""
