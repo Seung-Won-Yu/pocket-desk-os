@@ -1395,6 +1395,8 @@ button {
 }
 
 .window-titlebar {
+  /* A touch on the title bar is a drag, never a browser pan. */
+  touch-action: none;
   align-items: center;
   background: rgba(32, 32, 32, 0.9);
   border-radius: 7px 7px 0 0;
@@ -6587,13 +6589,25 @@ button {
     grid-template-columns: 1fr;
   }
 
+  /*
+   * Narrow screens: the tray used to be absolutely pinned over the app strip,
+   * so its buttons sat on top of app buttons — hit-testing resolved to the app
+   * underneath and 알림 센터/빠른 설정 were untappable. Flexbox keeps every
+   * region in flow instead: the center shrinks and clips, the tray never
+   * overlaps anything.
+   */
   .taskbar {
     display: flex;
-    justify-content: center;
+    gap: 8px;
+    justify-content: space-between;
   }
 
   .taskbar-center {
-    max-width: calc(100vw - 112px);
+    flex: 1 1 auto;
+    justify-content: flex-start;
+    max-width: none;
+    min-width: 0;
+    overflow: hidden;
   }
 
   .taskbar-slot:nth-child(n + 4) {
@@ -6605,8 +6619,8 @@ button {
   }
 
   .system-tray-wrap {
-    position: absolute;
-    right: 12px;
+    flex: 0 0 auto;
+    margin-right: 0;
   }
 
   .quick-settings-panel {

@@ -590,6 +590,100 @@ export default function App() {
     return () => window.clearInterval(interval);
   }, []);
 
+  /*
+   * Long-press is the touch world's right click. Every context menu here
+   * hangs off onContextMenu, and mobile browsers are inconsistent about
+   * synthesizing that event from a touch hold — so the shell does it itself:
+   * hold a primary touch still for half a second and the element under the
+   * finger receives a real contextmenu event. The click that follows the
+   * finger lifting is swallowed once, or it would activate the very thing
+   * the menu just opened over. Text fields keep their native selection hold.
+   */
+  const longPressSuppressClickRef = useRef(false);
+  useEffect(() => {
+    let timer = 0;
+    let pointerId = -1;
+    let startX = 0;
+    let startY = 0;
+    let pressTarget: Element | null = null;
+
+    const cancelTimer = () => {
+      if (timer) {
+        window.clearTimeout(timer);
+        timer = 0;
+      }
+    };
+
+    const onPointerDown = (event: globalThis.PointerEvent) => {
+      if (event.pointerType !== "touch" || !event.isPrimary) return;
+      // Element, not HTMLElement: a press frequently lands on an SVG glyph
+      // (icons, window controls), and SVGElement is no HTMLElement — the
+      // narrower check silently dropped exactly those presses.
+      const target = event.target instanceof Element ? event.target : null;
+      if (
+        !target ||
+        target.closest("input, textarea, select, [contenteditable], .paint-canvas")
+      ) {
+        return;
+      }
+      cancelTimer();
+      pointerId = event.pointerId;
+      startX = event.clientX;
+      startY = event.clientY;
+      pressTarget = target;
+      timer = window.setTimeout(() => {
+        timer = 0;
+        longPressSuppressClickRef.current = true;
+        /*
+         * Re-resolve the element under the finger at fire time. The press
+         * itself often re-renders its target (selecting an icon swaps its
+         * SVG), and dispatching on a detached node never reaches React's
+         * root listener — the menu silently failed to open.
+         */
+        const liveTarget = document.elementFromPoint(startX, startY) ?? pressTarget;
+        liveTarget?.dispatchEvent(
+          new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            clientX: startX,
+            clientY: startY,
+            view: window,
+          }),
+        );
+      }, 550);
+    };
+
+    const onPointerMove = (event: globalThis.PointerEvent) => {
+      if (event.pointerId !== pointerId) return;
+      if (Math.hypot(event.clientX - startX, event.clientY - startY) > 12) cancelTimer();
+    };
+
+    const onPointerEnd = (event: globalThis.PointerEvent) => {
+      if (event.pointerId === pointerId) cancelTimer();
+    };
+
+    const onClickCapture = (event: MouseEvent) => {
+      if (!longPressSuppressClickRef.current) return;
+      longPressSuppressClickRef.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("pointermove", onPointerMove, true);
+    window.addEventListener("pointerup", onPointerEnd, true);
+    window.addEventListener("pointercancel", onPointerEnd, true);
+    window.addEventListener("click", onClickCapture, true);
+    return () => {
+      cancelTimer();
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("pointermove", onPointerMove, true);
+      window.removeEventListener("pointerup", onPointerEnd, true);
+      window.removeEventListener("pointercancel", onPointerEnd, true);
+      window.removeEventListener("click", onClickCapture, true);
+    };
+  }, []);
+
   const lockDesktop = () => {
     playSound("close");
     logShellEvent(

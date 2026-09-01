@@ -165,12 +165,26 @@ export function WindowFrame({
         onUpdate({ ...getWindowSnapPatch(activeSnapZone), snapZone: activeSnapZone });
       }
       onSnapPreviewChange(null);
+      stopListening();
+    };
+
+    // The browser cancels a touch it reclaims (an incoming call, an edge
+    // gesture); without this the move listeners lived forever and the window
+    // chased every later touch.
+    const onPointerCancel = () => {
+      onSnapPreviewChange(null);
+      stopListening();
+    };
+
+    const stopListening = () => {
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
     };
 
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
   };
 
   const startResize = (event: PointerEvent<HTMLDivElement>, edge: WindowResizeEdge) => {
@@ -221,10 +235,12 @@ export function WindowFrame({
     const onPointerUp = () => {
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
     };
 
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
   };
 
   const handleTitlebarDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
