@@ -9907,3 +9907,9 @@ button {
   border-color: var(--active);
   color: #ffffff;
 }
+
+.shortcut-dialog-error {
+  color: #ff9d9d;
+  font-size: 12.5px;
+  margin: -4px 2px 0;
+}

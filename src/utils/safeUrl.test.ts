@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isSafeHttpUrl, toSafeHttpUrl } from "./safeUrl";
+import { isSafeHttpUrl, resolveShortcutTarget, toSafeHttpUrl } from "./safeUrl";
 
 describe("toSafeHttpUrl", () => {
   it("passes http and https through, normalized", () => {
@@ -62,5 +62,22 @@ describe("isSafeHttpUrl", () => {
     expect(isSafeHttpUrl("https://example.com")).toBe(true);
     expect(isSafeHttpUrl("javascript:alert(1)")).toBe(false);
     expect(isSafeHttpUrl("")).toBe(false);
+  });
+});
+
+describe("resolveShortcutTarget", () => {
+  it("accepts http(s) and gives a bare hostname its https", () => {
+    expect(resolveShortcutTarget("https://example.com/a")).toBe("https://example.com/a");
+    expect(resolveShortcutTarget("http://example.com")).toBe("http://example.com");
+    expect(resolveShortcutTarget("example.com/스모크")).toBe("https://example.com/스모크");
+    expect(resolveShortcutTarget("  example.com  ")).toBe("https://example.com");
+  });
+
+  it("refuses every other scheme and junk", () => {
+    expect(resolveShortcutTarget("javascript:alert(1)")).toBeNull();
+    expect(resolveShortcutTarget("data:text/html,hi")).toBeNull();
+    expect(resolveShortcutTarget("ftp://example.com")).toBeNull();
+    expect(resolveShortcutTarget("")).toBeNull();
+    expect(resolveShortcutTarget("   ")).toBeNull();
   });
 });

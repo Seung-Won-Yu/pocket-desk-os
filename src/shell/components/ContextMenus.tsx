@@ -4,6 +4,7 @@ import { formatVfsEntrySize, formatVfsPropertyDate } from "../../utils/format";
 import {
   getVfsEntryAssociation,
   VFS_DOCUMENTS_ID,
+  VFS_DOWNLOADS_ID,
   VFS_GAMES_ID,
   VFS_PICTURES_ID,
 } from "../../vfs/model";
@@ -44,6 +45,7 @@ export function DesktopContextMenu({
   onChangeWallpaper,
   onCreateFolder,
   onCreateNote,
+  onCreateShortcut,
   onPaste,
   onRefresh,
   onSort,
@@ -59,6 +61,7 @@ export function DesktopContextMenu({
   onChangeWallpaper: () => void;
   onCreateFolder: () => void;
   onCreateNote: () => void;
+  onCreateShortcut: () => void;
   onPaste: () => void;
   onRefresh: () => void;
   onSort: (sortKey: DesktopSortKey) => void;
@@ -226,6 +229,10 @@ export function DesktopContextMenu({
               <FileText aria-hidden="true" size={16} />
               텍스트 문서
             </button>
+            <button onClick={onCreateShortcut} role="menuitem" type="button">
+              <ExternalLink aria-hidden="true" size={16} />
+              인터넷 바로 가기
+            </button>
           </div>
         )}
       </div>
@@ -247,6 +254,7 @@ const MOVE_TARGETS: Array<{ id: string; label: string }> = [
   { id: VFS_DOCUMENTS_ID, label: "문서" },
   { id: VFS_PICTURES_ID, label: "사진" },
   { id: VFS_GAMES_ID, label: "게임" },
+  { id: VFS_DOWNLOADS_ID, label: "다운로드" },
 ];
 
 export function DesktopIconContextMenu({

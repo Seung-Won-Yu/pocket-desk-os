@@ -88,6 +88,16 @@ describe("recent opens", () => {
     ).toEqual(["opened", "edited"]);
   });
 
+  it("a fresher edit still outranks an older open — recency is the later of the two", () => {
+    const openedEarlier = makeItem({ id: "opened", name: "opened.txt", updatedAt: 10 });
+    const editedAfter = makeItem({ id: "edited", name: "edited.txt", updatedAt: 1001 });
+    expect(
+      buildRecentDocumentsByApp([openedEarlier, editedAfter], {}, { opened: 1000 })
+        .get("notepad")
+        ?.map((item) => item.id),
+    ).toEqual(["edited", "opened"]);
+  });
+
   it("stamps opens and drops the oldest stamp past the cap", () => {
     let opens: RecentOpensMap = {};
     for (let index = 0; index < RECENT_OPENS_LIMIT; index += 1) {

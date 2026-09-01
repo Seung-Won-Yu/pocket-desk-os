@@ -11,6 +11,7 @@ import {
   canMoveVfsEntries,
   createVfsEntryAssociation,
   createVfsSystemFolders,
+  sanitizeVfsFileName,
   formatDesktopItemTime,
   getDefaultVfsEntryName,
   getUniqueCanvasItemName,
@@ -88,6 +89,24 @@ describe("isVfsSystemFolderId", () => {
     expect(isVfsSystemFolderId("folder-1")).toBe(false);
     expect(isVfsSystemFolderId("")).toBe(false);
     expect(isVfsSystemFolderId("vfs-system-documents-2")).toBe(false);
+  });
+});
+
+describe("sanitizeVfsFileName", () => {
+  it("replaces forbidden and control/bidi characters and collapses whitespace", () => {
+    expect(sanitizeVfsFileName('보고서/8월:최종*안?"진짜"<끝>|v2', "대체")).toBe(
+      "보고서 8월 최종 안 진짜 끝 v2",
+    );
+    expect(sanitizeVfsFileName("안\u202e녕\u0007하세요", "대체")).toBe("안 녕 하세요");
+  });
+
+  it("falls back when nothing legal survives, and trims the truncation edge", () => {
+    expect(sanitizeVfsFileName("", "저장된 페이지")).toBe("저장된 페이지");
+    expect(sanitizeVfsFileName("///:::", "저장된 페이지")).toBe("저장된 페이지");
+    const long = `${"가".repeat(39)} 나머지`;
+    const result = sanitizeVfsFileName(long, "대체");
+    expect(result.length).toBeLessThanOrEqual(40);
+    expect(result.endsWith(" ")).toBe(false);
   });
 });
 

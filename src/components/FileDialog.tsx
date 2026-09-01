@@ -1,4 +1,5 @@
 import {
+  Download,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
@@ -16,6 +17,7 @@ import type React from "react";
 import type { DesktopItem, VfsEntryKind } from "../types";
 import { normalizeSearchText } from "../utils/format";
 import {
+  VFS_DOWNLOADS_ID,
   formatDesktopItemTime,
   getVfsEntryAssociation,
   getVfsFolderPath,
@@ -339,6 +341,7 @@ export default function FileDialog({
                 [VFS_ROOT_ID, "바탕 화면", House],
                 [VFS_DOCUMENTS_ID, "문서", FileText],
                 [VFS_PICTURES_ID, "사진", Paintbrush],
+                [VFS_DOWNLOADS_ID, "다운로드", Download],
               ] as const
             ).map(([folderId, label, Icon]) => (
               <button

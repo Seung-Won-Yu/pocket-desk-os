@@ -362,6 +362,49 @@ async function runSmoke(baseUrl) {
     );
     assert(sortedIconBoxes[0].top < sortedIconBoxes[1].top, "Desktop name sort order is wrong");
 
+    // 새로 만들기 > 인터넷 바로 가기: the wizard refuses a non-http scheme,
+    // writes a real .url onto the desktop, and opening it hands Edge the address.
+    await page.locator(".desktop").dispatchEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 760,
+      clientY: 420,
+    });
+    await desktopMenu.getByRole("menuitem", { name: "새로 만들기" }).hover();
+    const desktopShortcutMenu = page.getByRole("menu", { name: "새로 만들기" });
+    await desktopShortcutMenu.waitFor({ state: "visible" });
+    await desktopShortcutMenu.getByRole("menuitem", { name: "인터넷 바로 가기" }).click();
+    const shortcutDialog = page.locator(".run-dialog", { hasText: "인터넷 바로 가기 만들기" });
+    await shortcutDialog.waitFor({ state: "visible" });
+    await shortcutDialog.getByLabel("항목 위치").fill("ftp://예제");
+    await shortcutDialog.getByRole("button", { name: "만들기", exact: true }).click();
+    await shortcutDialog.getByRole("alert").waitFor({ state: "visible" });
+    await shortcutDialog.getByLabel("항목 위치").fill("example.com/스모크");
+    await shortcutDialog.getByLabel("바로 가기 이름").fill("스모크 바로 가기");
+    await shortcutDialog.getByRole("button", { name: "만들기", exact: true }).click();
+    await shortcutDialog.waitFor({ state: "detached" });
+    const desktopShortcutIcon = page.locator(".desktop-icon", {
+      hasText: "스모크 바로 가기.url",
+    });
+    await desktopShortcutIcon.waitFor({ state: "visible" });
+    await desktopShortcutIcon.dblclick();
+    const shortcutEdge = page.locator('article[aria-label="Microsoft Edge"]');
+    await shortcutEdge.waitFor({ state: "visible" });
+    // The launch request lands through an effect; poll instead of racing it.
+    const shortcutAddress = shortcutEdge.getByLabel("웹 주소 또는 검색어");
+    let shortcutAddressValue = "";
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      shortcutAddressValue = await shortcutAddress.inputValue();
+      if (shortcutAddressValue.includes("https://example.com/스모크")) break;
+      await page.waitForTimeout(150);
+    }
+    assert(
+      shortcutAddressValue.includes("https://example.com/스모크"),
+      `Shortcut did not hand Edge its address: "${shortcutAddressValue}"`,
+    );
+    await page.keyboard.press("Alt+F4");
+    await shortcutEdge.waitFor({ state: "detached" });
+
     await page.locator(".desktop").dispatchEvent("contextmenu", {
       bubbles: true,
       cancelable: true,
@@ -729,9 +772,13 @@ async function runSmoke(baseUrl) {
     await files.getByRole("button", { name: "정렬" }).click();
     await explorerSortMenu.getByRole("menuitemradio", { name: "내림차순" }).click();
     const descendingNames = await files.locator(".file-list button > span").allInnerTexts();
+    // Folders stay grouped above files whatever the direction — so with a
+    // descending name sort, the very last row must still be a file, not a
+    // folder. Pinning one literal filename broke as soon as the desktop
+    // gained a second file.
     assert(
-      descendingNames.at(-1) === "web-surf.url",
-      "Explorer did not keep folders grouped before files",
+      (descendingNames.at(-1) ?? "").endsWith(".url"),
+      `Explorer did not keep folders grouped before files: ${descendingNames.join(", ")}`,
     );
 
     await files.getByRole("button", { name: "큰 아이콘 보기" }).click();
@@ -1300,6 +1347,7 @@ async function runSmoke(baseUrl) {
       .first()
       .waitFor({ state: "visible" });
     await page.keyboard.press("Escape");
+    await startMenuPanel.waitFor({ state: "hidden" });
 
     await page.getByRole("button", { name: "알림 센터 열기" }).click();
     const notificationCenter = page.locator(".notification-center-panel");

@@ -40,6 +40,13 @@ export async function loadDesktopItemsFromVfs(): Promise<DesktopItem[]> {
 
 export function migrateVfsHierarchy(entries: DesktopItem[]): DesktopItem[] {
   const withoutLegacyFolder = entries.filter((entry) => entry.id !== "vfs-pictures");
+  /*
+   * Deliberately NOT VFS_SYSTEM_FOLDER_IDS: this flag detects the pre-folder
+   * era so loose root files can be re-homed once. A profile from the trio era
+   * already sorted itself; adding a newer system folder (다운로드) to this
+   * list would flip the flag for every such profile and re-home their root
+   * files all over again. Never extend this literal.
+   */
   const hadSystemFolders = [VFS_DOCUMENTS_ID, VFS_PICTURES_ID, VFS_GAMES_ID].every((folderId) =>
     withoutLegacyFolder.some((entry) => entry.id === folderId),
   );
@@ -79,8 +86,19 @@ export function migrateVfsHierarchy(entries: DesktopItem[]): DesktopItem[] {
     ];
   });
 
+  /*
+   * A system folder appended to an existing profile must not claim today as
+   * its birthday — the desktop's other folders keep their original stamps, so
+   * a "만든 날짜" sort would lie. Backdate it to the oldest surviving entry.
+   */
+  const oldestCreatedAt = migrated.reduce(
+    (oldest, entry) => Math.min(oldest, entry.createdAt),
+    Date.now(),
+  );
   for (const folder of systemFolders) {
-    if (!seenIds.has(folder.id)) migrated.push(folder);
+    if (!seenIds.has(folder.id)) {
+      migrated.push({ ...folder, createdAt: oldestCreatedAt, updatedAt: oldestCreatedAt });
+    }
   }
 
   const migratedById = new Map(migrated.map((entry) => [entry.id, entry]));

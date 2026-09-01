@@ -61,6 +61,7 @@ import {
 } from "../utils/format";
 import {
   VFS_DOCUMENTS_ID,
+  VFS_DOWNLOADS_ID,
   VFS_GAMES_ID,
   VFS_PICTURES_ID,
   VFS_ROOT_ID,
@@ -1008,6 +1009,7 @@ export default function FilesApp({
             [VFS_DOCUMENTS_ID, "문서", FileText],
             [VFS_PICTURES_ID, "사진", Paintbrush],
             [VFS_GAMES_ID, "게임", Bomb],
+            [VFS_DOWNLOADS_ID, "다운로드", Download],
           ] as const
         ).map(([folderId, label, Icon]) => (
           <button

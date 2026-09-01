@@ -141,6 +141,23 @@ export function normalizeVfsEntryName(name: string) {
   return truncateVfsName(name.trim().replace(/\s+/g, " "));
 }
 
+/**
+ * A display string from outside (a web page title, a wizard field) turned into
+ * a legal VFS file name: forbidden characters and control/bidi-override
+ * characters become spaces, whitespace collapses, and an empty result falls
+ * back — so a third-party title can neither smuggle characters the rename
+ * field refuses nor spoof its direction.
+ */
+export function sanitizeVfsFileName(name: string, fallback: string) {
+  const cleaned = normalizeVfsEntryName(
+    name
+      .replace(/[\\/:*?"<>|]/g, " ")
+      // eslint-disable-next-line no-control-regex -- stripping controls is the point
+      .replace(/[\u0000-\u001f\u007f\u200e\u200f\u202a-\u202e]/g, " "),
+  );
+  return truncateVfsName(cleaned, 40).trim() || fallback;
+}
+
 export function getVfsNameParts(name: string) {
   const dotIndex = name.lastIndexOf(".");
   if (dotIndex <= 0 || dotIndex === name.length - 1) {

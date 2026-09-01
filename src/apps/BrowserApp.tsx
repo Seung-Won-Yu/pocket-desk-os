@@ -32,7 +32,7 @@ import { useReturnFocus } from "../shell/dialogFocus";
 import { isSafeHttpUrl, toSafeHttpUrl } from "../utils/safeUrl";
 import { handleMenuKeyboard } from "../shell/keyboardNav";
 import { type DesktopItem } from "../types";
-import { VFS_DOWNLOADS_ID, truncateVfsName } from "../vfs/model";
+import { VFS_DOWNLOADS_ID, sanitizeVfsFileName } from "../vfs/model";
 
 type BrowserSearchEngineId = "duckduckgo" | "google" | "bing";
 type BrowserViewMode = "reader" | "web";
@@ -101,7 +101,7 @@ type BrowserToast = {
 
 type BrowserAppProps = {
   browserLaunchRequest: BrowserLaunchRequest | null;
-  createVfsShortcut: (parentId: string, name: string, target: string) => DesktopItem;
+  createVfsShortcut: (parentId: string, name: string, target: string) => DesktopItem | null;
   notify: (toast: BrowserToast) => void;
   saveNoteAs: (
     parentId: string,
@@ -556,6 +556,15 @@ export default function BrowserApp({
           onClick={() => {
             if (!url) return;
             if (viewMode === "reader" && readerDocument) {
+              // The whole VFS shares one snapshot budget; one oversized page
+              // must not wedge every later save behind a quota error.
+              if (readerDocument.markdown.length > 2_000_000) {
+                notify({
+                  detail: "페이지가 너무 커서 저장할 수 없습니다 (2MB 제한).",
+                  title: "다운로드 실패",
+                });
+                return;
+              }
               /*
                * The reader already holds the page as Markdown, so the download
                * is the real content — it opens in Notepad, whose preview
@@ -563,11 +572,7 @@ export default function BrowserApp({
                * unreadable, so the honest download is the address itself as a
                * .url shortcut, the way "바로 가기 저장" works.
                */
-              const cleanTitle =
-                truncateVfsName(
-                  readerDocument.title.replace(/[\\/:*?"<>|]/g, " ").trim(),
-                  40,
-                ) || "저장된 페이지";
+              const cleanTitle = sanitizeVfsFileName(readerDocument.title, "저장된 페이지");
               const item = saveNoteAs(
                 VFS_DOWNLOADS_ID,
                 `${cleanTitle}.md`,
@@ -590,6 +595,10 @@ export default function BrowserApp({
               }
             })();
             const item = createVfsShortcut(VFS_DOWNLOADS_ID, `${host}.url`, url);
+            if (!item) {
+              notify({ detail: "이 주소는 저장할 수 없습니다.", title: "다운로드 실패" });
+              return;
+            }
             notify({
               detail: `${item.name} — 다운로드 폴더에 바로 가기를 저장했습니다.`,
               title: "다운로드 완료",

@@ -16,6 +16,8 @@ import {
 } from "./shell/components/ContextMenus";
 import { DesktopIcon, DesktopItemIcon } from "./shell/components/DesktopIcons";
 import { RunDialog } from "./shell/components/RunDialog";
+import { ShortcutDialog } from "./shell/components/ShortcutDialog";
+import { resolveShortcutTarget } from "./utils/safeUrl";
 import { ShellGate } from "./shell/components/ShellScreens";
 import { StartMenu } from "./shell/components/StartMenu";
 import { Taskbar } from "./shell/components/Taskbar";
@@ -179,6 +181,7 @@ import {
   getVfsEntryAssociation,
   getVfsEntryExtension,
   getVfsShortcutTarget,
+  sanitizeVfsFileName,
   getVfsTopLevelIds,
   isVfsSystemFolderId,
 } from "./vfs/model";
@@ -249,6 +252,10 @@ export default function App() {
     () => localStorage.getItem(DESKTOP_ICON_GRID_KEY) !== "off",
   );
   const [desktopMenu, setDesktopMenu] = useState<DesktopContextMenuState | null>(null);
+  const [shortcutDialogOrigin, setShortcutDialogOrigin] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [desktopIconMenu, setDesktopIconMenu] = useState<DesktopIconContextMenuState | null>(
     null,
   );
@@ -943,6 +950,8 @@ export default function App() {
     const association = getVfsEntryAssociation(item);
     const override = defaultApps[getVfsEntryExtension(item)];
     const targetAppId = override ?? association.appId;
+    // Shell-level opens only, on purpose: Explorer's own in-window navigation
+    // is browsing, not "opening a document", and must not churn the jump list.
     setRecentOpens((current) => recordRecentOpen(current, item.id, Date.now()));
     if (item.kind === "folder") {
       const windowId = openApp("files");
@@ -1022,16 +1031,10 @@ export default function App() {
     openVfsEntry(item);
   };
 
-  const createDesktopItem = (kind: CreatableDesktopItemKind) => {
-    playSound("success");
-    const origin = desktopMenu ?? {
-      originX: 24,
-      originY: 24,
-      x: 24,
-      y: 24,
-    };
-    const position = findAvailableDesktopPosition(
-      clampIconPosition(origin.originX - 18, origin.originY - 10, desktopViewMode),
+  /** The first free desktop slot near where the context menu was opened. */
+  const nextDesktopIconPosition = (originX: number, originY: number) =>
+    findAvailableDesktopPosition(
+      clampIconPosition(originX - 18, originY - 10, desktopViewMode),
       desktopViewMode,
       [
         ...desktopApps.map((app) => iconLayout[app.id] ?? createDefaultIconLayout()[app.id]!),
@@ -1040,6 +1043,16 @@ export default function App() {
           .map((item) => ({ x: item.x, y: item.y })),
       ],
     );
+
+  const createDesktopItem = (kind: CreatableDesktopItemKind) => {
+    playSound("success");
+    const origin = desktopMenu ?? {
+      originX: 24,
+      originY: 24,
+      x: 24,
+      y: 24,
+    };
+    const position = nextDesktopIconPosition(origin.originX, origin.originY);
     const isFolder = kind === "folder";
     const name = isFolder
       ? getUniqueVfsEntryName(activeDesktopItems, VFS_ROOT_ID, "새 폴더")
@@ -1971,11 +1984,52 @@ export default function App() {
     return item;
   };
 
-  /** Creates a .url internet shortcut, the way Edge's 다운로드 saves a page's address. */
-  const createVfsShortcut = (parentId: string, name: string, target: string) => {
+  /** The wizard's confirm: an already-validated http(s) target becomes a desktop icon. */
+  const createDesktopShortcut = (rawName: string, target: string) => {
+    const origin = shortcutDialogOrigin ?? { x: 24, y: 24 };
+    const position = nextDesktopIconPosition(origin.x, origin.y);
+    const fallbackName = (() => {
+      try {
+        return new URL(target).hostname;
+      } catch {
+        return "바로 가기";
+      }
+    })();
+    const cleanName = sanitizeVfsFileName(rawName, fallbackName);
     const now = Date.now();
     const item: DesktopItem = {
       content: target,
+      createdAt: now,
+      id: `shortcut-${crypto.randomUUID()}`,
+      kind: "shortcut",
+      name: getUniqueVfsEntryName(activeDesktopItems, VFS_ROOT_ID, `${cleanName}.url`),
+      parentId: VFS_ROOT_ID,
+      showOnDesktop: true,
+      updatedAt: now,
+      ...position,
+    };
+    setDesktopItems((current) => [...current, item]);
+    setShortcutDialogOrigin(null);
+    setSelectedDesktopIds([`item:${item.id}`]);
+    playSound("success");
+    notify({
+      detail: `${item.name} — 바탕 화면에 만들었습니다.`,
+      title: "바로 가기 생성됨",
+      tone: "success",
+    });
+  };
+
+  /**
+   * Creates a .url internet shortcut, the way Edge's 다운로드 saves a page's
+   * address. The write side enforces the same http(s) rule the browser's read
+   * side does — a shortcut the shell would refuse to open is refused here.
+   */
+  const createVfsShortcut = (parentId: string, name: string, target: string) => {
+    const safeTarget = resolveShortcutTarget(target);
+    if (!safeTarget) return null;
+    const now = Date.now();
+    const item: DesktopItem = {
+      content: safeTarget,
       createdAt: now,
       id: `shortcut-${crypto.randomUUID()}`,
       kind: "shortcut",
@@ -3440,6 +3494,13 @@ export default function App() {
 
       {runOpen && <RunDialog onClose={() => setRunOpen(false)} onExecute={executeRunCommand} />}
 
+      {shortcutDialogOrigin && (
+        <ShortcutDialog
+          onClose={() => setShortcutDialogOrigin(null)}
+          onCreate={createDesktopShortcut}
+        />
+      )}
+
       {desktopMenu && (
         <DesktopContextMenu
           alignToGrid={alignDesktopIcons}
@@ -3451,6 +3512,11 @@ export default function App() {
           }}
           onCreateFolder={() => createDesktopItem("folder")}
           onCreateNote={() => createDesktopItem("note")}
+          onCreateShortcut={() => {
+            const origin = desktopMenu ?? { originX: 24, originY: 24 };
+            setShortcutDialogOrigin({ x: origin.originX, y: origin.originY });
+            setDesktopMenu(null);
+          }}
           onPaste={pasteDesktopItems}
           onRefresh={refreshDesktop}
           onSort={arrangeDesktopIcons}

@@ -75,9 +75,11 @@ export function buildRecentDocumentsByApp(
       byApp.set(targetAppId, [item]);
     }
   }
-  // An explicit open outranks a modification stamp; a file never opened
-  // through the shell still surfaces by its updatedAt (a terminal-written
-  // file exists before anyone has opened it).
+  // Recency is the LATER of last-opened and last-modified — deliberately not
+  // opens-only: a terminal-written file exists before anyone has opened it,
+  // and a document that just changed is news even if another one was opened
+  // earlier. An open therefore lifts a stale file, but never outranks a
+  // fresher edit.
   const recency = (item: DesktopItem) => Math.max(recentOpens[item.id] ?? 0, item.updatedAt);
   for (const [appId, list] of byApp) {
     byApp.set(

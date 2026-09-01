@@ -27,3 +27,18 @@ export function toSafeHttpUrl(value: string | null | undefined, base?: string): 
 export function isSafeHttpUrl(value: string | null | undefined) {
   return toSafeHttpUrl(value) !== null;
 }
+
+/**
+ * What a typed shortcut location resolves to: an http(s) URL, with a bare
+ * hostname given the https:// it means — or null, because a shortcut whose
+ * scheme the shell would refuse to open must not be creatable either.
+ */
+export function resolveShortcutTarget(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    return isSafeHttpUrl(trimmed) ? trimmed : null;
+  }
+  const candidate = `https://${trimmed}`;
+  return isSafeHttpUrl(candidate) ? candidate : null;
+}
