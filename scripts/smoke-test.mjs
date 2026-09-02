@@ -1256,10 +1256,9 @@ async function runSmoke(baseUrl) {
     await edge.getByRole("button", { name: "읽기 보기" }).click();
     const readerView = edge.locator(".browser-reader");
     await readerView.waitFor({ state: "visible" });
-    assert(
-      (await readerView.innerText()).includes("Reader mode content"),
-      "Edge reader view did not render the page inside the window",
-    );
+    // The Markdown renderer is a lazily loaded chunk behind Suspense, so the
+    // container can be visible a beat before the content: wait for the text.
+    await readerView.getByText("Reader mode content").waitFor({ state: "visible" });
     await readerView.getByRole("link", { name: "Learn more" }).click();
     await page.waitForFunction(() => {
       const browser = document.querySelector('article[data-app-id="browser"]');

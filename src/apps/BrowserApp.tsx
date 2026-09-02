@@ -17,6 +17,8 @@ import {
   X,
 } from "lucide-react";
 import {
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useId,
@@ -27,7 +29,11 @@ import {
   type FormEvent,
   type RefObject,
 } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
+import type { Components } from "react-markdown";
+
+// Split on purpose — see BrowserReaderMarkdown.tsx. The chunk is precached by
+// the service worker from the build's asset list, so it loads offline too.
+const BrowserReaderMarkdown = lazy(() => import("./BrowserReaderMarkdown"));
 import { useReturnFocus } from "../shell/dialogFocus";
 import { isSafeHttpUrl, toSafeHttpUrl } from "../utils/safeUrl";
 import { handleMenuKeyboard } from "../shell/keyboardNav";
@@ -1117,7 +1123,9 @@ function BrowserReader({
         </p>
       )}
       <article>
-        <ReactMarkdown components={markdownComponents}>{document.markdown}</ReactMarkdown>
+        <Suspense fallback={<p className="browser-reader-loading">읽기 보기를 준비하는 중…</p>}>
+          <BrowserReaderMarkdown components={markdownComponents} markdown={document.markdown} />
+        </Suspense>
       </article>
     </div>
   );

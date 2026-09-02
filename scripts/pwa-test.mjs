@@ -112,6 +112,18 @@ async function runPwaTest(baseUrl) {
       cacheState.urls.some((url) => url.includes("/assets/") && url.endsWith(".js")),
       "JS bundle was not precached",
     );
+    // Code splitting contract: the lazily imported reader chunk is never
+    // referenced from index.html, so only the build-stamped asset list can put
+    // it in the cache. Two or more JS assets means the list is doing its job.
+    const cachedScripts = cacheState.urls.filter(
+      (url) => url.includes("/assets/") && url.endsWith(".js"),
+    );
+    assert(
+      cachedScripts.length >= 2,
+      `Split chunks were not precached (JS assets cached: ${cachedScripts.length})`,
+    );
+    const readerChunk = cachedScripts.find((url) => /BrowserReaderMarkdown/.test(url));
+    assert(readerChunk, `Reader chunk missing from cache: ${cachedScripts.join(", ")}`);
     assert(
       cacheState.urls.some((url) => url.includes("/assets/") && url.endsWith(".css")),
       "CSS bundle was not precached",
@@ -129,6 +141,16 @@ async function runPwaTest(baseUrl) {
     assert(
       offlineResponse?.ok() && offlineDiagnostics.controlled,
       `Offline navigation failed: ${JSON.stringify({ diagnostics: offlineDiagnostics, status: offlineResponse?.status() })}`,
+    );
+    // Offline, the split chunk must still be importable — served from the
+    // cache by the worker, since the network is gone.
+    const offlineChunkImport = await page.evaluate(
+      (url) => import(url).then(() => "ok").catch((error) => `failed: ${String(error)}`),
+      readerChunk,
+    );
+    assert(
+      offlineChunkImport === "ok",
+      `Reader chunk did not load offline: ${offlineChunkImport}`,
     );
     assert(
       offlineDiagnostics.desktopCount === 1,

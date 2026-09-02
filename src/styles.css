@@ -9991,3 +9991,10 @@ button {
 .window-frame.is-interacting {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
+
+.browser-reader-loading {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 24px;
+  text-align: center;
+}

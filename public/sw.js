@@ -9,6 +9,13 @@ const CACHE_PREFIX = "pocketdesk-os-";
 const CACHE_NAME = "pocketdesk-os-__BUILD_ID__";
 const SCOPE_URL = new URL(self.registration.scope);
 const INDEX_URL = new URL("./index.html", SCOPE_URL).href;
+/*
+ * Every asset the build emitted, stamped in by the build (vite.config.ts). The
+ * index.html scan below cannot see lazily imported chunks — they are never
+ * referenced from the document — so without this list a split chunk was
+ * missing offline until it had been fetched online once.
+ */
+const BUNDLED_ASSETS = []; // __BUNDLED_ASSETS__
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -51,8 +58,11 @@ async function cacheAppShell() {
   if (!indexResponse.ok) throw new Error(`App shell returned ${indexResponse.status}`);
 
   await cache.put(INDEX_URL, indexResponse.clone());
-  const assetUrls = getBundledAssetUrls(await indexResponse.text());
-  await cache.addAll(assetUrls);
+  const assetUrls = new Set(getBundledAssetUrls(await indexResponse.text()));
+  for (const fileName of BUNDLED_ASSETS) {
+    assetUrls.add(new URL(`./${fileName}`, SCOPE_URL).href);
+  }
+  await cache.addAll([...assetUrls]);
 }
 
 async function putSuccessfulResponse(cache, request, response) {

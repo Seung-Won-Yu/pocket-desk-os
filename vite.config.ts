@@ -15,16 +15,24 @@ function normalizeBasePath(path = "/") {
  * the response headers in netlify.toml / vercel.json share one definition.
  */
 /**
- * Stamps the service worker's cache name with a per-build id. Without it the
- * cache name only changed when someone remembered to edit a constant, so a
- * poisoned cache entry outlived the deploy that was supposed to replace it.
+ * Stamps the service worker with two build facts it cannot learn at runtime:
+ * a per-build cache id (without it the cache name only changed when someone
+ * remembered to edit a constant, so a poisoned cache entry outlived the deploy
+ * that was supposed to replace it), and the complete list of emitted assets.
+ * The list is what makes code splitting safe here — the worker used to find
+ * assets only by scanning index.html, and a lazily imported chunk is never
+ * referenced there, so it would have been missing offline until the user had
+ * opened that view online once.
  */
 function serviceWorkerCacheIdPlugin(): Plugin {
   const buildId = process.env.GITHUB_SHA?.slice(0, 12) ?? String(Date.now());
+  let emittedAssets: string[] = [];
   return {
     apply: "build",
     generateBundle(_options, bundle) {
-      void bundle;
+      emittedAssets = Object.keys(bundle)
+        .filter((fileName) => fileName.startsWith("assets/"))
+        .sort();
     },
     name: "pocketdesk-sw-cache-id",
     async writeBundle(options) {
@@ -32,7 +40,13 @@ function serviceWorkerCacheIdPlugin(): Plugin {
       const { join } = await import("node:path");
       const target = join(options.dir ?? "dist", "sw.js");
       const source = await readFile(target, "utf8");
-      await writeFile(target, source.replaceAll("__BUILD_ID__", buildId));
+      const assetList = JSON.stringify(emittedAssets);
+      await writeFile(
+        target,
+        source
+          .replaceAll("__BUILD_ID__", buildId)
+          .replace(/const BUNDLED_ASSETS = \[\];[^\n]*/, `const BUNDLED_ASSETS = ${assetList};`),
+      );
     },
   };
 }
@@ -57,11 +71,10 @@ function contentSecurityPolicyPlugin(): Plugin {
 export default defineConfig({
   base: normalizeBasePath(process.env.VITE_BASE_PATH),
   build: {
-    // The service worker precaches only the assets it finds referenced in
-    // index.html, so route-level code splitting would leave a lazily loaded app
-    // missing offline until the user had opened it online at least once. The
-    // desktop ships as one bundle on purpose; this raises the size warning to
-    // match that decision rather than silencing a surprise.
+    // The shell ships as one main bundle plus deliberately split chunks (the
+    // reader view's Markdown stack); the service worker precaches every emitted
+    // asset from the build's own list, so a split chunk is present offline.
+    // This raises the size warning to match that decision.
     chunkSizeWarningLimit: 700,
   },
   plugins: [react(), contentSecurityPolicyPlugin(), serviceWorkerCacheIdPlugin()],
