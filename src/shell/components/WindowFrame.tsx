@@ -111,6 +111,24 @@ export function WindowFrame({
     onInteractionChange?.(interacting);
   }, [interacting, onInteractionChange]);
 
+  /*
+   * A window can vanish mid-gesture — Alt+F4, a desktop switch, Task Manager.
+   * The window-level move/resize listeners then outlived the frame, the snap
+   * preview stayed on screen, and the shell's is-interacting flag (which
+   * pauses every window's blur) never cleared. Whatever gesture is active
+   * registers its teardown here; unmount runs it.
+   */
+  const interactionCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      interactionCleanupRef.current?.();
+      interactionCleanupRef.current = null;
+      onInteractionChange?.(false);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount teardown only
+    [],
+  );
+
   const startMove = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     // The window controls sit inside the title bar, so their pointerdown
@@ -190,9 +208,14 @@ export function WindowFrame({
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerCancel);
+      interactionCleanupRef.current = null;
     };
 
     setInteracting(true);
+    interactionCleanupRef.current = () => {
+      onSnapPreviewChange(null);
+      stopListening();
+    };
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerCancel);
@@ -248,9 +271,11 @@ export function WindowFrame({
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerUp);
+      interactionCleanupRef.current = null;
     };
 
     setInteracting(true);
+    interactionCleanupRef.current = onPointerUp;
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerUp);
@@ -276,7 +301,7 @@ export function WindowFrame({
        * stable data-app-id instead of this changing name.
        */
       aria-label={`${formatWindowTitle(app.title, documentLabel)}${
-        hasUnsavedChanges && documentLabel ? " (저장되지 않음)" : ""
+        hasUnsavedChanges ? " (저장되지 않음)" : ""
       }`}
       data-app-id={app.id}
       data-window-id={instance.id}
@@ -329,10 +354,7 @@ export function WindowFrame({
           {/* Windows names the window after the document it holds. */}
           {/* Windows marks an unsaved document with a leading asterisk. */}
           <span>
-            {`${hasUnsavedChanges && documentLabel ? "*" : ""}${formatWindowTitle(
-              app.title,
-              documentLabel,
-            )}`}
+            {`${hasUnsavedChanges ? "*" : ""}${formatWindowTitle(app.title, documentLabel)}`}
           </span>
         </div>
         <div className="window-controls">

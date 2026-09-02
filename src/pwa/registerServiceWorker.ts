@@ -1,4 +1,5 @@
 import { toTrustedServiceWorkerUrl } from "../security/trustedWorkerUrl";
+import { settleVfsWrites } from "../vfs/storage";
 export const PWA_UPDATE_EVENT = "pocketdesk:pwa-update";
 export const PWA_CONTROLLER_CHANGE_EVENT = "pocketdesk:pwa-controller-change";
 
@@ -61,7 +62,15 @@ export function registerPocketDeskServiceWorker() {
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     updateRegistration = null;
     window.dispatchEvent(new Event(PWA_CONTROLLER_CHANGE_EVENT));
-    if (refreshRequested) window.location.reload();
+    if (!refreshRequested) return;
+    // This is the one reload the app issues itself, so it is the one that can
+    // coincide with a VFS write still committing. Let the write settle first —
+    // bounded, so a wedged write can never hold the update hostage.
+    const settled = settleVfsWrites();
+    const deadline = new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 1500);
+    });
+    void Promise.race([settled, deadline]).then(() => window.location.reload());
   });
 
   const startRegistration = () => {

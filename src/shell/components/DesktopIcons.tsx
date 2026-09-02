@@ -236,6 +236,9 @@ export function DesktopIconButton({
       // One tab stop for the whole desktop, arrows to move within it. Every icon
       // used to be its own stop, so Tab walked through all of them.
       tabIndex={tabStop ? 0 : -1}
+      // Only a name long enough to be clipped gets the tooltip; a short one
+      // would just be read twice.
+      title={title.length > 10 ? title : undefined}
       type="button"
     >
       <AppIconTile accent={accent} icon={Icon} size="large" tone={tone} />

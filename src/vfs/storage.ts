@@ -59,22 +59,17 @@ export class VfsStorageError extends Error {
 }
 
 export async function readVfsEntries(normalize: VfsItemNormalizer): Promise<DesktopItem[]> {
-  const database = await openVfsDatabase();
+  const database = await getVfsDatabase();
+  const transaction = database.transaction(VFS_STORE_NAME, "readonly");
+  const request = transaction.objectStore(VFS_STORE_NAME).getAll();
+  const values = await requestResult<unknown[]>(request, "가상 파일 목록을 읽지 못했습니다.");
+  await transactionDone(transaction, "가상 파일 읽기 트랜잭션이 실패했습니다.");
+  const decoded = await Promise.all(values.map(fromStoredEntry));
 
-  try {
-    const transaction = database.transaction(VFS_STORE_NAME, "readonly");
-    const request = transaction.objectStore(VFS_STORE_NAME).getAll();
-    const values = await requestResult<unknown[]>(request, "가상 파일 목록을 읽지 못했습니다.");
-    await transactionDone(transaction, "가상 파일 읽기 트랜잭션이 실패했습니다.");
-    const decoded = await Promise.all(values.map(fromStoredEntry));
-
-    return decoded
-      .map((item, index) => normalize(item, index))
-      .filter((item): item is DesktopItem => Boolean(item))
-      .sort((a, b) => a.createdAt - b.createdAt);
-  } finally {
-    database.close();
-  }
+  return decoded
+    .map((item, index) => normalize(item, index))
+    .filter((item): item is DesktopItem => Boolean(item))
+    .sort((a, b) => a.createdAt - b.createdAt);
 }
 
 export function persistVfsEntries(entries: DesktopItem[]): Promise<void> {
@@ -122,43 +117,73 @@ export function createWriteCoalescer<T>(write: (value: T) => Promise<void>) {
   };
 }
 
-let currentVfsWrite: Promise<void> = Promise.resolve();
 const coalescedVfsWrite = createWriteCoalescer<DesktopItem[]>((snapshot) =>
   writeVfsSnapshot(snapshot),
 );
+let latestVfsWrite: Promise<void> = Promise.resolve();
 function enqueueVfsWrite(snapshot: DesktopItem[]) {
-  currentVfsWrite = coalescedVfsWrite(snapshot);
-  return currentVfsWrite;
+  latestVfsWrite = coalescedVfsWrite(snapshot);
+  return latestVfsWrite;
 }
 
-export async function flushVfsWrites() {
-  await currentVfsWrite;
+/**
+ * Resolves once the most recent snapshot write has settled. The one caller is
+ * the PWA update reload — the only reload this app issues by itself, and so
+ * the only one that can land inside a write's few-millisecond commit window
+ * (a release audit measured that window losing a just-created folder).
+ * Settles either way; a failed write is the persist effect's problem to report.
+ */
+export function settleVfsWrites(): Promise<void> {
+  return latestVfsWrite.catch(() => undefined);
 }
 
 async function writeVfsSnapshot(entries: DesktopItem[]) {
-  const database = await openVfsDatabase();
+  const database = await getVfsDatabase();
+  const transaction = database.transaction([VFS_STORE_NAME, VFS_META_STORE_NAME], "readwrite");
+  const entriesStore = transaction.objectStore(VFS_STORE_NAME);
+  const metaStore = transaction.objectStore(VFS_META_STORE_NAME);
 
-  try {
-    const transaction = database.transaction(
-      [VFS_STORE_NAME, VFS_META_STORE_NAME],
-      "readwrite",
-    );
-    const entriesStore = transaction.objectStore(VFS_STORE_NAME);
-    const metaStore = transaction.objectStore(VFS_META_STORE_NAME);
+  entriesStore.clear();
+  entries.forEach((entry) => entriesStore.put(toStoredEntry(entry)));
+  metaStore.put({
+    entryCount: entries.length,
+    key: "snapshot",
+    schemaVersion: VFS_DB_VERSION,
+    updatedAt: Date.now(),
+  });
 
-    entriesStore.clear();
-    entries.forEach((entry) => entriesStore.put(toStoredEntry(entry)));
-    metaStore.put({
-      entryCount: entries.length,
-      key: "snapshot",
-      schemaVersion: VFS_DB_VERSION,
-      updatedAt: Date.now(),
+  await transactionDone(transaction, "가상 파일 저장 트랜잭션이 실패했습니다.");
+}
+
+/*
+ * One connection for the page's lifetime. Every read and write used to open
+ * the database and close it again — a ~14ms round trip before a single byte
+ * moved — which is exactly the window a release audit found: a folder
+ * created and the page reloaded within that window had never reached a
+ * transaction. With the connection warm, a write is the transaction alone.
+ * The connection yields to another tab's schema upgrade (versionchange) and
+ * to an unexpected close by dropping itself, so the next call reopens.
+ */
+let vfsDatabasePromise: Promise<IDBDatabase> | null = null;
+
+function getVfsDatabase(): Promise<IDBDatabase> {
+  if (!vfsDatabasePromise) {
+    const opening = openVfsDatabase().then((database) => {
+      database.onversionchange = () => {
+        database.close();
+        if (vfsDatabasePromise === opening) vfsDatabasePromise = null;
+      };
+      database.onclose = () => {
+        if (vfsDatabasePromise === opening) vfsDatabasePromise = null;
+      };
+      return database;
     });
-
-    await transactionDone(transaction, "가상 파일 저장 트랜잭션이 실패했습니다.");
-  } finally {
-    database.close();
+    opening.catch(() => {
+      if (vfsDatabasePromise === opening) vfsDatabasePromise = null;
+    });
+    vfsDatabasePromise = opening;
   }
+  return vfsDatabasePromise;
 }
 
 function openVfsDatabase(): Promise<IDBDatabase> {
@@ -191,9 +216,7 @@ function openVfsDatabase(): Promise<IDBDatabase> {
         return;
       }
       settled = true;
-      const database = request.result;
-      database.onversionchange = () => database.close();
-      resolve(database);
+      resolve(request.result);
     };
     request.onerror = () => {
       if (settled) return;

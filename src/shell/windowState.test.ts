@@ -595,6 +595,13 @@ describe("isGeometryOnlyVfsChange", () => {
     expect(isGeometryOnlyVfsChange([base], [{ ...base, showOnDesktop: false }])).toBe(true);
   });
 
+  it("fails closed: a field this rule has never heard of is structural", () => {
+    const withUnknownField = { ...base, restoreParentId: "vfs-system-documents" };
+    expect(isGeometryOnlyVfsChange([base], [withUnknownField])).toBe(false);
+    const withFutureField = { ...base, someFutureFlag: true } as typeof base;
+    expect(isGeometryOnlyVfsChange([base], [withFutureField])).toBe(false);
+  });
+
   it("anything structural must write immediately", () => {
     expect(isGeometryOnlyVfsChange([base], [base, { ...base, id: "b" }])).toBe(false);
     expect(isGeometryOnlyVfsChange([base], [{ ...base, name: "다른.txt" }])).toBe(false);

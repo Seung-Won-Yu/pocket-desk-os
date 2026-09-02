@@ -329,6 +329,9 @@ export default function PaintApp({
    * stroke (pointerdown clears the cache) and reused for every sample.
    */
   const strokeRectRef = useRef<DOMRect | null>(null);
+  useEffect(() => {
+    strokeRectRef.current = null;
+  }, [zoom]);
   const getPoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = event.currentTarget;
     const rect = strokeRectRef.current ?? canvas.getBoundingClientRect();
@@ -819,7 +822,14 @@ export default function PaintApp({
           </span>
         )}
       </div>
-      <div className="paint-stage">
+      <div
+        className="paint-stage"
+        // The stage scrolls when zoomed past the window; a scroll mid-stroke
+        // moves the canvas under a cached rect.
+        onScroll={() => {
+          strokeRectRef.current = null;
+        }}
+      >
         <canvas
           aria-label="그림판 캔버스"
           className="paint-canvas"

@@ -99,7 +99,7 @@ export default function PhotosApp({
 
   useEffect(() => {
     reportDocument(windowId, currentEntry ? { itemId: currentEntry.id } : undefined);
-  }, [currentEntry?.id, reportDocument]);
+  }, [currentEntry?.id, reportDocument, windowId]);
 
   useEffect(() => {
     setNaturalSize(null);

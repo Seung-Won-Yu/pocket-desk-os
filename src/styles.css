@@ -1857,7 +1857,7 @@ button {
   display: grid;
   gap: 10px;
   padding: 10px;
-  pointer-events: none;
+  pointer-events: auto;
   position: absolute;
   transform: translateX(-50%);
   transform-origin: bottom center;

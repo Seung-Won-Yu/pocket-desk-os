@@ -145,8 +145,24 @@ async function assertActionsPinnedToCommits() {
   }
 }
 
+/**
+ * The version being released must be the one the changelog leads with. Both
+ * were left at the previous release once; nothing here noticed.
+ */
+async function assertVersionMatchesChangelog() {
+  const { version } = JSON.parse(await readFile("package.json", "utf8"));
+  const changelog = await readFile("CHANGELOG.md", "utf8");
+  const heading = changelog.match(/^## (\d+\.\d+\.\d+)/m)?.[1];
+  if (heading !== version) {
+    throw new Error(
+      `package.json version ${version} does not match the newest CHANGELOG heading ${heading ?? "(none)"}`,
+    );
+  }
+}
+
 async function runReleaseCheck() {
   const files = [...requiredFiles, ...requiredWallpapers];
+  await assertVersionMatchesChangelog();
 
   await Promise.all(files.map(assertFileExists));
   for (const [path, expected] of textChecks) {

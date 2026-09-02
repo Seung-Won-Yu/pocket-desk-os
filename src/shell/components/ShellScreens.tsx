@@ -186,7 +186,7 @@ export function LockScreen({
         </>
       )}
       <div className="lock-system-status" role="group" aria-label="네트워크와 소리 상태">
-        <span className="sr-only">네트워크 연결됨, 소리 켜짐</span>
+        <span className="sr-only">시스템 상태 아이콘</span>
         <Wifi aria-hidden="true" size={17} />
         <Volume2 aria-hidden="true" size={17} />
       </div>

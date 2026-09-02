@@ -426,8 +426,21 @@ export default function App() {
       .catch((error) => {
         console.error("Failed to load PocketDesk VFS", error);
         if (!cancelled) {
+          /*
+           * The defaults are shown so the desktop still works, but they must
+           * never be WRITTEN: a transient read failure (another tab holding
+           * the database during an upgrade, for one) used to be followed by
+           * this fallback persisting itself over the user's real files.
+           * Writes stay sealed for the session; a reload retries the read.
+           */
+          vfsWriteSealedRef.current = true;
           setDesktopItems(createDefaultVfsEntries());
           setVfsReady(true);
+          notifyRef.current({
+            detail:
+              "파일 저장소를 읽지 못했습니다. 이 세션의 파일 변경은 저장되지 않습니다 — 새로 고침하면 다시 시도합니다.",
+            title: "파일 시스템 읽기 실패",
+          });
         }
       });
 
@@ -543,7 +556,9 @@ export default function App() {
    * per pause instead; the storage layer additionally coalesces queued writes.
    */
   const desktopItemsRef = useRef(desktopItems);
+  const vfsWriteSealedRef = useRef(false);
   const flushVfsPersist = useCallback((entries: DesktopItem[]) => {
+    if (vfsWriteSealedRef.current) return;
     persistVfsEntries(entries)
       .then(() => {
         vfsSaveErrorShownRef.current = false;
@@ -581,10 +596,11 @@ export default function App() {
 
   /*
    * The debounces trade write frequency for a window in which a reload could
-   * lose the last quarter-second of geometry. pagehide closes that window:
-   * the localStorage writes are synchronous, and the IndexedDB write is
-   * fired best-effort (it also runs again on the next boot from state that
-   * localStorage carried).
+   * lose the last quarter-second of geometry. pagehide and the tab going
+   * hidden (a mobile tab discard never sends pagehide) close that window: the
+   * localStorage writes are synchronous, and the IndexedDB write is fired
+   * best-effort — it is the only copy of the VFS, so it must at least be
+   * attempted.
    */
   const vfsReadyRef = useRef(vfsReady);
   vfsReadyRef.current = vfsReady;
@@ -594,8 +610,15 @@ export default function App() {
       persistDesktopIconLayout(iconLayoutRef.current);
       if (vfsReadyRef.current) flushVfsPersist(desktopItemsRef.current);
     };
+    const flushWhenHidden = () => {
+      if (document.visibilityState === "hidden") flushAll();
+    };
     window.addEventListener("pagehide", flushAll);
-    return () => window.removeEventListener("pagehide", flushAll);
+    document.addEventListener("visibilitychange", flushWhenHidden);
+    return () => {
+      window.removeEventListener("pagehide", flushAll);
+      document.removeEventListener("visibilitychange", flushWhenHidden);
+    };
   }, [flushVfsPersist]);
 
   useEffect(() => {
@@ -655,12 +678,21 @@ export default function App() {
       tone: toast.tone ?? "info",
     };
 
-    setToasts((current) => [...current.slice(-3), nextToast]);
+    setToasts((current) => {
+      // A toast pushed out by the cap unmounts without a pointerleave/blur, so
+      // its hold would otherwise outlive it and re-arm its timer forever.
+      // Mutating the ref here is idempotent, so a double-invoked updater is safe.
+      for (const evicted of current.slice(0, -3)) heldToastsRef.current.delete(evicted.id);
+      return [...current.slice(-3), nextToast];
+    });
+    let heldFor = 0;
     const scheduleToastDismiss = (delay: number) => {
       window.setTimeout(() => {
         // Reading or reaching for a button must not race the timer: while the
-        // pointer or focus is on the toast, check again later instead.
-        if (heldToastsRef.current.has(id)) {
+        // pointer or focus is on the toast, check again later — but not past
+        // half a minute, so a hold that never releases cannot pin it forever.
+        if (heldToastsRef.current.has(id) && heldFor < 30_000) {
+          heldFor += 1500;
           scheduleToastDismiss(1500);
           return;
         }
@@ -797,7 +829,11 @@ export default function App() {
    * finger lifting is swallowed once, or it would activate the very thing
    * the menu just opened over. Text fields keep their native selection hold.
    */
-  const longPressSuppressClickRef = useRef(false);
+  // Epoch until which the click that follows a long-press is swallowed. A
+  // deadline, not a flag: when no click follows (pointercancel, or the target
+  // unmounted under the finger) a flag stayed armed and ate the next
+  // legitimate tap.
+  const longPressSuppressUntilRef = useRef(0);
   useEffect(() => {
     let timer = 0;
     let pointerId = -1;
@@ -831,7 +867,7 @@ export default function App() {
       pressTarget = target;
       timer = window.setTimeout(() => {
         timer = 0;
-        longPressSuppressClickRef.current = true;
+        longPressSuppressUntilRef.current = performance.now() + 700;
         /*
          * Re-resolve the element under the finger at fire time. The press
          * itself often re-renders its target (selecting an icon swaps its
@@ -861,8 +897,8 @@ export default function App() {
     };
 
     const onClickCapture = (event: MouseEvent) => {
-      if (!longPressSuppressClickRef.current) return;
-      longPressSuppressClickRef.current = false;
+      if (performance.now() > longPressSuppressUntilRef.current) return;
+      longPressSuppressUntilRef.current = 0;
       event.preventDefault();
       event.stopPropagation();
     };
@@ -2665,6 +2701,14 @@ export default function App() {
     setWindowMenu(null);
     scheduleWindowMotion(id, "closing", () => {
       setWindows((current) => current.filter((item) => item.id !== id));
+      // Per-window bookkeeping goes with the window; both grew for the session.
+      setReportedDocuments((current) => {
+        if (!(id in current)) return current;
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
+      closingLoggedRef.current.delete(id);
     });
   };
 

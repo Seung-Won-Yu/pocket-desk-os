@@ -297,19 +297,17 @@ export function isGeometryOnlyVfsChange(
     const before = previous[index];
     const after = next[index];
     if (before === after) continue;
-    if (
-      before.id !== after.id ||
-      before.name !== after.name ||
-      before.parentId !== after.parentId ||
-      before.content !== after.content ||
-      before.kind !== after.kind ||
-      before.trashed !== after.trashed ||
-      before.trashedAt !== after.trashedAt ||
-      before.appId !== after.appId ||
-      before.updatedAt !== after.updatedAt
-    ) {
-      return false;
+    // Fail closed: only the named geometry fields may differ. Any other field —
+    // including one added to DesktopItem after this was written — counts as
+    // structure and writes immediately.
+    const keys = new Set<string>([...Object.keys(before), ...Object.keys(after)]);
+    for (const key of keys) {
+      if (VFS_GEOMETRY_KEYS.has(key)) continue;
+      if (before[key as keyof typeof before] !== after[key as keyof typeof after]) return false;
     }
   }
   return true;
 }
+
+/** The fields an icon drag changes; nothing else is ever geometry. */
+const VFS_GEOMETRY_KEYS = new Set<string>(["x", "y", "showOnDesktop"]);
