@@ -322,9 +322,17 @@ export default function PaintApp({
     image.src = snapshot;
   };
 
+  /*
+   * getBoundingClientRect forces layout, and drawing calls this per
+   * pointermove. The canvas box only changes with zoom or a window resize,
+   * neither of which can happen mid-stroke — so the rect is read once per
+   * stroke (pointerdown clears the cache) and reused for every sample.
+   */
+  const strokeRectRef = useRef<DOMRect | null>(null);
   const getPoint = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = event.currentTarget;
-    const rect = canvas.getBoundingClientRect();
+    const rect = strokeRectRef.current ?? canvas.getBoundingClientRect();
+    strokeRectRef.current = rect;
     return {
       x: ((event.clientX - rect.left) / rect.width) * canvas.width,
       y: ((event.clientY - rect.top) / rect.height) * canvas.height,
@@ -533,6 +541,7 @@ export default function PaintApp({
     const context = canvas.getContext("2d");
     if (!context) return;
 
+    strokeRectRef.current = null;
     const point = getPoint(event);
 
     if (tool === "fill") {

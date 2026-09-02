@@ -105,6 +105,7 @@ import {
   getVirtualDesktopCount,
   loadVirtualDesktopCount,
   loadWindowState,
+  isGeometryOnlyVfsChange,
   persistWindowState,
   makeWindow,
   loadActiveDesktopIndex,
@@ -310,6 +311,11 @@ export default function App() {
   const [altTabWindowId, setAltTabWindowId] = useState<string | null>(null);
   const [pinnedAppIds, setPinnedAppIds] = useState<AppId[]>(() => loadPinnedTaskbarApps());
   const [snapPreview, setSnapPreview] = useState<SnapPreviewState | null>(null);
+  // Inside a snap zone every pointermove reported a fresh {zone} object and
+  // forced a commit; an unchanged zone now returns the previous state.
+  const handleSnapPreviewChange = (preview: SnapPreviewState | null) => {
+    setSnapPreview((current) => (current?.zone === preview?.zone ? current : preview));
+  };
   const [snapAssistZone, setSnapAssistZone] = useState<SnapZone | null>(null);
   const [shellEventLog, setShellEventLog] = useState(() => loadShellEventLog());
   const [notificationHistory, setNotificationHistory] = useState<ToastMessage[]>(() =>
@@ -397,8 +403,18 @@ export default function App() {
     localStorage.setItem(TASKBAR_PINNED_APPS_KEY, JSON.stringify(pinnedAppIds));
   }, [pinnedAppIds]);
 
+  /*
+   * Dragging fires ~60 pointermoves a second and every one used to run a
+   * synchronous JSON.stringify + localStorage write from this effect
+   * (measured: 61 setItem calls per 60-move drag). Geometry only needs to
+   * survive a reload, so it persists on the trailing edge of a pause; the
+   * pagehide flush below covers a reload mid-drag.
+   */
+  const windowsRef = useRef(windows);
   useEffect(() => {
-    persistWindowState(windows);
+    windowsRef.current = windows;
+    const timer = window.setTimeout(() => persistWindowState(windows), 250);
+    return () => window.clearTimeout(timer);
   }, [windows]);
 
   useEffect(() => {
@@ -445,8 +461,11 @@ export default function App() {
     persistShellEventLog(shellEventLog);
   }, [shellEventLog]);
 
+  const iconLayoutRef = useRef(iconLayout);
   useEffect(() => {
-    persistDesktopIconLayout(iconLayout);
+    iconLayoutRef.current = iconLayout;
+    const timer = window.setTimeout(() => persistDesktopIconLayout(iconLayout), 250);
+    return () => window.clearTimeout(timer);
   }, [iconLayout]);
 
   useEffect(() => {
@@ -461,9 +480,14 @@ export default function App() {
     localStorage.setItem(DESKTOP_ICON_GRID_KEY, alignDesktopIcons ? "on" : "off");
   }, [alignDesktopIcons]);
 
-  useEffect(() => {
-    if (!vfsReady) return;
-    persistVfsEntries(desktopItems)
+  /*
+   * Dragging a file icon re-encoded and rewrote the entire IndexedDB snapshot
+   * per pointermove (measured: 60 database opens per 60-move drag). One write
+   * per pause instead; the storage layer additionally coalesces queued writes.
+   */
+  const desktopItemsRef = useRef(desktopItems);
+  const flushVfsPersist = useCallback((entries: DesktopItem[]) => {
+    persistVfsEntries(entries)
       .then(() => {
         vfsSaveErrorShownRef.current = false;
       })
@@ -471,12 +495,51 @@ export default function App() {
         console.error("Failed to persist PocketDesk VFS", error);
         if (vfsSaveErrorShownRef.current) return;
         vfsSaveErrorShownRef.current = true;
-        notify({
+        notifyRef.current({
           detail: error instanceof Error ? error.message : "브라우저 저장소를 확인하세요.",
           title: "파일 저장 실패",
         });
       });
-  }, [desktopItems, vfsReady]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs only
+  }, []);
+
+  useEffect(() => {
+    if (!vfsReady) return;
+    const previous = desktopItemsRef.current;
+    desktopItemsRef.current = desktopItems;
+    /*
+     * Only pure geometry (an icon being dragged) may wait: structure —
+     * creations, copies, renames, content, the trash — writes immediately, or
+     * a reload inside the debounce window would lose real work. The measured
+     * failure: Explorer's copy vanished when the smoke suite reloaded within
+     * 300ms. The write coalescer absorbs immediate-write bursts.
+     */
+    if (!isGeometryOnlyVfsChange(previous, desktopItems)) {
+      flushVfsPersist(desktopItems);
+      return;
+    }
+    const timer = window.setTimeout(() => flushVfsPersist(desktopItems), 300);
+    return () => window.clearTimeout(timer);
+  }, [desktopItems, flushVfsPersist, vfsReady]);
+
+  /*
+   * The debounces trade write frequency for a window in which a reload could
+   * lose the last quarter-second of geometry. pagehide closes that window:
+   * the localStorage writes are synchronous, and the IndexedDB write is
+   * fired best-effort (it also runs again on the next boot from state that
+   * localStorage carried).
+   */
+  const vfsReadyRef = useRef(vfsReady);
+  vfsReadyRef.current = vfsReady;
+  useEffect(() => {
+    const flushAll = () => {
+      persistWindowState(windowsRef.current);
+      persistDesktopIconLayout(iconLayoutRef.current);
+      if (vfsReadyRef.current) flushVfsPersist(desktopItemsRef.current);
+    };
+    window.addEventListener("pagehide", flushAll);
+    return () => window.removeEventListener("pagehide", flushAll);
+  }, [flushVfsPersist]);
 
   useEffect(() => {
     if (!desktopMenu && !desktopIconMenu) return;
@@ -515,6 +578,8 @@ export default function App() {
       heldToastsRef.current.delete(id);
     }
   };
+
+  const notifyRef = useRef<(toast: ToastInput) => void>(() => {});
 
   const dismissToast = (id: string) => {
     heldToastsRef.current.delete(id);
@@ -556,6 +621,7 @@ export default function App() {
     // A toast asking a question needs longer on screen than one stating a fact.
     scheduleToastDismiss(nextToast.actions.length > 0 ? 9000 : 3400);
   };
+  notifyRef.current = notify;
 
   const clearNotificationHistory = () => {
     setNotificationHistory([]);
@@ -2861,8 +2927,17 @@ export default function App() {
     };
     desktopSelectionRef.current = nextSelection;
     setDesktopSelection(nextSelection);
-    setSelectedDesktopIds(
-      getDesktopSelectionIds(nextSelection, iconLayout, activeDesktopItems, desktopViewMode),
+    const nextIds = getDesktopSelectionIds(
+      nextSelection,
+      iconLayout,
+      activeDesktopItems,
+      desktopViewMode,
+    );
+    // Most moves change the rectangle but not what it covers.
+    setSelectedDesktopIds((current) =>
+      current.length === nextIds.length && current.every((id, index) => id === nextIds[index])
+        ? current
+        : nextIds,
     );
   };
 
@@ -2918,6 +2993,18 @@ export default function App() {
     openApp(resolution.appId);
   };
 
+  /*
+   * The shortcut handlers close over half the shell, so they are rebuilt
+   * every commit — but the listeners are registered once. Rebinding four
+   * window listeners per pointermove (the old 18-dependency effect) was
+   * pure churn on the hottest path. Same pattern as clockTickRef.
+   */
+  const globalShellHandlersRef = useRef({
+    blur: () => {},
+    down: (_event: KeyboardEvent) => {},
+    up: (_event: KeyboardEvent) => {},
+    visibility: () => {},
+  });
   useEffect(() => {
     const clearAltTab = () => {
       altTabOrderRef.current = [];
@@ -3259,39 +3346,30 @@ export default function App() {
       if (document.visibilityState === "hidden") commitAltTabOnLostFocus();
     };
 
-    window.addEventListener("keydown", handleGlobalKeyDown);
-    window.addEventListener("keyup", handleGlobalKeyUp);
-    window.addEventListener("blur", commitAltTabOnLostFocus);
-    document.addEventListener("visibilitychange", commitAltTabOnHide);
-    return () => {
-      window.removeEventListener("keydown", handleGlobalKeyDown);
-      window.removeEventListener("keyup", handleGlobalKeyUp);
-      window.removeEventListener("blur", commitAltTabOnLostFocus);
-      document.removeEventListener("visibilitychange", commitAltTabOnHide);
+    globalShellHandlersRef.current = {
+      blur: commitAltTabOnLostFocus,
+      down: handleGlobalKeyDown,
+      up: handleGlobalKeyUp,
+      visibility: commitAltTabOnHide,
     };
-  }, [
-    // Missing from this list, the handler kept the values it closed over on
-    // mount: Ctrl+V on the desktop always saw an empty clipboard and did
-    // nothing, and Win+Ctrl+Right always tried to switch away from desktop 1.
-    activeDesktopIndex,
-    activeDesktopItems,
-    activeWindowId,
-    altTabWindowId,
-    clipboard,
-    windowKeyboardDrag,
-    desktopIconMenu,
-    desktopMenu,
-    desktopPropertiesItemId,
-    desktopRenamingItemId,
-    runOpen,
-    selectedDesktopIds,
-    snapAssistZone,
-    taskViewOpen,
-    shellPhase,
-    startOpen,
-    windowMenu,
-    windows,
-  ]);
+  });
+
+  useEffect(() => {
+    const down = (event: KeyboardEvent) => globalShellHandlersRef.current.down(event);
+    const up = (event: KeyboardEvent) => globalShellHandlersRef.current.up(event);
+    const blur = () => globalShellHandlersRef.current.blur();
+    const visibility = () => globalShellHandlersRef.current.visibility();
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", blur);
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", blur);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, []);
 
   /*
    * One tab stop for the whole icon field, the way Windows treats it: the
@@ -3526,7 +3604,7 @@ export default function App() {
               onOpenSystemMenu={(event) => openWindowSystemMenu(event, item.id)}
               documentLabel={getWindowDocumentLabel(item.id, item.appId)}
               hasUnsavedChanges={unsavedWindowIds.has(item.id)}
-              onSnapPreviewChange={setSnapPreview}
+              onSnapPreviewChange={handleSnapPreviewChange}
               onToggleMaximize={() => toggleMaximize(item.id)}
               onUpdate={(patch) => updateWindow(item.id, patch)}
             >

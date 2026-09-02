@@ -103,6 +103,8 @@ export function WindowFrame({
     return () => window.cancelAnimationFrame(frameId);
   }, [active, instance.id, instance.minimized]);
 
+  const [interacting, setInteracting] = useState(false);
+
   const startMove = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     // The window controls sit inside the title bar, so their pointerdown
@@ -165,6 +167,7 @@ export function WindowFrame({
         onUpdate({ ...getWindowSnapPatch(activeSnapZone), snapZone: activeSnapZone });
       }
       onSnapPreviewChange(null);
+      setInteracting(false);
       stopListening();
     };
 
@@ -173,6 +176,7 @@ export function WindowFrame({
     // chased every later touch.
     const onPointerCancel = () => {
       onSnapPreviewChange(null);
+      setInteracting(false);
       stopListening();
     };
 
@@ -182,6 +186,7 @@ export function WindowFrame({
       window.removeEventListener("pointercancel", onPointerCancel);
     };
 
+    setInteracting(true);
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerCancel);
@@ -233,11 +238,13 @@ export function WindowFrame({
     };
 
     const onPointerUp = () => {
+      setInteracting(false);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerUp);
     };
 
+    setInteracting(true);
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerUp);
@@ -270,7 +277,9 @@ export function WindowFrame({
       aria-hidden={instance.minimized ? "true" : undefined}
       className={`window-frame ${active ? "is-active" : ""} ${
         instance.maximized ? "is-maximized" : ""
-      } ${instance.minimized ? "is-minimized" : ""} ${motion ? `is-${motion}` : ""}`}
+      } ${instance.minimized ? "is-minimized" : ""} ${motion ? `is-${motion}` : ""} ${
+        interacting ? "is-interacting" : ""
+      }`}
       /*
        * Minimizing hides the frame with `visibility: hidden`, and the browser
        * drops focus from the hidden control before React can look — so the

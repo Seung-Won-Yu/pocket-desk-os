@@ -279,3 +279,37 @@ export function persistNotificationHistory(history: ToastMessage[]) {
     JSON.stringify(history.slice(0, NOTIFICATION_HISTORY_LIMIT)),
   );
 }
+
+/**
+ * True when two VFS snapshots differ only in icon geometry (x/y and desktop
+ * visibility) — the one kind of change a persist debounce may sit on. Any
+ * structural difference (ids, names, parents, content, trash state, order)
+ * must be written immediately: a reload inside the debounce window would
+ * otherwise lose real work, not just a few pixels of icon position.
+ */
+export function isGeometryOnlyVfsChange(
+  previous: import("../types").DesktopItem[],
+  next: import("../types").DesktopItem[],
+) {
+  if (previous === next) return true;
+  if (previous.length !== next.length) return false;
+  for (let index = 0; index < next.length; index += 1) {
+    const before = previous[index];
+    const after = next[index];
+    if (before === after) continue;
+    if (
+      before.id !== after.id ||
+      before.name !== after.name ||
+      before.parentId !== after.parentId ||
+      before.content !== after.content ||
+      before.kind !== after.kind ||
+      before.trashed !== after.trashed ||
+      before.trashedAt !== after.trashedAt ||
+      before.appId !== after.appId ||
+      before.updatedAt !== after.updatedAt
+    ) {
+      return false;
+    }
+  }
+  return true;
+}

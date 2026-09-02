@@ -10,7 +10,6 @@ export const MAX_CONTENT_BYTES = 16 * 1024 * 1024;
 
 type VfsItemNormalizer = (value: unknown, index: number) => DesktopItem | null;
 
-let writeQueue: Promise<void> = Promise.resolve();
 const contentEncoder = new TextEncoder();
 /**
  * Encoded images, keyed by the data URL they came from. Every save rewrites the
@@ -89,13 +88,51 @@ export function persistVfsEntries(entries: DesktopItem[]): Promise<void> {
     return Promise.reject(error);
   }
 
-  const nextWrite = writeQueue.catch(() => undefined).then(() => writeVfsSnapshot(snapshot));
-  writeQueue = nextWrite;
-  return nextWrite;
+  return enqueueVfsWrite(snapshot);
+}
+
+/**
+ * Coalesces queued writes: while one snapshot is being written, any number of
+ * newer ones collapse into a single pending slot, and only the newest is
+ * written next. A burst of N saves used to append N full-database rewrites to
+ * the queue and keep writing long after the burst ended; every intermediate
+ * snapshot is dead the moment a newer one exists.
+ */
+export function createWriteCoalescer<T>(write: (value: T) => Promise<void>) {
+  let running: Promise<void> = Promise.resolve();
+  let pending: { value: T } | null = null;
+  let scheduled = false;
+
+  return (value: T): Promise<void> => {
+    pending = { value };
+    if (!scheduled) {
+      scheduled = true;
+      running = running
+        .catch(() => undefined)
+        .then(async () => {
+          // Reset first: a save arriving while this write runs must schedule
+          // the next run instead of vanishing into the already-taken slot.
+          scheduled = false;
+          const next = pending;
+          pending = null;
+          if (next) await write(next.value);
+        });
+    }
+    return running;
+  };
+}
+
+let currentVfsWrite: Promise<void> = Promise.resolve();
+const coalescedVfsWrite = createWriteCoalescer<DesktopItem[]>((snapshot) =>
+  writeVfsSnapshot(snapshot),
+);
+function enqueueVfsWrite(snapshot: DesktopItem[]) {
+  currentVfsWrite = coalescedVfsWrite(snapshot);
+  return currentVfsWrite;
 }
 
 export async function flushVfsWrites() {
-  await writeQueue;
+  await currentVfsWrite;
 }
 
 async function writeVfsSnapshot(entries: DesktopItem[]) {

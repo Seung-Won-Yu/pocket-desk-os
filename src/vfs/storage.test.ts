@@ -5,6 +5,7 @@ import {
   MAX_ENTRY_COUNT,
   VfsStorageError,
   cloneAndValidateSnapshot,
+  createWriteCoalescer,
 } from "./storage";
 
 /** `lib` is ES2020 here, so `Error.cause` is not part of the ambient Error type. */
@@ -339,5 +340,61 @@ describe("VfsStorageError", () => {
     expect(error.name).toBe("VfsStorageError");
     expect(error.constructor).toBe(VfsStorageError);
     expect("cause" in error).toBe(false);
+  });
+});
+
+describe("createWriteCoalescer", () => {
+  it("collapses a synchronous burst into a single write of the newest value", async () => {
+    const written: number[] = [];
+    const save = createWriteCoalescer<number>(async (value) => {
+      written.push(value);
+    });
+
+    const results: Promise<void>[] = [];
+    for (let index = 1; index <= 100; index += 1) results.push(save(index));
+    await Promise.all(results);
+
+    // 100 queued saves used to mean 100 full-database rewrites.
+    expect(written.length).toBeLessThanOrEqual(2);
+    expect(written[written.length - 1]).toBe(100);
+  });
+
+  it("a value arriving mid-write is written next, not dropped", async () => {
+    const written: string[] = [];
+    let releaseFirst: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let signalFirstStarted: () => void = () => {};
+    const firstStarted = new Promise<void>((resolve) => {
+      signalFirstStarted = resolve;
+    });
+    const save = createWriteCoalescer<string>(async (value) => {
+      if (value === "first") {
+        signalFirstStarted();
+        await gate;
+      }
+      written.push(value);
+    });
+
+    const first = save("first");
+    await firstStarted; // the first write is genuinely in flight
+    const third = save("third"); // arrives mid-write: must run afterwards
+    releaseFirst();
+    await Promise.all([first, third]);
+
+    expect(written).toEqual(["first", "third"]);
+  });
+
+  it("a rejected write does not wedge the queue", async () => {
+    const written: string[] = [];
+    const save = createWriteCoalescer<string>(async (value) => {
+      if (value === "bad") throw new Error("quota");
+      written.push(value);
+    });
+
+    await save("bad").catch(() => undefined);
+    await save("good");
+    expect(written).toEqual(["good"]);
   });
 });

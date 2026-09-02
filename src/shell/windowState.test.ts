@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_VIRTUAL_DESKTOPS, VIRTUAL_DESKTOPS_KEY, WINDOW_STATE_KEY } from "./constants";
 import { type PersistedWindow, type WindowInstance } from "./types";
 import {
+  isGeometryOnlyVfsChange,
   createDefaultWindows,
   fitWindowToViewport,
   getVirtualDesktopCount,
@@ -573,5 +574,35 @@ describe("persistWindowState", () => {
     persistWindowState([createWindow({ id: "old" })]);
     persistWindowState([createWindow({ appId: "files", id: "new" })]);
     expect(loadWindowState().map((item) => item.id)).toEqual(["new"]);
+  });
+});
+
+describe("isGeometryOnlyVfsChange", () => {
+  const base = {
+    createdAt: 0,
+    id: "a",
+    kind: "note" as const,
+    name: "메모.txt",
+    parentId: "desktop",
+    showOnDesktop: true,
+    updatedAt: 0,
+    x: 0,
+    y: 0,
+  };
+
+  it("treats a pure icon move as geometry", () => {
+    expect(isGeometryOnlyVfsChange([base], [{ ...base, x: 40, y: 80 }])).toBe(true);
+    expect(isGeometryOnlyVfsChange([base], [{ ...base, showOnDesktop: false }])).toBe(true);
+  });
+
+  it("anything structural must write immediately", () => {
+    expect(isGeometryOnlyVfsChange([base], [base, { ...base, id: "b" }])).toBe(false);
+    expect(isGeometryOnlyVfsChange([base], [{ ...base, name: "다른.txt" }])).toBe(false);
+    expect(isGeometryOnlyVfsChange([base], [{ ...base, content: "x" }])).toBe(false);
+    expect(
+      isGeometryOnlyVfsChange([base], [{ ...base, parentId: "vfs-system-documents" }]),
+    ).toBe(false);
+    expect(isGeometryOnlyVfsChange([base], [{ ...base, trashed: true }])).toBe(false);
+    expect(isGeometryOnlyVfsChange([base], [{ ...base, updatedAt: 5 }])).toBe(false);
   });
 });
