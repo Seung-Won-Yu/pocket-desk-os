@@ -2,6 +2,30 @@
 
 All notable changes to PocketDesk OS are documented here.
 
+## 0.13.0
+
+The round where the desktop learned to be touched, heard, and measured. Every behavior below was verified in a real browser — and for the performance work, against numbers taken before and after, on the deployed site as well as locally.
+
+### Added
+
+- **Toasts that answer back.** Notifications carry buttons the way Windows toasts do: clicking one runs its action and dismisses the toast, a toast asking a question stays up longer than one stating a fact, and the timer waits while the pointer or keyboard focus is on it. The first user is the alarm — 다시 알림 (5분) re-arms the ring five minutes out whatever its weekly schedule says, and it works with the clock window closed because the handler lives in the shell scheduler that fired it.
+- **cmd's power verbs.** `shutdown /s`, `/r`, `/l` and `logoff` route through the exact same paths as the Start menu's power buttons, so unsaved work still gets its question first.
+- **Touch that operates the desktop.** Measured on a phone-sized touch-only browser: the title bar owns its touches (a drag used to move a window −8px before the browser reclaimed the gesture), a half-second hold is the touch right click everywhere a context menu exists, and the narrow-screen taskbar no longer pins its tray over the app buttons where taps could not reach it. Resize handles, double-tap open, Paint touch drawing and the volume slider all measured working.
+- **Windows named per window.** Two windows of one app finally sound different: Explorer is titled after its folder, Edge after its page, the prompt after its working directory, and Alt+Tab, Task View, the taskbar preview and the title bar all use that per-window name. The accessible name of every window frame is its real title.
+
+### Fixed
+
+- **Accessibility, three audits deep.** An axe sweep across twelve shell states ends at zero violations. A screen reader now hears Alt+Tab cycle and the keyboard move/resize mode (both used to mount their live region together with its text, which most readers ignore), can read the time off the tray clock (its label had hidden the clock), and is told when the maximize button will restore instead. Notepad's menu bar moves focus into its menus; the Start menu's power submenu joins the Escape hierarchy and takes focus on open; minimizing hands focus to the app's taskbar button instead of dropping it on the page; the taskbar preview card survives Tab entering it. Desktop icon labels over a photo wallpaper measured 1.77:1 and now carry a dark outline shadow; the near-white Run and rename fields wear a dark focus ring; and the taskbar's window-count badge had been hidden by its own parent's rule.
+- **Sixty synchronous writes a second.** Dragging a window ran a JSON.stringify + localStorage write on every pointermove (61 per 60-move drag); dragging a file icon re-encoded every file's content and rewrote the entire IndexedDB store per move (60 database opens). Both persist once per pause now, with a pagehide flush, and the VFS write queue coalesces a burst into a single write of the newest snapshot. The debounce is allowed for icon geometry only — the release gate itself proved why, when an Explorer copy vanished under a reload inside the window; structural changes write immediately.
+- **A dragged window re-rendered every other window.** The shell had no React.memo anywhere and re-created 33 of every app's props each render. Each window now renders through a memoized slot whose props are reference-stable: a MutationObserver on a non-dragged window records 0 mutations for a whole drag. The frame time turned out to be the other windows resampling their backdrop blur under the moving one — the blur pauses for the gesture (a `:has()` attempt measured worse than nothing) — taking the four-window p95 from 24ms to 17ms locally and 10.5ms on the deployed site.
+- **The reader view's Markdown stack left the initial bundle.** Roughly a quarter of shipped source served one view most sessions never open; it loads lazily now (main bundle 192 → 158 kB gzip). The service worker learns every emitted asset from the build itself, so the split chunk is precached and imports offline — the PWA gate verifies that with the network switched off.
+
+### Testing
+
+- 780 unit tests across 30 files — new suites for the toast action row, snooze semantics, the shutdown command, the memo boundary (a parent re-render with equal props renders an app zero times), the write coalescer (a 100-call burst performs at most two writes), the geometry-only persist rule, per-window titles in Task View, and preview-card focus retention. The smoke suite gained a touch-only section, a shell-fired-timer scenario, jump list, world clock, downloads, the shortcut wizard, `shutdown /l`, and two Explorer windows carrying two names; the PWA gate asserts the split chunk is cached and importable offline.
+
+- **The release gate itself caught one more round.** A pre-tag review and runtime audit found: a failed reader chunk load unmounting the entire desktop (now confined to the reader view, with retry); a window vanishing mid-drag leaving its listeners, the snap preview and every window's paused blur stuck; a transient VFS read failure being followed by the defaults overwriting the user's files (writes are sealed after a failed read); a folder created in the same tick as a reload never reaching a transaction because every write opened the database first (the connection is held for the page's lifetime, and the app's own PWA-update reload waits for the in-flight write); a toast held forever after being pushed out by the cap; a long-press click suppressor that could eat the next tap; and a preview card that still refused the pointer. All fixed and re-measured before this tag.
+
 ## 0.12.0
 
 The round where the shell learned to keep time and to remember what you use. Every behavior below was measured in a real browser before shipping — the headline measurement: an alarm set with its app window closed rang 387ms after its minute, on the deployed site.
