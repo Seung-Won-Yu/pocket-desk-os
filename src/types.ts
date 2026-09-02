@@ -4,6 +4,7 @@ export type AppId =
   | "minesweeper"
   | "calculator"
   | "clock"
+  | "stickynotes"
   | "paint"
   | "notepad"
   | "files"

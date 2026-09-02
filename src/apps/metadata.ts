@@ -13,6 +13,7 @@ import {
   ScrollText,
   Settings,
   SquareTerminal,
+  StickyNote,
   Trash2,
   type LucideIcon,
 } from "lucide-react";
@@ -47,6 +48,7 @@ export const appOrder: AppId[] = [
   "minesweeper",
   "calculator",
   "clock",
+  "stickynotes",
   "paint",
   "notepad",
   "files",
@@ -104,6 +106,16 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     accent: "#5ab7c4",
     defaultSize: { width: 520, height: 640 },
     minSize: { width: 420, height: 520 },
+  },
+  stickynotes: {
+    id: "stickynotes",
+    title: "스티커 메모",
+    subtitle: "바탕 화면에 붙이는 색색의 메모",
+    icon: StickyNote,
+    accent: "#e8c447",
+    defaultSize: { width: 280, height: 280 },
+    minSize: { width: 200, height: 180 },
+    multiInstance: true,
   },
   paint: {
     id: "paint",

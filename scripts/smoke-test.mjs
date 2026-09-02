@@ -1080,6 +1080,57 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("Alt+F4");
     await jumpNotepad.waitFor({ state: "detached" });
 
+    // Desktop focus: like Windows, pressing the bare desktop takes focus off
+    // every window (title bar quiet, taskbar button not current) so desktop
+    // shortcuts work while windows stay open; the taskbar button then
+    // re-activates the window instead of minimizing it.
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("notepad");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const focusNotepad = page.locator('article[data-app-id="notepad"]').last();
+    await focusNotepad.waitFor({ state: "visible" });
+    const focusTaskbarButton = page.locator('.taskbar button[data-app-id="notepad"]');
+    assert(
+      (await focusNotepad.getAttribute("class"))?.includes("is-active") &&
+        (await focusTaskbarButton.getAttribute("aria-current")) === "true",
+      "A freshly opened window is not the active one",
+    );
+    const bareDesktopSpot = await page.evaluate(() => {
+      for (const [x, y] of [
+        [1240, 700],
+        [1240, 560],
+        [700, 730],
+        [400, 730],
+      ]) {
+        const element = document.elementFromPoint(x, y);
+        if (
+          element &&
+          !element.closest(".window-frame, .desktop-icon, .taskbar, .toast-stack, .start-menu")
+        ) {
+          return { x, y };
+        }
+      }
+      return null;
+    });
+    assert(bareDesktopSpot, "No bare desktop pixel to press");
+    await page.mouse.click(bareDesktopSpot.x, bareDesktopSpot.y);
+    await page.waitForTimeout(150);
+    assert(
+      !(await focusNotepad.getAttribute("class"))?.includes("is-active") &&
+        (await focusTaskbarButton.getAttribute("aria-current")) === null,
+      "Pressing the desktop did not take focus off the window",
+    );
+    await focusTaskbarButton.click();
+    await page.waitForTimeout(150);
+    assert(
+      (await focusNotepad.getAttribute("class"))?.includes("is-active") &&
+        (await focusNotepad.isVisible()),
+      "The taskbar button minimized a window the desktop had focus from",
+    );
+    await page.keyboard.press("Alt+F4");
+    await focusNotepad.waitFor({ state: "detached" });
+
     await page.keyboard.press("Control+Alt+R");
     await runDialog.waitFor({ state: "visible" });
     await runDialog.getByLabel("열기").fill("지뢰찾기");
@@ -2416,6 +2467,50 @@ async function runSmoke(baseUrl) {
     );
     await edgeTabs.getByRole("button", { name: "Microsoft Edge 닫기" }).click();
     await page.waitForTimeout(250);
+
+    // 스티커 메모: a note is a window bound to shell state — text survives a
+    // reload, and 새 메모 opens a second window holding a different note.
+    // Runs last on this page: the reload remounts every window, wiping
+    // in-memory state (Explorer's details pane) the earlier sections rely on.
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("sticky");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const stickyFrames = page.locator('article[data-app-id="stickynotes"]');
+    await stickyFrames.first().waitFor({ state: "visible" });
+    await stickyFrames.first().getByLabel("스티커 메모 내용").fill("장보기\n우유");
+    await stickyFrames.first().getByRole("button", { name: "분홍 메모" }).click();
+    assert(
+      (await stickyFrames.first().getAttribute("aria-label"))?.startsWith(
+        "장보기 - 스티커 메모",
+      ),
+      "Sticky note window is not titled after its first line",
+    );
+    await stickyFrames.first().getByRole("button", { name: "새 메모" }).click();
+    await stickyFrames.nth(1).waitFor({ state: "visible" });
+    assert(
+      (await stickyFrames.nth(1).getByLabel("스티커 메모 내용").inputValue()) === "",
+      "새 메모 reused the first note instead of creating a second",
+    );
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await unlockPocketDesk(page);
+    await stickyFrames.first().waitFor({ state: "visible" });
+    const stickyTexts = await stickyFrames
+      .locator("textarea")
+      .evaluateAll((nodes) => nodes.map((node) => node.value).sort());
+    assert(
+      stickyTexts.length === 2 && stickyTexts[1] === "장보기\n우유",
+      `Sticky notes did not survive the reload: ${JSON.stringify(stickyTexts)}`,
+    );
+    assert(
+      (await stickyFrames.locator(".sticky-note.is-pink").count()) === 1,
+      "Sticky note colour did not survive the reload",
+    );
+    for (let i = 0; i < 2; i += 1) {
+      await stickyFrames.last().getByRole("button", { name: "메모 삭제" }).click();
+      await page.waitForTimeout(250);
+    }
+    await stickyFrames.first().waitFor({ state: "detached" });
 
     // ---------- 터치: a phone-sized, touch-only context ----------
     // Everything below is a real regression once caught by measurement: the

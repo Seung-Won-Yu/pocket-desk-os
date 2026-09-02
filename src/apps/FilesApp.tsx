@@ -1504,7 +1504,16 @@ export default function FilesApp({
                       role="option"
                       type="button"
                     >
-                      <FileIcon aria-hidden="true" size={18} />
+                      {file.item.kind === "canvas" && file.item.content ? (
+                        <img
+                          alt=""
+                          className="file-row-thumbnail"
+                          draggable={false}
+                          src={file.item.content}
+                        />
+                      ) : (
+                        <FileIcon aria-hidden="true" size={18} />
+                      )}
                       <span>{file.name}</span>
                       <small>{file.modified}</small>
                       <small>{file.type}</small>

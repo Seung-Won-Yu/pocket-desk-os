@@ -104,15 +104,16 @@ import { getWindowSnapPatch, resizeWindowEdge } from "./shell/windowGeometry";
 import {
   fitWindowToViewport,
   getVirtualDesktopCount,
+  isGeometryOnlyVfsChange,
+  loadActiveDesktopIndex,
+  loadNotificationHistory,
   loadVirtualDesktopCount,
   loadWindowState,
-  isGeometryOnlyVfsChange,
-  persistWindowState,
   makeWindow,
-  loadActiveDesktopIndex,
   persistActiveDesktopIndex,
-  loadNotificationHistory,
   persistNotificationHistory,
+  persistWindowState,
+  resolveActiveWindowId,
 } from "./shell/windowState";
 import { SnapAssist } from "./shell/components/SnapAssist";
 import { TaskView } from "./shell/components/TaskView";
@@ -150,6 +151,7 @@ import {
   loadShellEventLog,
   persistShellEventLog,
 } from "./shell/eventLog";
+import { loadStickyNotes, persistStickyNotes, type StickyNoteStore } from "./shell/stickyNotes";
 import {
   buildRecentDocumentsByApp,
   loadRecentOpens,
@@ -272,6 +274,11 @@ export default function App() {
    */
   const [clockAlarms, setClockAlarms] = useState<ClockAlarm[]>(() => loadClockAlarms());
   const [clockTimer, setClockTimer] = useState<ClockTimer>(() => loadClockTimer());
+  const [stickyNotes, setStickyNotes] = useState<StickyNoteStore>(() => loadStickyNotes());
+
+  useEffect(() => {
+    persistStickyNotes(stickyNotes);
+  }, [stickyNotes]);
 
   useEffect(() => {
     persistClockAlarms(clockAlarms);
@@ -380,6 +387,8 @@ export default function App() {
   );
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [windows, setWindows] = useState<WindowInstance[]>(() => loadWindowState());
+  // z at which the desktop itself last took focus; 0 = a window has it.
+  const [desktopFocusZ, setDesktopFocusZ] = useState(0);
   const [storedDesktopCount, setStoredDesktopCount] = useState(() => loadVirtualDesktopCount());
   const [activeDesktopIndex, setActiveDesktopIndex] = useState(() =>
     loadActiveDesktopIndex(loadVirtualDesktopCount()),
@@ -2435,6 +2444,10 @@ export default function App() {
     });
   };
 
+  const focusDesktop = () => {
+    setDesktopFocusZ(Math.max(1, ...windows.map((item) => item.z)) + 1);
+  };
+
   const focusWindow = (id: string) => {
     // Focusing a window on another virtual desktop follows it there.
     const target = windows.find((item) => item.id === id);
@@ -2677,6 +2690,8 @@ export default function App() {
     }
 
     closeGuardsRef.current.delete(id);
+    // Closing the active window hands focus to the next one, not the desktop.
+    if (id === activeWindowId) setDesktopFocusZ(0);
     setUnsavedWindowIds((current) => {
       if (!current.has(id)) return current;
       const next = new Set(current);
@@ -2731,6 +2746,7 @@ export default function App() {
   const minimizeWindow = (id: string) => {
     playSound("minimize");
     setWindowMenu(null);
+    if (id === activeWindowId) setDesktopFocusZ(0);
     moveFocusOutOfWindow(id, windows.find((item) => item.id === id)?.appId);
     scheduleWindowMotion(id, "minimizing", () => {
       updateWindow(id, { minimized: true });
@@ -2751,7 +2767,9 @@ export default function App() {
       .filter((item) => !item.minimized)
       .sort((a, b) => b.z - a.z)[0]?.id;
 
-    if (target && !target.minimized && topVisibleId === id) {
+    // Only the *active* top window minimizes; a top window the desktop has
+    // taken focus from is activated instead, as on the Windows taskbar.
+    if (target && !target.minimized && topVisibleId === id && activeWindowId === id) {
       minimizeWindow(id);
       return;
     }
@@ -2769,6 +2787,8 @@ export default function App() {
     if (next === activeDesktopIndex) return;
     playSound("toggle");
     setActiveDesktopIndex(next);
+    // The desktop you switch to hands focus to its own top window.
+    setDesktopFocusZ(0);
     setStartOpen(false);
     setRunOpen(false);
     setDesktopMenu(null);
@@ -2936,9 +2956,7 @@ export default function App() {
     () => windows.filter((item) => item.desktopIndex === activeDesktopIndex),
     [activeDesktopIndex, windows],
   );
-  const activeWindowId = desktopWindows
-    .filter((item) => !item.minimized)
-    .sort((a, b) => b.z - a.z)[0]?.id;
+  const activeWindowId = resolveActiveWindowId(desktopWindows, desktopFocusZ);
   /**
    * Windows titles a window after the document, not the program: `notes.txt -
    * 메모장`. The same string is what Alt+Tab and the taskbar preview show, so it
@@ -3005,9 +3023,17 @@ export default function App() {
     setDesktopIconMenu(null);
     setWindowMenu(null);
 
-    if (shellPhase !== "unlocked" || event.button !== 0) return;
+    if (shellPhase !== "unlocked") return;
 
     const target = event.target as HTMLElement;
+    // Like Windows, any press (either button) on the bare desktop or one of its
+    // icons takes focus off every window: title bars go quiet and Ctrl+V /
+    // Delete address the desktop. Presses on dialogs and flyouts that merely
+    // bubble up through this element leave the window focus alone.
+    if (target === event.currentTarget || target.closest(".desktop-icons")) {
+      focusDesktop();
+    }
+    if (event.button !== 0) return;
     if (
       target.closest(
         ".desktop-icon, .desktop-context-menu, .window-system-menu, .window-frame, .start-menu, .taskbar, .shell-gate, .toast-stack, .pwa-update-prompt, .task-view, .alt-tab-switcher, .snap-assist",
@@ -3726,6 +3752,7 @@ export default function App() {
       clock24h,
       clockAlarms,
       clockTimer,
+      stickyNotes,
       defaultApps,
       desktopItems: activeDesktopItems,
       filesLaunchRequest,
@@ -3742,6 +3769,7 @@ export default function App() {
       trashedItems,
       updateClockAlarms: setClockAlarms,
       updateClockTimer: setClockTimer,
+      updateStickyNotes: setStickyNotes,
       userName,
       wallpaper,
     }),
@@ -3756,6 +3784,7 @@ export default function App() {
       clock24h,
       clockAlarms,
       clockTimer,
+      stickyNotes,
       defaultApps,
       activeDesktopItems,
       filesLaunchRequest,

@@ -50,6 +50,7 @@ export const CLOCK_ALARMS_KEY = "pocket-desk-clock-alarms-v1";
 export const CLOCK_TIMER_KEY = "pocket-desk-clock-timer-v1";
 export const CLOCK_WORLD_KEY = "pocket-desk-clock-world-v1";
 export const RECENT_OPENS_KEY = "pocket-desk-recent-opens-v1";
+export const STICKY_NOTES_KEY = "pocket-desk-sticky-notes-v1";
 export const DEFAULT_APPS_KEY = "pocket-desk-default-apps-v1";
 export const DEFAULT_USER_NAME = "PocketDesk";
 export const MAX_VIRTUAL_DESKTOPS = 6;
@@ -96,6 +97,15 @@ export const appSearchKeywords: Record<AppId, string[]> = {
     "cpu",
   ],
   calculator: ["calc", "calculator", "계산", "계산기", "수학", "사칙연산"],
+  stickynotes: [
+    "sticky",
+    "notes",
+    "sticky notes",
+    "스티커",
+    "스티커 메모",
+    "메모지",
+    "포스트잇",
+  ],
   clock: [
     "clock",
     "alarm",
@@ -118,6 +128,7 @@ export const runCommandAliases: Partial<Record<AppId, string[]>> = {
   thispc: ["computer", "this pc", "my computer", "내 pc", "내컴퓨터"],
   browser: ["edge", "iexplore", "msedge", "chrome", "www"],
   calculator: ["calc", "calc.exe", "calculator"],
+  stickynotes: ["sticky", "stikynot", "stikynot.exe", "sticky notes", "스티커 메모"],
   clock: ["clock", "ms-clock", "알람 및 시계", "알람", "타이머"],
   photos: ["photo", "photos", "사진", "사진 앱"],
   terminal: ["cmd", "cmd.exe", "command", "powershell", "terminal", "명령 프롬프트"],

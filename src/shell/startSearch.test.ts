@@ -291,8 +291,14 @@ describe("buildStartSearchResults", () => {
   it("ranks apps and desktop files together by score", () => {
     const items = [createDesktopItem({ id: "memo", name: "메모.txt" })];
     const results = buildStartSearchResults("메모", items, appCatalog);
-    expect(results.map((result) => result.id)).toEqual(["app-notepad", "desktop-memo"]);
-    expect(results.map((result) => result.score)).toEqual([124, 112]);
+    // 스티커 메모 matches "메모" through its title alone, so it trails the
+    // exact-keyword app and the file whose name is the query.
+    expect(results.map((result) => result.id)).toEqual([
+      "app-notepad",
+      "desktop-memo",
+      "app-stickynotes",
+    ]);
+    expect(results.map((result) => result.score)).toEqual([124, 112, 105]);
   });
 
   it("returns results sorted by descending score for a broad query", () => {

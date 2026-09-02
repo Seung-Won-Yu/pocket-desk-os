@@ -17,6 +17,7 @@ import {
 import { type LucideIcon } from "lucide-react";
 import { type DefaultAppMap } from "./preferences";
 import { type ClockAlarm, type ClockTimer } from "./clock";
+import { type StickyNoteStore } from "./stickyNotes";
 
 /**
  * What one window reports itself as showing: a VFS item (name resolved live,
@@ -197,6 +198,9 @@ export type AppContentProps = {
    */
   clockAlarms: ClockAlarm[];
   clockTimer: ClockTimer;
+  /** 스티커 메모 shared store; each note window binds itself by window id. */
+  stickyNotes: StickyNoteStore;
+  updateStickyNotes: (store: StickyNoteStore) => void;
   updateClockAlarms: (alarms: ClockAlarm[]) => void;
   updateClockTimer: (timer: ClockTimer) => void;
   deleteVfsEntry: (itemId: string) => void;

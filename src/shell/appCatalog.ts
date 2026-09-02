@@ -10,6 +10,7 @@ import PhotosApp from "../apps/PhotosApp";
 import RecycleBinApp from "../apps/RecycleBinApp";
 import RegistryEditorApp from "../apps/RegistryEditorApp";
 import SettingsApp from "../apps/SettingsApp";
+import StickyNotesApp from "../apps/StickyNotesApp";
 import TaskManagerApp from "../apps/TaskManagerApp";
 import TerminalApp from "../apps/TerminalApp";
 import ThisPcApp from "../apps/ThisPcApp";
@@ -31,6 +32,7 @@ export const appComponents: Record<AppId, AppDefinition["component"]> = {
   recycle: RecycleBinApp,
   registry: RegistryEditorApp,
   settings: SettingsApp,
+  stickynotes: StickyNotesApp,
   taskmanager: TaskManagerApp,
   terminal: TerminalApp,
   thispc: ThisPcApp,

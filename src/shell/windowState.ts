@@ -311,3 +311,18 @@ export function isGeometryOnlyVfsChange(
 
 /** The fields an icon drag changes; nothing else is ever geometry. */
 const VFS_GEOMETRY_KEYS = new Set<string>(["x", "y", "showOnDesktop"]);
+
+/**
+ * Which window is active, given that the desktop itself can hold focus.
+ * Clicking the desktop parks focus at a z above every window (`desktopFocusZ`);
+ * a window becomes active again only once it is raised to or past that mark.
+ * `desktopFocusZ` of 0 means the desktop was never focused: the top window wins.
+ */
+export function resolveActiveWindowId(
+  windows: ReadonlyArray<Pick<WindowInstance, "id" | "minimized" | "z">>,
+  desktopFocusZ: number,
+): string | undefined {
+  const top = windows.filter((item) => !item.minimized).sort((a, b) => b.z - a.z)[0];
+  if (!top || top.z < desktopFocusZ) return undefined;
+  return top.id;
+}

@@ -2,6 +2,17 @@
 
 All notable changes to PocketDesk OS are documented here.
 
+## Unreleased
+
+### Added
+
+- **스티커 메모.** A Sticky Notes app: each window is one note in five colours, titled after its first line, and the notes live in shell state so they survive a reload and reopen with the windows that showed them. 새 메모 opens another window holding a different note; 메모 삭제 removes the note and its window together.
+- **Picture files show their picture.** A `.canvas` drawing with pixels renders those pixels as its icon — on the desktop, in Explorer's rows and in its large-icon view — letterboxed rather than cropped, so a sketch in a corner still shows.
+
+### Fixed
+
+- **Pressing the desktop takes focus off the windows.** Like Windows, a click on the bare desktop or one of its icons deactivates the foreground window — its title bar goes quiet, its taskbar button stops being current, and Ctrl+V, Delete and Enter address the desktop while windows stay open. Clicking the window or its taskbar button gives it back; closing or minimizing the active window hands focus to the next window instead of the desktop.
+
 ## 0.13.0
 
 The round where the desktop learned to be touched, heard, and measured. Every behavior below was verified in a real browser — and for the performance work, against numbers taken before and after, on the deployed site as well as locally.

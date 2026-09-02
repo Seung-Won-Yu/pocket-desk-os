@@ -12,6 +12,7 @@ import {
   makeWindow,
   normalizePersistedWindow,
   persistWindowState,
+  resolveActiveWindowId,
 } from "./windowState";
 
 type StorageStub = {
@@ -611,5 +612,22 @@ describe("isGeometryOnlyVfsChange", () => {
     ).toBe(false);
     expect(isGeometryOnlyVfsChange([base], [{ ...base, trashed: true }])).toBe(false);
     expect(isGeometryOnlyVfsChange([base], [{ ...base, updatedAt: 5 }])).toBe(false);
+  });
+});
+
+describe("resolveActiveWindowId", () => {
+  const win = (id: string, z: number, minimized = false) => ({ id, minimized, z });
+
+  it("picks the topmost visible window when the desktop was never focused", () => {
+    expect(resolveActiveWindowId([win("a", 1), win("b", 3, true), win("c", 2)], 0)).toBe("c");
+    expect(resolveActiveWindowId([], 0)).toBeUndefined();
+  });
+
+  it("a desktop click above every window leaves no window active", () => {
+    expect(resolveActiveWindowId([win("a", 1), win("c", 2)], 3)).toBeUndefined();
+  });
+
+  it("raising a window to the desktop's mark activates it again", () => {
+    expect(resolveActiveWindowId([win("a", 1), win("c", 3)], 3)).toBe("c");
   });
 });

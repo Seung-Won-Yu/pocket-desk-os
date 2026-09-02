@@ -80,6 +80,7 @@ export function DesktopItemIcon({
         accent={association.accent}
         icon={association.icon}
         onContextMenu={onContextMenu}
+        thumbnail={item.kind === "canvas" && item.content ? item.content : undefined}
         onDropIntoFolder={onDropIntoFolder}
         onMove={onMove}
         onOpen={onOpen}
@@ -124,6 +125,7 @@ export function DesktopIconButton({
   accent,
   icon: Icon,
   onContextMenu,
+  thumbnail,
   onDropIntoFolder,
   onMove,
   onOpen,
@@ -142,6 +144,8 @@ export function DesktopIconButton({
   onOpen: () => void;
   onSelect: (event: React.MouseEvent<HTMLButtonElement>) => void;
   position: IconPosition;
+  /** A data URL to show in place of the generic tile (picture files). */
+  thumbnail?: string;
   selected: boolean;
   tabStop?: boolean;
   title: string;
@@ -241,7 +245,15 @@ export function DesktopIconButton({
       title={title.length > 10 ? title : undefined}
       type="button"
     >
-      <AppIconTile accent={accent} icon={Icon} size="large" tone={tone} />
+      {thumbnail ? (
+        // Windows shows a picture file as its picture; a generic tile for a
+        // drawing the user just made looked like nothing had been saved.
+        <span aria-hidden="true" className="app-icon-tile app-icon-large icon-thumbnail">
+          <img alt="" draggable={false} src={thumbnail} />
+        </span>
+      ) : (
+        <AppIconTile accent={accent} icon={Icon} size="large" tone={tone} />
+      )}
       <span>{title}</span>
     </button>
   );

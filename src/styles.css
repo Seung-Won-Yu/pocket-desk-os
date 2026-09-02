@@ -9998,3 +9998,151 @@ button {
   padding: 24px;
   text-align: center;
 }
+
+/* ---------- 스티커 메모 ---------- */
+
+.sticky-note {
+  color: #2b2a24;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.sticky-note.is-yellow {
+  background: #fff3a8;
+}
+
+.sticky-note.is-green {
+  background: #cdf3c1;
+}
+
+.sticky-note.is-pink {
+  background: #ffcfe0;
+}
+
+.sticky-note.is-purple {
+  background: #e3d3ff;
+}
+
+.sticky-note.is-blue {
+  background: #cbe7ff;
+}
+
+.sticky-note-toolbar {
+  align-items: center;
+  background: rgba(0, 0, 0, 0.06);
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+}
+
+.sticky-note-toolbar > button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.sticky-note-toolbar > button:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.sticky-note-colors {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+  justify-content: center;
+}
+
+.sticky-swatch {
+  border: 2px solid rgba(0, 0, 0, 0.18);
+  border-radius: 50%;
+  cursor: pointer;
+  height: 16px;
+  padding: 0;
+  width: 16px;
+}
+
+.sticky-swatch[aria-pressed="true"] {
+  border-color: rgba(0, 0, 0, 0.7);
+}
+
+.sticky-swatch.is-yellow {
+  background: #ffe95c;
+}
+
+.sticky-swatch.is-green {
+  background: #9fe38c;
+}
+
+.sticky-swatch.is-pink {
+  background: #ff9fc4;
+}
+
+.sticky-swatch.is-purple {
+  background: #c5a8ff;
+}
+
+.sticky-swatch.is-blue {
+  background: #8fc9ff;
+}
+
+.sticky-note-text {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  flex: 1;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 0;
+  outline: none;
+  padding: 12px 14px;
+  resize: none;
+}
+
+.sticky-note-text::placeholder {
+  color: rgba(43, 42, 36, 0.5);
+}
+
+/* The note window is the note: its content is the paper, so the content's
+   dark background steps aside. */
+.window-frame[data-app-id="stickynotes"] .window-content {
+  background: transparent;
+}
+
+/* Picture files render their own pixels where a tile would be. Letterboxed,
+   not cropped: a drawing lives in its corners as much as its centre. */
+.icon-thumbnail {
+  background: #ffffff;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.icon-thumbnail img {
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.file-row-thumbnail {
+  background: #ffffff;
+  border-radius: 3px;
+  flex: 0 0 auto;
+  height: 18px;
+  object-fit: contain;
+  width: 18px;
+}
+
+.file-list.file-view-icons button > .file-row-thumbnail {
+  border-radius: 4px;
+  height: 40px;
+  width: 40px;
+}
