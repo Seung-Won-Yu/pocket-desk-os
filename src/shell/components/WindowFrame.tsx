@@ -32,6 +32,7 @@ export function WindowFrame({
   onClose,
   onFocus,
   onMinimize,
+  onInteractionChange,
   onOpenSystemMenu,
   onSnapPreviewChange,
   onToggleMaximize,
@@ -47,6 +48,8 @@ export function WindowFrame({
   onClose: () => void;
   onFocus: () => void;
   onMinimize: () => void;
+  /** Drag or resize in progress; the shell pauses every window's blur meanwhile. */
+  onInteractionChange?: (interacting: boolean) => void;
   onOpenSystemMenu: (event: React.MouseEvent<HTMLDivElement>) => void;
   onSnapPreviewChange: (preview: SnapPreviewState | null) => void;
   onToggleMaximize: () => void;
@@ -104,6 +107,9 @@ export function WindowFrame({
   }, [active, instance.id, instance.minimized]);
 
   const [interacting, setInteracting] = useState(false);
+  useEffect(() => {
+    onInteractionChange?.(interacting);
+  }, [interacting, onInteractionChange]);
 
   const startMove = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;

@@ -97,7 +97,7 @@ C:\Users\PocketDesk\Desktop\프로젝트> type 메모.txt
 | ------ | ----------------------------------------------------------------------------------------------------- |
 | 탐색   | `dir`(`ls`), `cd`(`chdir`), `pwd`, `tree`, `find`(`findstr`)                                          |
 | 파일   | `type`(`cat`), `echo` + `>`·`>>`, `md`(`mkdir`), `del`(`erase`), `rd`(`rmdir`), `copy`, `move`, `ren` |
-| 실행   | `start`, `call`, `tasklist`, `taskkill /pid <번호>`, `shutdown /s /r /l`, `logoff`, `exit`                                           |
+| 실행   | `start`, `call`, `tasklist`, `taskkill /pid <번호>`, `shutdown /s /r /l`, `logoff`, `exit`            |
 | 시스템 | `set`, `systeminfo`, `ver`, `vol`, `whoami`, `hostname`, `date`, `time`, `cls`                        |
 
 `↑`·`↓`로 명령 기록을 넘기고 `Tab`으로 현재 폴더의 이름을 자동 완성합니다. `help`가 전체 목록을 표시합니다.
@@ -266,6 +266,7 @@ DEPLOYMENT.md         정적 호스팅과 배포 안내
 - [x] 터치 지원 — 창 드래그·리사이즈, 롱프레스 우클릭, 좁은 화면 작업 표시줄
 - [x] 접근성 감사 — axe 위반 0, 셸 발화 라이브 리전, 포커스 계층·대비 수정
 - [x] 창 단위 문서 라벨 — 같은 앱의 창들이 폴더·페이지·경로로 구분
+- [x] 성능 — 드래그 중 동기 I/O 제거·쓰기 코얼레싱, 창 슬롯 memo(비대상 창 리렌더 0), 상호작용 중 블러 정지
 
 구현 과정과 설계 기준은 [개발 기록](./docs/DEVELOPMENT-NOTES.md)에 정리했습니다.
 

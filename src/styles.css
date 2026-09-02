@@ -9973,12 +9973,21 @@ button {
 }
 
 /*
- * While a window is being dragged or resized, its 30px backdrop blur would be
- * resampled every frame over a moving region — measured as the difference
- * between an 8ms and a 17ms median frame with four windows open. The blur
- * pauses for the gesture; the tinted background keeps the glass look.
+ * While any window is being dragged or resized, every window's 30px backdrop
+ * blur pauses — not just the moving one. Measured with four windows open and
+ * the app subtrees already memoized: p95 frame 24.4ms with blur on, 8.9ms
+ * with blur off, shadows irrelevant (25.0ms) — the whole remaining cost was
+ * the OTHER windows resampling their blur under and over the moving region.
+ * The tinted backgrounds keep the glass look for the gesture's duration.
  */
-.window-frame.is-interacting {
+/* The shell sets is-interacting on the layer for the gesture's duration —
+   a plain class, not :has(): descendant-driven :has() invalidation
+   re-evaluated the layer's styles on every frame mutation and measured
+   worse (p95 33ms) than doing nothing. */
+.window-layer.is-interacting .window-frame {
   backdrop-filter: none;
+}
+
+.window-frame.is-interacting {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }

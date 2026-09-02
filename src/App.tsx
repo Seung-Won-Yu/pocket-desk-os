@@ -17,12 +17,13 @@ import {
 import { DesktopIcon, DesktopItemIcon } from "./shell/components/DesktopIcons";
 import { RunDialog } from "./shell/components/RunDialog";
 import { ShortcutDialog } from "./shell/components/ShortcutDialog";
+import { WindowSlot, type WindowFrameOps } from "./shell/components/WindowSlot";
 import { resolveShortcutTarget } from "./utils/safeUrl";
 import { ShellGate } from "./shell/components/ShellScreens";
 import { StartMenu } from "./shell/components/StartMenu";
 import { Taskbar } from "./shell/components/Taskbar";
 import { ToastStack } from "./shell/components/ToastStack";
-import { SnapPreview, WindowFrame } from "./shell/components/WindowFrame";
+import { SnapPreview } from "./shell/components/WindowFrame";
 import { WindowSystemMenu } from "./shell/components/WindowSystemMenu";
 import {
   APP_BAR_HEIGHT,
@@ -123,7 +124,7 @@ import {
   type DefaultAppMap,
 } from "./shell/preferences";
 import { getNeighbourByPosition } from "./shell/keyboardNav";
-import { type WindowDocumentRef } from "./shell/types";
+import { type AppContentProps, type WindowDocumentRef } from "./shell/types";
 import { formatWindowTitle } from "./shell/windowTitle";
 import {
   collectDueClockAlarms,
@@ -200,6 +201,59 @@ const DESKTOP_ICON_NAV_KEYS = [
   "End",
   "Home",
 ];
+
+/** The app-facing shell operations that are re-created per render and must be frozen. */
+type ContentOps = Pick<
+  AppContentProps,
+  | "activateVfsEntry"
+  | "closeWindow"
+  | "copyToClipboard"
+  | "createVfsFolder"
+  | "createVfsShortcut"
+  | "createVfsTextFile"
+  | "deleteVfsEntry"
+  | "duplicateVfsEntries"
+  | "emptyRecycleBin"
+  | "exportVfsZip"
+  | "focusWindow"
+  | "importVfsZip"
+  | "moveVfsEntries"
+  | "notify"
+  | "onImportLocalEntries"
+  | "openApp"
+  | "openNewAppWindow"
+  | "openVfsEntry"
+  | "pasteFromClipboard"
+  | "permanentlyDeleteVfsEntry"
+  | "playSound"
+  | "renameVfsEntry"
+  | "requestPowerAction"
+  | "resetDesktopIconLayout"
+  | "resetWindowLayout"
+  | "restoreVfsEntry"
+  | "saveNoteAs"
+  | "saveNoteContent"
+  | "savePaintImage"
+  | "setDefaultApp"
+  | "setSoundEnabled"
+  | "setTheme"
+  | "setWallpaper"
+>;
+
+/**
+ * Returns the previous array while the new one is element-wise equal, so a
+ * derived list recomputed on every commit does not defeat memoization below.
+ */
+function useStableList<T>(next: T[], equal: (a: T, b: T) => boolean): T[] {
+  const ref = useRef(next);
+  const previous = ref.current;
+  const same =
+    previous === next ||
+    (previous.length === next.length &&
+      previous.every((item, index) => equal(item, next[index])));
+  if (!same) ref.current = next;
+  return same ? previous : next;
+}
 
 export default function App() {
   const [theme, setTheme] = useState<ThemeName>(() => {
@@ -311,6 +365,9 @@ export default function App() {
   const [altTabWindowId, setAltTabWindowId] = useState<string | null>(null);
   const [pinnedAppIds, setPinnedAppIds] = useState<AppId[]>(() => loadPinnedTaskbarApps());
   const [snapPreview, setSnapPreview] = useState<SnapPreviewState | null>(null);
+  // Which window is mid-drag or mid-resize; the layer class pauses every
+  // window's backdrop blur for the gesture (see styles.css .is-interacting).
+  const [interactingWindowId, setInteractingWindowId] = useState<string | null>(null);
   // Inside a snap zone every pointermove reported a fresh {zone} object and
   // forced a commit; an unchanged zone now returns the previous state.
   const handleSnapPreviewChange = (preview: SnapPreviewState | null) => {
@@ -2862,7 +2919,7 @@ export default function App() {
     return undefined;
   };
 
-  const openWindows = useMemo<OpenWindowInfo[]>(
+  const openWindowsRaw = useMemo<OpenWindowInfo[]>(
     () =>
       windows.map((item) => ({
         appId: item.appId,
@@ -2880,6 +2937,18 @@ export default function App() {
     // getWindowDocumentLabel closes over the item list and the reported ids.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [activeCanvasId, activeDesktopItems, activeNoteId, reportedDocuments, windows],
+  );
+  // A drag commits new `windows` arrays ~60 times a second while nothing an
+  // app can see about the open windows has changed; keeping the previous
+  // reference here is what lets the memoized window slots skip those commits.
+  const openWindows = useStableList(
+    openWindowsRaw,
+    (a, b) =>
+      a.id === b.id &&
+      a.appId === b.appId &&
+      a.maximized === b.maximized &&
+      a.minimized === b.minimized &&
+      a.title === b.title,
   );
   const windowMenuInstance = windowMenu
     ? windows.find((item) => item.id === windowMenu.windowId)
@@ -3482,6 +3551,184 @@ export default function App() {
     }
   };
 
+  /*
+   * Everything a window's app or frame can call, frozen into objects that are
+   * built once and never change identity. Each entry forwards to the latest
+   * closure through a ref that is refreshed every render — the same device as
+   * clockTickRef and the shortcut handlers. This is the whole trick that lets
+   * WindowSlot's memo hold: before it, 33 of the 61 props handed to every app
+   * were re-created each render, so React.memo would have compared them
+   * unequal every time and the window subtrees re-rendered on every drag
+   * commit regardless of which window moved.
+   */
+  const contentOpsRef = useRef<ContentOps>(null as unknown as ContentOps);
+  contentOpsRef.current = {
+    activateVfsEntry,
+    closeWindow,
+    copyToClipboard,
+    createVfsFolder,
+    createVfsShortcut,
+    createVfsTextFile,
+    deleteVfsEntry,
+    duplicateVfsEntries,
+    emptyRecycleBin,
+    exportVfsZip,
+    focusWindow,
+    importVfsZip,
+    moveVfsEntries,
+    notify,
+    onImportLocalEntries: (imported) => setDesktopItems((current) => [...current, ...imported]),
+    openApp,
+    openNewAppWindow,
+    openVfsEntry,
+    pasteFromClipboard,
+    permanentlyDeleteVfsEntry,
+    playSound,
+    renameVfsEntry,
+    requestPowerAction,
+    resetDesktopIconLayout,
+    resetWindowLayout,
+    restoreVfsEntry,
+    saveNoteAs,
+    saveNoteContent,
+    savePaintImage,
+    setDefaultApp: (extension, appId) =>
+      setDefaultApps((current) => ({ ...current, [extension]: appId })),
+    setSoundEnabled: toggleSoundEnabled,
+    setTheme: changeTheme,
+    setWallpaper: changeWallpaper,
+  };
+  const stableContentOps = useMemo<ContentOps>(
+    () => ({
+      activateVfsEntry: (...args) => contentOpsRef.current.activateVfsEntry(...args),
+      closeWindow: (...args) => contentOpsRef.current.closeWindow(...args),
+      copyToClipboard: (...args) => contentOpsRef.current.copyToClipboard(...args),
+      createVfsFolder: (...args) => contentOpsRef.current.createVfsFolder(...args),
+      createVfsShortcut: (...args) => contentOpsRef.current.createVfsShortcut(...args),
+      createVfsTextFile: (...args) => contentOpsRef.current.createVfsTextFile(...args),
+      deleteVfsEntry: (...args) => contentOpsRef.current.deleteVfsEntry(...args),
+      duplicateVfsEntries: (...args) => contentOpsRef.current.duplicateVfsEntries(...args),
+      emptyRecycleBin: (...args) => contentOpsRef.current.emptyRecycleBin(...args),
+      exportVfsZip: (...args) => contentOpsRef.current.exportVfsZip(...args),
+      focusWindow: (...args) => contentOpsRef.current.focusWindow(...args),
+      importVfsZip: (...args) => contentOpsRef.current.importVfsZip(...args),
+      moveVfsEntries: (...args) => contentOpsRef.current.moveVfsEntries(...args),
+      notify: (...args) => contentOpsRef.current.notify(...args),
+      onImportLocalEntries: (...args) => contentOpsRef.current.onImportLocalEntries(...args),
+      openApp: (...args) => contentOpsRef.current.openApp(...args),
+      openNewAppWindow: (...args) => contentOpsRef.current.openNewAppWindow(...args),
+      openVfsEntry: (...args) => contentOpsRef.current.openVfsEntry(...args),
+      pasteFromClipboard: (...args) => contentOpsRef.current.pasteFromClipboard(...args),
+      permanentlyDeleteVfsEntry: (...args) =>
+        contentOpsRef.current.permanentlyDeleteVfsEntry(...args),
+      playSound: (...args) => contentOpsRef.current.playSound(...args),
+      renameVfsEntry: (...args) => contentOpsRef.current.renameVfsEntry(...args),
+      requestPowerAction: (...args) => contentOpsRef.current.requestPowerAction(...args),
+      resetDesktopIconLayout: (...args) =>
+        contentOpsRef.current.resetDesktopIconLayout(...args),
+      resetWindowLayout: (...args) => contentOpsRef.current.resetWindowLayout(...args),
+      restoreVfsEntry: (...args) => contentOpsRef.current.restoreVfsEntry(...args),
+      saveNoteAs: (...args) => contentOpsRef.current.saveNoteAs(...args),
+      saveNoteContent: (...args) => contentOpsRef.current.saveNoteContent(...args),
+      savePaintImage: (...args) => contentOpsRef.current.savePaintImage(...args),
+      setDefaultApp: (...args) => contentOpsRef.current.setDefaultApp(...args),
+      setSoundEnabled: (...args) => contentOpsRef.current.setSoundEnabled(...args),
+      setTheme: (...args) => contentOpsRef.current.setTheme(...args),
+      setWallpaper: (...args) => contentOpsRef.current.setWallpaper(...args),
+    }),
+    [],
+  );
+
+  const frameOpsRef = useRef<WindowFrameOps>(null as unknown as WindowFrameOps);
+  frameOpsRef.current = {
+    close: closeWindow,
+    focus: focusWindow,
+    minimize: minimizeWindow,
+    openSystemMenu: openWindowSystemMenu,
+    setInteracting: (windowId, interacting) =>
+      setInteractingWindowId((current) =>
+        interacting ? windowId : current === windowId ? null : current,
+      ),
+    snapPreviewChange: handleSnapPreviewChange,
+    toggleMaximize,
+    update: updateWindow,
+  };
+  const stableFrameOps = useMemo<WindowFrameOps>(
+    () => ({
+      close: (id) => frameOpsRef.current.close(id),
+      focus: (id) => frameOpsRef.current.focus(id),
+      minimize: (id) => frameOpsRef.current.minimize(id),
+      openSystemMenu: (event, id) => frameOpsRef.current.openSystemMenu(event, id),
+      setInteracting: (id, interacting) => frameOpsRef.current.setInteracting(id, interacting),
+      snapPreviewChange: (preview) => frameOpsRef.current.snapPreviewChange(preview),
+      toggleMaximize: (id) => frameOpsRef.current.toggleMaximize(id),
+      update: (id, patch) => frameOpsRef.current.update(id, patch),
+    }),
+    [],
+  );
+
+  // The props every window's app receives, minus its own window id. Built
+  // once per change to the data it carries — not per render — so a commit
+  // that only moved a window hands every slot the identical object.
+  const sharedContentProps = useMemo<Omit<AppContentProps, "windowId">>(
+    () => ({
+      ...stableContentOps,
+      activeCanvasId,
+      activeCanvasOpenKey,
+      activeNoteId,
+      browserLaunchRequest,
+      canvasEntries,
+      clipboard,
+      clock24h,
+      clockAlarms,
+      clockTimer,
+      defaultApps,
+      desktopItems: activeDesktopItems,
+      filesLaunchRequest,
+      growWindow,
+      noteEntries,
+      openWindows,
+      registerCloseGuard,
+      reportDocument,
+      setClock24h,
+      setUserName,
+      shellEvents: shellEventLog,
+      soundEnabled,
+      theme,
+      trashedItems,
+      updateClockAlarms: setClockAlarms,
+      updateClockTimer: setClockTimer,
+      userName,
+      wallpaper,
+    }),
+    [
+      stableContentOps,
+      activeCanvasId,
+      activeCanvasOpenKey,
+      activeNoteId,
+      browserLaunchRequest,
+      canvasEntries,
+      clipboard,
+      clock24h,
+      clockAlarms,
+      clockTimer,
+      defaultApps,
+      activeDesktopItems,
+      filesLaunchRequest,
+      growWindow,
+      noteEntries,
+      openWindows,
+      registerCloseGuard,
+      reportDocument,
+      shellEventLog,
+      soundEnabled,
+      theme,
+      trashedItems,
+      userName,
+      wallpaper,
+    ],
+  );
+
   return (
     <main
       className={`desktop desktop-view-${desktopViewMode} theme-${theme} wallpaper-${wallpaper} ${
@@ -3586,98 +3833,23 @@ export default function App() {
         />
       )}
 
-      <section className="window-layer" aria-label="열린 창">
-        {desktopWindows.map((item) => {
-          const app = getApp(item.appId);
-          const AppContent = app.component;
-
-          return (
-            <WindowFrame
-              key={item.id}
-              app={app}
-              active={activeWindowId === item.id}
-              instance={item}
-              motion={windowMotions[item.id]}
-              onClose={() => closeWindow(item.id)}
-              onFocus={() => focusWindow(item.id)}
-              onMinimize={() => minimizeWindow(item.id)}
-              onOpenSystemMenu={(event) => openWindowSystemMenu(event, item.id)}
-              documentLabel={getWindowDocumentLabel(item.id, item.appId)}
-              hasUnsavedChanges={unsavedWindowIds.has(item.id)}
-              onSnapPreviewChange={handleSnapPreviewChange}
-              onToggleMaximize={() => toggleMaximize(item.id)}
-              onUpdate={(patch) => updateWindow(item.id, patch)}
-            >
-              <AppContent
-                activeCanvasId={activeCanvasId}
-                activeCanvasOpenKey={activeCanvasOpenKey}
-                activeNoteId={activeNoteId}
-                browserLaunchRequest={browserLaunchRequest}
-                canvasEntries={canvasEntries}
-                clipboard={clipboard}
-                copyToClipboard={copyToClipboard}
-                pasteFromClipboard={pasteFromClipboard}
-                closeWindow={closeWindow}
-                focusWindow={focusWindow}
-                openWindows={openWindows}
-                growWindow={growWindow}
-                reportDocument={reportDocument}
-                shellEvents={shellEventLog}
-                registerCloseGuard={registerCloseGuard}
-                createVfsFolder={createVfsFolder}
-                onImportLocalEntries={(imported) =>
-                  setDesktopItems((current) => [...current, ...imported])
-                }
-                createVfsTextFile={createVfsTextFile}
-                desktopItems={activeDesktopItems}
-                duplicateVfsEntries={duplicateVfsEntries}
-                noteEntries={noteEntries}
-                trashedItems={trashedItems}
-                notify={notify}
-                clockAlarms={clockAlarms}
-                clockTimer={clockTimer}
-                updateClockAlarms={setClockAlarms}
-                updateClockTimer={setClockTimer}
-                deleteVfsEntry={deleteVfsEntry}
-                emptyRecycleBin={emptyRecycleBin}
-                exportVfsZip={exportVfsZip}
-                filesLaunchRequest={filesLaunchRequest}
-                importVfsZip={importVfsZip}
-                moveVfsEntries={moveVfsEntries}
-                openApp={openApp}
-                requestPowerAction={requestPowerAction}
-                openNewAppWindow={openNewAppWindow}
-                activateVfsEntry={activateVfsEntry}
-                openVfsEntry={openVfsEntry}
-                permanentlyDeleteVfsEntry={permanentlyDeleteVfsEntry}
-                playSound={playSound}
-                renameVfsEntry={renameVfsEntry}
-                resetDesktopIconLayout={resetDesktopIconLayout}
-                resetWindowLayout={resetWindowLayout}
-                restoreVfsEntry={restoreVfsEntry}
-                savePaintImage={savePaintImage}
-                saveNoteAs={saveNoteAs}
-                createVfsShortcut={createVfsShortcut}
-                saveNoteContent={saveNoteContent}
-                setSoundEnabled={toggleSoundEnabled}
-                setTheme={changeTheme}
-                setWallpaper={changeWallpaper}
-                soundEnabled={soundEnabled}
-                clock24h={clock24h}
-                defaultApps={defaultApps}
-                setClock24h={setClock24h}
-                setDefaultApp={(extension, appId) =>
-                  setDefaultApps((current) => ({ ...current, [extension]: appId }))
-                }
-                setUserName={setUserName}
-                theme={theme}
-                userName={userName}
-                wallpaper={wallpaper}
-                windowId={item.id}
-              />
-            </WindowFrame>
-          );
-        })}
+      <section
+        className={`window-layer${interactingWindowId ? " is-interacting" : ""}`}
+        aria-label="열린 창"
+      >
+        {desktopWindows.map((item) => (
+          <WindowSlot
+            key={item.id}
+            active={activeWindowId === item.id}
+            app={getApp(item.appId)}
+            contentProps={sharedContentProps}
+            documentLabel={getWindowDocumentLabel(item.id, item.appId)}
+            frameOps={stableFrameOps}
+            hasUnsavedChanges={unsavedWindowIds.has(item.id)}
+            instance={item}
+            motion={windowMotions[item.id]}
+          />
+        ))}
       </section>
 
       {snapPreview && <SnapPreview zone={snapPreview.zone} />}
