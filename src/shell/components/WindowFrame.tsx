@@ -37,6 +37,7 @@ export function WindowFrame({
   onSnapPreviewChange,
   onToggleMaximize,
   onUpdate,
+  peeked = false,
 }: {
   active: boolean;
   app: AppDefinition;
@@ -54,6 +55,8 @@ export function WindowFrame({
   onSnapPreviewChange: (preview: SnapPreviewState | null) => void;
   onToggleMaximize: () => void;
   onUpdate: (patch: Partial<WindowInstance>) => void;
+  /** Aero Peek: this window is shown alone, in place, above the dimmed rest. */
+  peeked?: boolean;
 }) {
   const [snapFlyoutOpen, setSnapFlyoutOpen] = useState(false);
   // An app declares the size its own UI stops working below.
@@ -310,7 +313,7 @@ export function WindowFrame({
         instance.maximized ? "is-maximized" : ""
       } ${instance.minimized ? "is-minimized" : ""} ${motion ? `is-${motion}` : ""} ${
         interacting ? "is-interacting" : ""
-      }`}
+      } ${peeked ? "is-peeked" : ""}`}
       /*
        * Minimizing hides the frame with `visibility: hidden`, and the browser
        * drops focus from the hidden control before React can look — so the

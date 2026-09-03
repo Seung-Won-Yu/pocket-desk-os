@@ -100,7 +100,11 @@ import {
   migrateVfsHierarchy,
   normalizePersistedDesktopItem,
 } from "./shell/vfsBootstrap";
-import { getWindowSnapPatch, resizeWindowEdge } from "./shell/windowGeometry";
+import {
+  getDesktopWorkArea,
+  getWindowSnapPatch,
+  resizeWindowEdge,
+} from "./shell/windowGeometry";
 import {
   fitWindowToViewport,
   getVirtualDesktopCount,
@@ -152,6 +156,7 @@ import {
   persistShellEventLog,
 } from "./shell/eventLog";
 import { loadStickyNotes, persistStickyNotes, type StickyNoteStore } from "./shell/stickyNotes";
+import { type ArrangeMode, arrangeWindows } from "./shell/windowArrangement";
 import {
   buildRecentDocumentsByApp,
   loadRecentOpens,
@@ -375,6 +380,10 @@ export default function App() {
   // Which window is mid-drag or mid-resize; the layer class pauses every
   // window's backdrop blur for the gesture (see styles.css .is-interacting).
   const [interactingWindowId, setInteractingWindowId] = useState<string | null>(null);
+  // Aero Peek: a taskbar thumbnail under the pointer shows its window alone;
+  // the show-desktop strip under the pointer shows the desktop through all of them.
+  const [peekWindowId, setPeekWindowId] = useState<string | null>(null);
+  const [peekDesktop, setPeekDesktop] = useState(false);
   // Inside a snap zone every pointermove reported a fresh {zone} object and
   // forced a commit; an unchanged zone now returns the previous state.
   const handleSnapPreviewChange = (preview: SnapPreviewState | null) => {
@@ -2444,6 +2453,14 @@ export default function App() {
     });
   };
 
+  // A peek ends with its window: closing the peeked window from the preview
+  // card would otherwise leave every other window dimmed.
+  useEffect(() => {
+    if (peekWindowId && !windows.some((item) => item.id === peekWindowId)) {
+      setPeekWindowId(null);
+    }
+  }, [peekWindowId, windows]);
+
   const focusDesktop = () => {
     setDesktopFocusZ(Math.max(1, ...windows.map((item) => item.z)) + 1);
   };
@@ -2936,6 +2953,21 @@ export default function App() {
       );
     });
     showDesktopRestoreRef.current = [];
+  };
+
+  /** Taskbar menu: 창 계단식 배열 / 창 위아래 정렬 / 창 나란히 정렬 over this desktop. */
+  const arrangeDesktopWindows = (mode: ArrangeMode) => {
+    playSound("toggle");
+    setDesktopFocusZ(0);
+    setWindows((current) =>
+      arrangeWindows(
+        current,
+        activeDesktopIndex,
+        getDesktopWorkArea(),
+        mode,
+        (item) => getApp(item.appId).minSize,
+      ),
+    );
   };
 
   const availableApps = appCatalog;
@@ -3907,7 +3939,9 @@ export default function App() {
       )}
 
       <section
-        className={`window-layer${interactingWindowId ? " is-interacting" : ""}`}
+        className={`window-layer${interactingWindowId ? " is-interacting" : ""}${
+          peekWindowId ? " is-peeking" : ""
+        }${peekDesktop ? " is-peeking-desktop" : ""}`}
         aria-label="열린 창"
       >
         {desktopWindows.map((item) => (
@@ -3921,6 +3955,7 @@ export default function App() {
             hasUnsavedChanges={unsavedWindowIds.has(item.id)}
             instance={item}
             motion={windowMotions[item.id]}
+            peeked={peekWindowId === item.id}
           />
         ))}
       </section>
@@ -4018,6 +4053,9 @@ export default function App() {
         }}
         volume={soundVolume}
         onShowDesktop={toggleShowDesktop}
+        onArrangeWindows={arrangeDesktopWindows}
+        onPeekDesktop={setPeekDesktop}
+        onPeekWindow={setPeekWindowId}
         onTogglePinnedApp={togglePinnedApp}
         onOpenRecentDocument={openVfsEntry}
         recentDocumentsByApp={recentDocumentsByApp}

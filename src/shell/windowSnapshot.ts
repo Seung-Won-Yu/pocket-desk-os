@@ -59,6 +59,7 @@ export function findLiveWindowFrame(
  */
 const TRANSIENT_FRAME_CLASSES = [
   "is-active",
+  "is-peeked",
   "is-minimized",
   "is-minimizing",
   "is-closing",

@@ -30,6 +30,8 @@ export type WindowSlotProps = {
   hasUnsavedChanges: boolean;
   instance: WindowInstance;
   motion?: WindowMotion;
+  /** Aero Peek target: shown alone while the rest are dimmed. */
+  peeked?: boolean;
 };
 
 /**
@@ -51,6 +53,7 @@ export const WindowSlot = memo(function WindowSlot({
   hasUnsavedChanges,
   instance,
   motion,
+  peeked = false,
 }: WindowSlotProps) {
   const AppContent = app.component;
   return (
@@ -69,6 +72,7 @@ export const WindowSlot = memo(function WindowSlot({
       onSnapPreviewChange={frameOps.snapPreviewChange}
       onToggleMaximize={() => frameOps.toggleMaximize(instance.id)}
       onUpdate={(patch) => frameOps.update(instance.id, patch)}
+      peeked={peeked}
     >
       <AppContent {...contentProps} windowId={instance.id} />
     </WindowFrame>

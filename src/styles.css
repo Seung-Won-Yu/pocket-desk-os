@@ -10208,3 +10208,28 @@ button {
 .window-thumbnail-embed {
   background: rgba(255, 255, 255, 0.08);
 }
+
+/* Aero Peek: hovering a taskbar thumbnail shows that window alone in place;
+   hovering the show-desktop strip shows the desktop through every window.
+   `filter`, not `opacity`: the frame's open animation fills forwards and an
+   animated property outranks any plain declaration, so opacity never took. The
+   peeked window keeps its own z — the windows above it turn to ghosts. */
+.window-layer.is-peeking .window-frame:not(.is-peeked),
+.window-layer.is-peeking-desktop .window-frame {
+  filter: opacity(0.08);
+  transition: filter 140ms ease-out;
+}
+
+.window-layer.is-peeking .window-frame.is-peeked {
+  filter: none;
+  transition: filter 140ms ease-out;
+}
+
+/* A minimized window peeks too — back at its own place, the way Windows shows
+   it. Inline width/height size a normal frame; a maximized one has its inset. */
+.window-layer.is-peeking .window-frame.is-peeked.is-minimized {
+  height: auto;
+  overflow: visible;
+  visibility: visible;
+  width: auto;
+}

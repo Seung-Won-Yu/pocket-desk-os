@@ -7,6 +7,7 @@ import { getApp } from "../appCatalog";
 import { getVfsEntryAssociation } from "../../vfs/model";
 import { formatWindowTitle } from "../windowTitle";
 import { createCalendarGrid, formatNotificationTime, getLocalDateKey } from "../startSearch";
+import { type ArrangeMode } from "../windowArrangement";
 import { type AppDefinition, type ToastMessage, type WindowInstance } from "../types";
 import { BrandMark, StartGlyph } from "./Branding";
 import { Clock } from "./Clock";
@@ -15,21 +16,24 @@ import {
   Bell,
   ChevronLeft,
   ChevronRight,
+  Columns3,
   FolderOpen,
+  Layers,
   LayoutGrid,
   MonitorDown,
   Pin,
   PinOff,
-  Search,
   Play,
+  Rows3,
+  Search,
   Settings,
   SquarePlus,
   SquareTerminal,
   Sun,
+  type LucideIcon,
   Volume2,
   Wifi,
   X,
-  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { getNextRovingIndex, handleMenuKeyboard } from "../keyboardNav";
@@ -46,7 +50,10 @@ export function Taskbar({
   onClearNotifications,
   onOpenStart,
   getDocumentLabel,
+  onArrangeWindows,
   onOpenApp,
+  onPeekDesktop,
+  onPeekWindow,
   onOpenNewWindow,
   onOpenRunDialog,
   clock24h,
@@ -78,7 +85,13 @@ export function Taskbar({
   onClearNotifications: () => void;
   onOpenStart: (event: React.MouseEvent<HTMLButtonElement>) => void;
   getDocumentLabel: (windowId: string, appId: AppId) => string | undefined;
+  /** 창 계단식 배열 / 위아래 정렬 / 나란히 정렬 from the taskbar menu. */
+  onArrangeWindows: (mode: ArrangeMode) => void;
   onOpenApp: (appId: AppId) => void;
+  /** Aero Peek at the desktop while the show-desktop strip is hovered. */
+  onPeekDesktop: (peek: boolean) => void;
+  /** Aero Peek at one window while its taskbar thumbnail is hovered. */
+  onPeekWindow: (windowId: string | null) => void;
   onOpenNewWindow: (appId: AppId) => void;
   onOpenRunDialog: () => void;
   clock24h: boolean;
@@ -279,8 +292,36 @@ export function Taskbar({
     { icon: FolderOpen, label: "파일 탐색기", run: () => onOpenApp("files") },
     { icon: Play, label: "실행", run: onOpenRunDialog },
     { icon: Settings, label: "설정", run: () => onOpenApp("settings") },
+    { icon: Layers, label: "창 계단식 배열", run: () => onArrangeWindows("cascade") },
+    { icon: Rows3, label: "창 위아래 정렬", run: () => onArrangeWindows("stack") },
+    { icon: Columns3, label: "창 나란히 정렬", run: () => onArrangeWindows("side-by-side") },
     { icon: MonitorDown, label: "바탕 화면 보기", run: onShowDesktop },
   ];
+
+  // Resting the pointer on the show-desktop strip peeks at the desktop; a
+  // press still toggles. Windows waits a beat so a pass-by does not flash.
+  const desktopPeekTimerRef = useRef<number | null>(null);
+  const cancelDesktopPeek = () => {
+    if (desktopPeekTimerRef.current !== null) {
+      window.clearTimeout(desktopPeekTimerRef.current);
+      desktopPeekTimerRef.current = null;
+    }
+    onPeekDesktop(false);
+  };
+  const armDesktopPeek = () => {
+    if (desktopPeekTimerRef.current !== null) return;
+    desktopPeekTimerRef.current = window.setTimeout(() => {
+      desktopPeekTimerRef.current = null;
+      onPeekDesktop(true);
+    }, 400);
+  };
+  useEffect(
+    () => () => {
+      if (desktopPeekTimerRef.current !== null)
+        window.clearTimeout(desktopPeekTimerRef.current);
+    },
+    [],
+  );
 
   return (
     <footer className="taskbar" onContextMenu={openShellMenu} ref={taskbarRef}>
@@ -368,10 +409,14 @@ export function Taskbar({
                 onFocusCapture={(event) =>
                   showPreview(event.currentTarget, app, orderedAppWindows)
                 }
-                onMouseEnter={(event) =>
+                onPointerEnter={(event) =>
                   showPreview(event.currentTarget, app, orderedAppWindows)
                 }
-                onMouseLeave={hidePreview}
+                // Pointer events, like the card's own: the two families dispatch
+                // in separate passes, and with mouse events here the card's
+                // cancel ran before this leave armed the hide timer — the card
+                // closed under the pointer every time it was entered.
+                onPointerLeave={hidePreview}
               >
                 <button
                   aria-current={
@@ -441,6 +486,7 @@ export function Taskbar({
             hidePreviewNow();
             onCloseWindow(id);
           }}
+          onPeekWindow={onPeekWindow}
           onPointerEnter={cancelPreviewClose}
           onPointerLeave={hidePreview}
           onSelectWindow={(id) => {
@@ -648,7 +694,14 @@ export function Taskbar({
       <button
         aria-label="바탕 화면 표시"
         className="show-desktop-button"
-        onClick={onShowDesktop}
+        onBlur={cancelDesktopPeek}
+        onClick={() => {
+          cancelDesktopPeek();
+          onShowDesktop();
+        }}
+        onFocus={armDesktopPeek}
+        onPointerEnter={armDesktopPeek}
+        onPointerLeave={cancelDesktopPeek}
         title="바탕 화면 표시"
         type="button"
       />
@@ -885,6 +938,7 @@ export function TaskbarPreview({
   getDocumentLabel,
   left,
   onCloseWindow,
+  onPeekWindow,
   onPointerEnter,
   onPointerLeave,
   onSelectWindow,
@@ -894,11 +948,18 @@ export function TaskbarPreview({
   getDocumentLabel: (windowId: string, appId: AppId) => string | undefined;
   left: number;
   onCloseWindow: (windowId: string) => void;
+  /** Aero Peek: the window whose thumbnail is under the pointer or focus. */
+  onPeekWindow: (windowId: string | null) => void;
   onPointerEnter: () => void;
   onPointerLeave: () => void;
   onSelectWindow: (windowId: string) => void;
   windows: WindowInstance[];
 }) {
+  // The card can vanish under the pointer (its hide timer, a click); the peek
+  // must end with it, not stay on until the next hover.
+  const peekRef = useRef(onPeekWindow);
+  peekRef.current = onPeekWindow;
+  useEffect(() => () => peekRef.current(null), []);
   /*
    * Windows shows one thumbnail per window here, and each one switches to that
    * window or closes it. This card was aria-hidden and inert — it listed
@@ -939,7 +1000,11 @@ export function TaskbarPreview({
               <button
                 aria-label={`${windowTitle} 전환`}
                 className="taskbar-preview-select"
+                onBlur={() => onPeekWindow(null)}
                 onClick={() => onSelectWindow(windowItem.id)}
+                onFocus={() => onPeekWindow(windowItem.id)}
+                onPointerEnter={() => onPeekWindow(windowItem.id)}
+                onPointerLeave={() => onPeekWindow(null)}
                 type="button"
               >
                 <span

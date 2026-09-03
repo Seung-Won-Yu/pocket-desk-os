@@ -2517,6 +2517,112 @@ async function runSmoke(baseUrl) {
     await edgeTabs.getByRole("button", { name: "Microsoft Edge 닫기" }).click();
     await page.waitForTimeout(250);
 
+    // 작업 표시줄 창 배열: 창 나란히 정렬 tiles the visible windows edge to
+    // edge without overlap; 창 계단식 배열 stairs them one title bar apart.
+    for (const command of ["notepad", "calc"]) {
+      await page.keyboard.press("Control+Alt+R");
+      await runDialog.waitFor({ state: "visible" });
+      await runDialog.getByLabel("열기").fill(command);
+      await runDialog.getByRole("button", { name: "확인" }).click();
+      await page.waitForTimeout(250);
+    }
+    const arrangeFrames = page.locator(".window-frame:not(.window-thumbnail-clone):visible");
+    const arrangeCount = await arrangeFrames.count();
+    assert(arrangeCount >= 2, `Arrangement check needs 2 windows, found ${arrangeCount}`);
+    const readFrameBoxes = () =>
+      arrangeFrames.evaluateAll((nodes) =>
+        nodes.map((node) => {
+          const rect = node.getBoundingClientRect();
+          return {
+            h: rect.height,
+            w: rect.width,
+            x: rect.x,
+            y: rect.y,
+            z: Number(node.style.zIndex),
+          };
+        }),
+      );
+    const openShellMenu = async () => {
+      await page.locator(".taskbar").click({ button: "right", position: { x: 30, y: 24 } });
+      const shellMenu = page.locator(".taskbar-context-menu.is-shell-menu");
+      await shellMenu.waitFor({ state: "visible" });
+      return shellMenu;
+    };
+    await (await openShellMenu()).getByRole("menuitem", { name: "창 나란히 정렬" }).click();
+    await page.waitForTimeout(350);
+    const tiled = await readFrameBoxes();
+    const overlapping = tiled.some((first, index) =>
+      tiled.some(
+        (second, otherIndex) =>
+          index !== otherIndex &&
+          first.x < second.x + second.w - 1 &&
+          second.x < first.x + first.w - 1 &&
+          first.y < second.y + second.h - 1 &&
+          second.y < first.y + first.h - 1,
+      ),
+    );
+    assert(!overlapping, `창 나란히 정렬 left windows overlapping: ${JSON.stringify(tiled)}`);
+    assert(
+      Math.round(Math.max(...tiled.map((box) => box.x + box.w))) === 1280,
+      `창 나란히 정렬 did not reach the right edge: ${JSON.stringify(tiled)}`,
+    );
+    await (await openShellMenu()).getByRole("menuitem", { name: "창 계단식 배열" }).click();
+    await page.waitForTimeout(350);
+    const stairs = (await readFrameBoxes()).sort((first, second) => first.z - second.z);
+    for (let index = 1; index < stairs.length; index += 1) {
+      assert(
+        Math.round(stairs[index].x - stairs[index - 1].x) === 28 &&
+          Math.round(stairs[index].y - stairs[index - 1].y) === 28,
+        `창 계단식 배열 stair ${index} is off: ${JSON.stringify(stairs)}`,
+      );
+    }
+
+    // Aero Peek: the thumbnail under the pointer shows its window alone; the
+    // show-desktop strip under the pointer shows the desktop through them all.
+    await page.locator(".taskbar-app", { hasText: "메모장" }).hover();
+    const peekCard = page.locator(".taskbar-preview-card");
+    await peekCard.waitFor({ state: "visible" });
+    await peekCard.locator(".taskbar-preview-select").first().hover();
+    await page.waitForTimeout(400);
+    // The card must survive the pointer entering it — its close and switch
+    // buttons were unreachable by mouse when the hide timer outlived the enter.
+    assert(await peekCard.isVisible(), "Moving the pointer into the preview card closed it");
+    assert(
+      (await page.locator(".window-layer.is-peeking").count()) === 1 &&
+        (await page.locator(".window-frame.is-peeked").count()) === 1,
+      "Hovering a taskbar thumbnail did not peek at its window",
+    );
+    const dimmedFilter = await page
+      .locator(".window-frame:not(.window-thumbnail-clone):not(.is-peeked):visible")
+      .first()
+      .evaluate((node) => getComputedStyle(node).filter);
+    assert(
+      dimmedFilter.includes("opacity(0.08)"),
+      `Peek left other windows at filter ${dimmedFilter}`,
+    );
+    await page.mouse.move(640, 300);
+    await page.waitForTimeout(400);
+    assert(
+      (await page.locator(".window-layer.is-peeking").count()) === 0,
+      "Peek stayed on after the pointer left the thumbnail",
+    );
+    await page.locator(".show-desktop-button").hover();
+    await page.waitForTimeout(650);
+    assert(
+      (await page.locator(".window-layer.is-peeking-desktop").count()) === 1,
+      "Resting on the show-desktop strip did not peek at the desktop",
+    );
+    await page.mouse.move(640, 300);
+    await page.waitForTimeout(250);
+    assert(
+      (await page.locator(".window-layer.is-peeking-desktop").count()) === 0,
+      "Desktop peek stayed on after the pointer left the strip",
+    );
+    for (const name of ["계산기 닫기", "메모장 닫기"]) {
+      await page.getByRole("button", { name }).last().click();
+      await page.waitForTimeout(200);
+    }
+
     // 스티커 메모: a note is a window bound to shell state — text survives a
     // reload, and 새 메모 opens a second window holding a different note.
     // Runs last on this page: the reload remounts every window, wiping

@@ -43,6 +43,9 @@ function makeHandlers() {
     onSetSoundEnabled: vi.fn(),
     onSetVolume: vi.fn(),
     onShowDesktop: vi.fn(),
+    onArrangeWindows: vi.fn(),
+    onPeekDesktop: vi.fn(),
+    onPeekWindow: vi.fn(),
     onTogglePinnedApp: vi.fn(),
     onToggleTaskView: vi.fn(),
     onCloseWindow: vi.fn(),
@@ -222,6 +225,7 @@ describe("TaskbarPreview 포커스 유지", () => {
         getDocumentLabel={() => undefined}
         left={100}
         onCloseWindow={vi.fn()}
+        onPeekWindow={vi.fn()}
         onPointerEnter={onPointerEnter}
         onPointerLeave={onPointerLeave}
         onSelectWindow={vi.fn()}
@@ -234,6 +238,33 @@ describe("TaskbarPreview 포커스 유지", () => {
     expect(onPointerEnter).toHaveBeenCalled();
     fireEvent.blur(screen.getAllByRole("button")[0]);
     expect(onPointerLeave).toHaveBeenCalled();
+  });
+
+  it("썸네일 위의 포인터(또는 포커스)는 그 창을 peek하고, 카드가 사라지면 peek도 끝난다", () => {
+    const onPeekWindow = vi.fn();
+    const view = render(
+      <TaskbarPreview
+        app={appCatalog[0]}
+        getDocumentLabel={() => undefined}
+        left={100}
+        onCloseWindow={vi.fn()}
+        onPeekWindow={onPeekWindow}
+        onPointerEnter={vi.fn()}
+        onPointerLeave={vi.fn()}
+        onSelectWindow={vi.fn()}
+        windows={[makeWindow("win-1", appCatalog[0].id)]}
+      />,
+    );
+    const select = screen.getByRole("button", { name: /전환$/ });
+    fireEvent.pointerEnter(select);
+    expect(onPeekWindow).toHaveBeenLastCalledWith("win-1");
+    fireEvent.pointerLeave(select);
+    expect(onPeekWindow).toHaveBeenLastCalledWith(null);
+    fireEvent.focus(select);
+    expect(onPeekWindow).toHaveBeenLastCalledWith("win-1");
+    // The card unmounting (hide timer, a click) must not leave the desktop dimmed.
+    view.unmount();
+    expect(onPeekWindow).toHaveBeenLastCalledWith(null);
   });
 });
 
@@ -400,6 +431,9 @@ describe("Taskbar 배경 우클릭 셸 메뉴", () => {
       "파일 탐색기",
       "실행",
       "설정",
+      "창 계단식 배열",
+      "창 위아래 정렬",
+      "창 나란히 정렬",
       "바탕 화면 보기",
     ]);
   });
