@@ -1,5 +1,6 @@
 import { type BrowserLaunchRequest } from "../apps/BrowserApp";
 import { type FilesLaunchRequest } from "../apps/FilesApp";
+import { type PhotosLaunchRequest } from "../apps/PhotosApp";
 import {
   type AppId,
   type ClipboardMode,
@@ -18,6 +19,7 @@ import { type LucideIcon } from "lucide-react";
 import { type DefaultAppMap } from "./preferences";
 import { type ClockAlarm, type ClockTimer } from "./clock";
 import { type StickyNoteStore } from "./stickyNotes";
+import { type ScreenshotMode } from "./screenshotTypes";
 
 /**
  * What one window reports itself as showing: a VFS item (name resolved live,
@@ -207,6 +209,8 @@ export type AppContentProps = {
   emptyRecycleBin: () => void;
   exportVfsZip: () => void;
   filesLaunchRequest: FilesLaunchRequest | null;
+  /** The picture 사진 was asked to open; see openVfsEntry. */
+  photosLaunchRequest: PhotosLaunchRequest | null;
   importVfsZip: (file: File) => Promise<void>;
   moveVfsEntries: (itemIds: string[], parentId: string) => boolean;
   openApp: (appId: AppId) => void;
@@ -221,6 +225,10 @@ export type AppContentProps = {
   resetWindowLayout: () => void;
   restoreVfsEntry: (itemId: string) => void;
   playSound: (effect: SoundEffectName) => void;
+  /** Picture the desktop or the active window into 사진; null when there is nothing to picture. */
+  captureScreenshot: (mode: ScreenshotMode) => Promise<DesktopItem | null>;
+  /** Best effort: the browser clipboard may refuse; resolves false then. */
+  copyImageToClipboard: (dataUrl: string) => Promise<boolean>;
   savePaintImage: (
     content: string,
     options?: { existingItemId?: string; name?: string; parentId?: string },

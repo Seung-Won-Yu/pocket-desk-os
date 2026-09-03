@@ -2671,6 +2671,105 @@ async function runSmoke(baseUrl) {
       await page.waitForTimeout(200);
     }
 
+    // 스크린샷: PrintScreen pictures the desktop for real — the DOM drawn to a
+    // canvas — and saves a PNG into 사진. The pixels must be a picture, not a
+    // blank: sampled colours have to vary.
+    await page.keyboard.press("PrintScreen");
+    const shotToast = page.locator(".toast", { hasText: "스크린샷 저장됨" });
+    await shotToast.waitFor({ state: "visible", timeout: 15000 });
+    // 열기 shows the screenshot itself in 사진 — not whatever 그림판 has open.
+    await shotToast.getByRole("button", { name: "열기" }).click();
+    const shotPhotos = page.locator('article[data-app-id="photos"]').last();
+    await shotPhotos.waitFor({ state: "visible" });
+    assert(
+      (await shotPhotos.getAttribute("aria-label"))?.startsWith("스크린샷 "),
+      `사진 opened ${await shotPhotos.getAttribute("aria-label")} instead of the screenshot`,
+    );
+    await shotPhotos.getByRole("button", { name: "사진 닫기" }).click();
+    await shotPhotos.waitFor({ state: "detached" });
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("explorer");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const shotExplorer = page.locator('article[data-app-id="files"]').last();
+    await shotExplorer.waitFor({ state: "visible" });
+    await shotExplorer
+      .locator("aside")
+      .getByRole("button", { name: "사진", exact: true })
+      .click();
+    const shotRow = shotExplorer.locator(".file-list button", { hasText: "스크린샷 " });
+    await shotRow.first().waitFor({ state: "visible" });
+    assert(
+      (await shotRow.first().locator(".file-row-thumbnail").count()) === 1,
+      "The screenshot file has no thumbnail, so it holds no picture",
+    );
+    const shotPixels = await shotRow
+      .first()
+      .locator(".file-row-thumbnail")
+      .evaluate(async (node) => {
+        const image = new Image();
+        image.src = node.getAttribute("src");
+        await image.decode();
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext("2d");
+        context.drawImage(image, 0, 0);
+        const samples = [];
+        for (const [fx, fy] of [
+          [0.05, 0.05],
+          [0.5, 0.5],
+          [0.9, 0.1],
+          [0.3, 0.8],
+          [0.7, 0.4],
+        ]) {
+          const pixel = context.getImageData(
+            Math.floor(image.naturalWidth * fx),
+            Math.floor(image.naturalHeight * fy),
+            1,
+            1,
+          ).data;
+          samples.push(`${pixel[0]},${pixel[1]},${pixel[2]},${pixel[3]}`);
+        }
+        return {
+          distinct: new Set(samples).size,
+          height: image.naturalHeight,
+          width: image.naturalWidth,
+        };
+      });
+    assert(
+      shotPixels.width === 1280 && shotPixels.height === 820,
+      `Screenshot is ${shotPixels.width}×${shotPixels.height}, not the 1280×820 viewport`,
+    );
+    assert(
+      shotPixels.distinct >= 3,
+      `Screenshot pixels are uniform (${shotPixels.distinct} distinct samples)`,
+    );
+    // Win+Shift+S opens the capture tool; 새 캡처 pictures the screen without the
+    // tool's own window, saves it and shows the preview.
+    await page.keyboard.press("Meta+Shift+S");
+    const snip = page.locator('article[data-app-id="snip"]');
+    await snip.waitFor({ state: "visible" });
+    await snip.getByRole("button", { name: "새 캡처" }).click();
+    await snip.locator(".snip-preview").waitFor({ state: "visible", timeout: 15000 });
+    assert(
+      (await snip.getByRole("status").innerText()).includes("사진 폴더에 저장됨"),
+      "Capture tool did not report the saved capture",
+    );
+    await snip.getByRole("button", { name: "캡처 도구 닫기" }).click();
+    await snip.waitFor({ state: "detached" });
+    // Alt+PrintScreen pictures the active window alone. Closing the tool hands
+    // focus back to Explorer; its title bar is clear now if it did not.
+    if (!(await shotExplorer.getAttribute("class"))?.includes("is-active")) {
+      await shotExplorer.locator(".window-titlebar").click();
+    }
+    await page.waitForTimeout(200);
+    await page.keyboard.press("Alt+PrintScreen");
+    const windowShotToast = page.locator(".toast", { hasText: "창 스크린샷 저장됨" });
+    await windowShotToast.waitFor({ state: "visible", timeout: 15000 });
+    await shotExplorer.getByRole("button", { name: "파일 탐색기 닫기" }).click();
+    await shotExplorer.waitFor({ state: "detached" });
+
     // 스티커 메모: a note is a window bound to shell state — text survives a
     // reload, and 새 메모 opens a second window holding a different note.
     // Runs last on this page: the reload remounts every window, wiping

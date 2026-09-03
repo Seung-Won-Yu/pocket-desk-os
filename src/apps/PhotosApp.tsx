@@ -17,7 +17,11 @@ import type React from "react";
 import type { DesktopItem } from "../types";
 import { clamp } from "../utils/format";
 
+/** "Open this picture in 사진" — a fresh id per request so the same picture opens twice. */
+export type PhotosLaunchRequest = { id: string; itemId: string };
+
 type PhotosAppProps = {
+  photosLaunchRequest: PhotosLaunchRequest | null;
   reportDocument: (
     windowId: string,
     ref: { itemId?: string; title?: string } | undefined,
@@ -58,6 +62,7 @@ export default function PhotosApp({
   notify,
   openApp,
   activateVfsEntry,
+  photosLaunchRequest,
   playSound,
   renameVfsEntry,
   savePaintImage,
@@ -67,7 +72,7 @@ export default function PhotosApp({
   const stageRef = useRef<HTMLDivElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const cancelRenameRef = useRef(false);
-  const [viewingId, setViewingId] = useState(activeCanvasId);
+  const [viewingId, setViewingId] = useState(photosLaunchRequest?.itemId ?? activeCanvasId);
   const [zoomMode, setZoomMode] = useState<"custom" | "fit">("fit");
   const [customZoom, setCustomZoom] = useState(100);
   const [naturalSize, setNaturalSize] = useState<PhotoSize | null>(null);
@@ -92,6 +97,10 @@ export default function PhotosApp({
   useEffect(() => {
     setViewingId(activeCanvasId);
   }, [activeCanvasId, activeCanvasOpenKey]);
+
+  useEffect(() => {
+    if (photosLaunchRequest) setViewingId(photosLaunchRequest.itemId);
+  }, [photosLaunchRequest]);
 
   useEffect(() => {
     viewerRef.current?.focus({ preventScroll: true });

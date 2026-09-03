@@ -5,6 +5,7 @@ export type AppId =
   | "calculator"
   | "clock"
   | "stickynotes"
+  | "snip"
   | "paint"
   | "notepad"
   | "files"

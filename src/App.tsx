@@ -1,5 +1,6 @@
 import { type BrowserLaunchRequest } from "./apps/BrowserApp";
 import { type FilesLaunchRequest } from "./apps/FilesApp";
+import { type PhotosLaunchRequest } from "./apps/PhotosApp";
 import PwaUpdatePrompt from "./components/PwaUpdatePrompt";
 import {
   appCatalog,
@@ -157,6 +158,9 @@ import {
 } from "./shell/eventLog";
 import { loadStickyNotes, persistStickyNotes, type StickyNoteStore } from "./shell/stickyNotes";
 import { type ArrangeMode, arrangeWindows } from "./shell/windowArrangement";
+import { captureElementToPng, getScreenshotFileName } from "./shell/screenshot";
+import { type ScreenshotMode } from "./shell/screenshotTypes";
+import { findLiveWindowFrame } from "./shell/windowSnapshot";
 import {
   buildRecentDocumentsByApp,
   loadRecentOpens,
@@ -213,7 +217,9 @@ const DESKTOP_ICON_NAV_KEYS = [
 type ContentOps = Pick<
   AppContentProps,
   | "activateVfsEntry"
+  | "captureScreenshot"
   | "closeWindow"
+  | "copyImageToClipboard"
   | "copyToClipboard"
   | "createVfsFolder"
   | "createVfsShortcut"
@@ -352,6 +358,9 @@ export default function App() {
     null,
   );
   const [filesLaunchRequest, setFilesLaunchRequest] = useState<FilesLaunchRequest | null>(null);
+  const [photosLaunchRequest, setPhotosLaunchRequest] = useState<PhotosLaunchRequest | null>(
+    null,
+  );
   const [activeCanvasId, setActiveCanvasId] = useState(VFS_PRIMARY_CANVAS_ID);
   const [activeCanvasOpenKey, setActiveCanvasOpenKey] = useState(0);
   const [activeNoteId, setActiveNoteId] = useState(VFS_PRIMARY_NOTE_ID);
@@ -1351,7 +1360,11 @@ export default function App() {
     if (item.kind === "note" && targetAppId === "notepad") {
       setActiveNoteId(item.id);
     }
-    if (item.kind === "canvas" && (targetAppId === "paint" || targetAppId === "photos")) {
+    // 사진 has its own pointer: opening a picture to look at it must not swap
+    // the document 그림판 is editing, which shares activeCanvasId.
+    if (item.kind === "canvas" && targetAppId === "photos") {
+      setPhotosLaunchRequest({ id: crypto.randomUUID(), itemId: item.id });
+    } else if (item.kind === "canvas" && targetAppId === "paint") {
       setActiveCanvasId(item.id);
       setActiveCanvasOpenKey((current) => current + 1);
     }
@@ -1874,6 +1887,108 @@ export default function App() {
       tone: "success",
     });
     return item;
+  };
+
+  /**
+   * PrintScreen. The desktop (or the active window) is pictured by drawing
+   * the live DOM onto a canvas — see src/shell/screenshot.ts — and the PNG
+   * lands in 사진 under the name Windows would give it. The capture tool's own
+   * window is left out of the picture, as Windows leaves out the Snipping
+   * Tool. Deliberately not savePaintImage: that also points 그림판 at the file.
+   */
+  const lastScreenshotAtRef = useRef(0);
+  const captureScreenshot = async (mode: ScreenshotMode): Promise<DesktopItem | null> => {
+    // Windows delivers PrintScreen as keyup in some browsers and as both in
+    // others; one press is one picture.
+    const now = Date.now();
+    if (now - lastScreenshotAtRef.current < 400) return null;
+    lastScreenshotAtRef.current = now;
+
+    let target: HTMLElement | null = document.querySelector<HTMLElement>("main.desktop");
+    if (mode === "window") {
+      const activeFrame = activeWindowId ? findLiveWindowFrame(activeWindowId) : null;
+      const activeIsTool = activeFrame?.getAttribute("data-app-id") === "snip";
+      target = activeFrame && !activeIsTool ? activeFrame : null;
+      if (!target) {
+        notify({
+          detail: "먼저 캡처할 창을 선택하세요.",
+          title: "캡처할 활성 창이 없습니다",
+        });
+        return null;
+      }
+    }
+    if (!target) return null;
+
+    let picture: Awaited<ReturnType<typeof captureElementToPng>>;
+    try {
+      picture = await captureElementToPng(target, {
+        exclude: (element) =>
+          element.matches(
+            '.window-frame[data-app-id="snip"], .toast-stack, .snap-preview, .taskbar-preview-card',
+          ),
+      });
+    } catch (error) {
+      notify({
+        detail: error instanceof Error ? error.message : "화면을 그릴 수 없습니다.",
+        title: "스크린샷 실패",
+      });
+      return null;
+    }
+
+    const fileName = getUniqueVfsEntryName(
+      activeDesktopItems,
+      VFS_PICTURES_ID,
+      getScreenshotFileName(new Date(now)),
+    );
+    const item: DesktopItem = {
+      content: picture.dataUrl,
+      createdAt: now,
+      id: `canvas-${crypto.randomUUID()}`,
+      kind: "canvas",
+      name: fileName,
+      parentId: VFS_PICTURES_ID,
+      showOnDesktop: false,
+      updatedAt: now,
+      x: 0,
+      y: 0,
+    };
+    setDesktopItems((current) => [...current, item]);
+    playSound("success");
+    const copied = await copyImageToClipboard(picture.dataUrl);
+    notify({
+      actions: [{ id: "open", label: "열기" }],
+      detail: `사진 폴더 · ${fileName} · ${picture.width}×${picture.height}${
+        copied ? " · 클립보드에도 복사됨" : ""
+      }`,
+      // The toast outlives this render; the ref proxy reaches the openVfsEntry
+      // of whatever render is current, which knows the item just added.
+      onAction: (actionId) => {
+        if (actionId === "open") contentOpsRef.current.openVfsEntry(item);
+      },
+      title: mode === "window" ? "창 스크린샷 저장됨" : "스크린샷 저장됨",
+      tone: "success",
+    });
+    return item;
+  };
+
+  /** Best effort: needs a secure context and a user gesture, and may still refuse. */
+  const copyImageToClipboard = async (dataUrl: string) => {
+    try {
+      if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) return false;
+      // Decoded by hand: fetch() of a data: URL is a network request to the
+      // CSP, and connect-src does not allow it.
+      const [header, base64] = dataUrl.split(",");
+      const type = /^data:([^;]+)/.exec(header)?.[1] ?? "image/png";
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1)
+        bytes[index] = binary.charCodeAt(index);
+      const blob = new Blob([bytes], { type });
+      await navigator.clipboard.write([new ClipboardItem({ [type]: blob })]);
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const renameVfsEntry = (itemId: string, name: string) => {
@@ -3255,6 +3370,11 @@ export default function App() {
 
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
       if (shellPhase !== "unlocked") return;
+      if (event.key === "PrintScreen") {
+        event.preventDefault();
+        void captureScreenshot(event.altKey ? "window" : "screen");
+        return;
+      }
       const target = event.target;
       const editingText =
         target instanceof HTMLInputElement ||
@@ -3275,6 +3395,11 @@ export default function App() {
         if (event.key === "Tab") {
           event.preventDefault();
           setTaskViewOpen((current) => !current);
+          return;
+        }
+        if (event.shiftKey && key === "s") {
+          event.preventDefault();
+          openApp("snip");
           return;
         }
         if (key === "e") {
@@ -3534,6 +3659,13 @@ export default function App() {
     };
 
     const handleGlobalKeyUp = (event: KeyboardEvent) => {
+      // Some browsers on Windows deliver PrintScreen only as keyup; the capture
+      // dedupes, so one that sends both still takes one picture.
+      if (event.key === "PrintScreen" && shellPhase === "unlocked") {
+        event.preventDefault();
+        void captureScreenshot(event.altKey ? "window" : "screen");
+        return;
+      }
       if (event.key === "Alt") {
         commitAltTab();
       }
@@ -3702,7 +3834,9 @@ export default function App() {
   const contentOpsRef = useRef<ContentOps>(null as unknown as ContentOps);
   contentOpsRef.current = {
     activateVfsEntry,
+    captureScreenshot,
     closeWindow,
+    copyImageToClipboard,
     copyToClipboard,
     createVfsFolder,
     createVfsShortcut,
@@ -3739,7 +3873,9 @@ export default function App() {
   const stableContentOps = useMemo<ContentOps>(
     () => ({
       activateVfsEntry: (...args) => contentOpsRef.current.activateVfsEntry(...args),
+      captureScreenshot: (...args) => contentOpsRef.current.captureScreenshot(...args),
       closeWindow: (...args) => contentOpsRef.current.closeWindow(...args),
+      copyImageToClipboard: (...args) => contentOpsRef.current.copyImageToClipboard(...args),
       copyToClipboard: (...args) => contentOpsRef.current.copyToClipboard(...args),
       createVfsFolder: (...args) => contentOpsRef.current.createVfsFolder(...args),
       createVfsShortcut: (...args) => contentOpsRef.current.createVfsShortcut(...args),
@@ -3826,6 +3962,7 @@ export default function App() {
       defaultApps,
       desktopItems: activeDesktopItems,
       filesLaunchRequest,
+      photosLaunchRequest,
       growWindow,
       noteEntries,
       openWindows,
@@ -3858,6 +3995,7 @@ export default function App() {
       defaultApps,
       activeDesktopItems,
       filesLaunchRequest,
+      photosLaunchRequest,
       growWindow,
       noteEntries,
       openWindows,

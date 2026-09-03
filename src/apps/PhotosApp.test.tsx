@@ -2,7 +2,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import PhotosApp from "./PhotosApp";
+import PhotosApp, { type PhotosLaunchRequest } from "./PhotosApp";
 import type { DesktopItem } from "../types";
 
 const PIXEL =
@@ -25,7 +25,13 @@ function makeCanvas(id: string, name: string, content: string | null = PIXEL) {
   return item;
 }
 
-function renderPhotos(options: { activeCanvasId?: string; entries?: DesktopItem[] } = {}) {
+function renderPhotos(
+  options: {
+    activeCanvasId?: string;
+    entries?: DesktopItem[];
+    photosLaunchRequest?: PhotosLaunchRequest | null;
+  } = {},
+) {
   const handlers = {
     activateVfsEntry: vi.fn(),
     reportDocument: vi.fn(),
@@ -47,6 +53,7 @@ function renderPhotos(options: { activeCanvasId?: string; entries?: DesktopItem[
       reportDocument={handlers.reportDocument}
       activeCanvasId={options.activeCanvasId ?? "photo-b"}
       activeCanvasOpenKey={1}
+      photosLaunchRequest={options.photosLaunchRequest ?? null}
       canvasEntries={entries}
       deleteVfsEntry={handlers.deleteVfsEntry}
       notify={handlers.notify}
@@ -345,5 +352,34 @@ describe("PhotosApp 빈 상태", () => {
     await user.click(editButtons[1]);
 
     expect(handlers.openApp).toHaveBeenCalledWith("paint");
+  });
+});
+
+describe("사진 열기 요청", () => {
+  function picture(id: string, name: string): DesktopItem {
+    return {
+      content: "data:image/png;base64,iVBORw0KGgo=",
+      createdAt: 0,
+      id,
+      kind: "canvas",
+      name,
+      parentId: "vfs-system-pictures",
+      showOnDesktop: false,
+      updatedAt: 0,
+      x: 0,
+      y: 0,
+    };
+  }
+
+  it("요청된 그림을 보여준다 — 그림판이 다른 그림을 편집 중이어도", () => {
+    const sketch = picture("canvas-sketch", "sketch.canvas");
+    const shot = picture("canvas-shot", "스크린샷 2026-09-03 143012.png");
+    renderPhotos({
+      activeCanvasId: sketch.id,
+      entries: [sketch, shot],
+      photosLaunchRequest: { id: "req-1", itemId: shot.id },
+    });
+    expect(screen.getAllByText(shot.name).length).toBeGreaterThan(0);
+    expect(screen.queryByText("sketch.canvas")).toBeNull();
   });
 });
