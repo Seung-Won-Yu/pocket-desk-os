@@ -15,6 +15,8 @@ export type WindowFrameOps = {
   minimize: (windowId: string) => void;
   openSystemMenu: (event: React.MouseEvent<HTMLDivElement>, windowId: string) => void;
   setInteracting: (windowId: string, interacting: boolean) => void;
+  /** Aero Shake: minimize every other window, or bring them back. */
+  shake: (windowId: string) => void;
   snapPreviewChange: (preview: SnapPreviewState | null) => void;
   toggleMaximize: (windowId: string) => void;
   update: (windowId: string, patch: Partial<WindowInstance>) => void;
@@ -67,6 +69,7 @@ export const WindowSlot = memo(function WindowSlot({
       onMinimize={() => frameOps.minimize(instance.id)}
       onInteractionChange={(interacting) => frameOps.setInteracting(instance.id, interacting)}
       onOpenSystemMenu={(event) => frameOps.openSystemMenu(event, instance.id)}
+      onShake={() => frameOps.shake(instance.id)}
       documentLabel={documentLabel}
       hasUnsavedChanges={hasUnsavedChanges}
       onSnapPreviewChange={frameOps.snapPreviewChange}

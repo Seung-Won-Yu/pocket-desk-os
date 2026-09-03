@@ -409,6 +409,8 @@ export default function App() {
   const desktopRenameGuardRef = useRef(false);
   const desktopSelectionRef = useRef<DesktopSelectionState | null>(null);
   const showDesktopRestoreRef = useRef<string[]>([]);
+  /** Windows an Aero Shake minimized, so the next shake can bring them back. */
+  const shakeRestoreRef = useRef<string[]>([]);
   const soundEnabledRef = useRef(soundEnabled);
   const soundVolumeRef = useRef(100);
   const vfsSaveErrorShownRef = useRef(false);
@@ -2071,6 +2073,40 @@ export default function App() {
         .filter((item) => item.showOnDesktop)
         .map((item) => `item:${item.id}`),
     ]);
+  };
+
+  /**
+   * Aero Shake: shaking a title bar minimizes every other window on the
+   * desktop; shaking again restores exactly the ones that shake put away.
+   */
+  const toggleShakeMinimize = (windowId: string) => {
+    const others = desktopWindows.filter((item) => item.id !== windowId && !item.minimized);
+    if (others.length > 0) {
+      playSound("minimize");
+      shakeRestoreRef.current = others.map((item) => item.id);
+      others.forEach((item) => {
+        moveFocusOutOfWindow(item.id, item.appId);
+        scheduleWindowMotion(item.id, "minimizing", () =>
+          updateWindow(item.id, { minimized: true }),
+        );
+      });
+      announce("다른 창을 모두 최소화했습니다. 다시 흔들면 되돌립니다.");
+      return;
+    }
+    const restoreIds = new Set(shakeRestoreRef.current);
+    if (restoreIds.size === 0) return;
+    playSound("toggle");
+    restoreIds.forEach(cancelWindowMotion);
+    setWindows((current) => {
+      let nextZ = Math.max(12, ...current.map((item) => item.z));
+      const restored = current.map((item) =>
+        restoreIds.has(item.id) ? { ...item, minimized: false, z: (nextZ += 1) } : item,
+      );
+      // The shaken window stays in front of the ones it brought back.
+      return restored.map((item) => (item.id === windowId ? { ...item, z: nextZ + 1 } : item));
+    });
+    shakeRestoreRef.current = [];
+    announce("창을 되돌렸습니다.");
   };
 
   /** Win+M minimizes every window on this desktop without toggling back. */
@@ -3751,6 +3787,7 @@ export default function App() {
       setInteractingWindowId((current) =>
         interacting ? windowId : current === windowId ? null : current,
       ),
+    shake: toggleShakeMinimize,
     snapPreviewChange: handleSnapPreviewChange,
     toggleMaximize,
     update: updateWindow,
@@ -3762,6 +3799,7 @@ export default function App() {
       minimize: (id) => frameOpsRef.current.minimize(id),
       openSystemMenu: (event, id) => frameOpsRef.current.openSystemMenu(event, id),
       setInteracting: (id, interacting) => frameOpsRef.current.setInteracting(id, interacting),
+      shake: (id) => frameOpsRef.current.shake(id),
       snapPreviewChange: (preview) => frameOpsRef.current.snapPreviewChange(preview),
       toggleMaximize: (id) => frameOpsRef.current.toggleMaximize(id),
       update: (id, patch) => frameOpsRef.current.update(id, patch),

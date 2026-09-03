@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TaskView } from "./TaskView";
@@ -101,5 +101,40 @@ describe("TaskView 창 카드", () => {
     });
 
     expect(screen.getAllByText("최소화됨")).toHaveLength(1);
+  });
+});
+
+describe("TaskView 데스크톱 간 드래그", () => {
+  function dataTransfer() {
+    const store = new Map<string, string>();
+    return {
+      dropEffect: "none",
+      effectAllowed: "all",
+      getData: (type: string) => store.get(type) ?? "",
+      setData: (type: string, value: string) => void store.set(type, value),
+    };
+  }
+
+  it("창 카드를 다른 데스크톱 썸네일에 놓으면 그 데스크톱으로 이동한다", () => {
+    const { handlers } = renderTaskView({ desktopCount: 2 });
+    const card = document.querySelector<HTMLElement>(".task-view-card")!;
+    expect(card.getAttribute("draggable")).toBe("true");
+    // The second desktop's own button — its 닫기 button shares the name prefix.
+    const target = document.querySelectorAll<HTMLElement>(".task-view-desktop")[1];
+    const transfer = dataTransfer();
+
+    fireEvent.dragStart(card, { dataTransfer: transfer });
+    fireEvent.dragEnter(target, { dataTransfer: transfer });
+    expect(target.classList.contains("is-drop-target")).toBe(true);
+    fireEvent.dragOver(target, { dataTransfer: transfer });
+    fireEvent.drop(target, { dataTransfer: transfer });
+
+    expect(handlers.onMoveWindowToDesktop).toHaveBeenCalledWith("win-notes", 1);
+    expect(target.classList.contains("is-drop-target")).toBe(false);
+  });
+
+  it("데스크톱이 하나면 카드는 드래그할 수 없다", () => {
+    renderTaskView();
+    expect(document.querySelector(".task-view-card")!.getAttribute("draggable")).toBe("false");
   });
 });

@@ -157,6 +157,14 @@ const FILE_FOLDER_MENU_RESERVE_X = 410;
 const FILE_CONTEXT_MENU_RESERVE_Y = 226;
 const FILE_FOLDER_MENU_RESERVE_Y = 214;
 
+/** The first lines of a text file for the details pane, the way the Windows preview pane shows them. */
+export const TEXT_PREVIEW_LINES = 14;
+export function getTextPreview(content: string) {
+  const lines = content.split("\n");
+  const shown = lines.slice(0, TEXT_PREVIEW_LINES).join("\n");
+  return lines.length > TEXT_PREVIEW_LINES ? `${shown}\n…` : shown;
+}
+
 export default function FilesApp({
   reportDocument,
   clipboard,
@@ -1596,6 +1604,14 @@ export default function FilesApp({
                       className="file-image-preview"
                       src={selectedFile.item.content}
                     />
+                  )}
+                  {selectedFile.item.kind === "note" && selectedFile.item.content && (
+                    <pre
+                      aria-label={`${selectedFile.name} 미리보기`}
+                      className="file-text-preview"
+                    >
+                      {getTextPreview(selectedFile.item.content)}
+                    </pre>
                   )}
                   <div className="file-actions">
                     <button onClick={() => openFile(selectedFile.item)} type="button">

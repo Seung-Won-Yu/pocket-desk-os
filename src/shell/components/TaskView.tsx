@@ -1,5 +1,5 @@
 import { Plus, X } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import AppIconTile from "../../components/AppIconTile";
 import { WindowThumbnail } from "./WindowThumbnail";
 import { trapDialogFocus, useReturnFocus } from "../dialogFocus";
@@ -38,6 +38,8 @@ export function TaskView({
   windows: WindowInstance[];
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const [dragOverDesktop, setDragOverDesktop] = useState<number | null>(null);
+  const [draggingWindowId, setDraggingWindowId] = useState<string | null>(null);
 
   // Closing this overlay hands focus back to whatever opened it; it used to
   // fall to <body>, so the next Tab restarted at the top of the desktop.
@@ -91,8 +93,35 @@ export function TaskView({
             <div className="task-view-desktop-slot" key={index}>
               <button
                 aria-current={index === activeDesktopIndex}
-                className={`task-view-desktop${index === activeDesktopIndex ? " is-active" : ""}`}
+                className={`task-view-desktop${index === activeDesktopIndex ? " is-active" : ""}${
+                  dragOverDesktop === index ? " is-drop-target" : ""
+                }`}
                 onClick={() => onSelectDesktop(index)}
+                // Windows lets you drag a window card onto a desktop here.
+                onDragEnter={(event) => {
+                  if (!draggingWindowId) return;
+                  event.preventDefault();
+                  setDragOverDesktop(index);
+                }}
+                onDragLeave={(event) => {
+                  if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+                  setDragOverDesktop((current) => (current === index ? null : current));
+                }}
+                onDragOver={(event) => {
+                  if (!draggingWindowId) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={(event) => {
+                  const windowId =
+                    event.dataTransfer.getData("application/x-pocketdesk-window") ||
+                    draggingWindowId;
+                  setDragOverDesktop(null);
+                  setDraggingWindowId(null);
+                  if (!windowId) return;
+                  event.preventDefault();
+                  onMoveWindowToDesktop(windowId, index);
+                }}
                 type="button"
               >
                 <span aria-hidden="true" className="task-view-thumbs">
@@ -152,7 +181,20 @@ export function TaskView({
               const documentLabel = getDocumentLabel(item.id, item.appId);
               const windowTitle = formatWindowTitle(app.title, documentLabel);
               return (
-                <div className="task-view-card" key={item.id}>
+                <div
+                  className={`task-view-card${draggingWindowId === item.id ? " is-dragging" : ""}`}
+                  draggable={desktopCount > 1}
+                  key={item.id}
+                  onDragEnd={() => {
+                    setDraggingWindowId(null);
+                    setDragOverDesktop(null);
+                  }}
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData("application/x-pocketdesk-window", item.id);
+                    event.dataTransfer.effectAllowed = "move";
+                    setDraggingWindowId(item.id);
+                  }}
+                >
                   {/*
                    * Windows shows the window's own title and a preview of where
                    * it sits, not its pixel dimensions — a readout that told you

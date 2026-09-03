@@ -10233,3 +10233,31 @@ button {
   visibility: visible;
   width: auto;
 }
+
+/* Details pane: the first lines of a text file, in the file's own monospace. */
+.file-text-preview {
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font-family:
+    "Cascadia Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Task View: a card being dragged, and the desktop it hovers over. */
+.task-view-card.is-dragging {
+  opacity: 0.55;
+}
+
+.task-view-desktop.is-drop-target {
+  border-color: var(--active);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--active) 45%, transparent);
+}

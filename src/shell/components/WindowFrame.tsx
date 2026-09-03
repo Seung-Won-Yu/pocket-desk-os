@@ -10,6 +10,7 @@ import {
   type WindowMotion,
 } from "../types";
 import { getSnapPreviewStyle, getWindowSnapPatch, getWindowSnapZone } from "../windowGeometry";
+import { createShakeDetector } from "../aeroShake";
 import { Copy, Minus, Square, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { handleMenuKeyboard } from "../keyboardNav";
@@ -34,6 +35,7 @@ export function WindowFrame({
   onMinimize,
   onInteractionChange,
   onOpenSystemMenu,
+  onShake,
   onSnapPreviewChange,
   onToggleMaximize,
   onUpdate,
@@ -52,6 +54,8 @@ export function WindowFrame({
   /** Drag or resize in progress; the shell pauses every window's blur meanwhile. */
   onInteractionChange?: (interacting: boolean) => void;
   onOpenSystemMenu: (event: React.MouseEvent<HTMLDivElement>) => void;
+  /** Aero Shake: the title bar was shaken side to side during a drag. */
+  onShake?: () => void;
   onSnapPreviewChange: (preview: SnapPreviewState | null) => void;
   onToggleMaximize: () => void;
   onUpdate: (patch: Partial<WindowInstance>) => void;
@@ -163,8 +167,12 @@ export function WindowFrame({
     let pendingRestore = restoring;
 
     let activeSnapZone: SnapZone | null = null;
+    const shake = createShakeDetector();
 
     const onPointerMove = (moveEvent: globalThis.PointerEvent) => {
+      // Aero Shake rides along with the move: the window still follows the
+      // pointer, and the shake only minimizes the others.
+      if (shake.feed(moveEvent.clientX, moveEvent.timeStamp)) onShake?.();
       if (pendingRestore) {
         const travelled = Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY);
         if (travelled < WINDOW_DRAG_THRESHOLD) return;

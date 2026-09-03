@@ -2403,6 +2403,21 @@ async function runSmoke(baseUrl) {
 
     await taskViewButton.click();
     await taskView.waitFor({ state: "visible" });
+    // Dragging a window card onto a desktop thumbnail moves the window there,
+    // as in Windows; closing that desktop below brings the window back.
+    const cardsOnDesktopOne = await taskView.locator(".task-view-card").count();
+    const draggedCard = taskView.locator(".task-view-card").first();
+    const draggedTitle = await draggedCard.locator(".task-view-card-title strong").innerText();
+    await draggedCard.dragTo(taskView.locator(".task-view-desktop").nth(1));
+    await page.waitForTimeout(300);
+    assert(
+      (await taskView.locator(".task-view-card").count()) === cardsOnDesktopOne - 1,
+      `Dragging ${draggedTitle} onto desktop 2 left it listed on desktop 1`,
+    );
+    assert(
+      (await taskView.locator(".task-view-desktop").nth(1).innerText()).includes("1개 창"),
+      "Desktop 2 does not count the dragged window",
+    );
     await taskView.getByRole("button", { name: "데스크톱 2 닫기" }).click();
     await taskView.locator(".task-view-desktop").nth(1).waitFor({ state: "detached" });
     assert(
@@ -2576,6 +2591,39 @@ async function runSmoke(baseUrl) {
         `창 계단식 배열 stair ${index} is off: ${JSON.stringify(stairs)}`,
       );
     }
+
+    // Aero Shake: shaking the front window's title bar minimizes every other
+    // window; shaking again brings them back. A straight drag never does.
+    const shakeTarget = page.locator(".window-frame.is-active");
+    const shakeTitle = await shakeTarget.locator(".window-titlebar").boundingBox();
+    const shakeFrom = { x: shakeTitle.x + 140, y: shakeTitle.y + 12 };
+    const shake = async () => {
+      await page.mouse.move(shakeFrom.x, shakeFrom.y);
+      await page.mouse.down();
+      for (let swing = 0; swing < 6; swing += 1) {
+        await page.mouse.move(shakeFrom.x + (swing % 2 === 0 ? 70 : -70), shakeFrom.y, {
+          steps: 2,
+        });
+      }
+      await page.mouse.move(shakeFrom.x, shakeFrom.y, { steps: 2 });
+      await page.mouse.up();
+      await page.waitForTimeout(350);
+    };
+    const minimizedFrames = page.locator(
+      ".window-frame:not(.window-thumbnail-clone).is-minimized",
+    );
+    const minimizedBeforeShake = await minimizedFrames.count();
+    await shake();
+    assert(
+      (await minimizedFrames.count()) === minimizedBeforeShake + arrangeCount - 1 &&
+        !(await shakeTarget.getAttribute("class"))?.includes("is-minimized"),
+      `Aero Shake did not minimize the other windows (${await minimizedFrames.count()} minimized)`,
+    );
+    await shake();
+    assert(
+      (await minimizedFrames.count()) === minimizedBeforeShake,
+      "A second Aero Shake did not bring the other windows back",
+    );
 
     // Aero Peek: the thumbnail under the pointer shows its window alone; the
     // show-desktop strip under the pointer shows the desktop through them all.
