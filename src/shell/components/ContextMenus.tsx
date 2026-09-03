@@ -14,26 +14,27 @@ import { type DesktopSortKey, type DesktopViewMode } from "../types";
 import {
   Check,
   ChevronRight,
-  Folder,
-  FolderInput,
   ClipboardPaste,
   Copy,
   ExternalLink,
   FilePlus2,
   FileText,
+  Folder,
+  FolderInput,
   FolderPlus,
   Grid2X2,
   Info,
   LayoutGrid,
   Palette,
   Pencil,
-  Scissors,
   Pin,
   PinOff,
   RefreshCw,
+  Scissors,
   Trash2,
-  X,
   type LucideIcon,
+  Wallpaper,
+  X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { handleMenuKeyboard } from "../keyboardNav";
@@ -267,6 +268,7 @@ export function DesktopIconContextMenu({
   onOpen,
   onProperties,
   onRename,
+  onSetWallpaper,
   onTogglePin,
   target,
   x,
@@ -281,6 +283,8 @@ export function DesktopIconContextMenu({
   onOpen: () => void;
   onProperties?: () => void;
   onRename?: () => void;
+  /** Present for a picture file with pixels: 바탕 화면 배경으로 설정. */
+  onSetWallpaper?: () => void;
   onTogglePin?: () => void;
   target: {
     accent: string;
@@ -407,6 +411,12 @@ export function DesktopIconContextMenu({
         >
           <Trash2 aria-hidden="true" size={16} />
           삭제
+        </button>
+      )}
+      {onSetWallpaper && (
+        <button onClick={onSetWallpaper} role="menuitem" type="button">
+          <Wallpaper aria-hidden="true" size={16} />
+          바탕 화면 배경으로 설정
         </button>
       )}
       {onProperties && (

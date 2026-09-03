@@ -28,6 +28,8 @@ import { SnapPreview } from "./shell/components/WindowFrame";
 import { WindowSystemMenu } from "./shell/components/WindowSystemMenu";
 import {
   APP_BAR_HEIGHT,
+  CLOCK_24H_KEY,
+  CUSTOM_WALLPAPER_KEY,
   DESKTOP_ICON_GRID_KEY,
   DESKTOP_ICON_LAYOUT_KEY,
   DESKTOP_ICON_SORT_KEY,
@@ -38,25 +40,24 @@ import {
   NOTE_OPEN_EVENT,
   NOTE_SAVE_AS_EVENT,
   NOTE_SAVE_EVENT,
+  NOTIFICATION_HISTORY_LIMIT,
   PAINT_OPEN_EVENT,
-  PAINT_SAVE_AS_EVENT,
   PAINT_REDO_EVENT,
+  PAINT_SAVE_AS_EVENT,
   PAINT_SAVE_EVENT,
   PAINT_UNDO_EVENT,
   SOUND_ENABLED_KEY,
+  SOUND_VOLUME_KEY,
   TASKBAR_PINNED_APPS_KEY,
-  VFS_PRIMARY_CANVAS_ID,
-  VFS_PRIMARY_NOTE_ID,
-  CLOCK_24H_KEY,
   USER_NAME_KEY,
   VFS_DRAG_MIME,
+  VFS_PRIMARY_CANVAS_ID,
+  VFS_PRIMARY_NOTE_ID,
   VIRTUAL_DESKTOPS_KEY,
   WALLPAPER_KEY,
   WINDOW_EXIT_MOTION_MS,
-  WINDOW_STATE_KEY,
   WINDOW_KEYBOARD_STEP,
-  NOTIFICATION_HISTORY_LIMIT,
-  SOUND_VOLUME_KEY,
+  WINDOW_STATE_KEY,
 } from "./shell/constants";
 import {
   clampContextMenuPosition,
@@ -103,6 +104,7 @@ import {
 } from "./shell/vfsBootstrap";
 import {
   getDesktopWorkArea,
+  getMinimizeVector,
   getWindowSnapPatch,
   resizeWindowEdge,
 } from "./shell/windowGeometry";
@@ -201,7 +203,12 @@ import {
   isVfsSystemFolderId,
 } from "./vfs/model";
 import { persistVfsEntries } from "./vfs/storage";
-import { getWallpaperStyle, wallpaperGallery, type WallpaperCssVars } from "./wallpapers";
+import {
+  getWallpaperStyle,
+  resolveCustomWallpaper,
+  type WallpaperCssVars,
+  wallpaperGallery,
+} from "./wallpapers";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const DESKTOP_ICON_NAV_KEYS = [
@@ -250,6 +257,7 @@ type ContentOps = Pick<
   | "setDefaultApp"
   | "setSoundEnabled"
   | "setTheme"
+  | "setCustomWallpaper"
   | "setWallpaper"
 >;
 
@@ -275,6 +283,11 @@ export default function App() {
   const [wallpaper, setWallpaper] = useState<WallpaperName>(() => {
     return (localStorage.getItem(WALLPAPER_KEY) as WallpaperName | null) ?? "ribbon";
   });
+  // "바탕 화면 배경으로 설정": the id of one of the user's own pictures. Only the
+  // id is stored; the pixels come from the file, so deleting it undoes it.
+  const [customWallpaperItemId, setCustomWallpaperItemId] = useState<string | null>(() =>
+    localStorage.getItem(CUSTOM_WALLPAPER_KEY),
+  );
   const [soundEnabled, setSoundEnabled] = useState(() => {
     return localStorage.getItem(SOUND_ENABLED_KEY) !== "off";
   });
@@ -485,6 +498,12 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(WALLPAPER_KEY, wallpaper);
   }, [wallpaper]);
+
+  useEffect(() => {
+    if (customWallpaperItemId)
+      localStorage.setItem(CUSTOM_WALLPAPER_KEY, customWallpaperItemId);
+    else localStorage.removeItem(CUSTOM_WALLPAPER_KEY);
+  }, [customWallpaperItemId]);
 
   useEffect(() => {
     soundEnabledRef.current = soundEnabled;
@@ -1165,12 +1184,34 @@ export default function App() {
   const changeWallpaper = (nextWallpaper: WallpaperName) => {
     playSound("success");
     setWallpaper(nextWallpaper);
+    // Picking a preset is how you leave a custom picture behind.
+    setCustomWallpaperItemId(null);
     const selected = wallpaperGallery.find((item) => item.id === nextWallpaper);
     notify({
       detail: selected?.detail ?? "새 배경화면을 적용했습니다.",
       title: `${selected?.label ?? "배경화면"} 적용`,
       tone: "success",
     });
+  };
+
+  /** A picture file as the wallpaper (null puts the preset back). */
+  const setCustomWallpaper = (itemId: string | null) => {
+    playSound("success");
+    setCustomWallpaperItemId(itemId);
+    notify(
+      itemId
+        ? {
+            detail:
+              "선택한 그림을 배경으로 씁니다. 그림을 삭제하거나 기본 배경을 고르면 되돌아갑니다.",
+            title: "바탕 화면 배경 변경됨",
+            tone: "success",
+          }
+        : {
+            detail: "설정에서 고른 배경을 다시 씁니다.",
+            title: "기본 배경으로 되돌림",
+            tone: "success",
+          },
+    );
   };
 
   const changeTheme = (nextTheme: ThemeName) => {
@@ -1488,6 +1529,10 @@ export default function App() {
   const activeDesktopItems = useMemo(() => {
     return desktopItems.filter((item) => !item.trashed);
   }, [desktopItems]);
+  const customWallpaperImage = useMemo(
+    () => resolveCustomWallpaper(activeDesktopItems, customWallpaperItemId),
+    [activeDesktopItems, customWallpaperItemId],
+  );
   const desktopContextItem =
     desktopIconMenu?.kind === "item"
       ? activeDesktopItems.find((item) => item.id === desktopIconMenu.itemId)
@@ -2730,6 +2775,23 @@ export default function App() {
     if (activeTimer !== undefined) window.clearTimeout(activeTimer);
 
     setWindowMotions((current) => ({ ...current, [id]: motion }));
+    if (motion === "minimizing") {
+      // Fold into the taskbar button, as Windows does: the frame learns where
+      // its button is and the keyframes translate towards it.
+      const frame = findLiveWindowFrame(id);
+      const appId = windows.find((item) => item.id === id)?.appId;
+      const button = appId
+        ? document.querySelector<HTMLElement>(`.taskbar button[data-app-id="${appId}"]`)
+        : null;
+      if (frame) {
+        const { dx, dy } = getMinimizeVector(
+          frame.getBoundingClientRect(),
+          button?.getBoundingClientRect() ?? null,
+        );
+        frame.style.setProperty("--minimize-dx", `${dx}px`);
+        frame.style.setProperty("--minimize-dy", `${dy}px`);
+      }
+    }
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const timer = window.setTimeout(
       () => {
@@ -2974,8 +3036,9 @@ export default function App() {
       return;
     }
     playSound("success");
+    // Windows creates the desktop and stays on the current one; switching
+    // moved you away from the windows you were about to drag over.
     setStoredDesktopCount(desktopCount + 1);
-    setActiveDesktopIndex(desktopCount);
   };
 
   /** Closing a desktop hands its windows to the desktop on its left, like Windows. */
@@ -3868,6 +3931,7 @@ export default function App() {
       setDefaultApps((current) => ({ ...current, [extension]: appId })),
     setSoundEnabled: toggleSoundEnabled,
     setTheme: changeTheme,
+    setCustomWallpaper,
     setWallpaper: changeWallpaper,
   };
   const stableContentOps = useMemo<ContentOps>(
@@ -3908,6 +3972,7 @@ export default function App() {
       setDefaultApp: (...args) => contentOpsRef.current.setDefaultApp(...args),
       setSoundEnabled: (...args) => contentOpsRef.current.setSoundEnabled(...args),
       setTheme: (...args) => contentOpsRef.current.setTheme(...args),
+      setCustomWallpaper: (...args) => contentOpsRef.current.setCustomWallpaper(...args),
       setWallpaper: (...args) => contentOpsRef.current.setWallpaper(...args),
     }),
     [],
@@ -3961,6 +4026,7 @@ export default function App() {
       stickyNotes,
       defaultApps,
       desktopItems: activeDesktopItems,
+      customWallpaperItemId,
       filesLaunchRequest,
       photosLaunchRequest,
       growWindow,
@@ -3994,6 +4060,7 @@ export default function App() {
       stickyNotes,
       defaultApps,
       activeDesktopItems,
+      customWallpaperItemId,
       filesLaunchRequest,
       photosLaunchRequest,
       growWindow,
@@ -4028,7 +4095,7 @@ export default function App() {
       onPointerUp={finishDesktopSelection}
       style={
         {
-          ...getWallpaperStyle(wallpaper),
+          ...getWallpaperStyle(wallpaper, customWallpaperImage),
           "--display-dim": ((100 - displayBrightness) / 100) * 0.7,
         } as WallpaperCssVars
       }
@@ -4307,6 +4374,14 @@ export default function App() {
             desktopContextApp ? pinnedAppIds.includes(desktopContextApp.id) : undefined
           }
           itemSelectionCount={getSelectedDesktopItemIds(desktopContextItem?.id).length}
+          onSetWallpaper={
+            desktopContextItem?.kind === "canvas" && desktopContextItem.content
+              ? () => {
+                  setDesktopIconMenu(null);
+                  setCustomWallpaper(desktopContextItem.id);
+                }
+              : undefined
+          }
           onCopy={
             desktopContextItem ? () => copyDesktopItems(desktopContextItem.id) : undefined
           }

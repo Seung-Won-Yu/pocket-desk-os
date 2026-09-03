@@ -30,6 +30,7 @@ import {
   Search,
   Trash2,
   Upload,
+  Wallpaper,
   X,
 } from "lucide-react";
 import {
@@ -115,6 +116,7 @@ type FilesAppProps = {
   openNewAppWindow: (appId: AppId) => string;
   openVfsEntry: (item: DesktopItem) => void;
   renameVfsEntry: (itemId: string, name: string) => void;
+  setCustomWallpaper: (itemId: string | null) => void;
   reportDocument: (
     windowId: string,
     ref: { itemId?: string; title?: string } | undefined,
@@ -184,6 +186,7 @@ export default function FilesApp({
   openNewAppWindow,
   openVfsEntry,
   renameVfsEntry,
+  setCustomWallpaper,
   windowId,
 }: FilesAppProps) {
   const fileListRef = useRef<HTMLDivElement | null>(null);
@@ -1720,6 +1723,19 @@ export default function FilesApp({
             <Pencil aria-hidden="true" size={16} />
             이름 바꾸기
           </button>
+          {contextFile.item.kind === "canvas" && contextFile.item.content && (
+            <button
+              onClick={() => {
+                setFileContextMenu(null);
+                setCustomWallpaper(contextFile.id);
+              }}
+              role="menuitem"
+              type="button"
+            >
+              <Wallpaper aria-hidden="true" size={16} />
+              바탕 화면 배경으로 설정
+            </button>
+          )}
           <button
             disabled={selectedHasSystemFolder}
             onClick={() => deleteSelectedFiles()}

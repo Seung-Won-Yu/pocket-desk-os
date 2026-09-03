@@ -132,3 +132,19 @@ export function resizeWindowEdge(
   const y = clamp(instance.y + delta, 8, bottom - minHeight);
   return { height: bottom - y, y };
 }
+
+/**
+ * Where a minimizing window flies: from its own centre to the centre of its
+ * taskbar button, the way Windows folds a window into its button. Returned as
+ * the translation the frame's animation ends on.
+ */
+export function getMinimizeVector(
+  frame: { height: number; left: number; top: number; width: number },
+  target: { height: number; left: number; top: number; width: number } | null,
+) {
+  if (!target) return { dx: 0, dy: 34 };
+  return {
+    dx: Math.round(target.left + target.width / 2 - (frame.left + frame.width / 2)),
+    dy: Math.round(target.top + target.height / 2 - (frame.top + frame.height / 2)),
+  };
+}

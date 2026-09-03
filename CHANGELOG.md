@@ -8,6 +8,7 @@ All notable changes to PocketDesk OS are documented here.
 
 - **스티커 메모.** A Sticky Notes app: each window is one note in five colours, titled after its first line, and the notes live in shell state so they survive a reload and reopen with the windows that showed them. 새 메모 opens another window holding a different note; 메모 삭제 removes the note and its window together.
 - **Picture files show their picture.** A `.canvas` drawing with pixels renders those pixels as its icon — on the desktop, in Explorer's rows and in its large-icon view — letterboxed rather than cropped, so a sketch in a corner still shows.
+- **바탕 화면 배경으로 설정.** A picture file — a drawing, a screenshot — becomes the wallpaper from Explorer's right-click menu, the desktop icon's menu, or 사진's toolbar. Only the file's id is kept; the pixels come from the file, so deleting it (or picking a preset in 설정) puts the preset back. 설정 shows when a picture is in use and offers 기본 배경으로.
 - **Real screenshots.** PrintScreen pictures the desktop — the live DOM serialized into an SVG and drawn onto a canvas, wallpaper and drawings included — and saves the PNG into 사진 as `스크린샷 2026-09-03 143012.png`, with a toast whose 열기 opens it in 사진. Alt+PrintScreen pictures the active window alone. 캡처 도구 (Win+Shift+S, or `snip` in 실행) is the button for keyboards without PrintScreen: whole screen or active window, an optional 3/5-second countdown, a preview, 사진 앱에서 열기 and 복사 to the clipboard. The tool never appears in its own picture. What an SVG image cannot draw — backdrop blur, scrolled-away content — is the one difference from the screen.
 - **Aero Shake.** Grab a title bar and shake it side to side (three quick reversals) and every other window on the desktop minimizes; shake again and they come back. A slow zig-zag while placing a window, or pointer jitter, does not count.
 - **Task View drags windows between desktops.** A window card can be dragged onto a desktop thumbnail to move it there; the desktop lights up as a drop target. The 이동 select stays for keyboard and assistive tech.
@@ -18,6 +19,8 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Fixed
 
+- **A window minimizes into its taskbar button.** The minimize animation flies towards the app's button, as Windows folds a window away, instead of sinking in place.
+- **새 데스크톱 no longer switches to the new desktop.** Task View creates it and stays where you are, as Windows does — switching moved you away from the windows you were about to drag over.
 - **The taskbar preview card no longer closes when the pointer enters it.** The app button listened with mouse events and the card with pointer events; pointer events dispatch first, so the card's "stay open" ran before the button's "hide in 220ms" was armed, and the card vanished under the pointer every time — its close and switch buttons were unreachable by mouse. Both sides use pointer events now.
 - **Pressing the desktop takes focus off the windows.** Like Windows, a click on the bare desktop or one of its icons deactivates the foreground window — its title bar goes quiet, its taskbar button stops being current, and Ctrl+V, Delete and Enter address the desktop while windows stay open. Clicking the window or its taskbar button gives it back; closing or minimizing the active window hands focus to the next window instead of the desktop.
 

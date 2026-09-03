@@ -28,6 +28,8 @@ type SettingsAppProps = {
   setSoundEnabled: (enabled: boolean) => void;
   setTheme: (theme: ThemeName) => void;
   setWallpaper: (wallpaper: WallpaperName) => void;
+  customWallpaperItemId: string | null;
+  setCustomWallpaper: (itemId: string | null) => void;
   soundEnabled: boolean;
   theme: ThemeName;
   wallpaper: WallpaperName;
@@ -46,6 +48,8 @@ export default function SettingsApp({
   setSoundEnabled,
   setTheme,
   setWallpaper,
+  customWallpaperItemId,
+  setCustomWallpaper,
   soundEnabled,
   theme,
   wallpaper,
@@ -203,7 +207,9 @@ export default function SettingsApp({
               <div className="wallpaper-options">
                 {wallpaperGallery.map((option) => (
                   <button
-                    className={wallpaper === option.id ? "is-selected" : ""}
+                    className={
+                      !customWallpaperItemId && wallpaper === option.id ? "is-selected" : ""
+                    }
                     key={option.id}
                     onClick={() => setWallpaper(option.id)}
                     type="button"
@@ -217,6 +223,19 @@ export default function SettingsApp({
                   </button>
                 ))}
               </div>
+              {customWallpaperItemId && (
+                <p className="settings-wallpaper-note">
+                  지금은 내 그림이 배경입니다. 그림을 삭제하거나 위에서 배경을 고르면
+                  되돌아갑니다.
+                  <button
+                    className="settings-action"
+                    onClick={() => setCustomWallpaper(null)}
+                    type="button"
+                  >
+                    기본 배경으로
+                  </button>
+                </p>
+              )}
             </section>
           </>
         )}

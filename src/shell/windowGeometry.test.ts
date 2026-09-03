@@ -5,6 +5,7 @@ import {
   getWindowSnapPatch,
   getWindowSnapZone,
   resizeWindowEdge,
+  getMinimizeVector,
 } from "./windowGeometry";
 
 // These helpers read `window.innerWidth` / `window.innerHeight` directly and the vitest
@@ -359,5 +360,20 @@ describe("resizeWindowEdge", () => {
     setViewport(1280, 820);
 
     expect(resizeWindowEdge(base, "right", "Home", 10)).toEqual({});
+  });
+});
+
+describe("getMinimizeVector", () => {
+  it("points from the window's centre to its taskbar button's centre", () => {
+    const frame = { height: 400, left: 100, top: 100, width: 600 };
+    const button = { height: 40, left: 620, top: 780, width: 48 };
+    expect(getMinimizeVector(frame, button)).toEqual({ dx: 244, dy: 500 });
+  });
+
+  it("drops a little downward when the window has no taskbar button", () => {
+    expect(getMinimizeVector({ height: 400, left: 0, top: 0, width: 600 }, null)).toEqual({
+      dx: 0,
+      dy: 34,
+    });
   });
 });

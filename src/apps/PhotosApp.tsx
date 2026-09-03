@@ -9,6 +9,7 @@ import {
   RotateCw,
   Trash2,
   Type,
+  Wallpaper,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -35,6 +36,7 @@ type PhotosAppProps = {
   activateVfsEntry: (item: DesktopItem) => void;
   playSound: (effect: "click" | "error" | "open" | "success" | "toggle") => void;
   renameVfsEntry: (itemId: string, name: string) => void;
+  setCustomWallpaper: (itemId: string | null) => void;
   savePaintImage: (
     content: string,
     options?: { existingItemId?: string; name?: string; parentId?: string },
@@ -66,6 +68,7 @@ export default function PhotosApp({
   playSound,
   renameVfsEntry,
   savePaintImage,
+  setCustomWallpaper,
   windowId,
 }: PhotosAppProps) {
   const viewerRef = useRef<HTMLDivElement | null>(null);
@@ -533,6 +536,17 @@ export default function PhotosApp({
           >
             <Type aria-hidden="true" size={15} />
             <span>이름 바꾸기</span>
+          </button>
+          <button
+            aria-label="배경으로 설정"
+            className="photos-command"
+            disabled={!currentEntry?.content}
+            onClick={() => currentEntry && setCustomWallpaper(currentEntry.id)}
+            title="바탕 화면 배경으로 설정"
+            type="button"
+          >
+            <Wallpaper aria-hidden="true" size={15} />
+            <span>배경으로 설정</span>
           </button>
           <button
             aria-label="삭제"

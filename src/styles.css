@@ -1305,15 +1305,17 @@ button {
   }
 }
 
+/* Folds into the window's taskbar button; the frame sets the vector as it
+   starts (see scheduleWindowMotion). Without one it just sinks a little. */
 @keyframes window-minimize {
   from {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translate(0, 0) scale(1);
   }
 
   to {
     opacity: 0;
-    transform: translateY(34px) scale(0.78);
+    transform: translate(var(--minimize-dx, 0px), var(--minimize-dy, 34px)) scale(0.1);
   }
 }
 
@@ -10362,4 +10364,14 @@ button {
   justify-content: center;
   padding: 20px;
   text-align: center;
+}
+
+.settings-wallpaper-note {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  gap: 10px;
+  margin: 10px 0 0;
 }

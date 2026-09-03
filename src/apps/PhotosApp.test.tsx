@@ -60,6 +60,7 @@ function renderPhotos(
       openApp={handlers.openApp}
       playSound={handlers.playSound}
       renameVfsEntry={handlers.renameVfsEntry}
+      setCustomWallpaper={vi.fn()}
       savePaintImage={handlers.savePaintImage}
       windowId="window-photos"
     />,

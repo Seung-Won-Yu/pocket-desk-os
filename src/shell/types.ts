@@ -245,6 +245,9 @@ export type AppContentProps = {
   saveNoteContent: (noteId: string, content: string) => void;
   setSoundEnabled: (enabled: boolean) => void;
   setWallpaper: (wallpaper: WallpaperName) => void;
+  /** A picture file of the user's used as the wallpaper; null = the preset. */
+  customWallpaperItemId: string | null;
+  setCustomWallpaper: (itemId: string | null) => void;
   setTheme: (theme: ThemeName) => void;
   soundEnabled: boolean;
   clock24h: boolean;

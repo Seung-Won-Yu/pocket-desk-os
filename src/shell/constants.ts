@@ -23,6 +23,7 @@ export const PAINT_SAVE_AS_EVENT = "pocket-desk-save-paint-as";
 export const VFS_PRIMARY_NOTE_ID = "vfs-notes";
 export const VFS_PRIMARY_CANVAS_ID = "vfs-sketch";
 export const WALLPAPER_KEY = "pocket-desk-wallpaper-v2";
+export const CUSTOM_WALLPAPER_KEY = "pocket-desk-custom-wallpaper-v1";
 export const WINDOW_STATE_KEY = "pocket-desk-windows-v1";
 export const DESKTOP_ICON_LAYOUT_KEY = "pocket-desk-icons-v2";
 export const DESKTOP_ICON_VIEW_KEY = "pocket-desk-icon-view-v1";

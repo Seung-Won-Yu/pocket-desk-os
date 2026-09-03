@@ -2387,6 +2387,19 @@ async function runSmoke(baseUrl) {
       (await taskView.locator(".task-view-desktop").count()) === 2,
       "New desktop button did not add a desktop",
     );
+    // Windows creates the desktop and stays put; the current desktop's cards
+    // are still the ones listed.
+    // (A card count can drift here on its own: a window still closing when the
+    // overview opened is gone a moment later. What must hold: the current
+    // desktop stays current, and the new one starts empty.)
+    const currentDesktops = await taskView
+      .locator(".task-view-desktop")
+      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-current")));
+    assert(
+      currentDesktops[0] === "true" &&
+        (await taskView.locator(".task-view-desktop").nth(1).innerText()).includes("0개 창"),
+      `Creating a desktop switched to it or moved windows (current ${JSON.stringify(currentDesktops)})`,
+    );
     await taskView.locator(".task-view-desktop").nth(1).click();
     await taskView.waitFor({ state: "hidden" });
     assert(
@@ -2767,6 +2780,47 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("Alt+PrintScreen");
     const windowShotToast = page.locator(".toast", { hasText: "창 스크린샷 저장됨" });
     await windowShotToast.waitFor({ state: "visible", timeout: 15000 });
+    // 바탕 화면 배경으로 설정: the screenshot becomes the wallpaper; deleting the
+    // file puts the preset back.
+    const wallpaperVar = () =>
+      page
+        .locator("main.desktop")
+        .evaluate((node) => node.style.getPropertyValue("--wallpaper-image"));
+    await shotRow.first().click({ button: "right" });
+    await shotExplorer
+      .locator(".file-context-menu")
+      .getByRole("menuitem", { name: "바탕 화면 배경으로 설정" })
+      .click();
+    await page.waitForTimeout(250);
+    assert(
+      (await wallpaperVar()).startsWith('url("data:image/png'),
+      `Setting the picture as wallpaper left ${(await wallpaperVar()).slice(0, 40)}`,
+    );
+    await shotRow.first().click({ button: "right" });
+    await shotExplorer
+      .locator(".file-context-menu")
+      .getByRole("menuitem", { name: "삭제" })
+      .click();
+    await page.waitForTimeout(300);
+    assert(
+      !(await wallpaperVar()).startsWith('url("data:'),
+      "Deleting the wallpaper picture did not bring the preset back",
+    );
+    // Minimizing folds the window towards its taskbar button: the frame carries
+    // the vector the animation ends on.
+    await shotExplorer.getByRole("button", { name: "파일 탐색기 최소화" }).click();
+    await page.waitForTimeout(80);
+    const minimizeVector = await shotExplorer.evaluate((node) => [
+      node.style.getPropertyValue("--minimize-dx"),
+      node.style.getPropertyValue("--minimize-dy"),
+    ]);
+    assert(
+      minimizeVector[0].endsWith("px") && minimizeVector[1].endsWith("px"),
+      `Minimize did not aim at the taskbar button: ${JSON.stringify(minimizeVector)}`,
+    );
+    await page.waitForTimeout(300);
+    await page.locator('.taskbar button[data-app-id="files"]').click();
+    await shotExplorer.waitFor({ state: "visible" });
     await shotExplorer.getByRole("button", { name: "파일 탐색기 닫기" }).click();
     await shotExplorer.waitFor({ state: "detached" });
 
