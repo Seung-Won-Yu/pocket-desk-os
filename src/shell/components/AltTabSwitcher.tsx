@@ -1,4 +1,4 @@
-import AppIconTile from "../../components/AppIconTile";
+import { WindowThumbnail } from "./WindowThumbnail";
 import { getApp } from "../appCatalog";
 import { formatWindowTitle } from "../windowTitle";
 import { type WindowInstance } from "../types";
@@ -34,7 +34,7 @@ export function AltTabSwitcher({
               className={`alt-tab-item ${selectedWindowId === windowItem.id ? "is-selected" : ""}`}
               key={windowItem.id}
             >
-              <AppIconTile accent={app.accent} icon={app.icon} size="large" />
+              <WindowThumbnail accent={app.accent} icon={app.icon} instance={windowItem} />
               {/* The same `문서 - 앱` the title bar shows. Using the document
                   name alone made a Paint window and a Photos window on the same
                   canvas read identically. */}

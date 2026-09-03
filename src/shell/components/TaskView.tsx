@@ -1,6 +1,7 @@
 import { Plus, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import AppIconTile from "../../components/AppIconTile";
+import { WindowThumbnail } from "./WindowThumbnail";
 import { trapDialogFocus, useReturnFocus } from "../dialogFocus";
 import { getApp } from "../appCatalog";
 import { formatWindowTitle } from "../windowTitle";
@@ -163,8 +164,15 @@ export function TaskView({
                     type="button"
                   >
                     <span aria-hidden="true" className="task-view-card-preview">
-                      <span className="task-view-card-shape" style={previewStyle(item)}>
-                        <AppIconTile accent={app.accent} icon={app.icon} size="small" />
+                      {/* The window itself, as Task View shows it — an icon only
+                          for a window that is not in the DOM right now. */}
+                      <span className="task-view-card-shape is-picture">
+                        <WindowThumbnail
+                          accent={app.accent}
+                          icon={app.icon}
+                          instance={item}
+                          size="small"
+                        />
                       </span>
                     </span>
                     <span className="task-view-card-title">

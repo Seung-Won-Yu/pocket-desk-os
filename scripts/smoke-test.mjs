@@ -1424,6 +1424,19 @@ async function runSmoke(baseUrl) {
         previewText.includes("문서 - 파일 탐색기"),
       `Taskbar preview did not tell the two Explorer windows apart: ${previewText.replace(/\s+/g, " ").slice(0, 120)}`,
     );
+    // Each row is a picture of its window — a scaled clone of the live frame —
+    // so the two Explorer windows look different, not just read differently.
+    const previewPictures = taskbarPreview.locator(".window-thumbnail-clone");
+    assert(
+      (await previewPictures.count()) === 2,
+      `Taskbar preview showed ${await previewPictures.count()} window pictures for 2 windows`,
+    );
+    assert(
+      (await previewPictures.first().evaluate((node) => node.style.transform)).startsWith(
+        "scale(",
+      ) && (await previewPictures.first().getAttribute("inert")) !== null,
+      "Taskbar preview picture is not a scaled, inert clone",
+    );
     await page.mouse.move(640, 300);
     // Only the window this block opened goes away; later sections keep using
     // the original Explorer window.
@@ -1909,7 +1922,10 @@ async function runSmoke(baseUrl) {
       await runDialog.getByRole("button", { name: "확인" }).click();
       await page.waitForTimeout(300);
     }
-    const openWindowCount = await page.locator(".window-frame").count();
+    // Window pictures on a lingering taskbar card are frames too, by class.
+    const openWindowCount = await page
+      .locator(".window-frame:not(.window-thumbnail-clone)")
+      .count();
     assert(openWindowCount >= 3, `Alt+Tab check needs 3 windows, found ${openWindowCount}`);
     await page.keyboard.down("Alt");
     const altTabSeen = [];
@@ -1918,11 +1934,27 @@ async function runSmoke(baseUrl) {
       await page.waitForTimeout(90);
       altTabSeen.push(
         await page
-          .locator(".alt-tab-item.is-selected strong")
+          .locator(".alt-tab-item.is-selected > strong")
           .innerText()
           .catch(() => null),
       );
     }
+    // Every item is a picture of its window (a scaled clone of the live
+    // frame), not the program's icon — as the Windows 10 switcher shows them.
+    const altTabPictures = await page.locator(".alt-tab-item .window-thumbnail-clone").count();
+    assert(
+      altTabPictures === openWindowCount,
+      `Alt+Tab showed ${altTabPictures} window pictures for ${openWindowCount} windows`,
+    );
+    assert(
+      (
+        await page
+          .locator(".alt-tab-item .window-thumbnail-clone")
+          .first()
+          .evaluate((node) => node.style.transform)
+      ).startsWith("scale("),
+      "Alt+Tab picture is not scaled down",
+    );
     await page.keyboard.up("Alt");
     await page.waitForTimeout(300);
     assert(
@@ -2007,11 +2039,28 @@ async function runSmoke(baseUrl) {
     // where the window sits. Pixel dimensions used to stand in for both, so two
     // windows of the same app were indistinguishable.
     const firstCard = page.locator(".task-view-card").first();
-    const cardTitle = await firstCard.locator("strong").innerText();
+    // The card's own title — the window picture inside it has bold text of its own.
+    const cardTitle = await firstCard.locator(".task-view-card-title strong").innerText();
     assert(cardTitle.length > 0, "Task View card had no window title");
     assert(
       (await firstCard.locator(".task-view-card-shape").count()) === 1,
       "Task View card had no window preview",
+    );
+    // Each card shows the window itself: a clone of the live frame, inert and
+    // stripped of the attributes tests address real frames by.
+    const taskViewCards = await page.locator(".task-view-card").count();
+    const taskViewPictures = await page
+      .locator(".task-view-card .window-thumbnail-clone")
+      .count();
+    assert(
+      taskViewPictures === taskViewCards,
+      `Task View showed ${taskViewPictures} window pictures for ${taskViewCards} cards`,
+    );
+    assert(
+      (await page
+        .locator(".window-thumbnail-clone[data-app-id], .window-thumbnail-clone [data-app-id]")
+        .count()) === 0,
+      "A Task View picture kept a data-app-id and could be mistaken for a window",
     );
 
     await page.keyboard.press("Escape");
@@ -2028,7 +2077,7 @@ async function runSmoke(baseUrl) {
     await snapAssist.locator(".snap-assist-card").first().click();
     await snapAssist.waitFor({ state: "hidden" });
     const snappedEdges = await page
-      .locator(".window-frame:visible")
+      .locator(".window-frame:not(.window-thumbnail-clone):visible")
       .evaluateAll((frames) =>
         frames.map((frame) => Math.round(frame.getBoundingClientRect().left)),
       );
@@ -2371,7 +2420,7 @@ async function runSmoke(baseUrl) {
       "Mobile Explorer navigation collapsed",
     );
     const visibleWindowBoxes = await page
-      .locator(".window-frame:visible")
+      .locator(".window-frame:not(.window-thumbnail-clone):visible")
       .evaluateAll((frames) =>
         frames.map((frame) => {
           const box = frame.getBoundingClientRect();

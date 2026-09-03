@@ -1,4 +1,5 @@
 import AppIconTile from "../../components/AppIconTile";
+import { WindowThumbnail } from "./WindowThumbnail";
 import { type AppId, type DesktopItem } from "../../types";
 import { clamp } from "../../utils/format";
 import { NOTIFICATIONS_READ_KEY } from "../constants";
@@ -946,7 +947,14 @@ export function TaskbarPreview({
                   className="taskbar-preview-thumb"
                   style={{ "--active": app.accent } as React.CSSProperties}
                 >
-                  <AppIconTile accent={app.accent} icon={app.icon} size="large" />
+                  {/* Windows shows the window itself here; refreshed while the
+                      card is up so a ticking clock or typing stays current. */}
+                  <WindowThumbnail
+                    accent={app.accent}
+                    icon={app.icon}
+                    instance={windowItem}
+                    refreshMs={1000}
+                  />
                 </span>
                 <span className="taskbar-preview-meta">
                   <strong>{windowTitle}</strong>

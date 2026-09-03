@@ -8,6 +8,7 @@ All notable changes to PocketDesk OS are documented here.
 
 - **스티커 메모.** A Sticky Notes app: each window is one note in five colours, titled after its first line, and the notes live in shell state so they survive a reload and reopen with the windows that showed them. 새 메모 opens another window holding a different note; 메모 삭제 removes the note and its window together.
 - **Picture files show their picture.** A `.canvas` drawing with pixels renders those pixels as its icon — on the desktop, in Explorer's rows and in its large-icon view — letterboxed rather than cropped, so a sketch in a corner still shows.
+- **Window previews are pictures of the windows.** The taskbar hover card, Alt+Tab and Task View show each window itself — a scaled, inert clone of the live frame with its typed text, drawn pixels and scroll position — where an app icon used to stand in. The taskbar card lays out title-over-picture per window and refreshes while it is up; a window on another virtual desktop keeps the icon.
 
 ### Fixed
 
