@@ -723,6 +723,7 @@ export default function App() {
       createdAt: Date.now(),
       detail: toast.detail ?? "",
       id,
+      image: toast.image ?? "",
       onAction: toast.onAction,
       title: toast.title,
       tone: toast.tone ?? "info",
@@ -752,7 +753,10 @@ export default function App() {
     // The history is a record, not a control surface: its entries persist to
     // storage, where a callback cannot follow.
     setNotificationHistory((current) =>
-      [{ ...nextToast, actions: [], onAction: undefined }, ...current].slice(
+      // The picture stays on the live toast only. A screenshot is a megabyte of
+      // data URL, and the history is persisted — three of them overflowed
+      // localStorage, and the failed write took the rest of that commit with it.
+      [{ ...nextToast, actions: [], image: "", onAction: undefined }, ...current].slice(
         0,
         NOTIFICATION_HISTORY_LIMIT,
       ),
@@ -2026,6 +2030,7 @@ export default function App() {
       onAction: (actionId) => {
         if (actionId === "open") contentOpsRef.current.openVfsEntry(item);
       },
+      image: picture.dataUrl,
       title: mode === "window" ? "창 스크린샷 저장됨" : "스크린샷 저장됨",
       tone: "success",
     });
@@ -3245,7 +3250,14 @@ export default function App() {
     if (appId === "notepad") {
       return activeDesktopItems.find((item) => item.id === activeNoteId)?.name;
     }
-    if (appId === "paint" || appId === "photos") {
+    if (appId === "photos") {
+      // 사진 has its own pointer; naming a 사진 window after 그림판's document
+      // showed the wrong file in the title bar, Alt+Tab and the taskbar until
+      // the window got around to reporting itself.
+      const openingId = photosLaunchRequest?.itemId ?? activeCanvasId;
+      return activeDesktopItems.find((item) => item.id === openingId)?.name;
+    }
+    if (appId === "paint") {
       return activeDesktopItems.find((item) => item.id === activeCanvasId)?.name;
     }
     return undefined;
@@ -4238,7 +4250,17 @@ export default function App() {
         ))}
       </section>
 
-      {snapPreview && <SnapPreview zone={snapPreview.zone} />}
+      {snapPreview &&
+        (() => {
+          const dragged = windows.find((item) => item.id === snapPreview.windowId);
+          return (
+            <SnapPreview
+              app={dragged ? getApp(dragged.appId) : undefined}
+              instance={dragged}
+              zone={snapPreview.zone}
+            />
+          );
+        })()}
 
       {shellPhase === "unlocked" && snapAssistZone && (
         <SnapAssist
@@ -4305,6 +4327,7 @@ export default function App() {
         taskViewOpen={taskViewOpen}
         notificationHistory={notificationHistory}
         brightness={displayBrightness}
+        clockAlarms={clockAlarms}
         onClearNotifications={clearNotificationHistory}
         onOpenStart={(event) => {
           event.stopPropagation();

@@ -255,12 +255,21 @@ export function StartMenu({
                           onClick={() => onRecentItemOpen(item)}
                           type="button"
                         >
-                          <AppIconTile
-                            accent={association.accent}
-                            icon={association.icon}
-                            size="small"
-                            tone="file"
-                          />
+                          {item.kind === "canvas" && item.content ? (
+                            // A picture is its own best icon here too.
+                            <img
+                              alt=""
+                              className="start-recommended-thumbnail"
+                              src={item.content}
+                            />
+                          ) : (
+                            <AppIconTile
+                              accent={association.accent}
+                              icon={association.icon}
+                              size="small"
+                              tone="file"
+                            />
+                          )}
                           <span>
                             <strong>{item.name}</strong>
                             <small>

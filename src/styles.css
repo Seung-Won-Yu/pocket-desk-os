@@ -10432,3 +10432,59 @@ button {
   right: -4px;
   top: -4px;
 }
+
+/* A toast can carry the picture it is about (a screenshot). */
+.toast-image {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: block;
+  margin-top: 8px;
+  max-height: 132px;
+  object-fit: cover;
+  width: 100%;
+}
+
+/* The Start menu's 추천 shows a picture file as its picture. */
+.start-recommended-thumbnail {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  flex: 0 0 auto;
+  height: 28px;
+  object-fit: contain;
+  width: 28px;
+}
+
+/* A day the clock rings on carries a dot, as Windows dots days with events. */
+.calendar-days button.has-alarm {
+  position: relative;
+}
+
+.calendar-days button.has-alarm::after {
+  background: var(--active);
+  border-radius: 999px;
+  bottom: 4px;
+  content: "";
+  height: 4px;
+  left: 50%;
+  position: absolute;
+  transform: translateX(-50%);
+  width: 4px;
+}
+
+/* The snap preview holds a picture of the window that will land there. */
+.snap-preview {
+  overflow: hidden;
+}
+
+.snap-preview .window-thumbnail {
+  height: 100%;
+  opacity: 0.75;
+  width: 100%;
+}
+
+/* Snap Assist cards show the window, so they need room for it. */
+.snap-assist-card .window-thumbnail {
+  height: 86px;
+  width: 100%;
+}

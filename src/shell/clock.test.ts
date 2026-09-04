@@ -9,31 +9,32 @@ import {
   createClockAlarm,
   createIdleClockTimer,
   describeAlarmFireDay,
+  describeAlarmRepeat,
   formatClockDuration,
   formatStopwatchDuration,
+  getAlarmDateKeys,
   getClockTimerRemaining,
   getNextAlarmFireTime,
+  getTimeZoneOffsetMinutes,
   isMissedAlarmFire,
   isValidAlarmTime,
   loadClockAlarms,
   loadClockTimer,
-  pauseClockTimer,
-  describeAlarmRepeat,
-  getTimeZoneOffsetMinutes,
   loadWorldClocks,
-  sanitizeRepeatDays,
-  toggleAlarmRepeatDay,
+  pauseClockTimer,
   persistClockAlarms,
   persistClockTimer,
   persistWorldClocks,
   readWorldClock,
   rescheduleClockAlarm,
   resetClockTimer,
+  sanitizeRepeatDays,
   setClockAlarmEnabled,
   setClockTimerDuration,
   snoozeClockAlarm,
   startClockTimer,
   tickClockTimer,
+  toggleAlarmRepeatDay,
   type ClockAlarm,
 } from "./clock";
 import { CLOCK_ALARMS_KEY, CLOCK_TIMER_KEY, CLOCK_WORLD_KEY } from "./constants";
@@ -362,5 +363,32 @@ describe("세계 시계", () => {
 
     localStorage.setItem(CLOCK_WORLD_KEY, "{not json");
     expect(loadWorldClocks()).toEqual(["Asia/Seoul", "Europe/London", "America/New_York"]);
+  });
+});
+
+describe("getAlarmDateKeys", () => {
+  const days = Array.from({ length: 14 }, (_, index) => new Date(2026, 8, 1 + index));
+  const base = {
+    enabled: true,
+    label: "",
+    nextFireAt: new Date(2026, 8, 4, 7, 0).getTime(),
+    repeatDays: [] as number[],
+    time: "07:00",
+  };
+
+  it("marks a one-shot alarm's own day only", () => {
+    const keys = getAlarmDateKeys([{ ...base, id: "a" }], days);
+    expect([...keys]).toEqual(["2026-09-04"]);
+  });
+
+  it("marks every matching weekday for a repeating alarm", () => {
+    // 2026-09-01 is a Tuesday, so Tuesdays are the 1st and the 8th.
+    const keys = getAlarmDateKeys([{ ...base, id: "a", repeatDays: [2] }], days);
+    expect([...keys].sort()).toEqual(["2026-09-01", "2026-09-08"]);
+  });
+
+  it("ignores disabled alarms and returns nothing when none are on", () => {
+    expect(getAlarmDateKeys([{ ...base, enabled: false, id: "a" }], days).size).toBe(0);
+    expect(getAlarmDateKeys([], days).size).toBe(0);
   });
 });

@@ -38,6 +38,7 @@ export function ToastStack({
           <div className="toast-body">
             <strong>{toast.title}</strong>
             {toast.detail && <small>{toast.detail}</small>}
+            {toast.image && <img alt="" className="toast-image" src={toast.image} />}
           </div>
           {toast.actions.length > 0 && (
             <footer className="toast-actions">

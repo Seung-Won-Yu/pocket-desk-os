@@ -1,4 +1,5 @@
 import AppIconTile from "../../components/AppIconTile";
+import { WindowThumbnail } from "./WindowThumbnail";
 import { clamp } from "../../utils/format";
 import { APP_BAR_HEIGHT, WINDOW_DRAG_THRESHOLD } from "../constants";
 import { formatWindowTitle } from "../windowTitle";
@@ -189,7 +190,9 @@ export function WindowFrame({
       const nextX = baseX + moveEvent.clientX - startX;
       const nextY = baseY + moveEvent.clientY - startY;
       activeSnapZone = getWindowSnapZone(moveEvent.clientX, moveEvent.clientY);
-      onSnapPreviewChange(activeSnapZone ? { zone: activeSnapZone } : null);
+      onSnapPreviewChange(
+        activeSnapZone ? { windowId: instance.id, zone: activeSnapZone } : null,
+      );
       onUpdate({
         snapZone: undefined,
         x: clamp(nextX, 8, Math.max(8, window.innerWidth - width - 8)),
@@ -481,6 +484,21 @@ export function WindowFrame({
   );
 }
 
-export function SnapPreview({ zone }: { zone: SnapZone }) {
-  return <div aria-hidden="true" className="snap-preview" style={getSnapPreviewStyle(zone)} />;
+export function SnapPreview({
+  app,
+  instance,
+  zone,
+}: {
+  app?: AppDefinition;
+  /** The dragged window; the preview shows a picture of it, as Windows does. */
+  instance?: WindowInstance;
+  zone: SnapZone;
+}) {
+  return (
+    <div aria-hidden="true" className="snap-preview" style={getSnapPreviewStyle(zone)}>
+      {app && instance && (
+        <WindowThumbnail accent={app.accent} icon={app.icon} instance={instance} />
+      )}
+    </div>
+  );
 }

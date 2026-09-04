@@ -2,15 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_VIRTUAL_DESKTOPS, VIRTUAL_DESKTOPS_KEY, WINDOW_STATE_KEY } from "./constants";
 import { type PersistedWindow, type WindowInstance } from "./types";
 import {
-  isGeometryOnlyVfsChange,
   createDefaultWindows,
   fitWindowToViewport,
   getVirtualDesktopCount,
+  isGeometryOnlyVfsChange,
   isSnapZone,
   loadVirtualDesktopCount,
   loadWindowState,
   makeWindow,
   normalizePersistedWindow,
+  persistNotificationHistory,
   persistWindowState,
   resolveActiveWindowId,
 } from "./windowState";
@@ -629,5 +630,27 @@ describe("resolveActiveWindowId", () => {
 
   it("raising a window to the desktop's mark activates it again", () => {
     expect(resolveActiveWindowId([win("a", 1), win("c", 3)], 3)).toBe("c");
+  });
+});
+
+describe("persistNotificationHistory", () => {
+  it("survives a storage that refuses the write", () => {
+    const setItem = vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+      throw new Error("QuotaExceededError");
+    });
+    expect(() =>
+      persistNotificationHistory([
+        {
+          actions: [],
+          createdAt: 0,
+          detail: "",
+          id: "t1",
+          image: "",
+          title: "알림",
+          tone: "info",
+        },
+      ]),
+    ).not.toThrow();
+    expect(setItem).toHaveBeenCalled();
   });
 });

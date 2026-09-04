@@ -274,10 +274,16 @@ export function loadNotificationHistory(): ToastMessage[] {
 }
 
 export function persistNotificationHistory(history: ToastMessage[]) {
-  localStorage.setItem(
-    NOTIFICATION_HISTORY_KEY,
-    JSON.stringify(history.slice(0, NOTIFICATION_HISTORY_LIMIT)),
-  );
+  try {
+    localStorage.setItem(
+      NOTIFICATION_HISTORY_KEY,
+      JSON.stringify(history.slice(0, NOTIFICATION_HISTORY_LIMIT)),
+    );
+  } catch {
+    // Quota, or a browser refusing site data. Losing the notification list is
+    // survivable; letting the throw escape is not — it happens inside a React
+    // effect and takes the rest of that commit's work with it.
+  }
 }
 
 /**

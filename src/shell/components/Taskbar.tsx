@@ -7,6 +7,7 @@ import { getApp } from "../appCatalog";
 import { getVfsEntryAssociation } from "../../vfs/model";
 import { formatWindowTitle } from "../windowTitle";
 import { createCalendarGrid, formatNotificationTime, getLocalDateKey } from "../startSearch";
+import { type ClockAlarm, getAlarmDateKeys } from "../clock";
 import { type ArrangeMode } from "../windowArrangement";
 import { type AppDefinition, type ToastMessage, type WindowInstance } from "../types";
 import { BrandMark, StartGlyph } from "./Branding";
@@ -43,6 +44,7 @@ export function Taskbar({
   activeWindowId,
   availableApps,
   brightness,
+  clockAlarms,
   desktopCount,
   onToggleTaskView,
   taskViewOpen,
@@ -82,6 +84,8 @@ export function Taskbar({
   onToggleTaskView: () => void;
   taskViewOpen: boolean;
   notificationHistory: ToastMessage[];
+  /** The clock's alarms; the tray calendar dots the days they ring on. */
+  clockAlarms: ClockAlarm[];
   onClearNotifications: () => void;
   onOpenStart: (event: React.MouseEvent<HTMLButtonElement>) => void;
   getDocumentLabel: (windowId: string, appId: AppId) => string | undefined;
@@ -686,6 +690,7 @@ export function Taskbar({
         )}
         {trayPanel === "notifications" && (
           <NotificationCenterPanel
+            clockAlarms={clockAlarms}
             notifications={notificationHistory}
             onClearNotifications={onClearNotifications}
           />
@@ -793,9 +798,12 @@ export function QuickSettingsPanel({
 }
 
 export function NotificationCenterPanel({
+  clockAlarms = [],
   notifications,
   onClearNotifications,
 }: {
+  /** Alarms mark their days on the calendar, as Windows dots days with events. */
+  clockAlarms?: ClockAlarm[];
   notifications: ToastMessage[];
   onClearNotifications: () => void;
 }) {
@@ -807,6 +815,7 @@ export function NotificationCenterPanel({
     () => new Date(now.getFullYear(), now.getMonth(), now.getDate()),
   );
   const calendarDays = createCalendarGrid(visibleMonth);
+  const alarmDays = getAlarmDateKeys(clockAlarms, calendarDays);
 
   return (
     <section
@@ -907,7 +916,9 @@ export function NotificationCenterPanel({
                   year: "numeric",
                 })}
                 aria-pressed={isSelected}
-                className={`${isCurrentMonth ? "" : "is-outside"} ${isToday ? "is-today" : ""}`}
+                className={`${isCurrentMonth ? "" : "is-outside"} ${isToday ? "is-today" : ""} ${
+                  alarmDays.has(dateKey) ? "has-alarm" : ""
+                }`}
                 key={dateKey}
                 onClick={() => setSelectedDate(date)}
                 type="button"
@@ -926,7 +937,22 @@ export function NotificationCenterPanel({
             day: "numeric",
             weekday: "long",
           })}
-          <span>일정 없음</span>
+          <span>
+            {alarmDays.has(getLocalDateKey(selectedDate))
+              ? `알람 ${clockAlarms
+                  .filter(
+                    (alarm) =>
+                      alarm.enabled &&
+                      (alarm.repeatDays.includes(selectedDate.getDay()) ||
+                        (alarm.repeatDays.length === 0 &&
+                          getLocalDateKey(new Date(alarm.nextFireAt)) ===
+                            getLocalDateKey(selectedDate))),
+                  )
+                  .map((alarm) => alarm.time)
+                  .sort()
+                  .join(", ")}`
+              : "일정 없음"}
+          </span>
         </p>
       </section>
     </section>

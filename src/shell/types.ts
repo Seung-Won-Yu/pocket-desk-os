@@ -123,6 +123,8 @@ export type ShellPhase = "booting" | "locked" | "shutdown" | "sleeping" | "unloc
 export type SnapZone =
   "bottom-left" | "bottom-right" | "left" | "right" | "top" | "top-left" | "top-right";
 export type SnapPreviewState = {
+  /** The window being dragged, so the preview can show a picture of it. */
+  windowId: string;
   zone: SnapZone;
 };
 export type DesktopSelectionState = {

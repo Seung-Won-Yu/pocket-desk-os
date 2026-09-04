@@ -83,6 +83,8 @@ export type ToastInput = {
   /** Buttons rendered on the toast; clicking one also dismisses it. */
   actions?: ToastAction[];
   detail?: string;
+  /** A picture shown on the toast and kept in the notification centre. */
+  image?: string;
   /** Called with the clicked action's id. Lives only on the live toast. */
   onAction?: (actionId: string) => void;
   title: string;

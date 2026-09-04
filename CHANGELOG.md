@@ -8,6 +8,11 @@ All notable changes to PocketDesk OS are documented here.
 
 - **스티커 메모.** A Sticky Notes app: each window is one note in five colours, titled after its first line, and the notes live in shell state so they survive a reload and reopen with the windows that showed them. 새 메모 opens another window holding a different note; 메모 삭제 removes the note and its window together.
 - **Picture files show their picture.** A `.canvas` drawing with pixels renders those pixels as its icon — on the desktop, in Explorer's rows and in its large-icon view — letterboxed rather than cropped, so a sketch in a corner still shows.
+- **The snap preview is a picture of the window.** Dragging a window to an edge shows that window, scaled into the space it will take, instead of an empty tinted rectangle — and Snap Assist's candidates show the windows themselves too.
+- **A 사진 window is named after the picture it opened.** Its title fell back to 그림판's document until the window reported itself, so the toast's 열기 briefly showed "QA 그림.png - 사진" over the screenshot it had just opened.
+- **A screenshot notification carries the screenshot.** The toast shows the picture it just saved. The notification centre's copy keeps the words only: a screenshot is a megabyte of data URL, and three of them overflowed the persisted history — the failed write threw inside a React effect and took the rest of that commit's work with it (the toast's 열기 opened the wrong picture). That write can no longer throw either.
+- **The Start menu's 추천 shows pictures.** A drawing or a screenshot appears as itself in the recommended list.
+- **The tray calendar dots the days an alarm rings.** Picking such a day lists the times instead of "일정 없음".
 - **절전.** The Start menu's power menu gains 절전: the display goes dark and stays dark until a key, a click, or — after a moment — a pointer move; the lock screen comes back, as on Windows.
 - **Alt+Tab pictures are clickable.** Clicking a window's picture in the switcher switches to it, the way the Windows switcher allows.
 - **The lock screen shows your wallpaper.** A picture set as the desktop background is the lock screen's background too.

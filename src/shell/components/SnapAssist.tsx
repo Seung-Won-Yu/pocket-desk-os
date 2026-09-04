@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import AppIconTile from "../../components/AppIconTile";
+import { WindowThumbnail } from "./WindowThumbnail";
 import { trapDialogFocus, useReturnFocus } from "../dialogFocus";
 import { getApp } from "../appCatalog";
 import { getSnapPreviewStyle } from "../windowGeometry";
@@ -68,7 +68,8 @@ export function SnapAssist({
               onClick={() => onPick(item.id)}
               type="button"
             >
-              <AppIconTile accent={app.accent} icon={app.icon} size="large" />
+              {/* The window itself, as Windows shows in Snap Assist. */}
+              <WindowThumbnail accent={app.accent} icon={app.icon} instance={item} />
               <strong>{app.title}</strong>
               <small>{item.minimized ? "최소화됨" : `${Math.round(item.width)}px`}</small>
             </button>

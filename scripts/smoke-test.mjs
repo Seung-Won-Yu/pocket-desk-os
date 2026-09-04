@@ -1622,6 +1622,11 @@ async function runSmoke(baseUrl) {
     await page.mouse.down();
     await page.mouse.move(0, box.y + box.height / 2, { steps: 12 });
     await page.locator(".snap-preview").waitFor({ state: "visible", timeout: 1000 });
+    // The preview holds a picture of the window that will land there.
+    assert(
+      (await page.locator(".snap-preview .window-thumbnail-clone").count()) === 1,
+      "The snap preview showed no picture of the dragged window",
+    );
     await page.mouse.up();
     await page.waitForTimeout(220);
     const snapped = await frame.boundingBox();
@@ -2086,9 +2091,13 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("Meta+ArrowLeft");
     const snapAssist = page.locator(".snap-assist");
     await snapAssist.waitFor({ state: "visible" });
+    const assistCards = await snapAssist.locator(".snap-assist-card").count();
+    assert(assistCards > 0, "Snap Assist offered no windows to pair with");
+    // Each candidate is the window itself, not its program's icon.
     assert(
-      (await snapAssist.locator(".snap-assist-card").count()) > 0,
-      "Snap Assist offered no windows to pair with",
+      (await snapAssist.locator(".snap-assist-card .window-thumbnail-clone").count()) ===
+        assistCards,
+      "Snap Assist showed icons instead of the windows",
     );
     await snapAssist.locator(".snap-assist-card").first().click();
     await snapAssist.waitFor({ state: "hidden" });
@@ -2706,6 +2715,13 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("PrintScreen");
     const shotToast = page.locator(".toast", { hasText: "스크린샷 저장됨" });
     await shotToast.waitFor({ state: "visible", timeout: 15000 });
+    // The toast carries the picture it is about.
+    assert(
+      (await shotToast.locator(".toast-image").getAttribute("src"))?.startsWith(
+        "data:image/png",
+      ),
+      "The screenshot toast showed no picture",
+    );
     // 열기 shows the screenshot itself in 사진 — not whatever 그림판 has open.
     await shotToast.getByRole("button", { name: "열기" }).click();
     const shotPhotos = page.locator('article[data-app-id="photos"]').last();
@@ -2863,6 +2879,17 @@ async function runSmoke(baseUrl) {
     await shotExplorer.waitFor({ state: "visible" });
     await shotExplorer.getByRole("button", { name: "파일 탐색기 닫기" }).click();
     await shotExplorer.waitFor({ state: "detached" });
+
+    // The Start menu's 추천 shows a picture file as its picture.
+    await page.getByRole("button", { name: "시작 메뉴" }).click();
+    const recommendMenu = page.locator(".start-menu");
+    await recommendMenu.waitFor({ state: "visible" });
+    assert(
+      (await recommendMenu.locator(".start-recommended-thumbnail").count()) > 0,
+      "The Start menu's recommended list showed no picture thumbnails",
+    );
+    await page.keyboard.press("Escape");
+    await recommendMenu.waitFor({ state: "hidden" });
 
     // 절전: the display goes dark; a key brings the lock screen back.
     await page.getByRole("button", { name: "시작 메뉴" }).click();

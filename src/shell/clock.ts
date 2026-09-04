@@ -522,3 +522,34 @@ export function persistWorldClocks(cityIds: string[]) {
     // Same rule as the alarms: losing the write must not lose the session.
   }
 }
+
+/**
+ * Which of the given days an enabled alarm rings on — the dots Windows puts on
+ * calendar days that carry something. A repeating alarm marks its weekdays; a
+ * one-shot marks only the day it is next set for.
+ */
+export function getAlarmDateKeys(alarms: ClockAlarm[], days: Date[]): Set<string> {
+  const keys = new Set<string>();
+  const enabled = alarms.filter((alarm) => alarm.enabled);
+  if (enabled.length === 0) return keys;
+  const oneShotKeys = new Set(
+    enabled
+      .filter((alarm) => alarm.repeatDays.length === 0)
+      .map((alarm) => toLocalDateKey(new Date(alarm.nextFireAt))),
+  );
+  const repeatWeekdays = new Set(enabled.flatMap((alarm) => alarm.repeatDays));
+  for (const day of days) {
+    const key = toLocalDateKey(day);
+    if (oneShotKeys.has(key) || repeatWeekdays.has(day.getDay())) keys.add(key);
+  }
+  return keys;
+}
+
+/** The same day key the calendar and search use: local, not UTC. */
+function toLocalDateKey(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}

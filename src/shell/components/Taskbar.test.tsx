@@ -30,6 +30,7 @@ function makeWindow(id: string, appId: AppId, overrides: Partial<WindowInstance>
 function makeHandlers() {
   return {
     onClearNotifications: vi.fn(),
+    clockAlarms: [],
     getDocumentLabel: vi.fn(() => undefined) as (
       windowId: string,
       appId: AppId,
