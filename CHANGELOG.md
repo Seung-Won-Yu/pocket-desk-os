@@ -28,6 +28,8 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Fixed
 
+- **The runtime-audit gate survives a registry outage without going blind.** `npm audit --omit=dev --audit-level=high` calls an endpoint npm is retiring; it answered 503, then 400, then 500, then an HTML error page, and CI failed on all of them. The gate now reads `npm audit --json` and tells the two cases apart: a high or critical advisory fails the build, and a transport failure is reported as skipped, in as many words, rather than passing quietly.
+
 - **A window comes back the way it left.** Restoring a minimized window — from the taskbar, Alt+Tab, show desktop, or a second Aero Shake — unfolds it from its taskbar button, the minimize animation played backwards.
 - **A window minimizes into its taskbar button.** The minimize animation flies towards the app's button, as Windows folds a window away, instead of sinking in place.
 - **새 데스크톱 no longer switches to the new desktop.** Task View creates it and stays where you are, as Windows does — switching moved you away from the windows you were about to drag over.
