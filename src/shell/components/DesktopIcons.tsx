@@ -7,6 +7,7 @@ import { useRef, type PointerEvent } from "react";
 
 export function DesktopIcon({
   app,
+  badge,
   onContextMenu,
   onMove,
   onOpen,
@@ -16,6 +17,8 @@ export function DesktopIcon({
   tabStop,
 }: {
   app: AppDefinition;
+  /** Shown on the tile and in the icon's name; the recycle bin uses it. */
+  badge?: string;
   onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onDropIntoFolder?: (folderId: string) => void;
   onMove: (position: IconPosition) => void;
@@ -29,6 +32,7 @@ export function DesktopIcon({
   return (
     <DesktopIconButton
       accent={app.accent}
+      badge={badge}
       icon={Icon}
       onContextMenu={onContextMenu}
       onMove={onMove}
@@ -123,6 +127,7 @@ export function DesktopItemIcon({
 
 export function DesktopIconButton({
   accent,
+  badge,
   icon: Icon,
   onContextMenu,
   thumbnail,
@@ -137,6 +142,8 @@ export function DesktopIconButton({
   tone = "app",
 }: {
   accent: string;
+  /** A count shown on the tile — the recycle bin's contents, as Windows shows a full bin. */
+  badge?: string;
   icon: LucideIcon;
   onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onDropIntoFolder?: (folderId: string) => void;
@@ -216,6 +223,9 @@ export function DesktopIconButton({
 
   return (
     <button
+      // The badge is part of the name, or a screen reader hears "휴지통" whether
+      // it is full or empty.
+      aria-label={badge ? `${title}, ${badge}` : undefined}
       className={`desktop-icon ${selected ? "is-selected" : ""}`}
       onClick={(event) => {
         handleClick();
@@ -252,7 +262,14 @@ export function DesktopIconButton({
           <img alt="" draggable={false} src={thumbnail} />
         </span>
       ) : (
-        <AppIconTile accent={accent} icon={Icon} size="large" tone={tone} />
+        <span className={`desktop-icon-tile-wrap${badge ? " has-badge" : ""}`}>
+          <AppIconTile accent={accent} icon={Icon} size="large" tone={tone} />
+          {badge && (
+            <span aria-hidden="true" className="desktop-icon-badge">
+              {badge.replace(/[^0-9]/g, "") || badge}
+            </span>
+          )}
+        </span>
       )}
       <span>{title}</span>
     </button>

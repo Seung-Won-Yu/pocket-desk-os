@@ -13,13 +13,14 @@ import {
   ChevronRight,
   FileText,
   Lock,
+  Moon,
+  Pin,
+  PinOff,
   Power,
   RotateCcw,
   Search,
   UserRound,
   X,
-  Pin,
-  PinOff,
 } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
@@ -31,6 +32,7 @@ export function StartMenu({
   apps,
   onClose,
   onLock,
+  onSleep,
   onOpenApp,
   onRestart,
   onShutdown,
@@ -46,6 +48,7 @@ export function StartMenu({
   apps: AppDefinition[];
   onClose: () => void;
   onLock: () => void;
+  onSleep: () => void;
   onOpenApp: (appId: AppId) => void;
   onRestart: () => void;
   onShutdown: () => void;
@@ -324,6 +327,10 @@ export function StartMenu({
                 >
                   <Lock aria-hidden="true" size={15} />
                   잠금
+                </button>
+                <button onClick={() => runPowerAction(onSleep)} role="menuitem" type="button">
+                  <Moon aria-hidden="true" size={15} />
+                  절전
                 </button>
                 <button onClick={() => runPowerAction(onRestart)} role="menuitem" type="button">
                   <RotateCcw aria-hidden="true" size={15} />

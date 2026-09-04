@@ -10375,3 +10375,60 @@ button {
   gap: 10px;
   margin: 10px 0 0;
 }
+
+/* Restoring unfolds from the taskbar button — the minimize played backwards. */
+@keyframes window-restore {
+  from {
+    opacity: 0;
+    transform: translate(var(--minimize-dx, 0px), var(--minimize-dy, 34px)) scale(0.1);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+.window-frame.is-restoring {
+  animation: window-restore 170ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* 절전: the display is dark until a key or a click. */
+.sleep-screen {
+  background: #000000;
+  cursor: none;
+  outline: none;
+}
+
+/* Alt+Tab items are buttons now; keep the tile look. */
+.alt-tab-item {
+  color: var(--text);
+  cursor: default;
+  font: inherit;
+}
+
+/* The recycle bin shows what it holds, the way a full bin looks different. */
+.desktop-icon-tile-wrap {
+  display: block;
+  position: relative;
+}
+
+.desktop-icon-tile-wrap.has-badge .app-icon-tile {
+  border-color: color-mix(in srgb, var(--active) 55%, transparent);
+}
+
+.desktop-icon-badge {
+  align-items: center;
+  background: var(--active);
+  border-radius: 999px;
+  color: #06263a;
+  display: flex;
+  font-size: 0.68rem;
+  font-weight: 700;
+  justify-content: center;
+  min-width: 18px;
+  padding: 0 5px;
+  position: absolute;
+  right: -4px;
+  top: -4px;
+}

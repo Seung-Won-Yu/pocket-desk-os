@@ -428,6 +428,8 @@ export default function App() {
   const [windowMotions, setWindowMotions] = useState<Record<string, WindowMotion>>({});
   const altTabOrderRef = useRef<string[]>([]);
   const altTabSelectionRef = useRef<string | null>(null);
+  /** Filled by the key effect: switch to one window and end the Alt+Tab hold. */
+  const altTabActionsRef = useRef<{ commitTo: (windowId: string) => void } | null>(null);
   const desktopRenameGuardRef = useRef(false);
   const desktopSelectionRef = useRef<DesktopSelectionState | null>(null);
   const showDesktopRestoreRef = useRef<string[]>([]);
@@ -1027,9 +1029,23 @@ export default function App() {
    * cmd's shutdown command, routed through the exact same paths the Start
    * menu's power buttons take — guards ask their questions first.
    */
-  const requestPowerAction = (action: "lock" | "off" | "restart") => {
+  /** 절전: the display goes dark; the first input brings the lock screen back. */
+  const sleepDesktop = () => {
+    setStartOpen(false);
+    setRunOpen(false);
+    setDesktopMenu(null);
+    setDesktopIconMenu(null);
+    playSound("minimize");
+    setShellPhase("sleeping");
+  };
+
+  const requestPowerAction = (action: "lock" | "off" | "restart" | "sleep") => {
     if (action === "lock") {
       lockDesktop();
+      return;
+    }
+    if (action === "sleep") {
+      sleepDesktop();
       return;
     }
     if (action === "restart") {
@@ -2256,7 +2272,7 @@ export default function App() {
     const restoreIds = new Set(shakeRestoreRef.current);
     if (restoreIds.size === 0) return;
     playSound("toggle");
-    restoreIds.forEach(cancelWindowMotion);
+    restoreIds.forEach((id) => scheduleWindowMotion(id, "restoring", () => undefined));
     setWindows((current) => {
       let nextZ = Math.max(12, ...current.map((item) => item.z));
       const restored = current.map((item) =>
@@ -2667,6 +2683,8 @@ export default function App() {
     if (target && target.desktopIndex !== activeDesktopIndex) {
       setActiveDesktopIndex(target.desktopIndex);
     }
+    // A minimized window comes back the way it left: out of its taskbar button.
+    if (target?.minimized) scheduleWindowMotion(id, "restoring", () => undefined);
     setWindows((current) => {
       const topZ = Math.max(1, ...current.map((item) => item.z));
       return current.map((item) =>
@@ -2775,19 +2793,25 @@ export default function App() {
     if (activeTimer !== undefined) window.clearTimeout(activeTimer);
 
     setWindowMotions((current) => ({ ...current, [id]: motion }));
-    if (motion === "minimizing") {
-      // Fold into the taskbar button, as Windows does: the frame learns where
-      // its button is and the keyframes translate towards it.
+    if (motion === "minimizing" || motion === "restoring") {
+      // Fold into (or unfold from) the taskbar button, as Windows does: the
+      // frame learns where its button is and the keyframes translate along
+      // that vector. A minimized frame is 0×0 in the DOM, so restoring
+      // measures the window record instead of the element.
       const frame = findLiveWindowFrame(id);
-      const appId = windows.find((item) => item.id === id)?.appId;
-      const button = appId
-        ? document.querySelector<HTMLElement>(`.taskbar button[data-app-id="${appId}"]`)
+      const record = windows.find((item) => item.id === id);
+      const button = record
+        ? document.querySelector<HTMLElement>(`.taskbar button[data-app-id="${record.appId}"]`)
         : null;
-      if (frame) {
-        const { dx, dy } = getMinimizeVector(
-          frame.getBoundingClientRect(),
-          button?.getBoundingClientRect() ?? null,
-        );
+      if (frame && record) {
+        const area = getDesktopWorkArea();
+        const box =
+          motion === "minimizing"
+            ? frame.getBoundingClientRect()
+            : record.maximized
+              ? { height: area.height, left: area.x, top: area.y, width: area.width }
+              : { height: record.height, left: record.x, top: record.y, width: record.width };
+        const { dx, dy } = getMinimizeVector(box, button?.getBoundingClientRect() ?? null);
         frame.style.setProperty("--minimize-dx", `${dx}px`);
         frame.style.setProperty("--minimize-dy", `${dy}px`);
       }
@@ -3159,7 +3183,7 @@ export default function App() {
 
     const restoreIds = new Set(showDesktopRestoreRef.current);
     if (restoreIds.size === 0) return;
-    restoreIds.forEach(cancelWindowMotion);
+    restoreIds.forEach((id) => scheduleWindowMotion(id, "restoring", () => undefined));
     setWindows((current) => {
       let nextZ = Math.max(12, ...current.map((item) => item.z));
       return current.map((item) =>
@@ -3748,6 +3772,12 @@ export default function App() {
       if (document.visibilityState === "hidden") commitAltTabOnLostFocus();
     };
 
+    altTabActionsRef.current = {
+      commitTo: (windowId) => {
+        altTabSelectionRef.current = windowId;
+        commitAltTab();
+      },
+    };
     globalShellHandlersRef.current = {
       blur: commitAltTabOnLostFocus,
       down: handleGlobalKeyDown,
@@ -4134,6 +4164,11 @@ export default function App() {
           <DesktopIcon
             key={app.id}
             app={app}
+            badge={
+              app.id === "recycle" && trashedItems.length > 0
+                ? `${trashedItems.length}개 항목`
+                : undefined
+            }
             onContextMenu={(event) =>
               showDesktopIconContextMenu(event, { appId: app.id, kind: "app" })
             }
@@ -4318,6 +4353,7 @@ export default function App() {
             setQuery("");
           }}
           onLock={lockDesktop}
+          onSleep={sleepDesktop}
           onOpenApp={openApp}
           onRestart={restartDesktop}
           onShutdown={shutdownDesktop}
@@ -4457,9 +4493,11 @@ export default function App() {
       {shellPhase !== "unlocked" && (
         <ShellGate
           clock24h={clock24h}
+          customWallpaperImage={customWallpaperImage}
           userName={userName}
           onPowerOn={powerOnDesktop}
           onUnlock={unlockDesktop}
+          onWake={() => setShellPhase("locked")}
           phase={shellPhase}
           wallpaper={wallpaper}
         />
@@ -4468,6 +4506,7 @@ export default function App() {
       {shellPhase === "unlocked" && altTabWindowId && (
         <AltTabSwitcher
           getDocumentLabel={getWindowDocumentLabel}
+          onSelect={(windowId) => altTabActionsRef.current?.commitTo(windowId)}
           selectedWindowId={altTabWindowId}
           windows={desktopWindows}
         />

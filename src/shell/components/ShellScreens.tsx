@@ -7,15 +7,21 @@ import { useEffect, useRef, useState } from "react";
 
 export function ShellGate({
   clock24h,
+  customWallpaperImage = null,
   onPowerOn,
   onUnlock,
+  onWake,
   phase,
   userName,
   wallpaper,
 }: {
   clock24h: boolean;
+  /** The user's own picture as wallpaper, if one is set; the lock screen shows it too. */
+  customWallpaperImage?: string | null;
   onPowerOn: () => void;
   onUnlock: () => void;
+  /** 절전 ends on the first input; the lock screen comes back, as on Windows. */
+  onWake?: () => void;
   phase: ShellPhase;
   userName: string;
   wallpaper: WallpaperName;
@@ -35,13 +41,50 @@ export function ShellGate({
     return <ShutdownScreen onPowerOn={onPowerOn} />;
   }
 
+  if (phase === "sleeping") {
+    return <SleepScreen onWake={onWake ?? (() => undefined)} />;
+  }
+
   return (
     <LockScreen
       clock24h={clock24h}
+      customWallpaperImage={customWallpaperImage}
       onUnlock={onUnlock}
       userName={userName}
       wallpaper={wallpaper}
     />
+  );
+}
+
+/** How long after the display goes dark before a pointer move counts as waking it. */
+export const SLEEP_WAKE_GRACE_MS = 400;
+
+/**
+ * 절전: the display goes dark and stays dark until a key or a click — a
+ * pointer move counts too, but only after a moment, so the hand still on the
+ * mouse does not wake it straight away.
+ */
+export function SleepScreen({ onWake }: { onWake: () => void }) {
+  const armedAtRef = useRef(0);
+  useEffect(() => {
+    armedAtRef.current = performance.now();
+  }, []);
+  const wakeOnMove = () => {
+    if (performance.now() - armedAtRef.current >= SLEEP_WAKE_GRACE_MS) onWake();
+  };
+  return (
+    <section
+      aria-label="절전 중"
+      className="shell-gate sleep-screen"
+      onKeyDown={onWake}
+      onPointerDown={onWake}
+      onPointerMove={wakeOnMove}
+      ref={(node) => node?.focus()}
+      role="button"
+      tabIndex={0}
+    >
+      <span className="sr-only">아무 키나 누르면 다시 켜집니다.</span>
+    </section>
   );
 }
 
@@ -72,11 +115,13 @@ export function LockScreen({
   clock24h,
   onUnlock,
   userName,
+  customWallpaperImage = null,
   wallpaper,
 }: {
   clock24h: boolean;
   onUnlock: () => void;
   userName: string;
+  customWallpaperImage?: string | null;
   wallpaper: WallpaperName;
 }) {
   const lockRef = useRef<HTMLElement>(null);
@@ -143,7 +188,7 @@ export function LockScreen({
       }}
       onKeyDown={unlockFromKey}
       ref={lockRef}
-      style={getWallpaperStyle(wallpaper)}
+      style={getWallpaperStyle(wallpaper, customWallpaperImage)}
       tabIndex={0}
     >
       {signInVisible ? (

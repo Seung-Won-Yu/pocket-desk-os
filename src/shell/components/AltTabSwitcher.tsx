@@ -6,10 +6,13 @@ import { type AppId } from "../../types";
 
 export function AltTabSwitcher({
   getDocumentLabel,
+  onSelect,
   selectedWindowId,
   windows,
 }: {
   getDocumentLabel?: (windowId: string, appId: AppId) => string | undefined;
+  /** Clicking a picture switches to that window, as the Windows switcher allows. */
+  onSelect?: (windowId: string) => void;
   selectedWindowId: string;
   windows: WindowInstance[];
 }) {
@@ -29,10 +32,12 @@ export function AltTabSwitcher({
         {orderedWindows.map((windowItem) => {
           const app = getApp(windowItem.appId);
           return (
-            <div
+            <button
               aria-current={selectedWindowId === windowItem.id ? "true" : undefined}
               className={`alt-tab-item ${selectedWindowId === windowItem.id ? "is-selected" : ""}`}
               key={windowItem.id}
+              onClick={() => onSelect?.(windowItem.id)}
+              type="button"
             >
               <WindowThumbnail accent={app.accent} icon={app.icon} instance={windowItem} />
               {/* The same `문서 - 앱` the title bar shows. Using the document
@@ -45,7 +50,7 @@ export function AltTabSwitcher({
                 )}
               </strong>
               <small>{windowItem.minimized ? "최소화됨" : "열림"}</small>
-            </div>
+            </button>
           );
         })}
       </div>

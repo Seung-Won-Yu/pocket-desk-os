@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DesktopItemIcon } from "./DesktopIcons";
+import { DesktopIconButton, DesktopItemIcon } from "./DesktopIcons";
+import { Trash2 } from "lucide-react";
 import type { DesktopItem } from "../../types";
 
 afterEach(cleanup);
@@ -56,5 +57,44 @@ describe("desktop icon thumbnails", () => {
     cleanup();
     renderIcon(makeItem({ content: "hello", id: "note" }));
     expect(document.querySelector(".icon-thumbnail")).toBeNull();
+  });
+});
+
+describe("desktop icon badge", () => {
+  it("a badge joins the icon's name and shows its count on the tile", () => {
+    render(
+      <DesktopIconButton
+        accent="#8fc9ff"
+        badge="3개 항목"
+        icon={Trash2}
+        onContextMenu={vi.fn()}
+        onMove={vi.fn()}
+        onOpen={vi.fn()}
+        onSelect={vi.fn()}
+        position={{ x: 0, y: 0 }}
+        selected={false}
+        title="휴지통"
+      />,
+    );
+    expect(screen.getByRole("button", { name: "휴지통, 3개 항목" })).toBeTruthy();
+    expect(document.querySelector(".desktop-icon-badge")?.textContent).toBe("3");
+  });
+
+  it("no badge leaves the plain name and no count", () => {
+    render(
+      <DesktopIconButton
+        accent="#8fc9ff"
+        icon={Trash2}
+        onContextMenu={vi.fn()}
+        onMove={vi.fn()}
+        onOpen={vi.fn()}
+        onSelect={vi.fn()}
+        position={{ x: 0, y: 0 }}
+        selected={false}
+        title="휴지통"
+      />,
+    );
+    expect(screen.getByRole("button", { name: "휴지통" })).toBeTruthy();
+    expect(document.querySelector(".desktop-icon-badge")).toBeNull();
   });
 });

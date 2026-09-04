@@ -1977,6 +1977,22 @@ async function runSmoke(baseUrl) {
         beforeEscape,
       "Escape during Alt+Tab still switched windows",
     );
+    // Clicking a picture in the switcher switches to that window.
+    await page.keyboard.down("Alt");
+    await page.keyboard.press("Tab");
+    await page.waitForTimeout(90);
+    const clickedItem = page.locator(".alt-tab-item").last();
+    const clickedTitle = await clickedItem.locator("> strong").innerText();
+    await clickedItem.click();
+    await page.keyboard.up("Alt");
+    await page.waitForTimeout(300);
+    assert(
+      (await page.locator(".alt-tab-switcher").count()) === 0 &&
+        (await page.locator(".window-frame.is-active").getAttribute("aria-label"))?.startsWith(
+          clickedTitle,
+        ),
+      `Clicking ${clickedTitle} in Alt+Tab did not switch to it`,
+    );
 
     // Restoring a maximized window puts it back exactly where it was. The
     // window controls sit inside the title bar, so their pointerdown bubbled
@@ -2796,6 +2812,18 @@ async function runSmoke(baseUrl) {
       (await wallpaperVar()).startsWith('url("data:image/png'),
       `Setting the picture as wallpaper left ${(await wallpaperVar()).slice(0, 40)}`,
     );
+    // The lock screen shows the same picture.
+    await page.keyboard.press("Meta+l");
+    const lockScreen = page.locator('[aria-label="PocketDesk 잠금 화면"]');
+    await lockScreen.waitFor({ state: "visible" });
+    assert(
+      (
+        await lockScreen.evaluate((node) => node.style.getPropertyValue("--wallpaper-image"))
+      ).startsWith('url("data:image/png'),
+      "The lock screen did not show the custom wallpaper",
+    );
+    await unlockPocketDesk(page);
+    await shotExplorer.waitFor({ state: "visible" });
     await shotRow.first().click({ button: "right" });
     await shotExplorer
       .locator(".file-context-menu")
@@ -2805,6 +2833,13 @@ async function runSmoke(baseUrl) {
     assert(
       !(await wallpaperVar()).startsWith('url("data:'),
       "Deleting the wallpaper picture did not bring the preset back",
+    );
+    // Something is in the bin now: the desktop icon says so.
+    assert(
+      (
+        await page.locator(".desktop-icon", { hasText: "휴지통" }).getAttribute("aria-label")
+      )?.includes("개 항목"),
+      "The recycle bin icon does not show it is full",
     );
     // Minimizing folds the window towards its taskbar button: the frame carries
     // the vector the animation ends on.
@@ -2820,9 +2855,27 @@ async function runSmoke(baseUrl) {
     );
     await page.waitForTimeout(300);
     await page.locator('.taskbar button[data-app-id="files"]').click();
+    await page.waitForTimeout(30);
+    assert(
+      (await shotExplorer.getAttribute("class"))?.includes("is-restoring"),
+      "Restoring from the taskbar did not play the unfold animation",
+    );
     await shotExplorer.waitFor({ state: "visible" });
     await shotExplorer.getByRole("button", { name: "파일 탐색기 닫기" }).click();
     await shotExplorer.waitFor({ state: "detached" });
+
+    // 절전: the display goes dark; a key brings the lock screen back.
+    await page.getByRole("button", { name: "시작 메뉴" }).click();
+    const sleepStartMenu = page.locator(".start-menu");
+    await sleepStartMenu.waitFor({ state: "visible" });
+    await sleepStartMenu.getByRole("button", { name: "전원 옵션" }).click();
+    await sleepStartMenu.getByRole("menuitem", { name: "절전" }).click();
+    const sleepScreen = page.locator(".sleep-screen");
+    await sleepScreen.waitFor({ state: "visible" });
+    await page.waitForTimeout(150);
+    await page.keyboard.press("Space");
+    await sleepScreen.waitFor({ state: "detached" });
+    await unlockPocketDesk(page);
 
     // 스티커 메모: a note is a window bound to shell state — text survives a
     // reload, and 새 메모 opens a second window holding a different note.

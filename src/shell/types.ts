@@ -29,7 +29,7 @@ import { type ScreenshotMode } from "./screenshotTypes";
 export type WindowDocumentRef = { itemId?: string; title?: string };
 import { type ShellLogEvent } from "./eventLog";
 
-export type WindowMotion = "closing" | "minimizing";
+export type WindowMotion = "closing" | "minimizing" | "restoring";
 
 export type WindowInstance = {
   id: string;
@@ -119,7 +119,7 @@ export type ToastMessage = Required<Omit<ToastInput, "actions" | "onAction">> & 
   id: string;
   onAction?: (actionId: string) => void;
 };
-export type ShellPhase = "booting" | "locked" | "shutdown" | "unlocked";
+export type ShellPhase = "booting" | "locked" | "shutdown" | "sleeping" | "unlocked";
 export type SnapZone =
   "bottom-left" | "bottom-right" | "left" | "right" | "top" | "top-left" | "top-right";
 export type SnapPreviewState = {
@@ -215,7 +215,7 @@ export type AppContentProps = {
   moveVfsEntries: (itemIds: string[], parentId: string) => boolean;
   openApp: (appId: AppId) => void;
   /** The Start menu's power actions, for the terminal's shutdown command. */
-  requestPowerAction: (action: "lock" | "off" | "restart") => void;
+  requestPowerAction: (action: "lock" | "off" | "restart" | "sleep") => void;
   openNewAppWindow: (appId: AppId) => string;
   activateVfsEntry: (item: DesktopItem) => void;
   openVfsEntry: (item: DesktopItem) => void;
