@@ -10488,3 +10488,63 @@ button {
   height: 86px;
   width: 100%;
 }
+
+/* The address bar takes a typed path, as Explorer's does. */
+.file-address.is-editing {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.file-address.is-editing input {
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid var(--active);
+  border-radius: 6px;
+  color: var(--text);
+  flex: 1;
+  font: inherit;
+  min-width: 0;
+  padding: 5px 9px;
+}
+
+/* The empty stretch of the address bar is where you click to type a path. */
+.file-address-edit {
+  align-self: stretch;
+  background: transparent;
+  border: 0;
+  cursor: text;
+  flex: 1;
+  min-width: 24px;
+  padding: 0;
+}
+
+/* What a search matched, marked in the name. */
+.file-list mark {
+  background: color-mix(in srgb, var(--active) 42%, transparent);
+  border-radius: 3px;
+  color: inherit;
+  padding: 0 1px;
+}
+
+/* A notification that names a file opens it, so it looks pressable. */
+button.notification-item {
+  cursor: default;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+button.notification-item.is-openable:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* A picture in the jump list shows itself. */
+.taskbar-menu-thumbnail {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  flex: 0 0 auto;
+  height: 16px;
+  object-fit: contain;
+  width: 16px;
+}

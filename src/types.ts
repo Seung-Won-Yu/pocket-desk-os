@@ -85,6 +85,8 @@ export type ToastInput = {
   detail?: string;
   /** A picture shown on the toast and kept in the notification centre. */
   image?: string;
+  /** A VFS entry this notification is about; the centre opens it on click. */
+  openItemId?: string;
   /** Called with the clicked action's id. Lives only on the live toast. */
   onAction?: (actionId: string) => void;
   title: string;

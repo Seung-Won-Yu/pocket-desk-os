@@ -2709,6 +2709,69 @@ async function runSmoke(baseUrl) {
       await page.waitForTimeout(200);
     }
 
+    // 주소 표시줄: Ctrl+L turns the breadcrumbs into a path you can type.
+    // Its own window: whatever Explorer the sections above left behind may be
+    // minimized, and a hidden window cannot be typed into.
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("explorer");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const pathExplorer = page.locator('article[data-app-id="files"]').last();
+    await pathExplorer.waitFor({ state: "visible" });
+    await pathExplorer.locator(".file-list").click({ position: { x: 8, y: 8 } });
+    await page.keyboard.press("Control+l");
+    // exact: "경로 입력" (the button that opens it) also contains "경로".
+    const pathInput = pathExplorer.getByLabel("경로", { exact: true });
+    await pathInput.waitFor({ state: "visible" });
+    await pathInput.fill("바탕 화면\\문서");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(300);
+    assert(
+      (await pathExplorer.getAttribute("aria-label"))?.startsWith("문서 - "),
+      `Typing a path did not navigate: ${await pathExplorer.getAttribute("aria-label")}`,
+    );
+    // A path that names no folder says so and stays put.
+    await page.keyboard.press("Control+l");
+    await pathInput.waitFor({ state: "visible" });
+    await pathInput.fill("바탕 화면\\없는 폴더");
+    await page.keyboard.press("Enter");
+    await page
+      .locator(".toast", { hasText: "경로를 찾을 수 없음" })
+      .waitFor({ state: "visible" });
+    assert(
+      (await pathExplorer.getAttribute("aria-label"))?.startsWith("문서 - "),
+      "A bad path moved the window anyway",
+    );
+    await page.keyboard.press("Escape");
+    await pathInput.waitFor({ state: "hidden" });
+    await pathExplorer
+      .locator("aside")
+      .getByRole("button", { name: "바탕 화면", exact: true })
+      .click();
+    await page.waitForTimeout(250);
+
+    // 검색: the matched text is marked in the names it matched.
+    await pathExplorer.getByLabel("파일 검색").fill("문");
+    await page.waitForTimeout(250);
+    assert(
+      (await pathExplorer.locator(".file-list mark").count()) > 0,
+      "The search marked nothing in the names it matched",
+    );
+    await pathExplorer.getByLabel("파일 검색").fill("");
+    await page.waitForTimeout(200);
+
+    // 상태 표시줄: selecting a file shows what it weighs.
+    await pathExplorer.locator(".file-list button").first().click();
+    await page.waitForTimeout(200);
+    const statusText = await pathExplorer.locator(".file-statusbar").innerText();
+    assert(
+      /1개 선택됨( · [\d.]+ ?(B|KB|MB))?/.test(statusText.replace(/\s+/g, " ")),
+      `The status bar did not report the selection: ${statusText.replace(/\s+/g, " ")}`,
+    );
+
+    await pathExplorer.getByRole("button", { name: "파일 탐색기 닫기" }).click();
+    await pathExplorer.waitFor({ state: "detached" });
+
     // 스크린샷: PrintScreen pictures the desktop for real — the DOM drawn to a
     // canvas — and saves a PNG into 사진. The pixels must be a picture, not a
     // blank: sampled colours have to vary.
@@ -2812,6 +2875,25 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("Alt+PrintScreen");
     const windowShotToast = page.locator(".toast", { hasText: "창 스크린샷 저장됨" });
     await windowShotToast.waitFor({ state: "visible", timeout: 15000 });
+    // 알림 센터: a notification that names a file opens it.
+    await page.locator(".tray-clock").click();
+    const centre = page.locator(".notification-center-panel");
+    await centre.waitFor({ state: "visible" });
+    const openableNotification = centre.locator("button.notification-item.is-openable").first();
+    assert(
+      (await openableNotification.count()) === 1,
+      "The screenshot notification was not clickable in the notification centre",
+    );
+    await openableNotification.click();
+    const notifiedPhotos = page.locator('article[data-app-id="photos"]').last();
+    await notifiedPhotos.waitFor({ state: "visible" });
+    assert(
+      (await notifiedPhotos.getAttribute("aria-label"))?.startsWith("스크린샷 "),
+      `Clicking the notification opened ${await notifiedPhotos.getAttribute("aria-label")}`,
+    );
+    await notifiedPhotos.getByRole("button", { name: "사진 닫기" }).click();
+    await notifiedPhotos.waitFor({ state: "detached" });
+
     // 바탕 화면 배경으로 설정: the screenshot becomes the wallpaper; deleting the
     // file puts the preset back.
     const wallpaperVar = () =>

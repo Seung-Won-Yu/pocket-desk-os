@@ -9,6 +9,7 @@ function makeToast(overrides: Partial<ToastMessage> = {}): ToastMessage {
     actions: [],
     createdAt: 0,
     image: "",
+    openItemId: "",
     detail: "",
     id: "toast-1",
     title: "알림",

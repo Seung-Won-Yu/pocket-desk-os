@@ -724,6 +724,7 @@ export default function App() {
       detail: toast.detail ?? "",
       id,
       image: toast.image ?? "",
+      openItemId: toast.openItemId ?? "",
       onAction: toast.onAction,
       title: toast.title,
       tone: toast.tone ?? "info",
@@ -2031,6 +2032,7 @@ export default function App() {
         if (actionId === "open") contentOpsRef.current.openVfsEntry(item);
       },
       image: picture.dataUrl,
+      openItemId: item.id,
       title: mode === "window" ? "창 스크린샷 저장됨" : "스크린샷 저장됨",
       tone: "success",
     });
@@ -4329,6 +4331,19 @@ export default function App() {
         brightness={displayBrightness}
         clockAlarms={clockAlarms}
         onClearNotifications={clearNotificationHistory}
+        onOpenNotificationItem={(itemId) => {
+          const item = activeDesktopItems.find((entry) => entry.id === itemId);
+          if (item) {
+            openVfsEntry(item);
+            return;
+          }
+          // The file a notification names can be gone by the time it is
+          // clicked; saying so beats a click that does nothing.
+          notify({
+            detail: "알림이 가리키는 파일이 삭제되었거나 휴지통에 있습니다.",
+            title: "파일을 찾을 수 없음",
+          });
+        }}
         onOpenStart={(event) => {
           event.stopPropagation();
           setStartOpen((value) => !value);

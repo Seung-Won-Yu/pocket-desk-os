@@ -646,6 +646,7 @@ describe("persistNotificationHistory", () => {
           detail: "",
           id: "t1",
           image: "",
+          openItemId: "",
           title: "알림",
           tone: "info",
         },

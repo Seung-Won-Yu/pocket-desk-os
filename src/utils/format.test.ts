@@ -6,6 +6,7 @@ import {
   formatVfsEntrySize,
   formatVfsPropertyDate,
   normalizeSearchText,
+  splitSearchMatch,
 } from "./format";
 
 function makeItem(overrides: Partial<DesktopItem> = {}): DesktopItem {
@@ -175,5 +176,31 @@ describe("normalizeSearchText", () => {
 
   it("keeps Hangul intact while still collapsing spacing", () => {
     expect(normalizeSearchText("  새   텍스트 문서.TXT ")).toBe("새 텍스트 문서.txt");
+  });
+});
+
+describe("splitSearchMatch", () => {
+  it("marks every occurrence, keeping the name's own case", () => {
+    expect(splitSearchMatch("Report-report.txt", "report")).toEqual([
+      { match: true, text: "Report" },
+      { match: false, text: "-" },
+      { match: true, text: "report" },
+      { match: false, text: ".txt" },
+    ]);
+  });
+
+  it("leaves a name whole when nothing matches or nothing is searched", () => {
+    expect(splitSearchMatch("메모.txt", "")).toEqual([{ match: false, text: "메모.txt" }]);
+    expect(splitSearchMatch("메모.txt", "   ")).toEqual([{ match: false, text: "메모.txt" }]);
+    expect(splitSearchMatch("메모.txt", "보고서")).toEqual([
+      { match: false, text: "메모.txt" },
+    ]);
+  });
+
+  it("marks a match that runs to the end", () => {
+    expect(splitSearchMatch("스크린샷.png", "png")).toEqual([
+      { match: false, text: "스크린샷." },
+      { match: true, text: "png" },
+    ]);
   });
 });

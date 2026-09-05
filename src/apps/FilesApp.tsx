@@ -55,10 +55,12 @@ import { trapDialogFocus } from "../shell/dialogFocus";
 import type { AppId, ClipboardMode, DesktopItem, SystemClipboard, ToastInput } from "../types";
 import {
   clamp,
+  formatStorageSize,
   formatVfsEntrySize,
   formatVfsPropertyDate,
   getVfsEntrySize,
   normalizeSearchText,
+  splitSearchMatch,
 } from "../utils/format";
 import {
   VFS_DOCUMENTS_ID,
@@ -75,6 +77,7 @@ import {
   hasForbiddenVfsNameChar,
   isVfsSystemFolderId,
 } from "../vfs/model";
+import { formatVfsPathText, resolveVfsPathText } from "../vfs/pathInput";
 import { handleMenuKeyboard } from "../shell/keyboardNav";
 
 type FileSortDirection = "asc" | "desc";
@@ -196,6 +199,10 @@ export default function FilesApp({
   const cancelRenameRef = useRef(false);
   const propertiesConfirmRef = useRef<HTMLButtonElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const addressInputRef = useRef<HTMLInputElement | null>(null);
+  // Windows lets you read the path, type another, and press Enter. The
+  // breadcrumbs alone could only be clicked.
+  const [addressDraft, setAddressDraft] = useState<string | null>(null);
   const selectionAnchorRef = useRef<string | null>(null);
   const typeAheadRef = useRef({ at: 0, query: "" });
   const sortControlRef = useRef<HTMLDivElement | null>(null);
@@ -227,6 +234,14 @@ export default function FilesApp({
     () => getVfsFolderPath(desktopItems, currentFolderId),
     [currentFolderId, desktopItems],
   );
+
+  useEffect(() => {
+    if (addressDraft === null) return;
+    const input = addressInputRef.current;
+    if (!input) return;
+    input.focus();
+    input.select();
+  }, [addressDraft === null]);
   const locationLabel = folderPath[folderPath.length - 1]?.name ?? "바탕 화면";
 
   useEffect(() => {
@@ -260,6 +275,14 @@ export default function FilesApp({
     [locationItems],
   );
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  /** Bytes the selection holds; Windows shows this beside the count. */
+  const selectedSize = useMemo(
+    () =>
+      desktopItems
+        .filter((item) => selectedIds.includes(item.id))
+        .reduce((total, item) => total + getVfsEntrySize(item), 0),
+    [desktopItems, selectedIds],
+  );
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [fileQuery, setFileQuery] = useState("");
   const filteredFiles = useMemo(() => {
@@ -1024,7 +1047,16 @@ export default function FilesApp({
   };
 
   return (
-    <div className="files-app app-fill">
+    <div
+      className="files-app app-fill"
+      // Ctrl+L belongs to the whole window in Explorer, not just the list: it
+      // has to work with the search box, the toolbar, or nothing focused.
+      onKeyDown={(event) => {
+        if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "l") return;
+        event.preventDefault();
+        setAddressDraft(formatVfsPathText(desktopItems, currentFolderId));
+      }}
+    >
       <aside>
         <button onClick={() => openApp("thispc")} type="button">
           <Monitor aria-hidden="true" size={16} />내 PC
@@ -1109,25 +1141,84 @@ export default function FilesApp({
                 <ArrowUp aria-hidden="true" size={16} />
               </button>
             </div>
-            <div className="file-address">
-              {folderPath.map((segment, index) => (
-                <div className="file-breadcrumb" key={segment.id}>
-                  {index > 0 && <ChevronRight aria-hidden="true" size={14} />}
-                  <button
-                    aria-current={segment.id === currentFolderId ? "location" : undefined}
-                    onClick={() => navigateToFolder(segment.id)}
-                    onDragEnter={() => setDragOverFolderId(segment.id)}
-                    onDragLeave={() => setDragOverFolderId(null)}
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={(event) => dropFilesIntoFolder(event, segment.id)}
-                    type="button"
-                  >
-                    {index === 0 && <House aria-hidden="true" size={15} />}
-                    <span>{segment.name}</span>
-                  </button>
-                </div>
-              ))}
-            </div>
+            {addressDraft !== null ? (
+              <form
+                className="file-address is-editing"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const target = resolveVfsPathText(
+                    desktopItems,
+                    addressDraft,
+                    currentFolderId,
+                  );
+                  if (!target) {
+                    notify({
+                      detail: `${addressDraft.trim() || "빈 경로"}은(는) 없는 폴더입니다.`,
+                      title: "경로를 찾을 수 없음",
+                    });
+                    return;
+                  }
+                  setAddressDraft(null);
+                  navigateToFolder(target);
+                  // The field unmounts on submit; without this the window has
+                  // no focus at all afterwards and Ctrl+L cannot reopen it.
+                  window.requestAnimationFrame(() =>
+                    fileListRef.current?.focus({ preventScroll: true }),
+                  );
+                }}
+              >
+                <input
+                  aria-label="경로"
+                  onBlur={() => setAddressDraft(null)}
+                  onChange={(event) => setAddressDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Escape") return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setAddressDraft(null);
+                  }}
+                  ref={addressInputRef}
+                  value={addressDraft}
+                />
+              </form>
+            ) : (
+              <div
+                className="file-address"
+                onDoubleClick={() =>
+                  setAddressDraft(formatVfsPathText(desktopItems, currentFolderId))
+                }
+                title="두 번 클릭하거나 Ctrl+L을 눌러 경로를 입력합니다"
+              >
+                {folderPath.map((segment, index) => (
+                  <div className="file-breadcrumb" key={segment.id}>
+                    {index > 0 && <ChevronRight aria-hidden="true" size={14} />}
+                    <button
+                      aria-current={segment.id === currentFolderId ? "location" : undefined}
+                      onClick={() => navigateToFolder(segment.id)}
+                      onDragEnter={() => setDragOverFolderId(segment.id)}
+                      onDragLeave={() => setDragOverFolderId(null)}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={(event) => dropFilesIntoFolder(event, segment.id)}
+                      type="button"
+                    >
+                      {index === 0 && <House aria-hidden="true" size={15} />}
+                      <span>{segment.name}</span>
+                    </button>
+                  </div>
+                ))}
+                {/* The empty stretch of a Windows address bar is where you click
+                  to type a path; a lone breadcrumb row left nowhere to aim. */}
+                <button
+                  aria-label="경로 입력"
+                  className="file-address-edit"
+                  onClick={() =>
+                    setAddressDraft(formatVfsPathText(desktopItems, currentFolderId))
+                  }
+                  title="경로 입력 (Ctrl+L)"
+                  type="button"
+                />
+              </div>
+            )}
             <label className="file-search">
               <Search aria-hidden="true" size={15} />
               <input
@@ -1525,7 +1616,14 @@ export default function FilesApp({
                       ) : (
                         <FileIcon aria-hidden="true" size={18} />
                       )}
-                      <span>{file.name}</span>
+                      <span>
+                        {/* Unmatched runs stay bare text: wrapping them in
+                            spans would change what every locator that reads a
+                            row's name sees. */}
+                        {splitSearchMatch(file.name, fileQuery).map((part, index) =>
+                          part.match ? <mark key={index}>{part.text}</mark> : part.text,
+                        )}
+                      </span>
                       <small>{file.modified}</small>
                       <small>{file.type}</small>
                       <small>
@@ -1658,7 +1756,11 @@ export default function FilesApp({
         <div className="file-statusbar" onContextMenu={(event) => event.preventDefault()}>
           <span>{visibleFiles.length}개 항목</span>
           <span>
-            {selectedIds.length > 0 ? `${selectedIds.length}개 선택됨` : "선택한 항목 없음"}
+            {selectedIds.length > 0
+              ? `${selectedIds.length}개 선택됨${
+                  selectedSize > 0 ? ` · ${formatStorageSize(selectedSize)}` : ""
+                }`
+              : "선택한 항목 없음"}
           </span>
         </div>
       </section>

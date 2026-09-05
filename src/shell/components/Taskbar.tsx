@@ -50,6 +50,7 @@ export function Taskbar({
   taskViewOpen,
   notificationHistory,
   onClearNotifications,
+  onOpenNotificationItem,
   onOpenStart,
   getDocumentLabel,
   onArrangeWindows,
@@ -87,6 +88,8 @@ export function Taskbar({
   /** The clock's alarms; the tray calendar dots the days they ring on. */
   clockAlarms: ClockAlarm[];
   onClearNotifications: () => void;
+  /** Opens the entry a notification is about, the way Windows notifications act. */
+  onOpenNotificationItem: (itemId: string) => void;
   onOpenStart: (event: React.MouseEvent<HTMLButtonElement>) => void;
   getDocumentLabel: (windowId: string, appId: AppId) => string | undefined;
   /** 창 계단식 배열 / 위아래 정렬 / 나란히 정렬 from the taskbar menu. */
@@ -531,7 +534,11 @@ export function Taskbar({
                       role="menuitem"
                       type="button"
                     >
-                      <ItemIcon aria-hidden="true" size={15} />
+                      {item.kind === "canvas" && item.content ? (
+                        <img alt="" className="taskbar-menu-thumbnail" src={item.content} />
+                      ) : (
+                        <ItemIcon aria-hidden="true" size={15} />
+                      )}
                       <span className="taskbar-menu-item-name">{item.name}</span>
                     </button>
                   );
@@ -693,6 +700,10 @@ export function Taskbar({
             clockAlarms={clockAlarms}
             notifications={notificationHistory}
             onClearNotifications={onClearNotifications}
+            onOpenNotificationItem={(itemId) => {
+              setTrayPanel(null);
+              onOpenNotificationItem(itemId);
+            }}
           />
         )}
       </div>
@@ -801,11 +812,14 @@ export function NotificationCenterPanel({
   clockAlarms = [],
   notifications,
   onClearNotifications,
+  onOpenNotificationItem,
 }: {
   /** Alarms mark their days on the calendar, as Windows dots days with events. */
   clockAlarms?: ClockAlarm[];
   notifications: ToastMessage[];
   onClearNotifications: () => void;
+  /** A notification that names an entry opens it when clicked. */
+  onOpenNotificationItem?: (itemId: string) => void;
 }) {
   const now = new Date();
   const [visibleMonth, setVisibleMonth] = useState(
@@ -844,19 +858,38 @@ export function NotificationCenterPanel({
         <div className="notification-list">
           {/* The header counts what the panel holds, so the panel shows all of
               it — eight rendered under a header reading 12 was a plain lie. */}
-          {notifications.map((notification) => (
-            <article
-              className={`notification-item notification-${notification.tone}`}
-              key={notification.id}
-            >
-              <BrandMark className="notification-app-mark" />
-              <div>
-                <strong>{notification.title}</strong>
-                {notification.detail && <p>{notification.detail}</p>}
-                <small>{formatNotificationTime(notification.createdAt)}</small>
-              </div>
-            </article>
-          ))}
+          {notifications.map((notification) => {
+            // Windows opens what a notification is about when you click it;
+            // one that is only a statement stays a statement.
+            const openItemId = notification.openItemId;
+            const body = (
+              <>
+                <BrandMark className="notification-app-mark" />
+                <div>
+                  <strong>{notification.title}</strong>
+                  {notification.detail && <p>{notification.detail}</p>}
+                  <small>{formatNotificationTime(notification.createdAt)}</small>
+                </div>
+              </>
+            );
+            return openItemId && onOpenNotificationItem ? (
+              <button
+                className={`notification-item is-openable notification-${notification.tone}`}
+                key={notification.id}
+                onClick={() => onOpenNotificationItem(openItemId)}
+                type="button"
+              >
+                {body}
+              </button>
+            ) : (
+              <article
+                className={`notification-item notification-${notification.tone}`}
+                key={notification.id}
+              >
+                {body}
+              </article>
+            );
+          })}
         </div>
       ) : (
         <div className="notification-empty">

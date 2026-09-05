@@ -32,3 +32,26 @@ export function formatVfsPropertyDate(timestamp: number) {
 export function normalizeSearchText(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
+
+/**
+ * A name split around what a search matched, so the match can be marked.
+ * Returns the pieces in order; the matching ones are flagged.
+ */
+export function splitSearchMatch(name: string, query: string) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [{ match: false, text: name }];
+  const haystack = name.toLowerCase();
+  const parts: Array<{ match: boolean; text: string }> = [];
+  let cursor = 0;
+  for (
+    let at = haystack.indexOf(needle, cursor);
+    at !== -1;
+    at = haystack.indexOf(needle, cursor)
+  ) {
+    if (at > cursor) parts.push({ match: false, text: name.slice(cursor, at) });
+    parts.push({ match: true, text: name.slice(at, at + needle.length) });
+    cursor = at + needle.length;
+  }
+  if (cursor < name.length) parts.push({ match: false, text: name.slice(cursor) });
+  return parts;
+}

@@ -26,6 +26,12 @@ All notable changes to PocketDesk OS are documented here.
 - **창 계단식 배열 · 창 위아래 정렬 · 창 나란히 정렬.** The taskbar's right-click menu arranges the visible windows of the current desktop the way Windows does: cascaded one title bar apart with the front window in front, stacked into rows, or tiled side by side into columns (a grid past three), edge to edge with no overlap. Minimized windows and other desktops are left alone.
 - **Window previews are pictures of the windows.** The taskbar hover card, Alt+Tab and Task View show each window itself — a scaled, inert clone of the live frame with its typed text, drawn pixels and scroll position — where an app icon used to stand in. The taskbar card lays out title-over-picture per window and refreshes while it is up; a window on another virtual desktop keeps the icon.
 
+- **탐색기 주소 표시줄에 경로를 입력.** Ctrl+L, a double click on the address, or a click on its empty stretch turns the breadcrumbs into a path field holding `바탕 화면\문서`. Enter navigates — absolute or relative, either separator, any case, with `.` and `..` — a path that names no folder says so and stays put, and Escape puts the breadcrumbs back.
+- **검색이 무엇에 맞았는지 표시.** The matched text is marked inside each name the search kept.
+- **선택한 항목의 크기.** The status bar shows what the selection weighs beside its count, as Explorer does.
+- **알림 센터에서 알림을 클릭하면 그 파일이 열립니다.** A screenshot notification opens the screenshot in 사진; a notification that is only a statement stays one.
+- **점프 리스트의 그림은 그림으로.** A picture in an app's 최근 항목 shows itself.
+
 ### Fixed
 
 - **The runtime-audit gate survives a registry outage without going blind.** `npm audit --omit=dev --audit-level=high` calls an endpoint npm is retiring; it answered 503, then 400, then 500, then an HTML error page, and CI failed on all of them. The gate now reads `npm audit --json` and tells the two cases apart: a high or critical advisory fails the build, and a transport failure is reported as skipped, in as many words, rather than passing quietly.
