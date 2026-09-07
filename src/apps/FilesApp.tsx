@@ -2335,8 +2335,10 @@ export default function FilesApp({
               압축 풀기
             </button>
           )}
+          {/* Not disabled for a system folder: compressing only reads, and
+              Windows will happily zip 문서. Copying and deleting are the ones
+              that would change it. */}
           <button
-            disabled={selectedHasSystemFolder}
             onClick={() => {
               setFileContextMenu(null);
               compressSelection();

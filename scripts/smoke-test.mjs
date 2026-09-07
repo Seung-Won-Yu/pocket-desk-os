@@ -2969,12 +2969,34 @@ async function runSmoke(baseUrl) {
      * compress a folder, find the .zip beside it, open it, and read the files
      * back out of the folder that was extracted.
      */
+    /*
+     * A system folder is compressed here on purpose: 압축 only reads, so 문서
+     * may be zipped even though it may not be copied or deleted — the first
+     * version disabled the row for both and the deployed build refused it.
+     */
+    await tabExplorer
+      .locator("aside")
+      .getByRole("button", { name: "바탕 화면", exact: true })
+      .click();
+    await page.waitForTimeout(300);
+    const documentRows = tabExplorer.locator(".file-list button");
+    await documentRows.filter({ hasText: "문서" }).first().click({ button: "right" });
+    const systemFolderMenu = tabExplorer.locator(".file-context-menu");
+    await systemFolderMenu.waitFor({ state: "visible" });
+    assert(
+      await systemFolderMenu
+        .getByRole("menuitem", { name: /압축\(ZIP\) 파일로 압축/ })
+        .isEnabled(),
+      "압축 was disabled for a system folder, which only reads it",
+    );
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+
     await tabExplorer
       .locator("aside")
       .getByRole("button", { name: "문서", exact: true })
       .click();
     await page.waitForTimeout(300);
-    const documentRows = tabExplorer.locator(".file-list button");
     const namesBeforeZip = (await documentRows.allInnerTexts()).map(
       (text) => text.split("\n")[0],
     );
