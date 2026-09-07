@@ -1,6 +1,7 @@
 import { type BrowserLaunchRequest } from "../apps/BrowserApp";
 import { type FilesLaunchRequest } from "../apps/FilesApp";
 import { type PhotosLaunchRequest } from "../apps/PhotosApp";
+import { type TerminalLaunchRequest } from "../apps/TerminalApp";
 import {
   type AppId,
   type ClipboardMode,
@@ -213,6 +214,12 @@ export type AppContentProps = {
   filesLaunchRequest: FilesLaunchRequest | null;
   /** The picture 사진 was asked to open; see openVfsEntry. */
   photosLaunchRequest: PhotosLaunchRequest | null;
+  /** The folder 명령 프롬프트 was asked to start in. */
+  terminalLaunchRequest: TerminalLaunchRequest | null;
+  /** Opens a folder in a second Explorer window, as Windows' 새 창에서 열기 does. */
+  openFolderInNewWindow: (folderId: string) => void;
+  /** Opens 명령 프롬프트 already sitting in this folder. */
+  openTerminalAtFolder: (folderId: string) => void;
   importVfsZip: (file: File) => Promise<void>;
   moveVfsEntries: (itemIds: string[], parentId: string) => boolean;
   openApp: (appId: AppId) => void;

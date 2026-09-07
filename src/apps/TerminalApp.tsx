@@ -10,7 +10,12 @@ import {
 import type { AppId, DesktopItem, OpenWindowInfo, SoundEffectName } from "../types";
 import { getVfsFolder, VFS_ROOT_ID } from "../vfs/model";
 
+/** "Open a prompt here" — a fresh id per request so the same folder opens twice. */
+export type TerminalLaunchRequest = { folderId: string; id: string };
+
 type TerminalAppProps = {
+  /** The folder a 여기서 명령 프롬프트 열기 asked for; null when opened plainly. */
+  terminalLaunchRequest: TerminalLaunchRequest | null;
   closeWindow: (windowId: string) => void;
   deleteVfsEntry: (itemId: string) => void;
   desktopItems: DesktopItem[];
@@ -65,12 +70,13 @@ export default function TerminalApp({
   playSound,
   renameVfsEntry,
   saveNoteAs,
+  terminalLaunchRequest,
   userName,
   windowId,
 }: TerminalAppProps) {
   const [lines, setLines] = useState<ShellLine[]>(() => createBanner());
   const [draft, setDraft] = useState("");
-  const [cwdId, setCwdId] = useState(VFS_ROOT_ID);
+  const [cwdId, setCwdId] = useState(terminalLaunchRequest?.folderId ?? VFS_ROOT_ID);
   const [history, setHistory] = useState<string[]>([]);
   const [env, setEnv] = useState<Record<string, string>>({});
   const [scriptQueue, setScriptQueue] = useState<string[]>([]);
@@ -90,6 +96,11 @@ export default function TerminalApp({
   }, [lines]);
 
   const prompt = useMemo(() => formatShellPath(desktopItems, cwdId), [cwdId, desktopItems]);
+
+  // A later 여기서 명령 프롬프트 열기 lands in the window that is already open.
+  useEffect(() => {
+    if (terminalLaunchRequest) setCwdId(terminalLaunchRequest.folderId);
+  }, [terminalLaunchRequest]);
 
   useEffect(() => {
     // cmd titles its window after the working directory.

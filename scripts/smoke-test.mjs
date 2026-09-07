@@ -2879,6 +2879,15 @@ async function runSmoke(baseUrl) {
     await page.locator(".tray-clock").click();
     const centre = page.locator(".notification-center-panel");
     await centre.waitFor({ state: "visible" });
+    // A notification can be dropped on its own, not only all at once.
+    const notificationsBefore = await centre.locator(".notification-item").count();
+    await centre.locator(".notification-item").first().hover();
+    await centre.locator(".notification-dismiss").first().click();
+    await page.waitForTimeout(250);
+    assert(
+      (await centre.locator(".notification-item").count()) === notificationsBefore - 1,
+      "Dismissing one notification did not drop exactly one",
+    );
     const openableNotification = centre.locator("button.notification-item.is-openable").first();
     assert(
       (await openableNotification.count()) === 1,
@@ -2961,6 +2970,56 @@ async function runSmoke(baseUrl) {
     await shotExplorer.waitFor({ state: "visible" });
     await shotExplorer.getByRole("button", { name: "파일 탐색기 닫기" }).click();
     await shotExplorer.waitFor({ state: "detached" });
+
+    // 고정된 앱을 끌어서 순서 바꾸기 — Start menu tiles and taskbar buttons.
+    await page.getByRole("button", { name: "시작 메뉴" }).click();
+    const dragMenu = page.locator(".start-menu");
+    await dragMenu.waitFor({ state: "visible" });
+    const tiles = dragMenu.locator(".start-pinned-grid button");
+    const tilesBefore = await tiles.evaluateAll((nodes) =>
+      nodes.map((node) => node.textContent),
+    );
+    await tiles.nth(2).dragTo(tiles.nth(0));
+    await page.waitForTimeout(300);
+    const tilesAfter = await tiles.evaluateAll((nodes) =>
+      nodes.map((node) => node.textContent),
+    );
+    assert(
+      tilesAfter[0] === tilesBefore[2] && tilesAfter.length === tilesBefore.length,
+      `Dragging a tile did not move it: ${JSON.stringify(tilesBefore)} → ${JSON.stringify(tilesAfter)}`,
+    );
+    await page.keyboard.press("Escape");
+    await dragMenu.waitFor({ state: "hidden" });
+    const pinnedSlots = page.locator(".taskbar-slot[draggable='true']");
+    const readPinned = () =>
+      pinnedSlots.evaluateAll((nodes) =>
+        nodes.map((node) => node.querySelector("[data-app-id]")?.getAttribute("data-app-id")),
+      );
+    // Two pinned apps ship by default, but earlier sections may have unpinned
+    // one; pin whatever is open until there are two. (Guarding on a count and
+    // skipping would have made this check silently do nothing.)
+    for (const app of await page
+      .locator(".taskbar-slot:not([draggable='true']) [data-app-id]")
+      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-app-id")))) {
+      if ((await pinnedSlots.count()) >= 2) break;
+      await page.locator(`.taskbar button[data-app-id="${app}"]`).click({ button: "right" });
+      const pinMenu = page.locator(".taskbar-context-menu");
+      await pinMenu.waitFor({ state: "visible" });
+      await pinMenu.getByRole("menuitem", { name: "작업 표시줄에 고정" }).click();
+      await page.waitForTimeout(200);
+    }
+    const pinnedBefore = await readPinned();
+    assert(
+      pinnedBefore.length >= 2,
+      `Reordering needs two pinned taskbar apps, found ${pinnedBefore.length}`,
+    );
+    await pinnedSlots.nth(1).dragTo(pinnedSlots.nth(0));
+    await page.waitForTimeout(300);
+    const pinnedAfter = await readPinned();
+    assert(
+      pinnedAfter[0] === pinnedBefore[1] && pinnedAfter.length === pinnedBefore.length,
+      `Dragging a taskbar button did not move it: ${JSON.stringify(pinnedBefore)} → ${JSON.stringify(pinnedAfter)}`,
+    );
 
     // The Start menu's 추천 shows a picture file as its picture.
     await page.getByRole("button", { name: "시작 메뉴" }).click();

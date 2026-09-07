@@ -10548,3 +10548,48 @@ button.notification-item.is-openable:hover {
   object-fit: contain;
   width: 16px;
 }
+
+/* Pinned things you can rearrange by dragging, as Windows lets you. */
+.start-pinned-grid button.is-dragging,
+.taskbar-slot.is-dragging {
+  opacity: 0.5;
+}
+
+.start-pinned-grid button.is-drop-target {
+  outline: 2px solid var(--active);
+  outline-offset: -2px;
+}
+
+.taskbar-slot.is-drop-target .taskbar-app {
+  box-shadow: inset 0 0 0 2px var(--active);
+}
+
+/* One notification at a time, the way Windows dismisses them. */
+.notification-item {
+  position: relative;
+}
+
+.notification-dismiss {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--muted);
+  display: flex;
+  justify-content: center;
+  opacity: 0;
+  padding: 3px;
+  position: absolute;
+  right: 6px;
+  top: 6px;
+}
+
+.notification-item:hover .notification-dismiss,
+.notification-dismiss:focus-visible {
+  opacity: 1;
+}
+
+.notification-dismiss:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--text);
+}

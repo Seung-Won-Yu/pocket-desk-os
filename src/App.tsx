@@ -1,6 +1,7 @@
 import { type BrowserLaunchRequest } from "./apps/BrowserApp";
 import { type FilesLaunchRequest } from "./apps/FilesApp";
 import { type PhotosLaunchRequest } from "./apps/PhotosApp";
+import { type TerminalLaunchRequest } from "./apps/TerminalApp";
 import PwaUpdatePrompt from "./components/PwaUpdatePrompt";
 import {
   appCatalog,
@@ -170,6 +171,7 @@ import {
   recordRecentOpen,
 } from "./shell/jumpList";
 import { clamp } from "./utils/format";
+import { reorderById } from "./utils/reorder";
 import {
   type AppId,
   type ClipboardMode,
@@ -241,7 +243,9 @@ type ContentOps = Pick<
   | "notify"
   | "onImportLocalEntries"
   | "openApp"
+  | "openFolderInNewWindow"
   | "openNewAppWindow"
+  | "openTerminalAtFolder"
   | "openVfsEntry"
   | "pasteFromClipboard"
   | "permanentlyDeleteVfsEntry"
@@ -374,6 +378,8 @@ export default function App() {
   const [photosLaunchRequest, setPhotosLaunchRequest] = useState<PhotosLaunchRequest | null>(
     null,
   );
+  const [terminalLaunchRequest, setTerminalLaunchRequest] =
+    useState<TerminalLaunchRequest | null>(null);
   const [activeCanvasId, setActiveCanvasId] = useState(VFS_PRIMARY_CANVAS_ID);
   const [activeCanvasOpenKey, setActiveCanvasOpenKey] = useState(0);
   const [activeNoteId, setActiveNoteId] = useState(VFS_PRIMARY_NOTE_ID);
@@ -769,6 +775,10 @@ export default function App() {
 
   const clearNotificationHistory = () => {
     setNotificationHistory([]);
+  };
+
+  const dismissNotification = (notificationId: string) => {
+    setNotificationHistory((current) => current.filter((item) => item.id !== notificationId));
   };
 
   const playSound = (effect: SoundEffectName) => {
@@ -1324,6 +1334,18 @@ export default function App() {
   };
 
   const openNewAppWindow = (appId: AppId) => openApp(appId, { forceNew: true });
+
+  /** Windows' 새 창에서 열기: a second Explorer already showing that folder. */
+  const openFolderInNewWindow = (folderId: string) => {
+    const windowId = openNewAppWindow("files");
+    setFilesLaunchRequest({ folderId, id: crypto.randomUUID(), windowId });
+  };
+
+  /** Windows' 여기서 명령 프롬프트 열기: the prompt starts in that folder. */
+  const openTerminalAtFolder = (folderId: string) => {
+    setTerminalLaunchRequest({ folderId, id: crypto.randomUUID() });
+    openApp("terminal");
+  };
 
   const togglePinnedApp = (appId: AppId) => {
     const app = getApp(appId);
@@ -3958,7 +3980,9 @@ export default function App() {
     notify,
     onImportLocalEntries: (imported) => setDesktopItems((current) => [...current, ...imported]),
     openApp,
+    openFolderInNewWindow,
     openNewAppWindow,
+    openTerminalAtFolder,
     openVfsEntry,
     pasteFromClipboard,
     permanentlyDeleteVfsEntry,
@@ -3998,7 +4022,9 @@ export default function App() {
       notify: (...args) => contentOpsRef.current.notify(...args),
       onImportLocalEntries: (...args) => contentOpsRef.current.onImportLocalEntries(...args),
       openApp: (...args) => contentOpsRef.current.openApp(...args),
+      openFolderInNewWindow: (...args) => contentOpsRef.current.openFolderInNewWindow(...args),
       openNewAppWindow: (...args) => contentOpsRef.current.openNewAppWindow(...args),
+      openTerminalAtFolder: (...args) => contentOpsRef.current.openTerminalAtFolder(...args),
       openVfsEntry: (...args) => contentOpsRef.current.openVfsEntry(...args),
       pasteFromClipboard: (...args) => contentOpsRef.current.pasteFromClipboard(...args),
       permanentlyDeleteVfsEntry: (...args) =>
@@ -4073,6 +4099,7 @@ export default function App() {
       customWallpaperItemId,
       filesLaunchRequest,
       photosLaunchRequest,
+      terminalLaunchRequest,
       growWindow,
       noteEntries,
       openWindows,
@@ -4107,6 +4134,7 @@ export default function App() {
       customWallpaperItemId,
       filesLaunchRequest,
       photosLaunchRequest,
+      terminalLaunchRequest,
       growWindow,
       noteEntries,
       openWindows,
@@ -4331,6 +4359,10 @@ export default function App() {
         brightness={displayBrightness}
         clockAlarms={clockAlarms}
         onClearNotifications={clearNotificationHistory}
+        onDismissNotification={dismissNotification}
+        onReorderPinnedApp={(movedId, targetId) =>
+          setPinnedAppIds((current) => reorderById(current, movedId, targetId))
+        }
         onOpenNotificationItem={(itemId) => {
           const item = activeDesktopItems.find((entry) => entry.id === itemId);
           if (item) {

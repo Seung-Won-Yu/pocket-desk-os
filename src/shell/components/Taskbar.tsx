@@ -51,6 +51,8 @@ export function Taskbar({
   notificationHistory,
   onClearNotifications,
   onOpenNotificationItem,
+  onDismissNotification,
+  onReorderPinnedApp,
   onOpenStart,
   getDocumentLabel,
   onArrangeWindows,
@@ -90,6 +92,10 @@ export function Taskbar({
   onClearNotifications: () => void;
   /** Opens the entry a notification is about, the way Windows notifications act. */
   onOpenNotificationItem: (itemId: string) => void;
+  /** Drops one notification from the centre, as Windows dismisses them singly. */
+  onDismissNotification: (notificationId: string) => void;
+  /** Drag a pinned taskbar button onto another to rearrange them. */
+  onReorderPinnedApp: (movedId: AppId, targetId: AppId) => void;
   onOpenStart: (event: React.MouseEvent<HTMLButtonElement>) => void;
   getDocumentLabel: (windowId: string, appId: AppId) => string | undefined;
   /** 창 계단식 배열 / 위아래 정렬 / 나란히 정렬 from the taskbar menu. */
@@ -156,6 +162,9 @@ export function Taskbar({
       windows.filter((item) => !pinnedAppIds.includes(item.appId)).map((item) => item.appId),
     ),
   ];
+  // Windows rearranges pinned taskbar buttons by dragging one onto another.
+  const [draggingAppId, setDraggingAppId] = useState<AppId | null>(null);
+  const [appDropTargetId, setAppDropTargetId] = useState<AppId | null>(null);
   const taskbarApps = [
     ...pinnedApps.map((app) => ({
       app,
@@ -410,8 +419,44 @@ export function Taskbar({
               appWindows.length > 0 && appWindows.every((item) => item.minimized);
             return (
               <div
-                className="taskbar-slot"
+                className={`taskbar-slot${draggingAppId === app.id ? " is-dragging" : ""}${
+                  appDropTargetId === app.id ? " is-drop-target" : ""
+                }`}
+                draggable={isPinned}
                 key={`taskbar-${app.id}`}
+                onDragEnd={() => {
+                  setDraggingAppId(null);
+                  setAppDropTargetId(null);
+                }}
+                onDragEnter={(event) => {
+                  if (!draggingAppId || !isPinned) return;
+                  event.preventDefault();
+                  setAppDropTargetId(app.id);
+                }}
+                onDragLeave={(event) => {
+                  if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+                  setAppDropTargetId((current) => (current === app.id ? null : current));
+                }}
+                onDragOver={(event) => {
+                  if (!draggingAppId || !isPinned) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                }}
+                onDragStart={(event) => {
+                  if (!isPinned) return;
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", app.id);
+                  setDraggingAppId(app.id);
+                }}
+                onDrop={(event) => {
+                  const movedId = (draggingAppId ??
+                    event.dataTransfer.getData("text/plain")) as AppId;
+                  setDraggingAppId(null);
+                  setAppDropTargetId(null);
+                  if (!movedId || movedId === app.id || !isPinned) return;
+                  event.preventDefault();
+                  onReorderPinnedApp(movedId, app.id);
+                }}
                 onBlur={hidePreview}
                 onFocusCapture={(event) =>
                   showPreview(event.currentTarget, app, orderedAppWindows)
@@ -700,6 +745,7 @@ export function Taskbar({
             clockAlarms={clockAlarms}
             notifications={notificationHistory}
             onClearNotifications={onClearNotifications}
+            onDismissNotification={onDismissNotification}
             onOpenNotificationItem={(itemId) => {
               setTrayPanel(null);
               onOpenNotificationItem(itemId);
@@ -812,12 +858,15 @@ export function NotificationCenterPanel({
   clockAlarms = [],
   notifications,
   onClearNotifications,
+  onDismissNotification,
   onOpenNotificationItem,
 }: {
   /** Alarms mark their days on the calendar, as Windows dots days with events. */
   clockAlarms?: ClockAlarm[];
   notifications: ToastMessage[];
   onClearNotifications: () => void;
+  /** Drops this one notification; Windows dismisses them one at a time too. */
+  onDismissNotification?: (notificationId: string) => void;
   /** A notification that names an entry opens it when clicked. */
   onOpenNotificationItem?: (itemId: string) => void;
 }) {
@@ -862,6 +911,21 @@ export function NotificationCenterPanel({
             // Windows opens what a notification is about when you click it;
             // one that is only a statement stays a statement.
             const openItemId = notification.openItemId;
+            const dismiss = onDismissNotification && (
+              <button
+                aria-label={`${notification.title} 알림 지우기`}
+                className="notification-dismiss"
+                onClick={(event) => {
+                  // The row itself may open a file; dismissing must not.
+                  event.stopPropagation();
+                  onDismissNotification(notification.id);
+                }}
+                title="이 알림 지우기"
+                type="button"
+              >
+                <X aria-hidden="true" size={13} />
+              </button>
+            );
             const body = (
               <>
                 <BrandMark className="notification-app-mark" />
@@ -870,6 +934,7 @@ export function NotificationCenterPanel({
                   {notification.detail && <p>{notification.detail}</p>}
                   <small>{formatNotificationTime(notification.createdAt)}</small>
                 </div>
+                {dismiss}
               </>
             );
             return openItemId && onOpenNotificationItem ? (

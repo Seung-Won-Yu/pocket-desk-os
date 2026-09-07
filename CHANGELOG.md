@@ -32,6 +32,11 @@ All notable changes to PocketDesk OS are documented here.
 - **알림 센터에서 알림을 클릭하면 그 파일이 열립니다.** A screenshot notification opens the screenshot in 사진; a notification that is only a statement stays one.
 - **점프 리스트의 그림은 그림으로.** A picture in an app's 최근 항목 shows itself.
 
+- **끌어서 순서 바꾸기.** Pinned Start-menu tiles and pinned taskbar buttons rearrange by dragging one onto another, as Windows lets you; the tile being carried fades and the slot it will take is outlined.
+- **알림을 하나씩 지우기.** Each row in the notification centre has its own dismiss, not only 모두 지우기.
+- **폴더 우클릭: 새 창에서 열기.** Opens a second Explorer already showing that folder.
+- **폴더 우클릭: 여기서 명령 프롬프트 열기.** 명령 프롬프트 starts in that folder — its prompt reads `…\\Desktop\\문서` from the first line — and a later request moves the open prompt there.
+
 ### Fixed
 
 - **The runtime-audit gate survives a registry outage without going blind.** `npm audit --omit=dev --audit-level=high` calls an endpoint npm is retiring; it answered 503, then 400, then 500, then an HTML error page, and CI failed on all of them. The gate now reads `npm audit --json` and tells the two cases apart: a high or critical advisory fails the build, and a transport failure is reported as skipped, in as many words, rather than passing quietly.

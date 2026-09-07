@@ -14,6 +14,7 @@ import {
   FilePlus2,
   FileText,
   Folder,
+  FolderOpen,
   FolderOutput,
   FolderSymlink,
   Grid2X2,
@@ -28,6 +29,7 @@ import {
   RefreshCw,
   Scissors,
   Search,
+  SquareTerminal,
   Trash2,
   Upload,
   Wallpaper,
@@ -120,6 +122,8 @@ type FilesAppProps = {
   openVfsEntry: (item: DesktopItem) => void;
   renameVfsEntry: (itemId: string, name: string) => void;
   setCustomWallpaper: (itemId: string | null) => void;
+  openFolderInNewWindow: (folderId: string) => void;
+  openTerminalAtFolder: (folderId: string) => void;
   reportDocument: (
     windowId: string,
     ref: { itemId?: string; title?: string } | undefined,
@@ -190,6 +194,8 @@ export default function FilesApp({
   openVfsEntry,
   renameVfsEntry,
   setCustomWallpaper,
+  openFolderInNewWindow,
+  openTerminalAtFolder,
   windowId,
 }: FilesAppProps) {
   const fileListRef = useRef<HTMLDivElement | null>(null);
@@ -1825,6 +1831,31 @@ export default function FilesApp({
             <Pencil aria-hidden="true" size={16} />
             이름 바꾸기
           </button>
+          {contextFile.item.kind === "folder" && (
+            <>
+              <button
+                onClick={() => {
+                  setFileContextMenu(null);
+                  openFolderInNewWindow(contextFile.id);
+                }}
+                role="menuitem"
+                type="button"
+              >
+                <FolderOpen aria-hidden="true" size={16} />새 창에서 열기
+              </button>
+              <button
+                onClick={() => {
+                  setFileContextMenu(null);
+                  openTerminalAtFolder(contextFile.id);
+                }}
+                role="menuitem"
+                type="button"
+              >
+                <SquareTerminal aria-hidden="true" size={16} />
+                여기서 명령 프롬프트 열기
+              </button>
+            </>
+          )}
           {contextFile.item.kind === "canvas" && contextFile.item.content && (
             <button
               onClick={() => {

@@ -1,6 +1,7 @@
 import AppIconTile from "../../components/AppIconTile";
 import { type AppId, type DesktopItem } from "../../types";
 import { getVfsEntryAssociation } from "../../vfs/model";
+import { reorderById } from "../../utils/reorder";
 import {
   getResultIconTileTone,
   getStartPinnedApps,
@@ -70,6 +71,9 @@ export function StartMenu({
   const hasQuery = query.trim().length > 0;
   const [pinnedAppIds, setPinnedAppIds] = useState<AppId[]>(() => loadStartPinnedAppIds());
   const [tileMenu, setTileMenu] = useState<{ appId: AppId; x: number; y: number } | null>(null);
+  // Windows rearranges pinned tiles by dragging one onto another.
+  const [draggingTileId, setDraggingTileId] = useState<AppId | null>(null);
+  const [tileDropTargetId, setTileDropTargetId] = useState<AppId | null>(null);
   const pinnedApps = getStartPinnedApps(apps, pinnedAppIds);
 
   // Persisting inside the updater made it impure — StrictMode runs updaters
@@ -221,7 +225,44 @@ export function StartMenu({
               <div aria-label="고정된 앱" className="start-pinned-grid" role="group">
                 {pinnedApps.map((app) => (
                   <button
+                    className={`${draggingTileId === app.id ? "is-dragging" : ""} ${
+                      tileDropTargetId === app.id ? "is-drop-target" : ""
+                    }`}
+                    draggable
                     key={app.id}
+                    onDragEnd={() => {
+                      setDraggingTileId(null);
+                      setTileDropTargetId(null);
+                    }}
+                    onDragEnter={(event) => {
+                      if (!draggingTileId) return;
+                      event.preventDefault();
+                      setTileDropTargetId(app.id);
+                    }}
+                    onDragLeave={(event) => {
+                      if (event.currentTarget.contains(event.relatedTarget as Node | null))
+                        return;
+                      setTileDropTargetId((current) => (current === app.id ? null : current));
+                    }}
+                    onDragOver={(event) => {
+                      if (!draggingTileId) return;
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                    }}
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", app.id);
+                      setDraggingTileId(app.id);
+                    }}
+                    onDrop={(event) => {
+                      const movedId = (draggingTileId ??
+                        event.dataTransfer.getData("text/plain")) as AppId;
+                      setDraggingTileId(null);
+                      setTileDropTargetId(null);
+                      if (!movedId || movedId === app.id) return;
+                      event.preventDefault();
+                      setPinnedAppIds((current) => reorderById(current, movedId, app.id));
+                    }}
                     onClick={() => onOpenApp(app.id)}
                     onContextMenu={(event) => {
                       // Windows unpins a tile from its own right-click menu;
