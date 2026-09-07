@@ -10593,3 +10593,208 @@ button.notification-item.is-openable:hover {
   background: rgba(255, 255, 255, 0.14);
   color: var(--text);
 }
+
+/* 설정 → 키보드 단축키 */
+.shortcut-groups {
+  display: grid;
+  gap: 18px;
+}
+
+.shortcut-groups h4 {
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  margin: 0 0 6px;
+  text-transform: uppercase;
+}
+
+.shortcut-groups dl {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.shortcut-groups dl > div {
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 6px 2px;
+}
+
+.shortcut-groups dt {
+  font-size: 0.86rem;
+}
+
+.shortcut-groups dd {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+  margin: 0;
+}
+
+.shortcut-groups kbd {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+  font-family: inherit;
+  font-size: 0.76rem;
+  padding: 2px 7px;
+}
+
+.shortcut-groups dd em {
+  color: var(--muted);
+  font-style: normal;
+  margin: 0 2px;
+}
+
+/* 그림판: 도형을 채울지 윤곽만 그릴지 */
+.paint-fill-toggle {
+  align-items: center;
+  display: flex;
+  font-size: 0.76rem;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+/* Explorer tabs: one per place, each with its own history. */
+.file-tab {
+  align-items: center;
+  border-radius: 8px 8px 0 0;
+  display: flex;
+  gap: 2px;
+  max-width: 190px;
+  padding-right: 2px;
+}
+
+.file-tab > button:first-child {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  display: flex;
+  font: inherit;
+  gap: 7px;
+  min-width: 0;
+  padding: 7px 6px 7px 10px;
+}
+
+.file-tab > button:first-child span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-tab.is-active {
+  background: var(--mica-strong);
+}
+
+.file-tab.is-active > button:first-child {
+  color: var(--text);
+}
+
+.file-tab-close {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--muted);
+  display: flex;
+  justify-content: center;
+  padding: 3px;
+}
+
+.file-tab-close:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--text);
+}
+
+.file-new-tab-button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  padding: 4px;
+}
+
+.file-new-tab-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+/* Start menu folders: a tile of small icons, and the flyout it opens. */
+.start-tile-folder .start-folder-preview {
+  align-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(2, auto);
+  justify-content: center;
+  padding: 6px;
+}
+
+.start-pinned-grid button.is-drop-group {
+  outline: 2px dashed var(--active);
+  outline-offset: -2px;
+}
+
+.start-pinned-grid button.is-drop-reorder {
+  outline: 2px solid var(--active);
+  outline-offset: -2px;
+}
+
+.start-folder-flyout {
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-top: 10px;
+  padding: 10px 12px 12px;
+}
+
+.start-folder-flyout header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.start-folder-flyout header button {
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: var(--muted);
+  padding: 3px;
+}
+
+.start-folder-flyout header button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+}
+
+.start-folder-apps {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+}
+
+.start-folder-apps button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text);
+  display: grid;
+  font: inherit;
+  gap: 5px;
+  justify-items: center;
+  padding: 8px 4px;
+}
+
+.start-folder-apps button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--line);
+}

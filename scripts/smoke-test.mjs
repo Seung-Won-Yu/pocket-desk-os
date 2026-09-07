@@ -2772,6 +2772,136 @@ async function runSmoke(baseUrl) {
     await pathExplorer.getByRole("button", { name: "파일 탐색기 닫기" }).click();
     await pathExplorer.waitFor({ state: "detached" });
 
+    // 탐색기 탭: each tab keeps its own place.
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("explorer");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const tabExplorer = page.locator('article[data-app-id="files"]').last();
+    await tabExplorer.waitFor({ state: "visible" });
+    const explorerTabs = tabExplorer.locator(".file-tab");
+    assert((await explorerTabs.count()) === 1, "Explorer started with more than one tab");
+    await tabExplorer.getByRole("button", { name: "새 탭" }).click();
+    await page.waitForTimeout(250);
+    assert((await explorerTabs.count()) === 2, "새 탭 did not add a tab");
+    await tabExplorer
+      .locator("aside")
+      .getByRole("button", { name: "문서", exact: true })
+      .click();
+    await page.waitForTimeout(250);
+    assert(
+      (await explorerTabs.nth(1).innerText()).includes("문서") &&
+        (await explorerTabs.nth(0).innerText()).includes("바탕 화면"),
+      `Navigating one tab moved the other: ${await explorerTabs.allInnerTexts()}`,
+    );
+    await explorerTabs.nth(0).getByRole("tab").click();
+    await page.waitForTimeout(250);
+    assert(
+      (await tabExplorer.getAttribute("aria-label"))?.startsWith("바탕 화면"),
+      "Switching back did not return to the first tab's folder",
+    );
+    await explorerTabs
+      .nth(1)
+      .getByRole("button", { name: /탭 닫기/ })
+      .click();
+    await page.waitForTimeout(250);
+    assert((await explorerTabs.count()) === 1, "Closing a tab did not remove it");
+
+    // 폴더 메뉴: 새 창에서 열기 and 여기서 명령 프롬프트 열기.
+    const explorersBefore = await page.locator('article[data-app-id="files"]').count();
+    await tabExplorer
+      .locator(".file-list button", { hasText: "문서" })
+      .first()
+      .click({ button: "right" });
+    await tabExplorer
+      .locator(".file-context-menu")
+      .getByRole("menuitem", { name: "새 창에서 열기" })
+      .click();
+    await page.waitForTimeout(400);
+    const spawnedExplorer = page.locator('article[data-app-id="files"]').last();
+    assert(
+      (await page.locator('article[data-app-id="files"]').count()) === explorersBefore + 1 &&
+        (await spawnedExplorer.getAttribute("aria-label"))?.startsWith("문서 - "),
+      `새 창에서 열기 did not open 문서 in a second window: ${await spawnedExplorer.getAttribute("aria-label")}`,
+    );
+    // `.last()` re-resolves: once this window closes it would point at the other
+    // Explorer, which is still open. Wait on this window's own id.
+    const spawnedExplorerId = await spawnedExplorer.getAttribute("data-window-id");
+    await spawnedExplorer.getByRole("button", { name: "파일 탐색기 닫기" }).click();
+    await page
+      .locator(`article[data-window-id="${spawnedExplorerId}"]`)
+      .waitFor({ state: "detached" });
+    await tabExplorer
+      .locator(".file-list button", { hasText: "문서" })
+      .first()
+      .click({ button: "right" });
+    await tabExplorer
+      .locator(".file-context-menu")
+      .getByRole("menuitem", { name: "여기서 명령 프롬프트 열기" })
+      .click();
+    const spawnedTerminal = page.locator('article[data-app-id="terminal"]').last();
+    await spawnedTerminal.waitFor({ state: "visible" });
+    await page.waitForTimeout(300);
+    assert(
+      (await spawnedTerminal.innerText()).includes("Desktop\\문서"),
+      `The prompt did not start in 문서: ${(await spawnedTerminal.innerText()).slice(-80)}`,
+    );
+    await spawnedTerminal.getByRole("button", { name: "명령 프롬프트 닫기" }).click();
+    await spawnedTerminal.waitFor({ state: "detached" });
+    await tabExplorer.getByRole("button", { name: "파일 탐색기 닫기" }).click();
+    await tabExplorer.waitFor({ state: "detached" });
+
+    // 설정: 키보드 단축키 lists what the shell listens for.
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("설정");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const shortcutSettings = page.locator('article[data-app-id="settings"]').last();
+    await shortcutSettings.waitFor({ state: "visible" });
+    await shortcutSettings.getByRole("button", { name: "키보드 단축키" }).click();
+    await page.waitForTimeout(250);
+    assert(
+      (await shortcutSettings.locator(".shortcut-groups kbd").count()) > 20 &&
+        (await shortcutSettings.innerText()).includes("PrintScreen"),
+      "설정 did not list the shell's shortcuts",
+    );
+    await shortcutSettings.getByRole("button", { name: "설정 닫기" }).click();
+    await shortcutSettings.waitFor({ state: "detached" });
+
+    // 그림판 도형 채우기: a filled rectangle leaves paint in its middle.
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("mspaint");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const fillPaint = page.locator('article[data-app-id="paint"]').last();
+    await fillPaint.waitFor({ state: "visible" });
+    await fillPaint.getByRole("button", { name: "사각형" }).click();
+    await fillPaint.getByLabel("도형 채우기").check();
+    const fillCanvasBox = await fillPaint.locator(".paint-canvas").boundingBox();
+    await page.mouse.move(fillCanvasBox.x + 40, fillCanvasBox.y + 40);
+    await page.mouse.down();
+    await page.mouse.move(fillCanvasBox.x + 240, fillCanvasBox.y + 180, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+    const filledMiddle = await fillPaint.locator(".paint-canvas").evaluate((node) => {
+      const rect = node.getBoundingClientRect();
+      const context = node.getContext("2d");
+      const x = Math.round((140 / rect.width) * node.width);
+      const y = Math.round((110 / rect.height) * node.height);
+      return Array.from(context.getImageData(x, y, 1, 1).data);
+    });
+    assert(
+      filledMiddle[3] > 0 &&
+        !(filledMiddle[0] > 240 && filledMiddle[1] > 240 && filledMiddle[2] > 240),
+      `도형 채우기 left the middle unpainted: ${JSON.stringify(filledMiddle)}`,
+    );
+    await fillPaint.getByRole("button", { name: "그림판 닫기" }).click();
+    await page.waitForTimeout(300);
+    if (await page.locator(".window-dialog").count()) {
+      await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
+      await page.waitForTimeout(200);
+    }
+
     // 스크린샷: PrintScreen pictures the desktop for real — the DOM drawn to a
     // canvas — and saves a PNG into 사진. The pixels must be a picture, not a
     // blank: sampled colours have to vary.
@@ -2979,14 +3109,44 @@ async function runSmoke(baseUrl) {
     const tilesBefore = await tiles.evaluateAll((nodes) =>
       nodes.map((node) => node.textContent),
     );
-    await tiles.nth(2).dragTo(tiles.nth(0));
+    // Near the edge the tile takes that slot, as Windows 11 reorders.
+    const tileBox = await tiles.nth(0).boundingBox();
+    await tiles
+      .nth(2)
+      .dragTo(tiles.nth(0), { targetPosition: { x: 4, y: tileBox.height / 2 } });
     await page.waitForTimeout(300);
     const tilesAfter = await tiles.evaluateAll((nodes) =>
       nodes.map((node) => node.textContent),
     );
     assert(
       tilesAfter[0] === tilesBefore[2] && tilesAfter.length === tilesBefore.length,
-      `Dragging a tile did not move it: ${JSON.stringify(tilesBefore)} → ${JSON.stringify(tilesAfter)}`,
+      `Dragging a tile to an edge did not move it: ${JSON.stringify(tilesBefore)} → ${JSON.stringify(tilesAfter)}`,
+    );
+    // On the middle, the two become a folder — one tile fewer, and it opens.
+    await tiles.nth(1).dragTo(tiles.nth(0), {
+      targetPosition: { x: tileBox.width / 2, y: tileBox.height / 2 },
+    });
+    await page.waitForTimeout(300);
+    assert(
+      (await tiles.count()) === tilesAfter.length - 1 &&
+        (await dragMenu.locator(".start-tile-folder").count()) === 1,
+      `Dropping a tile on another did not make a folder (${await tiles.count()} tiles)`,
+    );
+    await dragMenu.locator(".start-tile-folder").click();
+    const folderFlyout = dragMenu.locator(".start-folder-flyout");
+    await folderFlyout.waitFor({ state: "visible" });
+    assert(
+      (await folderFlyout.locator(".start-folder-apps button").count()) === 2,
+      "The folder did not hold the two tiles that made it",
+    );
+    await folderFlyout.getByRole("button", { name: "폴더 닫기" }).click();
+    await dragMenu.locator(".start-tile-folder").click({ button: "right" });
+    await page.getByRole("menuitem", { name: "그룹 해제" }).click();
+    await page.waitForTimeout(300);
+    assert(
+      (await tiles.count()) === tilesAfter.length &&
+        (await dragMenu.locator(".start-tile-folder").count()) === 0,
+      "그룹 해제 did not put the tiles back",
     );
     await page.keyboard.press("Escape");
     await dragMenu.waitFor({ state: "hidden" });

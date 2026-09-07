@@ -8,6 +8,7 @@ import {
 } from "../vfs/model";
 import { appCatalog } from "./appCatalog";
 import { START_PINNED_APPS_KEY, appSearchKeywords, runCommandAliases } from "./constants";
+import { type StartPinnedEntry, normalizeStartPinned } from "./startPinned";
 import { type AppDefinition, type RunCommandResolution, type StartSearchResult } from "./types";
 
 export function getResultIconTileTone(result: StartSearchResult) {
@@ -169,6 +170,38 @@ const DEFAULT_START_PINS: AppId[] = [
   "paint",
   "settings",
 ];
+
+/**
+ * The pinned area as entries (apps and folders). Reads the v1 list of app ids
+ * as well, so an existing profile keeps its tiles.
+ */
+export function loadStartPinnedEntries(knownAppIds: Set<string>): StartPinnedEntry[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(START_PINNED_APPS_KEY) ?? "null");
+    const normalized = normalizeStartPinned(parsed, (appId) => knownAppIds.has(appId));
+    if (!normalized) return DEFAULT_START_PINS.map((appId) => ({ appId, kind: "app" }));
+    return normalized;
+  } catch {
+    return DEFAULT_START_PINS.map((appId) => ({ appId, kind: "app" }));
+  }
+}
+
+export function persistStartPinnedEntries(entries: StartPinnedEntry[]) {
+  localStorage.setItem(START_PINNED_APPS_KEY, JSON.stringify(entries));
+}
+
+/** The entries that still name an installed app, capped for the grid. */
+export function getStartPinnedTiles(apps: AppDefinition[], entries: StartPinnedEntry[]) {
+  const appMap = new Map(apps.map((app) => [app.id, app]));
+  return entries
+    .map((entry) =>
+      entry.kind === "app"
+        ? { app: appMap.get(entry.appId), entry }
+        : { apps: entry.appIds.map((appId) => appMap.get(appId)).filter(Boolean), entry },
+    )
+    .filter((tile) => ("app" in tile ? Boolean(tile.app) : tile.apps.length > 0))
+    .slice(0, START_PINNED_APP_LIMIT);
+}
 
 export function loadStartPinnedAppIds(): AppId[] {
   try {

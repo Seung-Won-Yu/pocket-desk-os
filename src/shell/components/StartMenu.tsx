@@ -1,18 +1,27 @@
 import AppIconTile from "../../components/AppIconTile";
 import { type AppId, type DesktopItem } from "../../types";
 import { getVfsEntryAssociation } from "../../vfs/model";
-import { reorderById } from "../../utils/reorder";
+import {
+  type StartPinnedEntry,
+  getEntryKey,
+  getPinnedAppIds,
+  groupTiles,
+  removeFromFolder,
+  reorderTiles,
+  ungroupFolder,
+} from "../startPinned";
 import {
   getResultIconTileTone,
-  getStartPinnedApps,
-  loadStartPinnedAppIds,
-  persistStartPinnedAppIds,
+  getStartPinnedTiles,
+  loadStartPinnedEntries,
+  persistStartPinnedEntries,
 } from "../startSearch";
 import { type AppDefinition, type StartSearchResult } from "../types";
 import {
   ChevronLeft,
   ChevronRight,
   FileText,
+  FolderOpen,
   Lock,
   Moon,
   Pin,
@@ -23,7 +32,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { handleMenuKeyboard } from "../keyboardNav";
 import { clampContextMenuPosition } from "../desktopLayout";
@@ -69,26 +78,52 @@ export function StartMenu({
   const [powerMenuOpen, setPowerMenuOpen] = useState(false);
   const [allAppsOpen, setAllAppsOpen] = useState(false);
   const hasQuery = query.trim().length > 0;
-  const [pinnedAppIds, setPinnedAppIds] = useState<AppId[]>(() => loadStartPinnedAppIds());
-  const [tileMenu, setTileMenu] = useState<{ appId: AppId; x: number; y: number } | null>(null);
-  // Windows rearranges pinned tiles by dragging one onto another.
-  const [draggingTileId, setDraggingTileId] = useState<AppId | null>(null);
-  const [tileDropTargetId, setTileDropTargetId] = useState<AppId | null>(null);
-  const pinnedApps = getStartPinnedApps(apps, pinnedAppIds);
+  const knownAppIds = useMemo(() => new Set(apps.map((app) => app.id as string)), [apps]);
+  const [pinnedEntries, setPinnedEntries] = useState<StartPinnedEntry[]>(() =>
+    loadStartPinnedEntries(knownAppIds),
+  );
+  const [tileMenu, setTileMenu] = useState<{
+    appId?: AppId;
+    folderId?: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  /**
+   * Windows 11 reads where a tile is dropped: near an edge it takes that slot,
+   * on the middle it makes a folder with what it landed on.
+   */
+  const [draggingKey, setDraggingKey] = useState<string | null>(null);
+  const [tileDrop, setTileDrop] = useState<{ key: string; mode: "group" | "reorder" } | null>(
+    null,
+  );
+  const [openFolderId, setOpenFolderId] = useState<string | null>(null);
+  const pinnedTiles = getStartPinnedTiles(apps, pinnedEntries);
+  const pinnedAppIds = getPinnedAppIds(pinnedEntries);
 
   // Persisting inside the updater made it impure — StrictMode runs updaters
   // twice, so every pin wrote storage twice. The effect writes once per change.
   useEffect(() => {
-    persistStartPinnedAppIds(pinnedAppIds);
-  }, [pinnedAppIds]);
+    persistStartPinnedEntries(pinnedEntries);
+  }, [pinnedEntries]);
 
-  const setPins = (updater: (current: AppId[]) => AppId[]) => {
-    setPinnedAppIds(updater);
-  };
-
-  const unpinApp = (appId: AppId) => setPins((current) => current.filter((id) => id !== appId));
+  const unpinApp = (appId: AppId) =>
+    setPinnedEntries((current) =>
+      current.flatMap((entry) => {
+        if (entry.kind === "app") return entry.appId === appId ? [] : [entry];
+        return removeFromFolder([entry], entry.id, appId);
+      }),
+    );
   const pinApp = (appId: AppId) =>
-    setPins((current) => (current.includes(appId) ? current : [...current, appId]));
+    setPinnedEntries((current) =>
+      getPinnedAppIds(current).includes(appId) ? current : [...current, { appId, kind: "app" }],
+    );
+
+  /** Which half of the tile the pointer is over: an edge reorders, the middle groups. */
+  const readDropMode = (event: React.DragEvent<HTMLElement>): "group" | "reorder" => {
+    const box = event.currentTarget.getBoundingClientRect();
+    const ratio = box.width > 0 ? (event.clientX - box.left) / box.width : 0.5;
+    return ratio < 0.3 || ratio > 0.7 ? "reorder" : "group";
+  };
   const allApps = [...apps].sort((a, b) => a.title.localeCompare(b.title));
 
   const powerMenuFirstItemRef = useRef<HTMLButtonElement>(null);
@@ -223,64 +258,155 @@ export function StartMenu({
           ) : (
             <>
               <div aria-label="고정된 앱" className="start-pinned-grid" role="group">
-                {pinnedApps.map((app) => (
-                  <button
-                    className={`${draggingTileId === app.id ? "is-dragging" : ""} ${
-                      tileDropTargetId === app.id ? "is-drop-target" : ""
-                    }`}
-                    draggable
-                    key={app.id}
-                    onDragEnd={() => {
-                      setDraggingTileId(null);
-                      setTileDropTargetId(null);
-                    }}
-                    onDragEnter={(event) => {
-                      if (!draggingTileId) return;
+                {pinnedTiles.map((tile) => {
+                  const key = getEntryKey(tile.entry);
+                  const isFolder = tile.entry.kind === "folder";
+                  const label = isFolder
+                    ? (tile.entry as Extract<StartPinnedEntry, { kind: "folder" }>).name
+                    : tile.app!.title;
+                  const dragProps = {
+                    className: `${draggingKey === key ? "is-dragging" : ""} ${
+                      tileDrop?.key === key ? `is-drop-${tileDrop.mode}` : ""
+                    }`,
+                    draggable: true,
+                    onDragEnd: () => {
+                      setDraggingKey(null);
+                      setTileDrop(null);
+                    },
+                    onDragEnter: (event: React.DragEvent<HTMLElement>) => {
+                      if (!draggingKey) return;
                       event.preventDefault();
-                      setTileDropTargetId(app.id);
-                    }}
-                    onDragLeave={(event) => {
+                      setTileDrop({ key, mode: readDropMode(event) });
+                    },
+                    onDragLeave: (event: React.DragEvent<HTMLElement>) => {
                       if (event.currentTarget.contains(event.relatedTarget as Node | null))
                         return;
-                      setTileDropTargetId((current) => (current === app.id ? null : current));
-                    }}
-                    onDragOver={(event) => {
-                      if (!draggingTileId) return;
+                      setTileDrop((current) => (current?.key === key ? null : current));
+                    },
+                    onDragOver: (event: React.DragEvent<HTMLElement>) => {
+                      if (!draggingKey) return;
                       event.preventDefault();
                       event.dataTransfer.dropEffect = "move";
-                    }}
-                    onDragStart={(event) => {
+                      setTileDrop({ key, mode: readDropMode(event) });
+                    },
+                    onDragStart: (event: React.DragEvent<HTMLElement>) => {
                       event.dataTransfer.effectAllowed = "move";
-                      event.dataTransfer.setData("text/plain", app.id);
-                      setDraggingTileId(app.id);
-                    }}
-                    onDrop={(event) => {
-                      const movedId = (draggingTileId ??
-                        event.dataTransfer.getData("text/plain")) as AppId;
-                      setDraggingTileId(null);
-                      setTileDropTargetId(null);
-                      if (!movedId || movedId === app.id) return;
+                      event.dataTransfer.setData("text/plain", key);
+                      setDraggingKey(key);
+                    },
+                    onDrop: (event: React.DragEvent<HTMLElement>) => {
+                      const movedKey = draggingKey ?? event.dataTransfer.getData("text/plain");
+                      const mode = tileDrop?.key === key ? tileDrop.mode : readDropMode(event);
+                      setDraggingKey(null);
+                      setTileDrop(null);
+                      if (!movedKey || movedKey === key) return;
                       event.preventDefault();
-                      setPinnedAppIds((current) => reorderById(current, movedId, app.id));
-                    }}
-                    onClick={() => onOpenApp(app.id)}
-                    onContextMenu={(event) => {
-                      // Windows unpins a tile from its own right-click menu;
-                      // these tiles had no menu at all.
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setTileMenu({ appId: app.id, x: event.clientX, y: event.clientY });
-                    }}
-                    type="button"
-                  >
-                    <AppIconTile accent={app.accent} icon={app.icon} size="medium" />
-                    <strong>{app.title}</strong>
-                  </button>
-                ))}
-                {pinnedApps.length === 0 && (
+                      setPinnedEntries((current) =>
+                        mode === "group"
+                          ? groupTiles(current, movedKey, key)
+                          : reorderTiles(current, movedKey, key),
+                      );
+                    },
+                  };
+                  if (isFolder) {
+                    const folder = tile.entry as Extract<StartPinnedEntry, { kind: "folder" }>;
+                    return (
+                      <button
+                        {...dragProps}
+                        className={`start-tile-folder ${dragProps.className}`}
+                        key={key}
+                        onClick={() => setOpenFolderId(folder.id)}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setTileMenu({
+                            folderId: folder.id,
+                            x: event.clientX,
+                            y: event.clientY,
+                          });
+                        }}
+                        type="button"
+                      >
+                        <span aria-hidden="true" className="start-folder-preview">
+                          {(tile.apps ?? []).slice(0, 4).map((app) => (
+                            <AppIconTile
+                              accent={app!.accent}
+                              icon={app!.icon}
+                              key={app!.id}
+                              size="tiny"
+                            />
+                          ))}
+                        </span>
+                        <strong>{label}</strong>
+                      </button>
+                    );
+                  }
+                  const app = tile.app!;
+                  return (
+                    <button
+                      {...dragProps}
+                      key={key}
+                      onClick={() => onOpenApp(app.id)}
+                      onContextMenu={(event) => {
+                        // Windows unpins a tile from its own right-click menu;
+                        // these tiles had no menu at all.
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setTileMenu({ appId: app.id, x: event.clientX, y: event.clientY });
+                      }}
+                      type="button"
+                    >
+                      <AppIconTile accent={app.accent} icon={app.icon} size="medium" />
+                      <strong>{app.title}</strong>
+                    </button>
+                  );
+                })}
+                {pinnedTiles.length === 0 && (
                   <p className="start-empty-compact">고정된 앱이 없습니다.</p>
                 )}
               </div>
+              {openFolderId && (
+                <div aria-label="폴더" className="start-folder-flyout" role="group">
+                  <header>
+                    <strong>
+                      {pinnedEntries.find(
+                        (entry) => entry.kind === "folder" && entry.id === openFolderId,
+                      )?.kind === "folder"
+                        ? (
+                            pinnedEntries.find(
+                              (entry) => entry.kind === "folder" && entry.id === openFolderId,
+                            ) as Extract<StartPinnedEntry, { kind: "folder" }>
+                          ).name
+                        : "폴더"}
+                    </strong>
+                    <button
+                      aria-label="폴더 닫기"
+                      onClick={() => setOpenFolderId(null)}
+                      type="button"
+                    >
+                      <X aria-hidden="true" size={14} />
+                    </button>
+                  </header>
+                  <div className="start-folder-apps">
+                    {(
+                      pinnedTiles.find((tile) => getEntryKey(tile.entry) === openFolderId)
+                        ?.apps ?? []
+                    ).map((app) => (
+                      <button
+                        key={app!.id}
+                        onClick={() => {
+                          setOpenFolderId(null);
+                          onOpenApp(app!.id);
+                        }}
+                        type="button"
+                      >
+                        <AppIconTile accent={app!.accent} icon={app!.icon} size="medium" />
+                        <strong>{app!.title}</strong>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <section className="start-recommended">
                 <div className="start-section-title start-subsection-title">
                   <strong>추천</strong>
@@ -426,25 +552,42 @@ export function StartMenu({
               return { left: clamped.x, top: clamped.y };
             })()}
           >
-            <button
-              autoFocus
-              onClick={() => {
-                if (pinnedAppIds.includes(tileMenu.appId)) unpinApp(tileMenu.appId);
-                else pinApp(tileMenu.appId);
-                setTileMenu(null);
-              }}
-              role="menuitem"
-              type="button"
-            >
-              {pinnedAppIds.includes(tileMenu.appId) ? (
-                <PinOff aria-hidden="true" size={15} />
-              ) : (
-                <Pin aria-hidden="true" size={15} />
-              )}
-              {pinnedAppIds.includes(tileMenu.appId)
-                ? "시작 화면에서 제거"
-                : "시작 화면에 고정"}
-            </button>
+            {tileMenu.folderId ? (
+              <button
+                autoFocus
+                onClick={() => {
+                  setPinnedEntries((current) => ungroupFolder(current, tileMenu.folderId!));
+                  setOpenFolderId(null);
+                  setTileMenu(null);
+                }}
+                role="menuitem"
+                type="button"
+              >
+                <FolderOpen aria-hidden="true" size={15} />
+                그룹 해제
+              </button>
+            ) : (
+              <button
+                autoFocus
+                onClick={() => {
+                  const appId = tileMenu.appId!;
+                  if (pinnedAppIds.includes(appId)) unpinApp(appId);
+                  else pinApp(appId);
+                  setTileMenu(null);
+                }}
+                role="menuitem"
+                type="button"
+              >
+                {pinnedAppIds.includes(tileMenu.appId!) ? (
+                  <PinOff aria-hidden="true" size={15} />
+                ) : (
+                  <Pin aria-hidden="true" size={15} />
+                )}
+                {pinnedAppIds.includes(tileMenu.appId!)
+                  ? "시작 화면에서 제거"
+                  : "시작 화면에 고정"}
+              </button>
+            )}
           </div>,
           document.body,
         )}

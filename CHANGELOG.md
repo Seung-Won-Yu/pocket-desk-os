@@ -37,6 +37,12 @@ All notable changes to PocketDesk OS are documented here.
 - **폴더 우클릭: 새 창에서 열기.** Opens a second Explorer already showing that folder.
 - **폴더 우클릭: 여기서 명령 프롬프트 열기.** 명령 프롬프트 starts in that folder — its prompt reads `…\\Desktop\\문서` from the first line — and a later request moves the open prompt there.
 
+- **탐색기 진짜 탭.** Each tab keeps its own folder and its own back/forward history, as Windows 11 does; 새 탭 adds one at the folder on screen, a tab can be closed, and the window that held one label now holds a strip. 새 창 is its own button beside it.
+- **시작 메뉴 타일 폴더.** Dropping a tile on the middle of another makes a folder — Windows 11 reads where the drop lands, so an edge still reorders. The folder tile shows the icons it holds, clicking it opens a flyout of its apps, and 그룹 해제 spills them back where the folder stood. The pinned area is stored as entries now and reads the old plain list of app ids.
+- **설정 → 키보드 단축키.** Every key the shell listens for, grouped, from one list shared with the shell so the page cannot drift from what actually works.
+- **그림판 도형 채우기.** 사각형 and 타원 can be solid, not only outlines.
+- **작업 관리자의 메모리는 이제 재는 값.** A process's memory was a hash of its window id: a Notepad window holding a novel read the same as an empty one. It is now a declared per-app baseline plus the measured bytes of the document that window has open.
+
 ### Fixed
 
 - **The runtime-audit gate survives a registry outage without going blind.** `npm audit --omit=dev --audit-level=high` calls an endpoint npm is retiring; it answered 503, then 400, then 500, then an HTML error page, and CI failed on all of them. The gate now reads `npm audit --json` and tells the two cases apart: a high or critical advisory fails the build, and a transport failure is reported as skipped, in as many words, rather than passing quietly.

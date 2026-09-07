@@ -179,6 +179,9 @@ export default function PaintApp({
   const [tool, setTool] = useState<PaintTool>("brush");
   const [color, setColor] = useState("#0f6c81");
   const [size, setSize] = useState(5);
+  // Windows' Paint fills a shape with the second colour; here one switch says
+  // whether 사각형/타원 are outlines or solids.
+  const [fillShapes, setFillShapes] = useState(false);
   const [saved, setSaved] = useState(false);
   const [ribbonTab, setRibbonTab] = useState<"home" | "view">("home");
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
@@ -366,6 +369,10 @@ export default function PaintApp({
       context.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
     }
 
+    if (fillShapes && (tool === "rect" || tool === "ellipse")) {
+      context.fillStyle = color;
+      context.fill();
+    }
     context.stroke();
   };
 
@@ -750,6 +757,14 @@ export default function PaintApp({
                 />
               </label>
               <small>크기</small>
+              <label className="paint-fill-toggle">
+                <input
+                  checked={fillShapes}
+                  onChange={(event) => setFillShapes(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>도형 채우기</span>
+              </label>
             </div>
             <div className="paint-ribbon-group paint-color-group">
               <div>

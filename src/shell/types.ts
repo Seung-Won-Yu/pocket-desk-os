@@ -187,6 +187,8 @@ export type AppContentProps = {
    * first image indefinitely.
    */
   reportDocument: (windowId: string, ref: WindowDocumentRef | undefined) => void;
+  /** Bytes of the document a window has open; Task Manager counts them. */
+  getWindowDocumentBytes: (windowId: string) => number;
   /** The shell's append-only event log; see src/shell/eventLog.ts. */
   shellEvents: ShellLogEvent[];
   createVfsFolder: (parentId?: string, name?: string) => DesktopItem;

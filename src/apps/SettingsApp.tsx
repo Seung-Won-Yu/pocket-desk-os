@@ -1,5 +1,6 @@
 import {
   Clock3,
+  Keyboard,
   LayoutGrid,
   Monitor,
   Palette,
@@ -13,6 +14,7 @@ import { appMetadata } from "./metadata";
 import { DEFAULT_APP_CHOICES, type DefaultAppMap } from "../shell/preferences";
 import type { AppId, SoundEffectName, ThemeName, WallpaperName } from "../types";
 import { normalizeSearchText } from "../utils/format";
+import { SHELL_SHORTCUTS } from "../shell/shortcuts";
 import { getWallpaperPreviewStyle, wallpaperGallery } from "../wallpapers";
 
 type SettingsAppProps = {
@@ -55,7 +57,7 @@ export default function SettingsApp({
   wallpaper,
 }: SettingsAppProps) {
   const [section, setSection] = useState<
-    "accounts" | "apps" | "personalization" | "sound" | "system" | "time"
+    "accounts" | "apps" | "keyboard" | "personalization" | "sound" | "system" | "time"
   >("personalization");
   const [nameDraft, setNameDraft] = useState(userName);
   const [settingsQuery, setSettingsQuery] = useState("");
@@ -99,6 +101,13 @@ export default function SettingsApp({
       label: "계정",
       keywords: "사용자 이름 로컬",
       aliases: "account user name",
+    },
+    {
+      id: "keyboard" as const,
+      icon: Keyboard,
+      label: "키보드 단축키",
+      keywords: "단축키 바로 가기 키",
+      aliases: "keyboard shortcuts keys hotkey",
     },
     {
       id: "time" as const,
@@ -360,6 +369,36 @@ export default function SettingsApp({
           </section>
         )}
 
+        {section === "keyboard" && (
+          <section className="settings-section">
+            <h3>키보드 단축키</h3>
+            {/* One list with App.tsx: 설정 shows what the shell listens for,
+                not a hand-copied menu that drifts from it. */}
+            <p>PocketDesk가 실제로 처리하는 키입니다.</p>
+            <div className="shortcut-groups">
+              {SHELL_SHORTCUTS.map((group) => (
+                <section aria-label={group.title} key={group.title}>
+                  <h4>{group.title}</h4>
+                  <dl>
+                    {group.items.map((item) => (
+                      <div key={item.keys}>
+                        <dt>{item.action}</dt>
+                        <dd>
+                          {item.keys.split(" + ").map((key, index) => (
+                            <span key={key}>
+                              {index > 0 && <em aria-hidden="true">+</em>}
+                              <kbd>{key}</kbd>
+                            </span>
+                          ))}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              ))}
+            </div>
+          </section>
+        )}
         {section === "time" && (
           <section className="settings-section">
             <h3>날짜 및 시간 형식</h3>

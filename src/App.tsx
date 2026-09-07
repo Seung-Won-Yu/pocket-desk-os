@@ -170,7 +170,7 @@ import {
   persistRecentOpens,
   recordRecentOpen,
 } from "./shell/jumpList";
-import { clamp } from "./utils/format";
+import { clamp, getVfsEntrySize } from "./utils/format";
 import { reorderById } from "./utils/reorder";
 import {
   type AppId,
@@ -3261,6 +3261,17 @@ export default function App() {
    * 메모장`. The same string is what Alt+Tab and the taskbar preview show, so it
    * is resolved once here and handed to all three.
    */
+  /**
+   * Bytes of the document a window has open — what Task Manager counts as the
+   * part of a process's memory that can actually be known.
+   */
+  const getWindowDocumentBytes = (windowId: string) => {
+    const itemId = reportedDocuments[windowId]?.itemId;
+    if (!itemId) return 0;
+    const item = activeDesktopItems.find((entry) => entry.id === itemId);
+    return item ? getVfsEntrySize(item) : 0;
+  };
+
   const getWindowDocumentLabel = (windowId: string, appId: AppId) => {
     // What the window says it is showing wins; the ids below are only the
     // shell's opening guess, and an app that navigates on its own leaves them
@@ -4104,6 +4115,7 @@ export default function App() {
       noteEntries,
       openWindows,
       registerCloseGuard,
+      getWindowDocumentBytes,
       reportDocument,
       setClock24h,
       setUserName,
@@ -4139,6 +4151,7 @@ export default function App() {
       noteEntries,
       openWindows,
       registerCloseGuard,
+      getWindowDocumentBytes,
       reportDocument,
       shellEventLog,
       soundEnabled,

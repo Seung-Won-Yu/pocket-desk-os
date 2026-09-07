@@ -1,11 +1,14 @@
 import { Activity, ChevronUp, Cpu, HardDrive, MemoryStick, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getNextRovingIndex } from "../shell/keyboardNav";
+import { estimateProcessMemoryMb } from "../shell/processMemory";
 import { appMetadata } from "./metadata";
 import type { OpenWindowInfo, SoundEffectName } from "../types";
 import { formatStorageSize } from "../utils/format";
 
 type TaskManagerAppProps = {
+  /** Bytes of the document a window has open; the memory figure counts them. */
+  getWindowDocumentBytes: (windowId: string) => number;
   closeWindow: (windowId: string) => void;
   focusWindow: (windowId: string) => void;
   openWindows: OpenWindowInfo[];
@@ -36,7 +39,8 @@ function getWindowLoad(windowId: string, maximized: boolean, minimized: boolean,
     hash = (hash * 31 + windowId.charCodeAt(index)) % 100000;
   }
   const base = hash % 100;
-  const memoryMb = 24 + (base % 96) + (maximized ? 48 : 0);
+  // Memory is measured, not hashed; see the rows below.
+  const memoryMb = 0;
   const wobble = ((base + tick * 13) % 21) / 10;
   const cpu = minimized
     ? 0
@@ -91,6 +95,7 @@ function Sparkline({
 
 export default function TaskManagerApp({
   closeWindow,
+  getWindowDocumentBytes,
   focusWindow,
   openWindows,
   playSound,
@@ -115,6 +120,11 @@ export default function TaskManagerApp({
         .map((item) => ({
           ...item,
           ...getWindowLoad(item.id, item.maximized, item.minimized, sampleTick),
+          memoryMb: estimateProcessMemoryMb(
+            item.appId,
+            getWindowDocumentBytes(item.id),
+            item.maximized,
+          ),
         }))
         .sort((first, second) => {
           const direction = sortDirection === "asc" ? 1 : -1;
@@ -127,7 +137,7 @@ export default function TaskManagerApp({
             (first.cpu - second.cpu) * direction || first.title.localeCompare(second.title)
           );
         }),
-    [openWindows, sampleTick, sortDirection, sortKey],
+    [getWindowDocumentBytes, openWindows, sampleTick, sortDirection, sortKey],
   );
 
   // The grid is a single tab stop: arrows move the active row, Enter focuses the

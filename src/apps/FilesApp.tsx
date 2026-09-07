@@ -29,6 +29,7 @@ import {
   RefreshCw,
   Scissors,
   Search,
+  SquarePlus,
   SquareTerminal,
   Trash2,
   Upload,
@@ -174,6 +175,13 @@ export function getTextPreview(content: string) {
   return lines.length > TEXT_PREVIEW_LINES ? `${shown}\n…` : shown;
 }
 
+/** One Explorer tab: where it is, and how it got there. */
+export type FileTab = { history: string[]; id: string; index: number };
+
+export function createFileTab(folderId: string): FileTab {
+  return { history: [folderId], id: crypto.randomUUID(), index: 0 };
+}
+
 export default function FilesApp({
   reportDocument,
   clipboard,
@@ -212,8 +220,35 @@ export default function FilesApp({
   const selectionAnchorRef = useRef<string | null>(null);
   const typeAheadRef = useRef({ at: 0, query: "" });
   const sortControlRef = useRef<HTMLDivElement | null>(null);
-  const [navigationHistory, setNavigationHistory] = useState([VFS_ROOT_ID]);
-  const [navigationIndex, setNavigationIndex] = useState(0);
+  /**
+   * Explorer's tabs. Each keeps its own place and its own back/forward history,
+   * the way Windows 11 does; the strip was one label that could not be added to.
+   */
+  const [tabs, setTabs] = useState<FileTab[]>(() => [createFileTab(VFS_ROOT_ID)]);
+  const [activeTabId, setActiveTabId] = useState(() => tabs[0].id);
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
+  const navigationHistory = activeTab.history;
+  const navigationIndex = activeTab.index;
+  // The rest of the app moves through history without knowing about tabs; these
+  // two write into whichever tab is on top.
+  const setNavigationHistory = (update: string[] | ((current: string[]) => string[])) => {
+    setTabs((current) =>
+      current.map((tab) =>
+        tab.id === activeTabId
+          ? { ...tab, history: typeof update === "function" ? update(tab.history) : update }
+          : tab,
+      ),
+    );
+  };
+  const setNavigationIndex = (update: number | ((current: number) => number)) => {
+    setTabs((current) =>
+      current.map((tab) =>
+        tab.id === activeTabId
+          ? { ...tab, index: typeof update === "function" ? update(tab.index) : update }
+          : tab,
+      ),
+    );
+  };
   const [sortKey, setSortKey] = useState<FileSortKey>(() => {
     const stored = localStorage.getItem(FILE_EXPLORER_SORT_KEY);
     return stored === "type" || stored === "modified" ? stored : "name";
@@ -500,6 +535,26 @@ export default function FilesApp({
     setFileContextMenu(null);
     setPropertiesFileId(null);
     selectionAnchorRef.current = null;
+  };
+
+  const addTab = (folderId: string) => {
+    const tab = createFileTab(folderId);
+    setTabs((current) => [...current, tab]);
+    setActiveTabId(tab.id);
+  };
+
+  /** Closing the tab on top hands the window to its neighbour, as Windows does. */
+  const closeTab = (tabId: string) => {
+    setTabs((current) => {
+      if (current.length <= 1) return current;
+      const index = current.findIndex((tab) => tab.id === tabId);
+      if (index === -1) return current;
+      const next = current.filter((tab) => tab.id !== tabId);
+      if (tabId === activeTabId) {
+        setActiveTabId((next[index] ?? next[next.length - 1]).id);
+      }
+      return next;
+    });
   };
 
   const navigateToFolder = (folderId: string) => {
@@ -1101,11 +1156,47 @@ export default function FilesApp({
         ))}
       </aside>
       <section className="file-main-pane">
-        <div className="file-tab-strip">
-          <div className="file-tab">
-            <Folder aria-hidden="true" size={15} />
-            <span>{locationLabel}</span>
-          </div>
+        <div aria-label="탐색기 탭" className="file-tab-strip" role="tablist">
+          {tabs.map((tab) => {
+            const tabFolderId = tab.history[tab.index] ?? VFS_ROOT_ID;
+            const tabName =
+              getVfsFolderPath(desktopItems, tabFolderId).slice(-1)[0]?.name ?? "바탕 화면";
+            return (
+              <div
+                className={`file-tab${tab.id === activeTabId ? " is-active" : ""}`}
+                key={tab.id}
+              >
+                <button
+                  aria-selected={tab.id === activeTabId}
+                  onClick={() => setActiveTabId(tab.id)}
+                  role="tab"
+                  type="button"
+                >
+                  <Folder aria-hidden="true" size={15} />
+                  <span>{tabName}</span>
+                </button>
+                {tabs.length > 1 && (
+                  <button
+                    aria-label={`${tabName} 탭 닫기`}
+                    className="file-tab-close"
+                    onClick={() => closeTab(tab.id)}
+                    type="button"
+                  >
+                    <X aria-hidden="true" size={12} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          <button
+            aria-label="새 탭"
+            className="file-new-tab-button"
+            onClick={() => addTab(currentFolderId)}
+            title="새 탭"
+            type="button"
+          >
+            <Plus aria-hidden="true" size={16} />
+          </button>
           <button
             aria-label="새 파일 탐색기 창"
             className="file-new-window-button"
@@ -1113,7 +1204,7 @@ export default function FilesApp({
             title="새 창"
             type="button"
           >
-            <Plus aria-hidden="true" size={16} />
+            <SquarePlus aria-hidden="true" size={16} />
           </button>
         </div>
         <div className="file-explorer-top">

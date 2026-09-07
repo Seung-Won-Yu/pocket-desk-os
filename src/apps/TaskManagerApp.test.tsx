@@ -7,6 +7,7 @@ import type { OpenWindowInfo } from "../types";
 
 type Handlers = {
   closeWindow: ReturnType<typeof vi.fn>;
+  getWindowDocumentBytes: ReturnType<typeof vi.fn>;
   focusWindow: ReturnType<typeof vi.fn>;
   playSound: ReturnType<typeof vi.fn>;
 };
@@ -25,6 +26,7 @@ function makeWindowInfo(overrides: Partial<OpenWindowInfo> & Pick<OpenWindowInfo
 function renderTaskManager(openWindows: OpenWindowInfo[]) {
   const handlers: Handlers = {
     closeWindow: vi.fn(),
+    getWindowDocumentBytes: vi.fn(() => 0),
     focusWindow: vi.fn(),
     playSound: vi.fn(),
   };
@@ -32,6 +34,7 @@ function renderTaskManager(openWindows: OpenWindowInfo[]) {
     <TaskManagerApp
       closeWindow={handlers.closeWindow}
       focusWindow={handlers.focusWindow}
+      getWindowDocumentBytes={handlers.getWindowDocumentBytes}
       openWindows={openWindows}
       playSound={handlers.playSound}
     />,
