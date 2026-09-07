@@ -33,23 +33,13 @@ const appLoaders: Record<AppId, AppLoader> = {
   thispc: () => import("../apps/ThisPcApp"),
 };
 
-/**
- * A fresh `lazy` for one app. React.lazy memoizes a rejected import forever,
- * so retrying a failed chunk needs a new instance — the same reason the
- * reader view builds one per attempt.
- */
-export function createAppComponent(appId: AppId): AppDefinition["component"] {
-  return lazy(appLoaders[appId]);
-}
-
-export const appComponents: Record<AppId, AppDefinition["component"]> = Object.fromEntries(
-  appOrder.map((appId) => [appId, createAppComponent(appId)]),
-) as Record<AppId, AppDefinition["component"]>;
+export const appComponents = Object.fromEntries(
+  appOrder.map((appId) => [appId, lazy(appLoaders[appId])]),
+) as unknown as Record<AppId, AppDefinition["component"]>;
 
 export const appCatalog: AppDefinition[] = appOrder.map((appId) => ({
   ...appMetadata[appId],
   component: appComponents[appId],
-  reload: () => createAppComponent(appId),
 }));
 
 export const appsById = new Map(appCatalog.map((app) => [app.id, app]));

@@ -2,6 +2,16 @@
 
 All notable changes to PocketDesk OS are documented here.
 
+## 0.15.1
+
+0.15.0 confined a failed app chunk to its own window and offered 다시 시도
+there. Measured against the deployed build, that button could not work.
+
+### Fixed
+
+- **다시 시도 on a failed chunk issued no request at all.** A retry was built on a fresh `React.lazy` per attempt — necessary, but not sufficient: the browser remembers a failed module for the life of the document, so re-importing the same URL resolves from that memory without touching the network (measured on the deployed build: 1 request before the retry, 1 after, and the window stayed in its error state). The reader view had carried the same button since 0.12 with the same flaw. Both offer **새로 고침** now and say why — which is a real recovery, since windows, files and settings are restored on load. The unused retry machinery is gone with it.
+- Verified with that one chunk blocked on the deployed build: no crash screen, the other window kept its typed text, both windows still open, and the failed window names the app it could not load.
+
 ## 0.15.0
 
 The round where the shell was measured instead of described. An accessibility
@@ -37,7 +47,7 @@ is fixed too.
 
 ### Fixed
 
-- **One app failing to download took the whole desktop.** Suspense handles waiting, not failure: a rejected chunk import threw past it to the shell's root boundary, which unmounts everything — every other window's state gone because one app could not be fetched (a blocked request, or a stale tab asking for a hash a redeploy had replaced). And `React.lazy` remembers a rejected import forever, so that app could not be opened again for the life of the tab. Each window now has its own boundary: the window stays a window, says which app it could not load, and 다시 시도 builds a fresh loader. The reader view already worked this way; the app split had missed it.
+- **One app failing to download took the whole desktop.** Suspense handles waiting, not failure: a rejected chunk import threw past it to the shell's root boundary, which unmounts everything — every other window's state gone because one app could not be fetched (a blocked request, or a stale tab asking for a hash a redeploy had replaced). Each window has its own boundary now: it stays a window, keeps its title, and says which app it could not load, while every other window carries on.
 - **The tab strip was more than one tab stop.** Making each tab a roving stop left every tab's ✕ tabbable, so five tabs were six stops and tabbing through Explorer walked all of them. Only the tab holding the stop lends it to its own ✕ now — and the accessibility gate has a rule for it, so the next strip cannot get this wrong quietly.
 - **A strip of one tab swallowed Left and Right.** With one tab there is nowhere to go, but the handler still called `preventDefault` and re-selected the tab it was on, taking the arrow keys from a single-tab Explorer, 메모장 or Edge.
 - **A note could still be lost without a word.** The 20,000-character cap bounds one paste, not the whole origin's quota, and a refused write was swallowed: the user kept typing and the note was back to its last saved state after a reload. A refused write is reported now, once, the way a refused file write already was. The debounce also flushes on unmount — a crash elsewhere took the timer and the pagehide listener with it.

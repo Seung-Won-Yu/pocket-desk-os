@@ -1,12 +1,4 @@
-import {
-  Component,
-  Suspense,
-  memo,
-  useCallback,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { Component, Suspense, memo, type ReactNode } from "react";
 import { WindowFrame } from "./WindowFrame";
 import {
   type AppContentProps,
@@ -117,14 +109,28 @@ class AppChunkBoundary extends Component<
   }
 }
 
-/** What the window shows instead of its app when the app never arrived. */
-function AppChunkError({ onRetry, title }: { onRetry: () => void; title: string }) {
+/**
+ * What the window shows instead of its app when the app never arrived.
+ *
+ * The button refreshes the page rather than retrying the import, because a
+ * retry provably cannot work: measured against the deployed build, a second
+ * import of a chunk that failed once issues no request at all — the browser
+ * remembers the failed module for the life of the document. A fresh
+ * `React.lazy` is necessary and not sufficient. Windows, files and settings
+ * are restored on load, so the refresh is a real recovery, and the window
+ * says which app it is about rather than replacing the desktop with a crash
+ * screen.
+ */
+function AppChunkError({ title }: { title: string }) {
   return (
     <div className="app-fill app-chunk-error" role="alert">
       <strong>{title}을 불러오지 못했습니다.</strong>
-      <p>연결을 확인하고 다시 시도하세요. 다른 창은 그대로 열려 있습니다.</p>
-      <button className="is-primary" onClick={onRetry} type="button">
-        다시 시도
+      <p>
+        브라우저가 실패한 모듈을 이 탭에 기억하므로, 새로 고침해야 다시 불러올 수 있습니다. 다른
+        창은 그대로 열려 있고, 파일과 설정은 유지됩니다.
+      </p>
+      <button className="is-primary" onClick={() => window.location.reload()} type="button">
+        새로 고침
       </button>
     </div>
   );
@@ -136,31 +142,20 @@ function AppChunkError({ onRetry, title }: { onRetry: () => void; title: string 
  * inside this window as a message with a 다시 시도 button.
  */
 export const AppWindow = memo(function AppWindow(props: WindowSlotProps) {
-  const [attempt, setAttempt] = useState(0);
-  const retry = useCallback(() => setAttempt((current) => current + 1), []);
   const { app } = props;
-  // Identity matters: WindowSlot is memoized on this object.
-  const attemptApp = useMemo<AppDefinition>(
-    () => (attempt === 0 ? app : { ...app, component: app.reload?.() ?? app.component }),
-    [app, attempt],
-  );
   return (
     <AppChunkBoundary
-      // A failed boundary cannot un-fail itself; the retry remounts it.
-      key={attempt}
       renderFailure={() => (
         <WindowSlot
           {...props}
-          app={{
-            ...app,
-            component: () => <AppChunkError onRetry={retry} title={app.title} />,
-          }}
+          // Only built on failure, so a new object here costs nothing.
+          app={{ ...app, component: () => <AppChunkError title={app.title} /> }}
         />
       )}
       title={app.title}
     >
       <Suspense fallback={null}>
-        <WindowSlot {...props} app={attemptApp} />
+        <WindowSlot {...props} />
       </Suspense>
     </AppChunkBoundary>
   );

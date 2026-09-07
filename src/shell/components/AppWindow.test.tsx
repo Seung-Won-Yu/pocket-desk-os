@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { cleanup, render, screen } from "@testing-library/react";
 import { StickyNote } from "lucide-react";
 import { lazy, type ComponentType } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -28,17 +27,12 @@ function makeInstance(id: string, overrides: Partial<WindowInstance> = {}): Wind
   };
 }
 
-function makeApp(
-  title: string,
-  component: ComponentType<AppContentProps>,
-  reload?: () => ComponentType<AppContentProps>,
-): AppDefinition {
+function makeApp(title: string, component: ComponentType<AppContentProps>): AppDefinition {
   return {
     accent: "#e8c447",
     component,
     icon: StickyNote,
     id: "notepad",
-    reload,
     subtitle: "",
     title,
   } as unknown as AppDefinition;
@@ -90,18 +84,15 @@ describe("AppWindow", () => {
     expect(document.querySelector(".window-frame")).not.toBeNull();
   });
 
-  it("keeps a failed chunk inside its own window and retries with a fresh one", async () => {
+  it("keeps a failed chunk inside its own window, and offers the only recovery there is", async () => {
     // React logs a caught error; the boundary's own line is the interesting one.
     const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    let attempt = 0;
-    const reload = () => {
-      attempt += 1;
-      return attempt === 1
-        ? lazy(() => Promise.reject(new Error("chunk gone")))
-        : lazy(() => Promise.resolve({ default: () => <p>돌아왔다</p> }));
-    };
-    const failing = lazy(() => Promise.reject(new Error("chunk gone")));
-    renderWindow(makeApp("메모장", failing, reload));
+    renderWindow(
+      makeApp(
+        "메모장",
+        lazy(() => Promise.reject(new Error("chunk gone"))),
+      ),
+    );
 
     // The window is still a window, titled, with the failure inside it.
     const alert = await screen.findByRole("alert");
@@ -109,12 +100,15 @@ describe("AppWindow", () => {
     expect(document.querySelector(".window-frame")).not.toBeNull();
     expect(logged).toHaveBeenCalled();
 
-    // React.lazy remembers a rejected import forever, so the retry has to be a
-    // new instance — the point of AppDefinition.reload.
-    await userEvent.click(screen.getByRole("button", { name: "다시 시도" }));
-    await waitFor(() => expect(screen.getByRole("alert")).toBeVisible());
-    await userEvent.click(screen.getByRole("button", { name: "다시 시도" }));
-    expect(await screen.findByText("돌아왔다")).toBeVisible();
+    /*
+     * A refresh, not a retry: measured against the deployed build, a second
+     * import of a chunk that failed once issues no request at all — the
+     * browser remembers the failed module for the life of the document. A
+     * button that re-imported would have done nothing at all.
+     */
+    expect(screen.getByRole("button", { name: "새로 고침" })).toBeVisible();
+    expect(alert).toHaveTextContent("새로 고침해야");
+    expect(screen.queryByRole("button", { name: "다시 시도" })).toBeNull();
   });
 
   it("one window's failure leaves the others alone", async () => {

@@ -35,9 +35,7 @@ import type { Components } from "react-markdown";
 
 // Split on purpose — see BrowserReaderMarkdown.tsx. The chunk is precached by
 // the service worker from the build's asset list, so it loads offline too.
-// A factory rather than one shared lazy(): React.lazy memoizes a failed
-// import forever, so a retry needs a fresh instance.
-const loadBrowserReaderMarkdown = () => lazy(() => import("./BrowserReaderMarkdown"));
+const BrowserReaderMarkdown = lazy(() => import("./BrowserReaderMarkdown"));
 
 /**
  * Confines a chunk-load failure to the reader view. Without this boundary the
@@ -46,10 +44,7 @@ const loadBrowserReaderMarkdown = () => lazy(() => import("./BrowserReaderMarkdo
  * to download (a blocked request, or a stale tab requesting a hash that a
  * redeploy has since replaced).
  */
-class ReaderChunkBoundary extends Component<
-  { children: ReactNode; onRetry: () => void },
-  { failed: boolean }
-> {
+class ReaderChunkBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
 
   static getDerivedStateFromError() {
@@ -58,11 +53,17 @@ class ReaderChunkBoundary extends Component<
 
   render() {
     if (!this.state.failed) return this.props.children;
+    /*
+     * A refresh, not a retry. Re-importing a chunk that failed once issues no
+     * request at all — the browser remembers the failed module for the life of
+     * the document — so the button that used to say 다시 시도 did nothing, and
+     * a fresh `React.lazy` per attempt was necessary but not sufficient.
+     */
     return (
       <p className="browser-reader-loading" role="alert">
-        읽기 보기 구성 요소를 불러오지 못했습니다.{" "}
-        <button className="is-primary" onClick={this.props.onRetry} type="button">
-          다시 시도
+        읽기 보기 구성 요소를 불러오지 못했습니다. 새로 고침해야 다시 불러올 수 있습니다.{" "}
+        <button className="is-primary" onClick={() => window.location.reload()} type="button">
+          새로 고침
         </button>
       </p>
     );
@@ -1061,9 +1062,6 @@ function BrowserReader({
   const [document, setDocument] = useState<BrowserReaderDocument | null>(null);
   const [error, setError] = useState("");
   const [retryKey, setRetryKey] = useState(0);
-  const [chunkAttempt, setChunkAttempt] = useState(0);
-  // A new lazy instance per attempt; see loadBrowserReaderMarkdown.
-  const BrowserReaderMarkdown = useMemo(() => loadBrowserReaderMarkdown(), [chunkAttempt]);
 
   useEffect(() => {
     onDocument(document);
@@ -1192,10 +1190,7 @@ function BrowserReader({
         </p>
       )}
       <article>
-        <ReaderChunkBoundary
-          key={chunkAttempt}
-          onRetry={() => setChunkAttempt((current) => current + 1)}
-        >
+        <ReaderChunkBoundary>
           <Suspense
             fallback={<p className="browser-reader-loading">읽기 보기를 준비하는 중…</p>}
           >
