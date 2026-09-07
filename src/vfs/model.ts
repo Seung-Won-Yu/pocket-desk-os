@@ -241,6 +241,11 @@ export function getVfsEntryAssociation(item: DesktopItem): VfsEntryAssociation {
     return createVfsEntryAssociation("browser", extension, "인터넷 바로 가기");
   }
 
+  // Explorer is what opens an archive — 압축 풀기, the way Windows does.
+  if (extension === "zip") {
+    return createVfsEntryAssociation("files", extension, "압축(ZIP) 폴더");
+  }
+
   if (extension === "game") {
     return createVfsEntryAssociation(item.appId ?? "minesweeper", extension, "게임 파일");
   }

@@ -10698,6 +10698,65 @@ button {
   margin-top: 4px;
 }
 
+/* 빠른 액세스: a pinned folder is a row plus its own ✕, the way the taskbar's
+   notifications carry one. */
+.file-sidebar-title {
+  color: var(--muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  margin: 8px 0 2px;
+  padding: 0 10px;
+}
+
+.file-sidebar-pin {
+  align-items: center;
+  border-radius: 6px;
+  display: flex;
+  min-width: 0;
+}
+
+.file-sidebar-pin > button:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-sidebar-unpin {
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--muted);
+  display: flex;
+  flex: none;
+  margin-right: 4px;
+  opacity: 0;
+  padding: 3px;
+}
+
+.file-sidebar-pin:hover .file-sidebar-unpin,
+.file-sidebar-unpin:focus-visible {
+  opacity: 1;
+}
+
+.file-sidebar-unpin:hover {
+  background: var(--control-hover);
+  color: var(--text);
+}
+
+/* Where a search result lives, under its name — Windows' search shows the
+   path the same way, because a name alone does not say which folder. */
+.file-row-location {
+  color: var(--muted);
+  display: block;
+  font-size: 0.68rem;
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Explorer tabs: one per place, each with its own history. The tab element is
    the control now, so it needs a control's cursor and no text selection. */
 .file-tab,

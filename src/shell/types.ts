@@ -241,6 +241,14 @@ export type AppContentProps = {
   requestPowerAction: (action: "lock" | "off" | "restart" | "sleep") => void;
   openNewAppWindow: (appId: AppId) => string;
   activateVfsEntry: (item: DesktopItem) => void;
+  /**
+   * Adds entries to the file system, or refuses out loud and returns false:
+   * the save limit is a budget for the whole snapshot, not per file.
+   */
+  addVfsEntries: (entries: DesktopItem[]) => boolean;
+  /** Folders pinned to Explorer's sidebar — 빠른 액세스, shared by every window. */
+  quickAccessIds: string[];
+  toggleQuickAccessFolder: (folderId: string) => void;
   openVfsEntry: (item: DesktopItem) => void;
   permanentlyDeleteVfsEntry: (itemId: string) => void;
   renameVfsEntry: (itemId: string, name: string) => void;

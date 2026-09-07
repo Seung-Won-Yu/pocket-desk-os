@@ -2963,6 +2963,119 @@ async function runSmoke(baseUrl) {
     }
     assert((await explorerTabs.count()) === 1, "Ctrl+W did not leave one tab");
 
+    /*
+     * 압축(ZIP) 파일로 압축 → 압축 풀기. The archive is a real stored ZIP built
+     * from the file system's own shapes, so this walks the whole round trip:
+     * compress a folder, find the .zip beside it, open it, and read the files
+     * back out of the folder that was extracted.
+     */
+    await tabExplorer
+      .locator("aside")
+      .getByRole("button", { name: "문서", exact: true })
+      .click();
+    await page.waitForTimeout(300);
+    const documentRows = tabExplorer.locator(".file-list button");
+    const namesBeforeZip = (await documentRows.allInnerTexts()).map(
+      (text) => text.split("\n")[0],
+    );
+    await documentRows.first().click({ button: "right" });
+    const zipMenu = tabExplorer.locator(".file-context-menu");
+    await zipMenu.waitFor({ state: "visible" });
+    await zipMenu.getByRole("menuitem", { name: /압축\(ZIP\) 파일로 압축/ }).click();
+    await page
+      .locator(".toast", { hasText: "압축 파일을 만들었습니다" })
+      .waitFor({ state: "visible", timeout: 8000 });
+    const archiveRow = tabExplorer.locator(".file-list button", { hasText: ".zip" }).first();
+    assert(await archiveRow.count(), "압축 did not create a .zip beside the selection");
+    assert(
+      (await archiveRow.innerText()).includes("압축(ZIP) 폴더"),
+      `The archive was not typed as an archive: ${await archiveRow.innerText()}`,
+    );
+
+    await archiveRow.dblclick();
+    const extractToast = page.locator(".toast", { hasText: "압축을 풀었습니다" });
+    await extractToast.waitFor({ state: "visible", timeout: 8000 });
+    // The toast opens the folder: the entries have only just reached the shell.
+    await extractToast.getByRole("button", { name: "폴더 열기" }).click();
+    await page.waitForTimeout(400);
+    assert(
+      (await tabExplorer.getAttribute("aria-label"))?.startsWith(
+        `${namesBeforeZip[0].replace(/\.[^.]+$/, "")} `,
+      ),
+      `압축 풀기 did not open the extracted folder: ${await tabExplorer.getAttribute("aria-label")}`,
+    );
+    const extractedNames = (await documentRows.allInnerTexts()).map(
+      (text) => text.split("\n")[0],
+    );
+    assert(
+      extractedNames.includes(namesBeforeZip[0]),
+      `The extracted folder is missing what was compressed: ${JSON.stringify(extractedNames)}`,
+    );
+
+    /*
+     * 빠른 액세스: a folder pinned from its own menu becomes a sidebar row that
+     * survives a reload, because the pins belong to the shell rather than to
+     * the window that made them.
+     */
+    await tabExplorer
+      .locator("aside")
+      .getByRole("button", { name: "바탕 화면", exact: true })
+      .click();
+    await page.waitForTimeout(300);
+    await tabExplorer
+      .locator(".file-list button", { hasText: "문서" })
+      .first()
+      .click({ button: "right" });
+    await zipMenu.waitFor({ state: "visible" });
+    await zipMenu.getByRole("menuitem", { name: "빠른 액세스에 고정" }).click();
+    await page.waitForTimeout(300);
+    const pinnedRow = tabExplorer.locator(".file-sidebar-pin");
+    assert(
+      (await pinnedRow.count()) === 1 && (await pinnedRow.first().innerText()).includes("문서"),
+      `빠른 액세스에 고정 did not add a sidebar row: ${await tabExplorer.locator("aside").innerText()}`,
+    );
+    assert(
+      JSON.parse(
+        (await page.evaluate(() => localStorage.getItem("pocket-desk-quick-access-v1"))) ??
+          "[]",
+      ).length === 1,
+      "The pin was not written to storage",
+    );
+    // Pinning again from the same menu is what removes it.
+    await tabExplorer
+      .locator(".file-list button", { hasText: "문서" })
+      .first()
+      .click({ button: "right" });
+    await zipMenu.waitFor({ state: "visible" });
+    await zipMenu.getByRole("menuitem", { name: "빠른 액세스에서 제거" }).click();
+    await page.waitForTimeout(250);
+    assert((await pinnedRow.count()) === 0, "고정 해제 left the sidebar row behind");
+
+    /*
+     * 하위 폴더까지 검색: typing into the search box used to filter only what
+     * was already on screen, so a file one folder down was invisible.
+     */
+    const explorerSearch = tabExplorer.getByPlaceholder(/검색/).first();
+    await explorerSearch.fill("notes");
+    await page.waitForTimeout(400);
+    const searchNames = (await documentRows.allInnerTexts()).map((text) => text.split("\n")[0]);
+    assert(
+      searchNames.some((name) => name.startsWith("notes")),
+      `The recursive search found nothing under 바탕 화면: ${JSON.stringify(searchNames)}`,
+    );
+    assert(
+      (await tabExplorer.locator(".file-row-location").count()) > 0,
+      "A search result did not say which folder it is in",
+    );
+    assert(
+      (await tabExplorer.locator(".file-statusbar span").first().innerText()).includes(
+        "하위 폴더까지 검색",
+      ),
+      "The status bar did not say the search went into subfolders",
+    );
+    await explorerSearch.fill("");
+    await page.waitForTimeout(300);
+
     // 폴더 메뉴: 새 창에서 열기 and 여기서 명령 프롬프트 열기.
     // Whichever tab survived the Ctrl+W pair may be showing another folder.
     await tabExplorer

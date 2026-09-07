@@ -553,7 +553,7 @@ describe("readVfsBackupZip zip structure validation", () => {
     for (const method of [8, 9, 14]) {
       const bytes = patched(goodZip(), (view) => view.setUint16(8, method, true));
       await expect(readVfsBackupZip(toFile(bytes), normalizeEntry)).rejects.toThrow(
-        /PocketDesk에서 내보낸 ZIP만 가져올 수 있습니다/,
+        /압축된 ZIP은 지원하지 않습니다/,
       );
     }
   });
@@ -572,7 +572,7 @@ describe("readVfsBackupZip zip structure validation", () => {
       view.setUint32(14, view.getUint32(14, true) ^ 0xffffffff, true),
     );
     await expect(readVfsBackupZip(toFile(bytes), normalizeEntry)).rejects.toThrow(
-      /ZIP 백업 무결성 검사에 실패했습니다/,
+      /ZIP 무결성 검사에 실패했습니다/,
     );
   });
 
@@ -584,7 +584,7 @@ describe("readVfsBackupZip zip structure validation", () => {
     tampered[dataOffset + Math.floor(parsed.payload.length / 2)] ^= 0x20;
 
     await expect(readVfsBackupZip(toFile(tampered), normalizeEntry)).rejects.toThrow(
-      /ZIP 백업 무결성 검사에 실패했습니다/,
+      /ZIP 무결성 검사에 실패했습니다/,
     );
   });
 
@@ -612,10 +612,10 @@ describe("readVfsBackupZip zip structure validation", () => {
     );
   });
 
-  it("reports a missing backup member for input that is not a ZIP at all", async () => {
+  it("says it is not a ZIP at all, rather than naming the member it wanted", async () => {
     const bytes = new TextEncoder().encode("이건 그냥 텍스트 파일입니다. 절대 ZIP이 아닙니다.");
     await expect(readVfsBackupZip(toFile(bytes), normalizeEntry)).rejects.toThrow(
-      /pocket-desk-vfs\.json 파일을 찾지 못했습니다/,
+      /ZIP 항목을 찾지 못했습니다/,
     );
   });
 });

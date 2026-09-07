@@ -161,6 +161,12 @@ import {
   persistShellEventLog,
 } from "./shell/eventLog";
 import { loadStickyNotes, persistStickyNotes, type StickyNoteStore } from "./shell/stickyNotes";
+import {
+  QUICK_ACCESS_LIMIT,
+  loadQuickAccess,
+  persistQuickAccess,
+  toggleQuickAccess,
+} from "./shell/quickAccess";
 import { type ArrangeMode, arrangeWindows } from "./shell/windowArrangement";
 import { captureElementToPng, getScreenshotFileName } from "./shell/screenshot";
 import { type ScreenshotMode } from "./shell/screenshotTypes";
@@ -227,6 +233,8 @@ const DESKTOP_ICON_NAV_KEYS = [
 type ContentOps = Pick<
   AppContentProps,
   | "activateVfsEntry"
+  | "addVfsEntries"
+  | "toggleQuickAccessFolder"
   | "captureScreenshot"
   | "closeWindow"
   | "copyImageToClipboard"
@@ -306,6 +314,15 @@ export default function App() {
   const [clockAlarms, setClockAlarms] = useState<ClockAlarm[]>(() => loadClockAlarms());
   const [clockTimer, setClockTimer] = useState<ClockTimer>(() => loadClockTimer());
   const [stickyNotes, setStickyNotes] = useState<StickyNoteStore>(() => loadStickyNotes());
+  /*
+   * 빠른 액세스 lives in the shell, not in a window: every Explorer window
+   * shows the same pins. Read once with nothing to validate against — the
+   * effect below drops any pin whose folder is gone as soon as the file system
+   * has loaded, which is also what removes a pin when its folder is deleted.
+   */
+  const [quickAccessIds, setQuickAccessIds] = useState<string[]>(() =>
+    loadQuickAccess(() => true),
+  );
 
   /*
    * Typing in a note rewrote the whole store on every keystroke — a
@@ -364,6 +381,40 @@ export default function App() {
   });
   const [desktopItems, setDesktopItems] = useState<DesktopItem[]>([]);
   const [vfsReady, setVfsReady] = useState(false);
+
+  /*
+   * A pin is only an id. Once the file system is loaded, a pin that no longer
+   * names a live folder is dropped — which is also what unpins a folder that
+   * was deleted, without any code at the delete site knowing about pins.
+   */
+  useEffect(() => {
+    if (!vfsReady) return;
+    setQuickAccessIds((current) => {
+      const live = current.filter((folderId) =>
+        desktopItems.some(
+          (item) => item.id === folderId && item.kind === "folder" && !item.trashed,
+        ),
+      );
+      return live.length === current.length ? current : live;
+    });
+  }, [desktopItems, vfsReady]);
+
+  useEffect(() => {
+    persistQuickAccess(quickAccessIds);
+  }, [quickAccessIds]);
+
+  const toggleQuickAccessFolder = (folderId: string) => {
+    const next = toggleQuickAccess(quickAccessIds, folderId);
+    if (next === quickAccessIds) {
+      notify({
+        detail: `빠른 액세스에는 폴더 ${QUICK_ACCESS_LIMIT}개까지 고정할 수 있습니다.`,
+        title: "고정할 자리가 없습니다",
+      });
+      return;
+    }
+    setQuickAccessIds(next);
+  };
+
   const [iconLayout, setIconLayout] = useState<DesktopIconLayout>(() =>
     loadDesktopIconLayout(),
   );
@@ -2046,6 +2097,33 @@ export default function App() {
    * success path at all — it always reported that there was nothing to capture.
    */
   const preToolActiveWindowRef = useRef<string | null>(null);
+  /**
+   * Writes new entries into the file system, or refuses out loud. The save
+   * limit is a budget for the whole snapshot, so anything that adds bytes has
+   * to be measured against what is left first — a screenshot has been since
+   * 0.14, and now so are archives and imported folders, which used to fail
+   * only later, at the write.
+   */
+  const addVfsEntries = (entries: DesktopItem[]) => {
+    if (entries.length === 0) return true;
+    const addedBytes = entries.reduce(
+      (total, entry) => total + new Blob([entry.content ?? ""]).size,
+      0,
+    );
+    const usedBytes = getSnapshotContentBytes(desktopItems);
+    if (usedBytes + addedBytes > MAX_CONTENT_BYTES) {
+      notify({
+        detail: `필요한 공간 ${formatStorageSize(addedBytes)}, 남은 공간 ${formatStorageSize(
+          Math.max(0, MAX_CONTENT_BYTES - usedBytes),
+        )}. 쓰지 않는 파일을 지우고 다시 시도하세요.`,
+        title: "저장 공간이 부족합니다",
+      });
+      return false;
+    }
+    setDesktopItems((current) => [...current, ...entries]);
+    return true;
+  };
+
   const captureScreenshot = async (mode: ScreenshotMode): Promise<DesktopItem | null> => {
     // Windows delivers PrintScreen as keyup in some browsers and as both in
     // others; one press is one picture.
@@ -4128,7 +4206,11 @@ export default function App() {
     importVfsZip,
     moveVfsEntries,
     notify,
-    onImportLocalEntries: (imported) => setDesktopItems((current) => [...current, ...imported]),
+    addVfsEntries,
+    toggleQuickAccessFolder,
+    onImportLocalEntries: (imported) => {
+      addVfsEntries(imported);
+    },
     openApp,
     openFolderInNewWindow,
     openNewAppWindow,
@@ -4172,6 +4254,9 @@ export default function App() {
       importVfsZip: (...args) => contentOpsRef.current.importVfsZip(...args),
       moveVfsEntries: (...args) => contentOpsRef.current.moveVfsEntries(...args),
       notify: (...args) => contentOpsRef.current.notify(...args),
+      addVfsEntries: (...args) => contentOpsRef.current.addVfsEntries(...args),
+      toggleQuickAccessFolder: (...args) =>
+        contentOpsRef.current.toggleQuickAccessFolder(...args),
       onImportLocalEntries: (...args) => contentOpsRef.current.onImportLocalEntries(...args),
       openApp: (...args) => contentOpsRef.current.openApp(...args),
       openFolderInNewWindow: (...args) => contentOpsRef.current.openFolderInNewWindow(...args),
@@ -4248,6 +4333,7 @@ export default function App() {
       clockAlarms,
       clockTimer,
       stickyNotes,
+      quickAccessIds,
       defaultApps,
       desktopItems: activeDesktopItems,
       customWallpaperItemId,
@@ -4285,6 +4371,7 @@ export default function App() {
       clockAlarms,
       clockTimer,
       stickyNotes,
+      quickAccessIds,
       defaultApps,
       activeDesktopItems,
       customWallpaperItemId,

@@ -14,6 +14,7 @@ import {
   FilePlus2,
   FileText,
   Folder,
+  FileArchive,
   FolderOpen,
   FolderOutput,
   FolderSymlink,
@@ -31,6 +32,7 @@ import {
   Search,
   SquarePlus,
   SquareTerminal,
+  Star,
   Trash2,
   Upload,
   Wallpaper,
@@ -77,10 +79,21 @@ import {
   getVfsEntryDetail,
   getVfsFolderPath,
   getVfsNameParts,
+  getVfsDescendantIds,
   getVfsTopLevelIds,
+  getUniqueVfsEntryName,
   hasForbiddenVfsNameChar,
   isVfsSystemFolderId,
 } from "../vfs/model";
+import {
+  archiveFromDataUrl,
+  archiveToDataUrl,
+  createArchive,
+  createItemsFromArchive,
+  getArchiveName,
+  isArchiveItem,
+  readArchiveEntries,
+} from "../vfs/archive";
 import { formatVfsPathText, resolveVfsPathText } from "../vfs/pathInput";
 import { reorderList } from "../utils/reorder";
 import { focusTabAt, getNextTabIndex, handleMenuKeyboard } from "../shell/keyboardNav";
@@ -111,7 +124,10 @@ type FilesAppProps = {
   copyToClipboard: (itemIds: string[], mode?: ClipboardMode) => void;
   pasteFromClipboard: (parentId: string) => string[];
   createVfsFolder: (parentId?: string, name?: string) => DesktopItem;
+  addVfsEntries: (entries: DesktopItem[]) => boolean;
   onImportLocalEntries: (entries: DesktopItem[]) => void;
+  quickAccessIds: string[];
+  toggleQuickAccessFolder: (folderId: string) => void;
   createVfsTextFile: (parentId?: string) => DesktopItem;
   deleteVfsEntry: (itemId: string) => void;
   desktopItems: DesktopItem[];
@@ -207,7 +223,10 @@ export function closeFileTab(tabs: FileTab[], tabId: string, activeTabId: string
 
 export default function FilesApp({
   reportDocument,
+  addVfsEntries,
   clipboard,
+  quickAccessIds,
+  toggleQuickAccessFolder,
   copyToClipboard,
   pasteFromClipboard,
   createVfsFolder,
@@ -321,26 +340,60 @@ export default function FilesApp({
     );
   }, [currentFolderId, reportDocument, windowId]);
 
+  const quickAccessFolders = useMemo(
+    () =>
+      quickAccessIds
+        .map((folderId) =>
+          desktopItems.find(
+            (item) => item.id === folderId && item.kind === "folder" && !item.trashed,
+          ),
+        )
+        .filter((item): item is DesktopItem => Boolean(item)),
+    [desktopItems, quickAccessIds],
+  );
+
   const locationItems = useMemo(() => {
     return desktopItems.filter((item) => !item.trashed && item.parentId === currentFolderId);
   }, [currentFolderId, desktopItems]);
+  const fileQueryValue = activeTab.query;
+  /*
+   * Windows searches a folder and everything under it, which is the whole
+   * point of searching rather than reading: typing into the box used to filter
+   * only what was already on screen, so a file one folder down was invisible.
+   */
+  const searchItems = useMemo(() => {
+    if (!normalizeSearchText(fileQueryValue)) return locationItems;
+    const inScope = getVfsDescendantIds(desktopItems, [currentFolderId]);
+    return desktopItems.filter(
+      (item) => !item.trashed && item.id !== currentFolderId && inScope.has(item.id),
+    );
+  }, [currentFolderId, desktopItems, fileQueryValue, locationItems]);
   const files = useMemo(
     () =>
-      locationItems.map((item) => {
+      searchItems.map((item) => {
         const association = getVfsEntryAssociation(item);
+        // Where a search result actually is, relative to the folder searched.
+        const location =
+          item.parentId === currentFolderId
+            ? ""
+            : getVfsFolderPath(desktopItems, item.parentId)
+                .slice(getVfsFolderPath(desktopItems, currentFolderId).length)
+                .map((segment) => segment.name)
+                .join(" › ");
         return {
           association,
           detail: getVfsEntryDetail(item),
           icon: association.icon,
           id: item.id,
           item,
+          location,
           name: item.name,
           modified: formatDesktopItemTime(item.updatedAt),
           type: association.typeLabel,
           updatedAt: item.updatedAt,
         };
       }),
-    [locationItems],
+    [currentFolderId, desktopItems, searchItems],
   );
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   /** Bytes the selection holds; Windows shows this beside the count. */
@@ -621,9 +674,102 @@ export default function FilesApp({
     if (parent) navigateToFolder(parent.id);
   };
 
+  /*
+   * A toast outlives the render that made it, and navigateToFolder closes over
+   * that render's entries — including, crucially, not the ones just added. The
+   * ref reaches whichever render is current when the button is pressed, the
+   * same way the shell's own toasts reach their operations.
+   */
+  const navigateRef = useRef(navigateToFolder);
+  navigateRef.current = navigateToFolder;
+
+  /**
+   * 압축(ZIP) 파일로 압축 — one archive holding the selection, written beside
+   * it. Stored, not deflated: the shell has no compressor, so the archive is
+   * not smaller than what went in. The toast says so rather than implying a
+   * saving that did not happen.
+   */
+  const compressSelection = (itemIds = getSelectedCommandIds()) => {
+    if (itemIds.length === 0) return;
+    try {
+      const bytes = createArchive(desktopItems, itemIds);
+      const name = getUniqueVfsEntryName(
+        desktopItems,
+        currentFolderId,
+        getArchiveName(desktopItems, itemIds, locationLabel),
+      );
+      const now = Date.now();
+      const created: DesktopItem = {
+        content: archiveToDataUrl(bytes),
+        createdAt: now,
+        id: `zip-${crypto.randomUUID()}`,
+        kind: "note",
+        name,
+        parentId: currentFolderId,
+        showOnDesktop: false,
+        updatedAt: now,
+        x: 0,
+        y: 0,
+      };
+      if (!addVfsEntries([created])) return;
+      notify({
+        detail: `${name} · ${itemIds.length}개 항목 · ${formatStorageSize(bytes.length)} (압축하지 않고 묶음)`,
+        title: "압축 파일을 만들었습니다",
+        tone: "success",
+      });
+      setSelectedIds([created.id]);
+    } catch (error) {
+      notify({
+        detail: error instanceof Error ? error.message : "압축할 수 없습니다.",
+        title: "압축하지 못했습니다",
+      });
+    }
+  };
+
+  /** 압축 풀기 — into a new folder beside the archive, as Windows extracts. */
+  const extractArchive = (item: DesktopItem) => {
+    try {
+      const extracted = readArchiveEntries(archiveFromDataUrl(item.content ?? ""));
+      const { base } = getVfsNameParts(item.name);
+      const rootName = getUniqueVfsEntryName(desktopItems, item.parentId, base || "압축 파일");
+      const items = createItemsFromArchive(extracted, {
+        makeId: () => `zip-${crypto.randomUUID()}`,
+        now: Date.now(),
+        parentId: item.parentId,
+        rootName,
+      });
+      if (!addVfsEntries(items)) return;
+      /*
+       * The toast opens the folder rather than this call: the entries have
+       * only just been handed to the shell, so navigateToFolder — which
+       * checks that the folder is really there — would refuse an id that this
+       * render has not seen yet.
+       */
+      notify({
+        actions: [{ id: "open", label: "폴더 열기" }],
+        detail: `${rootName} 폴더에 ${items.length - 1}개 항목`,
+        onAction: (actionId) => {
+          if (actionId === "open") navigateRef.current(items[0].id);
+        },
+        openItemId: items[0].id,
+        title: "압축을 풀었습니다",
+        tone: "success",
+      });
+    } catch (error) {
+      notify({
+        detail: error instanceof Error ? error.message : "압축을 풀 수 없습니다.",
+        title: "압축을 풀지 못했습니다",
+      });
+    }
+  };
+
   const openFile = (item: DesktopItem) => {
     if (item.kind === "folder") {
       navigateToFolder(item.id);
+      return;
+    }
+    if (isArchiveItem(item)) {
+      extractArchive(item);
       return;
     }
     openVfsEntry(item);
@@ -1217,6 +1363,49 @@ export default function FilesApp({
             {label}
           </button>
         ))}
+        {/* 빠른 액세스: the folders pinned from a folder's own menu. The pins
+            live in the shell, so every Explorer window shows the same ones. */}
+        {quickAccessFolders.length > 0 && (
+          <>
+            <span className="file-sidebar-title">빠른 액세스</span>
+            {quickAccessFolders.map((folder) => (
+              <span
+                className={`file-sidebar-pin${
+                  currentFolderId === folder.id ? " is-selected" : ""
+                }${dragOverFolderId === folder.id ? " is-drop-target" : ""}`}
+                key={folder.id}
+              >
+                <button
+                  onClick={() => navigateToFolder(folder.id)}
+                  onDragEnter={() => setDragOverFolderId(folder.id)}
+                  onDragLeave={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                      setDragOverFolderId(null);
+                    }
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                  }}
+                  onDrop={(event) => dropFilesIntoFolder(event, folder.id)}
+                  type="button"
+                >
+                  <Star aria-hidden="true" size={16} />
+                  {folder.name}
+                </button>
+                <button
+                  aria-label={`${folder.name} 고정 해제`}
+                  className="file-sidebar-unpin"
+                  onClick={() => toggleQuickAccessFolder(folder.id)}
+                  title="빠른 액세스에서 제거"
+                  type="button"
+                >
+                  <X aria-hidden="true" size={12} />
+                </button>
+              </span>
+            ))}
+          </>
+        )}
       </aside>
       <section className="file-main-pane">
         <div className="file-tab-strip">
@@ -1859,6 +2048,9 @@ export default function FilesApp({
                         {splitSearchMatch(file.name, fileQuery).map((part, index) =>
                           part.match ? <mark key={index}>{part.text}</mark> : part.text,
                         )}
+                        {file.location && (
+                          <em className="file-row-location">{file.location}</em>
+                        )}
                       </span>
                       <small>{file.modified}</small>
                       <small>{file.type}</small>
@@ -1909,7 +2101,12 @@ export default function FilesApp({
                     <Folder aria-hidden="true" size={24} />
                   )}
                   <strong>{fileQuery ? "검색 결과 없음" : "이 폴더는 비어 있습니다."}</strong>
-                  {fileQuery && <small>다른 이름이나 파일 형식으로 검색해보세요.</small>}
+                  {fileQuery && (
+                    <small>
+                      이 폴더와 하위 폴더를 모두 찾았습니다. 다른 이름이나 파일 형식으로
+                      검색해보세요.
+                    </small>
+                  )}
                 </div>
               )}
             </div>
@@ -1990,7 +2187,10 @@ export default function FilesApp({
         {/* Windows offers no status-bar menu, but it does not hand out the
             browser's either. */}
         <div className="file-statusbar" onContextMenu={(event) => event.preventDefault()}>
-          <span>{visibleFiles.length}개 항목</span>
+          <span>
+            {visibleFiles.length}개 항목
+            {fileQuery ? " · 하위 폴더까지 검색" : ""}
+          </span>
           <span>
             {selectedIds.length > 0
               ? `${selectedIds.length}개 선택됨${
@@ -2094,6 +2294,19 @@ export default function FilesApp({
                 <SquareTerminal aria-hidden="true" size={16} />
                 여기서 명령 프롬프트 열기
               </button>
+              <button
+                onClick={() => {
+                  setFileContextMenu(null);
+                  toggleQuickAccessFolder(contextFile.id);
+                }}
+                role="menuitem"
+                type="button"
+              >
+                <Star aria-hidden="true" size={16} />
+                {quickAccessIds.includes(contextFile.id)
+                  ? "빠른 액세스에서 제거"
+                  : "빠른 액세스에 고정"}
+              </button>
             </>
           )}
           {contextFile.item.kind === "canvas" && contextFile.item.content && (
@@ -2109,6 +2322,31 @@ export default function FilesApp({
               바탕 화면 배경으로 설정
             </button>
           )}
+          {isArchiveItem(contextFile.item) && (
+            <button
+              onClick={() => {
+                setFileContextMenu(null);
+                extractArchive(contextFile.item);
+              }}
+              role="menuitem"
+              type="button"
+            >
+              <FolderOpen aria-hidden="true" size={16} />
+              압축 풀기
+            </button>
+          )}
+          <button
+            disabled={selectedHasSystemFolder}
+            onClick={() => {
+              setFileContextMenu(null);
+              compressSelection();
+            }}
+            role="menuitem"
+            type="button"
+          >
+            <FileArchive aria-hidden="true" size={16} />
+            압축(ZIP) 파일로 압축
+          </button>
           <button
             disabled={selectedHasSystemFolder}
             onClick={() => deleteSelectedFiles()}
