@@ -1,6 +1,6 @@
 import { Activity, ChevronUp, Cpu, HardDrive, MemoryStick, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getNextRovingIndex } from "../shell/keyboardNav";
+import { focusTabAt, getNextRovingIndex, getNextTabIndex } from "../shell/keyboardNav";
 import { estimateProcessMemoryMb } from "../shell/processMemory";
 import { appMetadata } from "./metadata";
 import type { OpenWindowInfo, SoundEffectName } from "../types";
@@ -220,10 +220,12 @@ export default function TaskManagerApp({
   // role="tablist" promises Left/Right movement between tabs.
   const handleTabKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const order: TaskManagerTab[] = ["processes", "performance"];
-    const next = getNextRovingIndex(event.key, order.indexOf(tab), order.length);
+    const next = getNextTabIndex(event.key, order.indexOf(tab), order.length);
     if (next === null) return;
     event.preventDefault();
     setTab(order[next]);
+    // The tab that becomes the tab stop has to become the focus too.
+    focusTabAt(event.currentTarget, next);
   };
 
   const endTask = (windowId: string) => {
@@ -236,7 +238,10 @@ export default function TaskManagerApp({
     <div className="taskmgr-app">
       <div className="taskmgr-tabs" onKeyDown={handleTabKeyDown} role="tablist">
         <button
-          aria-controls="taskmgr-panel-processes"
+          // The panels are rendered one at a time, so the tab that is not
+          // selected has no panel to point at — and a reference to an id that
+          // is not in the document names nothing at all.
+          aria-controls={tab === "processes" ? "taskmgr-panel-processes" : undefined}
           aria-selected={tab === "processes"}
           className={tab === "processes" ? "is-active" : ""}
           id="taskmgr-tab-processes"
@@ -248,7 +253,7 @@ export default function TaskManagerApp({
           <Activity size={15} /> 프로세스
         </button>
         <button
-          aria-controls="taskmgr-panel-performance"
+          aria-controls={tab === "performance" ? "taskmgr-panel-performance" : undefined}
           aria-selected={tab === "performance"}
           className={tab === "performance" ? "is-active" : ""}
           id="taskmgr-tab-performance"

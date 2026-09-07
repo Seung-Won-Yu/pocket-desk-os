@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getNextRovingIndex } from "./keyboardNav";
+import { getNextRovingIndex, getNextTabIndex } from "./keyboardNav";
 
 describe("getNextRovingIndex", () => {
   it("returns null for a key that does not navigate", () => {
@@ -61,5 +61,26 @@ describe("getNextRovingIndex", () => {
     expect(getNextRovingIndex("ArrowDown", 6, 10, 4)).toBe(6);
     expect(getNextRovingIndex("ArrowDown", 5, 10, 4)).toBe(9);
     expect(getNextRovingIndex("ArrowUp", 9, 10, 4)).toBe(5);
+  });
+});
+
+describe("getNextTabIndex", () => {
+  it("walks a horizontal strip and wraps at both ends", () => {
+    expect(getNextTabIndex("ArrowRight", 0, 3)).toBe(1);
+    expect(getNextTabIndex("ArrowRight", 2, 3)).toBe(0);
+    expect(getNextTabIndex("ArrowLeft", 0, 3)).toBe(2);
+    expect(getNextTabIndex("Home", 2, 3)).toBe(0);
+    expect(getNextTabIndex("End", 0, 3)).toBe(2);
+  });
+
+  it("leaves the vertical arrows to whatever surrounds the strip", () => {
+    // A tab strip that swallowed Up and Down stopped its own window scrolling.
+    expect(getNextTabIndex("ArrowDown", 0, 3)).toBeNull();
+    expect(getNextTabIndex("ArrowUp", 1, 3)).toBeNull();
+  });
+
+  it("navigates nothing when there is one tab or none", () => {
+    expect(getNextTabIndex("ArrowRight", 0, 1)).toBe(0);
+    expect(getNextTabIndex("ArrowRight", 0, 0)).toBeNull();
   });
 });

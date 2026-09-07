@@ -60,5 +60,8 @@ jobs:
       - name: Browser smoke test
         run: npm run qa:smoke
 
+      - name: Accessibility gate
+        run: npm run qa:a11y
+
       - name: PWA offline test
         run: npm run qa:pwa

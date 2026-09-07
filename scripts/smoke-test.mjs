@@ -2554,11 +2554,27 @@ async function runSmoke(baseUrl) {
     await addressBar.fill("example.com");
     await addressBar.press("Enter");
     await page.waitForTimeout(500);
-    await edgeTabs.locator(".browser-tab button").first().click();
+    await edgeTabs.locator(".browser-tab").first().click();
     await page.waitForTimeout(300);
     assert(
       (await addressBar.inputValue()) === firstTabAddress,
       `Switching back showed ${await addressBar.inputValue()} instead of the first tab's own address`,
+    );
+
+    // Edge's strip answers the arrow keys as well, and the tab that becomes
+    // the tab stop takes the focus with it.
+    const currentBrowserTab = async () => {
+      const flags = await edgeTabs
+        .locator(".browser-tab")
+        .evaluateAll((tabs) => tabs.map((tab) => tab.getAttribute("aria-selected")));
+      return flags.indexOf("true");
+    };
+    assert((await currentBrowserTab()) === 0, "Clicking the first tab did not select it");
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(350);
+    assert(
+      (await currentBrowserTab()) === 1,
+      `ArrowRight did not move Edge's tab (selected ${await currentBrowserTab()})`,
     );
 
     await edgeTabs.locator(".browser-tab-close").last().click();
@@ -2566,6 +2582,15 @@ async function runSmoke(baseUrl) {
     assert(
       (await edgeTabs.locator(".browser-tab").count()) === 1,
       "Closing a tab did not remove it",
+    );
+    // Middle-click closes a tab; on the last one Edge goes home instead.
+    await edgeTabs.locator(".browser-tab-strip > button").click();
+    await page.waitForTimeout(250);
+    await edgeTabs.locator(".browser-tab").last().click({ button: "middle" });
+    await page.waitForTimeout(300);
+    assert(
+      (await edgeTabs.locator(".browser-tab").count()) === 1,
+      `Middle-clicking a tab did not close it (${await edgeTabs.locator(".browser-tab").count()} left)`,
     );
     await edgeTabs.getByRole("button", { name: "Microsoft Edge 닫기" }).click();
     await page.waitForTimeout(250);
@@ -2794,7 +2819,7 @@ async function runSmoke(baseUrl) {
         (await explorerTabs.nth(0).innerText()).includes("바탕 화면"),
       `Navigating one tab moved the other: ${await explorerTabs.allInnerTexts()}`,
     );
-    await explorerTabs.nth(0).getByRole("tab").click();
+    await explorerTabs.nth(0).click();
     await page.waitForTimeout(250);
     assert(
       (await tabExplorer.getAttribute("aria-label"))?.startsWith("바탕 화면"),
@@ -2833,6 +2858,51 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("Control+w");
     await page.waitForTimeout(250);
     assert((await explorerTabs.count()) === 2, "Ctrl+W did not close a tab");
+
+    // role="tablist" promises the arrow keys, and a roving tab stop has to
+    // carry focus with it or the next arrow comes from a stranded element.
+    await explorerTabs.nth(0).click();
+    await page.waitForTimeout(200);
+    // Compared by node, not by name: Ctrl+T opens the new tab at the folder the
+    // old one showed, so every tab in the strip can carry the same name.
+    const focusedTabIndex = () =>
+      explorerTabs.evaluateAll((tabs) =>
+        tabs.findIndex((tab) => tab === document.activeElement),
+      );
+    const selectedTabIndex = async () => {
+      const flags = await explorerTabs.evaluateAll((tabs) =>
+        tabs.map((tab) => tab.getAttribute("aria-selected")),
+      );
+      return flags.indexOf("true");
+    };
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(200);
+    assert(
+      (await selectedTabIndex()) === 1,
+      `ArrowRight did not move to the next tab (selected ${await selectedTabIndex()})`,
+    );
+    assert(
+      (await focusedTabIndex()) === 1,
+      `ArrowRight left focus on tab ${await focusedTabIndex()} instead of the one it selected`,
+    );
+    await page.keyboard.press("Home");
+    await page.waitForTimeout(200);
+    assert((await selectedTabIndex()) === 0, "Home did not jump to the first tab");
+    // Up and Down belong to whatever is around a horizontal strip.
+    await page.keyboard.press("ArrowDown");
+    await page.waitForTimeout(150);
+    assert((await selectedTabIndex()) === 0, "ArrowDown moved a horizontal tab strip");
+
+    // Middle-click closes a tab in Explorer and in every browser.
+    await explorerTabs.nth(1).click({ button: "middle" });
+    await page.waitForTimeout(250);
+    assert(
+      (await explorerTabs.count()) === 1,
+      `Middle-clicking a tab did not close it (${await explorerTabs.count()} left)`,
+    );
+    await page.keyboard.press("Control+t");
+    await page.waitForTimeout(250);
+    assert((await explorerTabs.count()) === 2, "Ctrl+T did not restore a second tab");
     // 폴더를 새 탭에서 열기
     await tabExplorer
       .locator("aside")
@@ -3191,10 +3261,19 @@ async function runSmoke(baseUrl) {
       (await page.locator(".tray-notification-badge").count()) === 0,
       "Dismissing one notification resurrected the unread badge",
     );
-    const openableNotification = centre.locator("button.notification-item.is-openable").first();
+    const openableRow = centre.locator(".notification-item.is-openable").first();
+    const openableNotification = openableRow.locator(".notification-open");
     assert(
       (await openableNotification.count()) === 1,
       "The screenshot notification was not clickable in the notification centre",
+    );
+    // The ✕ used to sit inside that button, where a button's children are
+    // presentational — so the only notifications anything could dismiss were
+    // the ones nothing could open.
+    assert(
+      (await openableRow.locator(".notification-open .notification-dismiss").count()) === 0 &&
+        (await openableRow.locator(".notification-dismiss").count()) === 1,
+      "The dismiss button is nested inside the openable notification's button",
     );
     await openableNotification.click();
     const notifiedPhotos = page.locator('article[data-app-id="photos"]').last();

@@ -2216,10 +2216,28 @@ button {
   padding: 9px;
 }
 
-.notification-item > div {
+.notification-item > div,
+.notification-open > div {
   display: grid;
   gap: 2px;
   min-width: 0;
+}
+
+/* What opens a notification is a button inside the row, not the row itself:
+   a button hides its own children from assistive tech, ✕ included. */
+.notification-open {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: default;
+  display: grid;
+  font: inherit;
+  gap: 8px;
+  grid-column: 1 / -1;
+  grid-template-columns: 28px minmax(0, 1fr);
+  padding: 0;
+  text-align: left;
+  width: 100%;
 }
 
 .notification-item strong,
@@ -3014,6 +3032,14 @@ button {
   padding: 4px 8px 0;
 }
 
+/* Only tabs live in the tablist; the strip lays the list out beside 새 탭. */
+.browser-tab-list {
+  align-items: end;
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+}
+
 .browser-tab-strip > button {
   align-items: center;
   background: transparent;
@@ -3043,10 +3069,8 @@ button {
   background: #303030;
 }
 
-.browser-tab > button:first-child {
+.browser-tab-label {
   align-items: center;
-  background: transparent;
-  border: 0;
   color: var(--text);
   display: inline-flex;
   flex: 1;
@@ -3060,7 +3084,7 @@ button {
   background: rgba(255, 255, 255, 0.07);
 }
 
-.browser-tab span {
+.browser-tab-label > span {
   flex: 1;
   overflow: hidden;
   text-align: left;
@@ -4964,6 +4988,12 @@ button {
   grid-template-rows: auto auto minmax(0, 1fr) 25px;
   min-width: 0;
   overflow: hidden;
+}
+
+.file-tab-list {
+  align-items: end;
+  display: flex;
+  min-width: 0;
 }
 
 .file-tab-strip {
@@ -10527,14 +10557,7 @@ button {
 }
 
 /* A notification that names a file opens it, so it looks pressable. */
-button.notification-item {
-  cursor: default;
-  font: inherit;
-  text-align: left;
-  width: 100%;
-}
-
-button.notification-item.is-openable:hover {
+.notification-item.is-openable:hover {
   background: rgba(255, 255, 255, 0.1);
 }
 
@@ -10659,7 +10682,14 @@ button.notification-item.is-openable:hover {
   margin-top: 4px;
 }
 
-/* Explorer tabs: one per place, each with its own history. */
+/* Explorer tabs: one per place, each with its own history. The tab element is
+   the control now, so it needs a control's cursor and no text selection. */
+.file-tab,
+.browser-tab {
+  cursor: default;
+  user-select: none;
+}
+
 .file-tab {
   align-items: center;
   border-radius: 8px 8px 0 0;
@@ -10669,10 +10699,8 @@ button.notification-item.is-openable:hover {
   padding-right: 2px;
 }
 
-.file-tab > button:first-child {
+.file-tab-label {
   align-items: center;
-  background: transparent;
-  border: 0;
   color: var(--muted);
   display: flex;
   font: inherit;
@@ -10681,7 +10709,7 @@ button.notification-item.is-openable:hover {
   padding: 7px 6px 7px 10px;
 }
 
-.file-tab > button:first-child span {
+.file-tab-label > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -10691,7 +10719,7 @@ button.notification-item.is-openable:hover {
   background: var(--mica-strong);
 }
 
-.file-tab.is-active > button:first-child {
+.file-tab.is-active .file-tab-label {
   color: var(--text);
 }
 

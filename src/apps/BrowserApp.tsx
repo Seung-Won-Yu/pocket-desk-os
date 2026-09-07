@@ -70,7 +70,7 @@ class ReaderChunkBoundary extends Component<
 }
 import { useReturnFocus } from "../shell/dialogFocus";
 import { isSafeHttpUrl, toSafeHttpUrl } from "../utils/safeUrl";
-import { handleMenuKeyboard } from "../shell/keyboardNav";
+import { focusTabAt, getNextTabIndex, handleMenuKeyboard } from "../shell/keyboardNav";
 import { type DesktopItem } from "../types";
 import { VFS_DOWNLOADS_ID, sanitizeVfsFileName } from "../vfs/model";
 
@@ -524,34 +524,64 @@ export default function BrowserApp({
 
   return (
     <div className="browser-app app-fill">
-      <div className="browser-tab-strip" role="tablist">
-        {tabs.map((tab) => {
-          const isCurrent = tab.id === activeTabId;
-          const tabUrl = isCurrent ? url : tab.url;
-          const title = tabUrl ? getBrowserPageTitle(tabUrl) : "새 탭";
-          return (
-            <span className={`browser-tab${isCurrent ? " is-current" : ""}`} key={tab.id}>
-              <button
+      <div className="browser-tab-strip">
+        {/* Tabs and only tabs belong inside a `role="tablist"`; 새 탭 is a
+            button on the strip, not a tab. */}
+        <div
+          aria-label="브라우저 탭"
+          className="browser-tab-list"
+          onKeyDown={(event) => {
+            // role="tablist" promises Left/Right/Home/End between tabs.
+            const index = tabs.findIndex((tab) => tab.id === activeTabId);
+            const next = getNextTabIndex(event.key, index, tabs.length);
+            if (next === null) return;
+            event.preventDefault();
+            selectTab(tabs[next].id);
+            focusTabAt(event.currentTarget, next);
+          }}
+          role="tablist"
+        >
+          {tabs.map((tab) => {
+            const isCurrent = tab.id === activeTabId;
+            const tabUrl = isCurrent ? url : tab.url;
+            const title = tabUrl ? getBrowserPageTitle(tabUrl) : "새 탭";
+            return (
+              <span
+                aria-label={title}
                 aria-selected={isCurrent}
+                className={`browser-tab${isCurrent ? " is-current" : ""}`}
+                key={tab.id}
+                // Middle-click closes a tab in every browser.
+                onAuxClick={(event) => {
+                  if (event.button !== 1) return;
+                  event.preventDefault();
+                  closeTab(tab.id);
+                }}
                 onClick={() => selectTab(tab.id)}
                 role="tab"
-                type="button"
+                tabIndex={isCurrent ? 0 : -1}
               >
-                <Globe2 aria-hidden="true" size={14} />
-                <span>{title}</span>
-              </button>
-              <button
-                aria-label={`${title} 탭 닫기`}
-                className="browser-tab-close"
-                onClick={() => closeTab(tab.id)}
-                title="탭 닫기"
-                type="button"
-              >
-                <X aria-hidden="true" size={12} />
-              </button>
-            </span>
-          );
-        })}
+                <span className="browser-tab-label">
+                  <Globe2 aria-hidden="true" size={14} />
+                  <span>{title}</span>
+                </span>
+                <button
+                  aria-label={`${title} 탭 닫기`}
+                  className="browser-tab-close"
+                  // The tab under it selects on click; closing must not.
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    closeTab(tab.id);
+                  }}
+                  title="탭 닫기"
+                  type="button"
+                >
+                  <X aria-hidden="true" size={12} />
+                </button>
+              </span>
+            );
+          })}
+        </div>
         <button aria-label="새 탭" onClick={openTab} title="새 탭" type="button">
           <Plus aria-hidden="true" size={16} />
         </button>

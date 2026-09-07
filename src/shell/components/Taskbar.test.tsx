@@ -582,3 +582,71 @@ describe("Taskbar 새 창", () => {
     expect(handlers.onOpenNewWindow).not.toHaveBeenCalled();
   });
 });
+
+describe("알림 센터", () => {
+  const notification = (
+    id: string,
+    overrides: Partial<TaskbarProps["notificationHistory"][number]> = {},
+  ) => ({
+    actions: [],
+    createdAt: Date.parse("2026-09-07T09:30:00Z"),
+    detail: `${id} 내용`,
+    id,
+    image: "",
+    openItemId: "",
+    title: id,
+    tone: "info" as const,
+    ...overrides,
+  });
+
+  async function openCentre(overrides: Partial<TaskbarProps> = {}) {
+    const rendered = renderTaskbar(overrides);
+    await rendered.user.click(screen.getByRole("button", { name: /알림 센터 열기/ }));
+    return rendered;
+  }
+
+  it("opens what a notification names, and keeps its ✕ out of that button", async () => {
+    const { handlers, user } = await openCentre({
+      notificationHistory: [notification("shot", { openItemId: "item-1" })],
+    });
+    const row = document.querySelector<HTMLElement>(".notification-item.is-openable");
+    expect(row).not.toBeNull();
+    /*
+     * The row used to be the button, with the ✕ inside it — where a button's
+     * children are presentational, so nothing could reach the ✕ but a mouse.
+     */
+    expect(row!.tagName).toBe("ARTICLE");
+    expect(row!.querySelector(".notification-open .notification-dismiss")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "shot 알림 지우기" }));
+    expect(handlers.onDismissNotification).toHaveBeenCalledWith("shot");
+    // Dismissing is not opening, even though one sits on top of the other.
+    expect(handlers.onOpenNotificationItem).not.toHaveBeenCalled();
+
+    await user.click(row!.querySelector<HTMLElement>(".notification-open")!);
+    expect(handlers.onOpenNotificationItem).toHaveBeenCalledWith("item-1");
+  });
+
+  it("a notification that names nothing is a statement, with a ✕ of its own", async () => {
+    const { handlers, user } = await openCentre({
+      notificationHistory: [notification("plain")],
+    });
+    expect(document.querySelector(".notification-item.is-openable")).toBeNull();
+    expect(document.querySelector(".notification-open")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "plain 알림 지우기" }));
+    expect(handlers.onDismissNotification).toHaveBeenCalledWith("plain");
+    expect(handlers.onOpenNotificationItem).not.toHaveBeenCalled();
+  });
+
+  it("counts what the panel holds and clears the lot", async () => {
+    const { handlers, user } = await openCentre({
+      notificationHistory: [notification("one"), notification("two")],
+    });
+    expect(document.querySelectorAll(".notification-item")).toHaveLength(2);
+    expect(document.querySelector(".notification-center-header")?.textContent).toContain(
+      "2개 알림",
+    );
+    await user.click(screen.getByRole("button", { name: "모두 지우기" }));
+    expect(handlers.onClearNotifications).toHaveBeenCalled();
+  });
+});

@@ -2,6 +2,21 @@
 
 All notable changes to PocketDesk OS are documented here.
 
+## Unreleased
+
+### Added
+
+- **탭 화살표 이동과 가운데 클릭으로 탭 닫기.** Explorer's and Edge's tab strips answer Left, Right, Home and End — the strip is one tab stop, and the tab that gains it gains the focus, so the next arrow comes from the tab you can see rather than from an element that is no longer reachable. Up and Down stay with whatever surrounds the strip. Middle-clicking a tab closes it, as in every browser; on Explorer's last tab it closes the window, and on Edge's it goes home.
+- **접근성 게이트 (`qa:a11y`).** A ninth gate opens all 17 apps, the Start menu (pinned and 모든 앱), the notification centre, quick settings, Task View and the desktop and taskbar menus, then reads the markup back against eleven ARIA rules: duplicate ids, a control nested inside a control, a `role="tablist"` whose children are not tabs, a tab or menu item with no such parent, a reference to an id that is not in the document, an unnamed control, a stray `aria-selected`, an image with no alt at all, and `role="none"` on something focusable. It also checks the one thing markup cannot show — that focus stays inside a window when the element holding it is removed — for the three Explorer actions where that broke before. The rules are a pure function with ten tests of their own, each written from the defect it would have caught.
+
+### Fixed
+
+- **The Explorer tab strip was not a tab strip.** Its `role="tablist"` held roleless `<div>` wrappers, 새 탭 and 새 창 — the tabs it declared were grandchildren of the list, and two of its children were not tabs at all. The tab element now carries the role itself, the strip's own buttons sit outside the list, and Edge's strip was built the same way and is fixed the same way.
+- **An openable notification's ✕ was not a control.** The row was a `<button>` with the dismiss button nested inside it; a button's children are presentational, so assistive tech saw no ✕ at all — the only notifications anything could dismiss were the ones nothing could open. The row is an `<article>`, and what opens it is a button beside the ✕ rather than around it. (React renders this shape; the HTML parser would have refused it, which is why no validator ever saw it.)
+- **절전 kept taking focus back, and never said how to wake.** The dark screen focused itself from a `ref` callback — a new function every render, so React re-ran it on every commit and the screen stole focus from whatever had it. It also claimed `role="button"`, which is both a lie (any key wakes it, not just Enter and Space) and a gag: a button's contents are presentational, so the one line telling the user how to wake the screen was never read out. It is a named region that focuses once, and it now listens for a key anywhere, so "아무 키나" is true even if focus has wandered.
+- **작업 관리자's unselected tab pointed at a panel that was not there.** Only one panel is rendered at a time, so `aria-controls` on the other tab named a missing id. Its arrow keys moved the selection without moving the focus, too — the same stranded-tab-stop bug as the strips above, and 메모장's document tabs had it as well.
+- **A horizontal tab strip swallowed Up and Down.** Explorer, Edge, 메모장 and 작업 관리자 all stepped the tab on the vertical arrows, taking the keys away from whatever the strip sat above. 알람 및 시계 already guarded against this; the guard is one helper now.
+
 ## 0.14.0
 
 The round where the desktop started showing itself. Windows are pictured

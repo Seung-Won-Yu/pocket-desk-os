@@ -35,7 +35,7 @@ import {
   type ClockAlarm,
   type ClockTimer,
 } from "../shell/clock";
-import { getNextRovingIndex } from "../shell/keyboardNav";
+import { getNextTabIndex } from "../shell/keyboardNav";
 import { type OpenWindowInfo, type SoundEffectName } from "../types";
 
 type ClockAppProps = {
@@ -174,10 +174,8 @@ export default function ClockApp({
     (stopwatch.running && stopwatch.startedAt !== null ? now - stopwatch.startedAt : 0);
 
   const handleTabKey = (event: KeyboardEvent<HTMLDivElement>) => {
-    // A horizontal tablist: vertical arrows belong to whatever is around it.
-    if (event.key === "ArrowUp" || event.key === "ArrowDown") return;
     const currentIndex = CLOCK_TABS.findIndex((item) => item.id === tab);
-    const nextIndex = getNextRovingIndex(event.key, currentIndex, CLOCK_TABS.length);
+    const nextIndex = getNextTabIndex(event.key, currentIndex, CLOCK_TABS.length);
     if (nextIndex === null) return;
     event.preventDefault();
     setTab(CLOCK_TABS[nextIndex].id);

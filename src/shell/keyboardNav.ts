@@ -39,6 +39,26 @@ export function handleMenuKeyboard(event: React.KeyboardEvent, container: HTMLEl
 }
 
 /**
+ * The tab a horizontal tablist should move to, or null when the key does not
+ * navigate it. Up and Down belong to whatever surrounds the strip, not to the
+ * strip: swallowing them made a tab strip eat its own window's scrolling.
+ */
+export function getNextTabIndex(key: string, currentIndex: number, tabCount: number) {
+  if (key === "ArrowUp" || key === "ArrowDown") return null;
+  return getNextRovingIndex(key, currentIndex, tabCount);
+}
+
+/**
+ * Moves a roving tablist's focus onto the tab at `index`. A roving widget is a
+ * single tab stop, so the tab that gains `tabIndex={0}` also has to gain focus
+ * — otherwise focus is stranded on an element the user can no longer reach.
+ */
+export function focusTabAt(container: HTMLElement, index: number) {
+  const tabs = container.querySelectorAll<HTMLElement>('[role="tab"]');
+  tabs[index]?.focus();
+}
+
+/**
  * The index a roving-focus widget should move to, or null when the key does not
  * navigate. `columns` above 1 makes Up and Down step a whole row, for a grid.
  * A currentIndex of -1 means nothing is focused yet, so any key enters at an end.

@@ -965,7 +965,8 @@ export function NotificationCenterPanel({
                 aria-label={`${notification.title} 알림 지우기`}
                 className="notification-dismiss"
                 onClick={(event) => {
-                  // The row itself may open a file; dismissing must not.
+                  // The row may sit under a picture of itself in the toast
+                  // stack; dismissing must not travel any further.
                   event.stopPropagation();
                   onDismissNotification(notification.id);
                 }}
@@ -983,24 +984,36 @@ export function NotificationCenterPanel({
                   {notification.detail && <p>{notification.detail}</p>}
                   <small>{formatNotificationTime(notification.createdAt)}</small>
                 </div>
-                {dismiss}
               </>
             );
-            return openItemId && onOpenNotificationItem ? (
-              <button
-                className={`notification-item is-openable notification-${notification.tone}`}
-                key={notification.id}
-                onClick={() => onOpenNotificationItem(openItemId)}
-                type="button"
-              >
-                {body}
-              </button>
-            ) : (
+            const openable = Boolean(openItemId && onOpenNotificationItem);
+            /*
+             * The row used to be a <button> with the dismiss ✕ nested inside
+             * it. A button's children are presentational, so the ✕ was not a
+             * control at all to a screen reader — the only notifications that
+             * could be dismissed were the ones nothing could open. The row is
+             * an <article>; what opens it is a button beside the ✕, not around
+             * it.
+             */
+            return (
               <article
-                className={`notification-item notification-${notification.tone}`}
+                className={`notification-item notification-${notification.tone}${
+                  openable ? " is-openable" : ""
+                }`}
                 key={notification.id}
               >
-                {body}
+                {openable ? (
+                  <button
+                    className="notification-open"
+                    onClick={() => onOpenNotificationItem?.(openItemId!)}
+                    type="button"
+                  >
+                    {body}
+                  </button>
+                ) : (
+                  body
+                )}
+                {dismiss}
               </article>
             );
           })}

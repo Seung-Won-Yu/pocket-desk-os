@@ -66,22 +66,42 @@ export const SLEEP_WAKE_GRACE_MS = 400;
  */
 export function SleepScreen({ onWake }: { onWake: () => void }) {
   const armedAtRef = useRef(0);
+  const screenRef = useRef<HTMLElement | null>(null);
+  const wakeRef = useRef(onWake);
+  wakeRef.current = onWake;
+
   useEffect(() => {
     armedAtRef.current = performance.now();
+    /*
+     * Focus once, on the way in. A `ref={(node) => node?.focus()}` callback is
+     * a new function every render, so React ran it again on every commit —
+     * the dark screen took focus back off whatever had it, forever.
+     */
+    screenRef.current?.focus();
+
+    // "아무 키나" has to mean any key, even if focus is not on this screen.
+    const wakeOnKey = () => wakeRef.current();
+    window.addEventListener("keydown", wakeOnKey);
+    return () => window.removeEventListener("keydown", wakeOnKey);
   }, []);
+
   const wakeOnMove = () => {
     if (performance.now() - armedAtRef.current >= SLEEP_WAKE_GRACE_MS) onWake();
   };
   return (
+    /*
+     * A named <section> is a region, whose contents an assistive tech reads.
+     * `role="button"` was both a lie — any key wakes it, not just Enter and
+     * Space — and a gag: a button's children are presentational, so the one
+     * line telling the user how to wake the screen was never announced.
+     */
     <section
       aria-label="절전 중"
       className="shell-gate sleep-screen"
-      onKeyDown={onWake}
       onPointerDown={onWake}
       onPointerMove={wakeOnMove}
-      ref={(node) => node?.focus()}
-      role="button"
-      tabIndex={0}
+      ref={screenRef}
+      tabIndex={-1}
     >
       <span className="sr-only">아무 키나 누르면 다시 켜집니다.</span>
     </section>

@@ -83,7 +83,7 @@ import {
 } from "../vfs/model";
 import { formatVfsPathText, resolveVfsPathText } from "../vfs/pathInput";
 import { reorderList } from "../utils/reorder";
-import { handleMenuKeyboard } from "../shell/keyboardNav";
+import { focusTabAt, getNextTabIndex, handleMenuKeyboard } from "../shell/keyboardNav";
 
 type FileSortDirection = "asc" | "desc";
 type FileSortKey = "name" | "type" | "modified" | "size";
@@ -183,6 +183,26 @@ export type FileTab = { history: string[]; id: string; index: number; query: str
 
 export function createFileTab(folderId: string): FileTab {
   return { history: [folderId], id: crypto.randomUUID(), index: 0, query: "" };
+}
+
+/**
+ * Which tabs are left after one closes, and which of them comes forward.
+ * Windows hands the window to the tab that slid into the closed one's place,
+ * or to the new last tab when the one that closed was on the end. Returns null
+ * when nothing should change — the window, not the strip, closes on the last tab.
+ */
+export function closeFileTab(tabs: FileTab[], tabId: string, activeTabId: string) {
+  if (tabs.length <= 1) return null;
+  const index = tabs.findIndex((tab) => tab.id === tabId);
+  if (index === -1) return null;
+  const remaining = tabs.filter((tab) => tab.id !== tabId);
+  return {
+    activeTabId:
+      tabId === activeTabId
+        ? (remaining[index] ?? remaining[remaining.length - 1]).id
+        : activeTabId,
+    tabs: remaining,
+  };
 }
 
 export default function FilesApp({
@@ -568,12 +588,10 @@ export default function FilesApp({
     // Read, then write. Setting other state inside the updater made it impure,
     // and StrictMode runs updaters twice — the same mistake this file's own
     // history records elsewhere.
-    if (tabs.length <= 1) return;
-    const index = tabs.findIndex((tab) => tab.id === tabId);
-    if (index === -1) return;
-    const next = tabs.filter((tab) => tab.id !== tabId);
-    setTabs(next);
-    if (tabId === activeTabId) setActiveTabId((next[index] ?? next[next.length - 1]).id);
+    const next = closeFileTab(tabs, tabId, activeTabId);
+    if (!next) return;
+    setTabs(next.tabs);
+    setActiveTabId(next.activeTabId);
     focusFileList();
   };
 
@@ -1201,78 +1219,110 @@ export default function FilesApp({
         ))}
       </aside>
       <section className="file-main-pane">
-        <div aria-label="탐색기 탭" className="file-tab-strip" role="tablist">
-          {tabs.map((tab) => {
-            const tabFolderId = tab.history[tab.index] ?? VFS_ROOT_ID;
-            const tabName =
-              getVfsFolderPath(desktopItems, tabFolderId).slice(-1)[0]?.name ?? "바탕 화면";
-            return (
-              <div
-                className={`file-tab${tab.id === activeTabId ? " is-active" : ""}${
-                  draggingTabId === tab.id ? " is-dragging" : ""
-                }${tabDropTargetId === tab.id ? " is-drop-target" : ""}`}
-                draggable
-                key={tab.id}
-                onDragEnd={() => {
-                  setDraggingTabId(null);
-                  setTabDropTargetId(null);
-                }}
-                onDragEnter={(event) => {
-                  if (!draggingTabId) return;
-                  event.preventDefault();
-                  setTabDropTargetId(tab.id);
-                }}
-                onDragLeave={(event) => {
-                  if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-                  setTabDropTargetId((current) => (current === tab.id ? null : current));
-                }}
-                onDragOver={(event) => {
-                  if (!draggingTabId) return;
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "move";
-                }}
-                onDragStart={(event) => {
-                  event.dataTransfer.effectAllowed = "move";
-                  event.dataTransfer.setData("text/plain", tab.id);
-                  setDraggingTabId(tab.id);
-                }}
-                onDrop={(event) => {
-                  const movedId = draggingTabId ?? event.dataTransfer.getData("text/plain");
-                  setDraggingTabId(null);
-                  setTabDropTargetId(null);
-                  if (!movedId || movedId === tab.id) return;
-                  event.preventDefault();
-                  setTabs((current) =>
-                    reorderList(
-                      current,
-                      current.findIndex((entry) => entry.id === movedId),
-                      current.findIndex((entry) => entry.id === tab.id),
-                    ),
-                  );
-                }}
-              >
-                <button
+        <div className="file-tab-strip">
+          {/* A `role="tablist"` owns tabs and nothing else, so the strip's own
+              buttons (새 탭, 새 창) sit outside it. The tab element carries the
+              role itself rather than wrapping a button in a roleless div: the
+              tabs the old markup declared were grandchildren of the list, which
+              is not a tab strip at all to a screen reader. */}
+          <div
+            aria-label="탐색기 탭"
+            className="file-tab-list"
+            onKeyDown={(event) => {
+              // role="tablist" promises Left/Right/Home/End between tabs.
+              const index = tabs.findIndex((tab) => tab.id === activeTabId);
+              const next = getNextTabIndex(event.key, index, tabs.length);
+              if (next === null) return;
+              event.preventDefault();
+              setActiveTabId(tabs[next].id);
+              focusTabAt(event.currentTarget, next);
+            }}
+            role="tablist"
+          >
+            {tabs.map((tab) => {
+              const tabFolderId = tab.history[tab.index] ?? VFS_ROOT_ID;
+              const tabName =
+                getVfsFolderPath(desktopItems, tabFolderId).slice(-1)[0]?.name ?? "바탕 화면";
+              return (
+                <div
+                  aria-label={tabName}
                   aria-selected={tab.id === activeTabId}
+                  className={`file-tab${tab.id === activeTabId ? " is-active" : ""}${
+                    draggingTabId === tab.id ? " is-dragging" : ""
+                  }${tabDropTargetId === tab.id ? " is-drop-target" : ""}`}
+                  draggable
+                  key={tab.id}
+                  // Middle-click closes a tab in every browser and in Explorer.
+                  onAuxClick={(event) => {
+                    if (event.button !== 1) return;
+                    event.preventDefault();
+                    if (tabs.length > 1) closeTab(tab.id);
+                    else closeWindow(windowId);
+                  }}
                   onClick={() => setActiveTabId(tab.id)}
+                  onDragEnd={() => {
+                    setDraggingTabId(null);
+                    setTabDropTargetId(null);
+                  }}
+                  onDragEnter={(event) => {
+                    if (!draggingTabId) return;
+                    event.preventDefault();
+                    setTabDropTargetId(tab.id);
+                  }}
+                  onDragLeave={(event) => {
+                    if (event.currentTarget.contains(event.relatedTarget as Node | null))
+                      return;
+                    setTabDropTargetId((current) => (current === tab.id ? null : current));
+                  }}
+                  onDragOver={(event) => {
+                    if (!draggingTabId) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                  }}
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", tab.id);
+                    setDraggingTabId(tab.id);
+                  }}
+                  onDrop={(event) => {
+                    const movedId = draggingTabId ?? event.dataTransfer.getData("text/plain");
+                    setDraggingTabId(null);
+                    setTabDropTargetId(null);
+                    if (!movedId || movedId === tab.id) return;
+                    event.preventDefault();
+                    setTabs((current) =>
+                      reorderList(
+                        current,
+                        current.findIndex((entry) => entry.id === movedId),
+                        current.findIndex((entry) => entry.id === tab.id),
+                      ),
+                    );
+                  }}
                   role="tab"
-                  type="button"
+                  tabIndex={tab.id === activeTabId ? 0 : -1}
                 >
-                  <Folder aria-hidden="true" size={15} />
-                  <span>{tabName}</span>
-                </button>
-                {tabs.length > 1 && (
-                  <button
-                    aria-label={`${tabName} 탭 닫기`}
-                    className="file-tab-close"
-                    onClick={() => closeTab(tab.id)}
-                    type="button"
-                  >
-                    <X aria-hidden="true" size={12} />
-                  </button>
-                )}
-              </div>
-            );
-          })}
+                  <span className="file-tab-label">
+                    <Folder aria-hidden="true" size={15} />
+                    <span>{tabName}</span>
+                  </span>
+                  {tabs.length > 1 && (
+                    <button
+                      aria-label={`${tabName} 탭 닫기`}
+                      className="file-tab-close"
+                      // The tab under it selects on click; closing must not.
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        closeTab(tab.id);
+                      }}
+                      type="button"
+                    >
+                      <X aria-hidden="true" size={12} />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
           <button
             aria-label="새 탭"
             className="file-new-tab-button"

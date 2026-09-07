@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import FileDialog from "../components/FileDialog";
 import type { DesktopItem, ToastInput } from "../types";
-import { getNextRovingIndex } from "../shell/keyboardNav";
+import { focusTabAt, getNextTabIndex } from "../shell/keyboardNav";
 import { isShellReservedChord } from "../shell/shortcuts";
 import { VFS_DOCUMENTS_ID } from "../vfs/model";
 import { handleMenuKeyboard } from "../shell/keyboardNav";
@@ -849,10 +849,11 @@ export default function NotepadApp({
           onKeyDown={(event) => {
             // role="tablist" promises Left/Right movement between documents.
             const index = noteEntries.findIndex((note) => note.id === activeNote?.id);
-            const next = getNextRovingIndex(event.key, index, noteEntries.length);
+            const next = getNextTabIndex(event.key, index, noteEntries.length);
             if (next === null) return;
             event.preventDefault();
             activateVfsEntry(noteEntries[next]);
+            focusTabAt(event.currentTarget, next);
           }}
           role="tablist"
         >
