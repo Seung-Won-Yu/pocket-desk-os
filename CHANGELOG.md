@@ -17,6 +17,21 @@ All notable changes to PocketDesk OS are documented here.
 - **작업 관리자's unselected tab pointed at a panel that was not there.** Only one panel is rendered at a time, so `aria-controls` on the other tab named a missing id. Its arrow keys moved the selection without moving the focus, too — the same stranded-tab-stop bug as the strips above, and 메모장's document tabs had it as well.
 - **A horizontal tab strip swallowed Up and Down.** Explorer, Edge, 메모장 and 작업 관리자 all stepped the tab on the vertical arrows, taking the keys away from whatever the strip sat above. 알람 및 시계 already guarded against this; the guard is one helper now.
 
+### Changed
+
+- **매 앱이 자기 청크.** Every app is loaded when its first window opens, instead of shipping in the initial bundle: the JavaScript needed to reach the desktop went from 588,323 to 366,012 bytes (175.5 kB → 114.4 kB gzipped). The window waits for its app rather than appearing as a frame that is on screen and deaf — the first thing the smoke caught was a keyboard chord landing on a window whose app had not mounted yet. The service worker precaches every emitted asset from the build's own list, so a deferred app is still there offline.
+- **스티커 메모 stopped writing on every keystroke.** Typing rewrote the whole note store to localStorage per keypress — a synchronous `JSON.stringify` plus `setItem` each time, measured at 18 writes and 4,224 bytes for 14 typed characters. One write per pause instead (300 ms, the same debounce the window state and the icon layout use), flushed on pagehide and when the tab goes hidden: **1 write, 241 bytes** for the same 14 characters, and the text still survives a reload.
+- **작업 관리자's memory graph plots the measurement.** The line was `22 + MB / 24 + jitter`, drawn as a percentage — a figure that matched neither the megabytes printed beside it nor any percentage of anything. It plots megabytes against a ceiling now, and the fake jitter is gone.
+- **The pinned-tile persistence tests now cover the code that runs.** They were written against an id-list API that tile folders replaced; that API read the entry format as a list of strings (which is empty) and nothing but its own test still called it. It is gone, and its assertions — order, uncapped growth, a pinned app that is no longer installed, a duplicate id — now run against the entry API, plus the v1 migration and folders.
+
+### Fixed
+
+- **A screenshot that stalled said nothing at all.** The `<img>` the capture draws through can neither load nor error for a big enough `foreignObject`, and the await simply never returned: no picture, no message, no console line — PrintScreen did nothing. It has a deadline now, and a stall is reported the way every other capture failure already was.
+- **The capture could call another origin.** "Same-origin resources" was a comment above a function that fetched whatever a `url()` named. A stylesheet, an `<img>`, or an imported wallpaper the shell merely shows could have named any host — and this project documents its CSP as not being that boundary. The rule is in the code now.
+- **The fold vector outlived its animation.** A minimize sets `--minimize-dx/dy` on the frame so it folds toward its taskbar button, and nothing ever removed them; the taskbar button moves whenever the bar's contents change, so the next motion could start from where the button used to be. The selector also matched any `data-app-id` in the bar, a jump-list row included.
+- **시작 메뉴's folder flyout could outlive its folder.** A folder that drops to one app is flattened away, and 그룹 해제 removes it outright; either left a panel headed 폴더 open with nothing in it.
+- **Two note windows overwrote each other.** Each computed its next store from the one it had rendered with, so whichever wrote second threw away the other's characters — and two windows opening in the same tick both bound themselves to the same note. The shell takes an updater now, not a value. A note is capped at 20,000 characters as well; an unbounded paste filled the localStorage quota, and the failed write meant the note was gone on the next reload.
+
 ## 0.14.0
 
 The round where the desktop started showing itself. Windows are pictured

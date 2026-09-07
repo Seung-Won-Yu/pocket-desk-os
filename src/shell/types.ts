@@ -17,6 +17,7 @@ import {
   type VfsDuplicateOptions,
   type WallpaperName,
 } from "../types";
+import { type ComponentType } from "react";
 import { type LucideIcon } from "lucide-react";
 import { type DefaultAppMap } from "./preferences";
 import { type ClockAlarm, type ClockTimer } from "./clock";
@@ -208,7 +209,8 @@ export type AppContentProps = {
   clockTimer: ClockTimer;
   /** 스티커 메모 shared store; each note window binds itself by window id. */
   stickyNotes: StickyNoteStore;
-  updateStickyNotes: (store: StickyNoteStore) => void;
+  /** Takes an updater so two note windows cannot overwrite each other. */
+  updateStickyNotes: (update: (store: StickyNoteStore) => StickyNoteStore) => void;
   updateClockAlarms: (alarms: ClockAlarm[]) => void;
   updateClockTimer: (timer: ClockTimer) => void;
   deleteVfsEntry: (itemId: string) => void;
@@ -291,5 +293,9 @@ export type AppDefinition = {
   defaultSize: { width: number; height: number };
   minSize?: { width: number; height: number };
   multiInstance?: boolean;
-  component: (props: AppContentProps) => JSX.Element;
+  /**
+   * Lazy: each app is its own chunk, so this is whatever `React.lazy` returns
+   * as well as a plain function component. WindowSlot renders it in Suspense.
+   */
+  component: ComponentType<AppContentProps>;
 };

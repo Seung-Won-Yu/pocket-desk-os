@@ -136,7 +136,7 @@ describe("TaskManagerApp 성능 탭", () => {
   it("성능 탭으로 바꾸면 CPU와 메모리 그래프를 그린다", async () => {
     const { user } = renderTaskManager([makeWindowInfo({ id: "win-notepad" })]);
 
-    expect(screen.queryByRole("img", { name: "CPU 사용률 그래프" })).toBeNull();
+    expect(screen.queryByRole("img", { name: /CPU 그래프/ })).toBeNull();
 
     await user.click(screen.getByRole("tab", { name: "성능" }));
 
@@ -145,8 +145,13 @@ describe("TaskManagerApp 성능 탭", () => {
       "aria-selected",
       "false",
     );
-    expect(screen.getByRole("img", { name: "CPU 사용률 그래프" })).toBeVisible();
-    expect(screen.getByRole("img", { name: "메모리 사용률 그래프" })).toBeVisible();
+    expect(screen.getByRole("img", { name: "CPU 그래프, 최대 100%" })).toBeVisible();
+    /*
+     * The memory graph plots megabytes against a ceiling, not a percentage:
+     * the line used to be `22 + MB / 24 + jitter` drawn as a %, a figure that
+     * matched neither the measurement printed beside it nor any percentage.
+     */
+    expect(screen.getByRole("img", { name: /^메모리 그래프, 최대 \d+ MB$/ })).toBeVisible();
     expect(screen.queryByRole("table")).toBeNull();
   });
 

@@ -1,43 +1,34 @@
-import BrowserApp from "../apps/BrowserApp";
-import CalculatorApp from "../apps/CalculatorApp";
-import ClockApp from "../apps/ClockApp";
-import EventViewerApp from "../apps/EventViewerApp";
-import FilesApp from "../apps/FilesApp";
-import MinesweeperApp from "../apps/MinesweeperApp";
-import NotepadApp from "../apps/NotepadApp";
-import PaintApp from "../apps/PaintApp";
-import PhotosApp from "../apps/PhotosApp";
-import RecycleBinApp from "../apps/RecycleBinApp";
-import RegistryEditorApp from "../apps/RegistryEditorApp";
-import SettingsApp from "../apps/SettingsApp";
-import SnipApp from "../apps/SnipApp";
-import StickyNotesApp from "../apps/StickyNotesApp";
-import TaskManagerApp from "../apps/TaskManagerApp";
-import TerminalApp from "../apps/TerminalApp";
-import ThisPcApp from "../apps/ThisPcApp";
+import { lazy } from "react";
 import { appMetadata, appOrder } from "../apps/metadata";
 import { type AppId } from "../types";
 import { TASKBAR_PINNED_APPS_KEY } from "./constants";
 import { type AppDefinition } from "./types";
 
+/*
+ * Every app is its own chunk, fetched when a window for it first opens. The
+ * shell used to ship all 17 in the initial bundle: 588,323 bytes of JavaScript
+ * to parse before the lock screen, of which 280,821 was app code nobody had
+ * asked for yet. The service worker precaches every emitted asset from the
+ * build's own list, so a deferred app is still there offline.
+ */
 export const appComponents: Record<AppId, AppDefinition["component"]> = {
-  browser: BrowserApp,
-  calculator: CalculatorApp,
-  clock: ClockApp,
-  eventviewer: EventViewerApp,
-  files: FilesApp,
-  minesweeper: MinesweeperApp,
-  notepad: NotepadApp,
-  paint: PaintApp,
-  photos: PhotosApp,
-  recycle: RecycleBinApp,
-  registry: RegistryEditorApp,
-  settings: SettingsApp,
-  snip: SnipApp,
-  stickynotes: StickyNotesApp,
-  taskmanager: TaskManagerApp,
-  terminal: TerminalApp,
-  thispc: ThisPcApp,
+  browser: lazy(() => import("../apps/BrowserApp")),
+  calculator: lazy(() => import("../apps/CalculatorApp")),
+  clock: lazy(() => import("../apps/ClockApp")),
+  eventviewer: lazy(() => import("../apps/EventViewerApp")),
+  files: lazy(() => import("../apps/FilesApp")),
+  minesweeper: lazy(() => import("../apps/MinesweeperApp")),
+  notepad: lazy(() => import("../apps/NotepadApp")),
+  paint: lazy(() => import("../apps/PaintApp")),
+  photos: lazy(() => import("../apps/PhotosApp")),
+  recycle: lazy(() => import("../apps/RecycleBinApp")),
+  registry: lazy(() => import("../apps/RegistryEditorApp")),
+  settings: lazy(() => import("../apps/SettingsApp")),
+  snip: lazy(() => import("../apps/SnipApp")),
+  stickynotes: lazy(() => import("../apps/StickyNotesApp")),
+  taskmanager: lazy(() => import("../apps/TaskManagerApp")),
+  terminal: lazy(() => import("../apps/TerminalApp")),
+  thispc: lazy(() => import("../apps/ThisPcApp")),
 };
 
 export const appCatalog: AppDefinition[] = appOrder.map((appId) => ({

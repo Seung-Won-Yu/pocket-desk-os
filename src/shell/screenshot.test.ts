@@ -5,6 +5,7 @@ import {
   buildSvgDocument,
   collectStyleText,
   createResourceInliner,
+  loadCaptureImage,
   getCaptureStyleText,
   getScreenshotFileName,
   inlineCloneResources,
@@ -119,6 +120,56 @@ describe("createResourceInliner", () => {
     expect(missing).toBeNull();
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(await inline("data:image/png;base64,AA")).toBe("data:image/png;base64,AA");
+  });
+
+  it("never calls another origin, whatever a url() named", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response(new Uint8Array([1]), { status: 200 }),
+    ) as unknown as typeof fetch;
+    const inline = createResourceInliner(fetchImpl);
+    expect(await inline("https://example.com/tracker.png")).toBeNull();
+    expect(await inline("//example.com/tracker.png")).toBeNull();
+    expect(await inline("https://r.jina.ai/http://example.com")).toBeNull();
+    expect(fetchImpl).not.toHaveBeenCalled();
+
+    // Same origin, however it is written, still resolves.
+    expect(await inline("/wallpapers/w.jpg")).not.toBeNull();
+    expect(await inline(`${window.location.origin}/brand/icon.png`)).not.toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("loadCaptureImage", () => {
+  it("gives up on a picture that neither loads nor errors", async () => {
+    // The failure this exists for: PrintScreen did nothing at all, because the
+    // await never returned. Now it fails, and the caller reports the failure.
+    await expect(loadCaptureImage("data:image/svg+xml,<svg/>", 5)).rejects.toThrow(
+      "너무 오래 걸렸습니다",
+    );
+  });
+
+  it("resolves with the image that loaded, and stops watching the clock", async () => {
+    // jsdom fetches nothing, so the load event is what is being simulated.
+    const created: HTMLImageElement[] = [];
+    const RealImage = window.Image;
+    vi.stubGlobal(
+      "Image",
+      class StubImage extends RealImage {
+        constructor() {
+          super();
+          created.push(this as unknown as HTMLImageElement);
+        }
+      },
+    );
+    const clear = vi.spyOn(window, "clearTimeout");
+    const pending = loadCaptureImage("data:image/svg+xml,<svg/>", 5);
+    created[0].dispatchEvent(new Event("load"));
+    await expect(pending).resolves.toBe(created[0]);
+    expect(clear).toHaveBeenCalled();
+    // The deadline that was cleared cannot come back and reject afterwards.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await expect(pending).resolves.toBe(created[0]);
+    vi.unstubAllGlobals();
   });
 });
 

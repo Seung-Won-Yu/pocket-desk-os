@@ -212,7 +212,7 @@ import {
   type WallpaperCssVars,
   wallpaperGallery,
 } from "./wallpapers";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const DESKTOP_ICON_NAV_KEYS = [
   "ArrowDown",
@@ -307,8 +307,17 @@ export default function App() {
   const [clockTimer, setClockTimer] = useState<ClockTimer>(() => loadClockTimer());
   const [stickyNotes, setStickyNotes] = useState<StickyNoteStore>(() => loadStickyNotes());
 
+  /*
+   * Typing in a note rewrote the whole store on every keystroke — a
+   * synchronous JSON.stringify plus localStorage.setItem per keypress
+   * (measured: 18 writes and 4,224 bytes for 14 typed characters). One write
+   * per pause instead, with the same pagehide flush the other stores use.
+   */
+  const stickyNotesRef = useRef(stickyNotes);
+  stickyNotesRef.current = stickyNotes;
   useEffect(() => {
-    persistStickyNotes(stickyNotes);
+    const timer = window.setTimeout(() => persistStickyNotes(stickyNotes), 300);
+    return () => window.clearTimeout(timer);
   }, [stickyNotes]);
 
   useEffect(() => {
@@ -675,6 +684,7 @@ export default function App() {
     const flushAll = () => {
       persistWindowState(windowsRef.current);
       persistDesktopIconLayout(iconLayoutRef.current);
+      persistStickyNotes(stickyNotesRef.current);
       if (vfsReadyRef.current) flushVfsPersist(desktopItemsRef.current);
     };
     const flushWhenHidden = () => {
@@ -2892,8 +2902,12 @@ export default function App() {
       // measures the window record instead of the element.
       const frame = findLiveWindowFrame(id);
       const record = windows.find((item) => item.id === id);
+      // The app's own taskbar button, not whatever else in the bar carries a
+      // data-app-id (a jump-list entry does too).
       const button = record
-        ? document.querySelector<HTMLElement>(`.taskbar button[data-app-id="${record.appId}"]`)
+        ? document.querySelector<HTMLElement>(
+            `.taskbar button.taskbar-app[data-app-id="${record.appId}"]`,
+          )
         : null;
       if (frame && record) {
         const area = getDesktopWorkArea();
@@ -2912,6 +2926,12 @@ export default function App() {
     const timer = window.setTimeout(
       () => {
         windowMotionTimersRef.current.delete(id);
+        // The fold vector belongs to one motion. Left on the frame it would be
+        // the starting point of a motion measured from somewhere else — the
+        // taskbar button moves whenever the bar's contents change.
+        const motionFrame = findLiveWindowFrame(id);
+        motionFrame?.style.removeProperty("--minimize-dx");
+        motionFrame?.style.removeProperty("--minimize-dy");
         complete();
         setWindowMotions((current) => {
           if (!current[id]) return current;
@@ -4260,6 +4280,22 @@ export default function App() {
     ],
   );
 
+  /*
+   * How many times the shared props object has been rebuilt, published on the
+   * window layer as `data-shared-props`. It makes the invariant the memo above
+   * exists for measurable: a commit that only moved a window must hand every
+   * slot the identical object. One un-memoized function in that list broke it
+   * twice, and both times nothing but a hand measurement noticed.
+   */
+  const sharedPropsGenerationRef = useRef({ generation: 0, props: sharedContentProps });
+  if (sharedPropsGenerationRef.current.props !== sharedContentProps) {
+    sharedPropsGenerationRef.current = {
+      generation: sharedPropsGenerationRef.current.generation + 1,
+      props: sharedContentProps,
+    };
+  }
+  const sharedContentPropsGeneration = sharedPropsGenerationRef.current.generation;
+
   return (
     <main
       className={`desktop desktop-view-${desktopViewMode} theme-${theme} wallpaper-${wallpaper} ${
@@ -4374,20 +4410,29 @@ export default function App() {
           peekWindowId ? " is-peeking" : ""
         }${peekDesktop ? " is-peeking-desktop" : ""}`}
         aria-label="열린 창"
+        data-shared-props={sharedContentPropsGeneration}
       >
         {desktopWindows.map((item) => (
-          <WindowSlot
-            key={item.id}
-            active={activeWindowId === item.id}
-            app={getApp(item.appId)}
-            contentProps={sharedContentProps}
-            documentLabel={getWindowDocumentLabel(item.id, item.appId)}
-            frameOps={stableFrameOps}
-            hasUnsavedChanges={unsavedWindowIds.has(item.id)}
-            instance={item}
-            motion={windowMotions[item.id]}
-            peeked={peekWindowId === item.id}
-          />
+          /*
+           * Each app is its own chunk, so a window waits for its app before it
+           * appears — one boundary per window, so one app loading never blanks
+           * the others. The frame used to mount first and the app a beat
+           * later: the window was on screen and deaf, and a chord pressed at
+           * it went nowhere.
+           */
+          <Suspense fallback={null} key={item.id}>
+            <WindowSlot
+              active={activeWindowId === item.id}
+              app={getApp(item.appId)}
+              contentProps={sharedContentProps}
+              documentLabel={getWindowDocumentLabel(item.id, item.appId)}
+              frameOps={stableFrameOps}
+              hasUnsavedChanges={unsavedWindowIds.has(item.id)}
+              instance={item}
+              motion={windowMotions[item.id]}
+              peeked={peekWindowId === item.id}
+            />
+          </Suspense>
         ))}
       </section>
 

@@ -50,11 +50,32 @@ function toBase64(bytes: Uint8Array) {
   return btoa(binary);
 }
 
+/**
+ * A url() the capture may resolve. Everything a picture of the screen needs
+ * ships with the app or is a data/blob URL this app made itself.
+ */
+function isInlinableUrl(url: string) {
+  if (url.startsWith("blob:")) return true;
+  try {
+    return new URL(url, window.location.href).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 /** Same-origin resources as data URLs, fetched once each. */
 export function createResourceInliner(fetchImpl: typeof fetch = fetch) {
   const cache = new Map<string, Promise<string | null>>();
   return (url: string): Promise<string | null> => {
     if (url.startsWith("data:")) return Promise.resolve(url);
+    /*
+     * "Same-origin" was a comment, not a rule: this fetched whatever a url()
+     * named. Taking a picture of the screen must not be a reason to call
+     * another host — a stylesheet, an <img> or an imported wallpaper the shell
+     * merely shows could have named one, and the CSP is documented as not
+     * being the boundary here.
+     */
+    if (!isInlinableUrl(url)) return Promise.resolve(null);
     let pending = cache.get(url);
     if (!pending) {
       pending = (async () => {
@@ -253,11 +274,29 @@ export function buildSvgDocument(width: number, height: number, css: string, htm
   );
 }
 
-function loadImage(src: string) {
+/** How long the SVG picture gets to load before the capture gives up. */
+export const CAPTURE_IMAGE_TIMEOUT_MS = 8000;
+
+/**
+ * The SVG picture as a loaded image, or a rejection. Exposed for the deadline
+ * below: an <img> given a big foreignObject can neither load nor error, and
+ * this await simply never returned — no picture, no message, no console line,
+ * just a PrintScreen that did nothing. The caller already knows how to report
+ * a failure, so a stall becomes one.
+ */
+export function loadCaptureImage(src: string, timeoutMs = CAPTURE_IMAGE_TIMEOUT_MS) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("스크린샷 이미지를 그릴 수 없습니다."));
+    const timer = window.setTimeout(() => {
+      reject(new Error("스크린샷을 그리는 데 너무 오래 걸렸습니다."));
+    }, timeoutMs);
+    const settle = (finish: () => void) => {
+      window.clearTimeout(timer);
+      finish();
+    };
+    image.onload = () => settle(() => resolve(image));
+    image.onerror = () =>
+      settle(() => reject(new Error("스크린샷 이미지를 그릴 수 없습니다.")));
     image.src = src;
   });
 }
@@ -316,7 +355,9 @@ export async function captureElementToPng(
   options: CaptureOptions = {},
 ): Promise<CapturedImage> {
   const { height, svg, width } = await buildCaptureSvg(root, options);
-  const image = await loadImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
+  const image = await loadCaptureImage(
+    `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+  );
   if (typeof image.decode === "function") await image.decode().catch(() => undefined);
   // Images inside the foreignObject decode a beat after the SVG reports loaded.
   await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));

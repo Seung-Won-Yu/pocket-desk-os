@@ -2,6 +2,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { useEffect } from "react";
 import {
   STICKY_NOTE_COLORS,
+  STICKY_NOTE_MAX_LENGTH,
   bindStickyNoteWindow,
   deleteStickyNote,
   getStickyNoteTitle,
@@ -26,7 +27,13 @@ type StickyNotesAppProps = {
   playSound: (effect: SoundEffectName) => void;
   reportDocument: (windowId: string, ref: { title?: string } | undefined) => void;
   stickyNotes: StickyNoteStore;
-  updateStickyNotes: (store: StickyNoteStore) => void;
+  /**
+   * Takes an updater, not a value. Two note windows each computed their next
+   * store from the one they had rendered with, so whichever wrote second threw
+   * away the other's characters — and two windows opening in the same tick
+   * both bound themselves to the same note.
+   */
+  updateStickyNotes: (update: (store: StickyNoteStore) => StickyNoteStore) => void;
   windowId: string;
 };
 
@@ -52,9 +59,12 @@ export default function StickyNotesApp({
   const note = stickyNotes.notes.find((item) => item.id === noteId);
 
   // Bind on mount (and re-bind if the note this window showed was deleted).
+  // The updater returns the store unchanged when there is nothing to bind, and
+  // React bails out of an identical state, so this settles after one pass.
   useEffect(() => {
-    const bound = bindStickyNoteWindow(stickyNotes, windowId, openStickyWindowIds, Date.now());
-    if (bound !== stickyNotes) updateStickyNotes(bound);
+    updateStickyNotes((store) =>
+      bindStickyNoteWindow(store, windowId, openStickyWindowIds, Date.now()),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- binding depends on the store identity and this window only
   }, [stickyNotes, windowId]);
 
@@ -88,7 +98,9 @@ export default function StickyNotesApp({
               className={`sticky-swatch is-${color}`}
               key={color}
               onClick={() =>
-                updateStickyNotes(updateStickyNote(stickyNotes, note.id, { color }, Date.now()))
+                updateStickyNotes((store) =>
+                  updateStickyNote(store, note.id, { color }, Date.now()),
+                )
               }
               type="button"
             />
@@ -98,7 +110,7 @@ export default function StickyNotesApp({
           aria-label="메모 삭제"
           onClick={() => {
             playSound("close");
-            updateStickyNotes(deleteStickyNote(stickyNotes, note.id));
+            updateStickyNotes((store) => deleteStickyNote(store, note.id));
             closeWindow(windowId);
           }}
           title="메모 삭제"
@@ -110,9 +122,10 @@ export default function StickyNotesApp({
       <textarea
         aria-label="스티커 메모 내용"
         className="sticky-note-text"
+        maxLength={STICKY_NOTE_MAX_LENGTH}
         onChange={(event) =>
-          updateStickyNotes(
-            updateStickyNote(stickyNotes, note.id, { text: event.target.value }, Date.now()),
+          updateStickyNotes((store) =>
+            updateStickyNote(store, note.id, { text: event.target.value }, Date.now()),
           )
         }
         placeholder="메모를 입력하세요"

@@ -25,6 +25,14 @@ export type StickyNoteStore = {
 };
 
 export const STICKY_NOTE_LIMIT = 50;
+/**
+ * A note's length, in characters. Sticky Notes is a note pad, not a document
+ * store: the whole store is one localStorage value, and an unbounded paste
+ * filled the quota — the write then failed silently and the note was gone on
+ * the next reload. The textarea carries the same cap, so the limit is
+ * something the user meets rather than something that eats their text.
+ */
+export const STICKY_NOTE_MAX_LENGTH = 20000;
 export const EMPTY_STICKY_STORE: StickyNoteStore = { bindings: {}, notes: [] };
 
 export function isStickyNoteColor(value: unknown): value is StickyNoteColor {
@@ -91,10 +99,14 @@ export function updateStickyNote(
   patch: Partial<Pick<StickyNote, "color" | "text">>,
   now: number,
 ): StickyNoteStore {
+  const capped =
+    patch.text === undefined
+      ? patch
+      : { ...patch, text: patch.text.slice(0, STICKY_NOTE_MAX_LENGTH) };
   return {
     ...store,
     notes: store.notes.map((note) =>
-      note.id === noteId ? { ...note, ...patch, updatedAt: now } : note,
+      note.id === noteId ? { ...note, ...capped, updatedAt: now } : note,
     ),
   };
 }
@@ -122,6 +134,9 @@ export function loadStickyNotes(): StickyNoteStore {
           Number.isFinite((note as StickyNote).updatedAt) &&
           isStickyNoteColor((note as StickyNote).color),
       )
+      // Restored or imported text is capped too; the cap is the model's, not
+      // the textarea's.
+      .map((note) => ({ ...note, text: note.text.slice(0, STICKY_NOTE_MAX_LENGTH) }))
       .slice(0, STICKY_NOTE_LIMIT);
     const noteIds = new Set(notes.map((note) => note.id));
     const bindings =

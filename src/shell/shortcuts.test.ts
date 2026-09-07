@@ -50,4 +50,11 @@ describe("isShellReservedChord", () => {
     expect(chord({ key: "s", metaKey: true })).toBe(false);
     expect(chord({ key: "q", metaKey: true })).toBe(false);
   });
+
+  it("stands aside when another modifier joins the Win key", () => {
+    // Ctrl+Win+D and Alt+Win+D are nobody's shell chord, so an app may take
+    // them — and on a Mac, Cmd is held for multi-select, not for the shell.
+    expect(chord({ ctrlKey: true, key: "d", metaKey: true })).toBe(false);
+    expect(chord({ altKey: true, key: "d", metaKey: true })).toBe(false);
+  });
 });

@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type AppId, type DesktopItem } from "../types";
 import { appCatalog } from "./appCatalog";
+import { type StartPinnedEntry } from "./startPinned";
 import {
   buildStartSearchResults,
   createCalendarGrid,
@@ -9,12 +10,12 @@ import {
   getLocalDateKey,
   getResultIconTileTone,
   getRunCommandCandidates,
-  getStartPinnedApps,
+  getStartPinnedTiles,
   getThemeLabel,
   isBrowserRunTarget,
-  loadStartPinnedAppIds,
+  loadStartPinnedEntries,
   normalizeRunCommand,
-  persistStartPinnedAppIds,
+  persistStartPinnedEntries,
   rankSearchCandidate,
   resolveRunCommand,
 } from "./startSearch";
@@ -327,17 +328,50 @@ describe("getResultIconTileTone", () => {
   });
 });
 
-describe("getStartPinnedApps", () => {
-  it("shows the pinned ids in their pinned order", () => {
+/*
+ * These cover the entry API the pinned grid actually uses. The assertions came
+ * from a suite written against an id-list API that tile folders replaced: that
+ * API read the entry format as a list of strings — which is empty — and only
+ * its own test still called it, so it went and its coverage came here.
+ */
+describe("getStartPinnedTiles", () => {
+  const appTiles = (appIds: AppId[]): StartPinnedEntry[] =>
+    appIds.map((appId) => ({ appId, kind: "app" }));
+
+  it("shows the pinned entries in their pinned order", () => {
     expect(
-      getStartPinnedApps(appCatalog, ["calculator", "files", "browser"]).map((app) => app.id),
+      getStartPinnedTiles(appCatalog, appTiles(["calculator", "files", "browser"])).map(
+        (tile) => ("app" in tile ? tile.app?.id : tile.entry),
+      ),
     ).toEqual(["calculator", "files", "browser"]);
   });
 
-  it("drops a pinned id whose app is not installed", () => {
+  it("drops an entry whose app is not installed", () => {
     expect(
-      getStartPinnedApps(appsWithIds(["files"]), ["files", "notepad"]).map((app) => app.id),
+      getStartPinnedTiles(appsWithIds(["files"]), appTiles(["files", "notepad"])).map((tile) =>
+        "app" in tile ? tile.app?.id : null,
+      ),
     ).toEqual(["files"]);
+  });
+
+  it("drops a folder once none of its apps are installed, and keeps one that has some", () => {
+    const folder: StartPinnedEntry = {
+      appIds: ["files", "notepad"],
+      id: "folder-1",
+      kind: "folder",
+      name: "폴더",
+    };
+    const gone: StartPinnedEntry = {
+      appIds: ["notepad"],
+      id: "folder-2",
+      kind: "folder",
+      name: "빈 폴더",
+    };
+    const tiles = getStartPinnedTiles(appsWithIds(["files"]), [folder, gone]);
+    expect(tiles).toHaveLength(1);
+    const kept = tiles[0];
+    expect(kept.entry.kind).toBe("folder");
+    expect("apps" in kept ? kept.apps?.map((app) => app?.id) : null).toEqual(["files"]);
   });
 
   it("caps the grid at its slot limit", () => {
@@ -346,32 +380,43 @@ describe("getStartPinnedApps", () => {
       ...appCatalog.map((app, index) => ({ ...app, id: `extra-${index}` as AppId })),
     ];
     expect(
-      getStartPinnedApps(
-        oversized,
-        oversized.map((app) => app.id),
-      ),
+      getStartPinnedTiles(oversized, appTiles(oversized.map((app) => app.id))),
     ).toHaveLength(18);
   });
 
   it("returns nothing when nothing is pinned", () => {
     // 고정됨 used to be every installed app, indistinguishable from 모든 앱.
-    expect(getStartPinnedApps(appCatalog, [])).toEqual([]);
+    expect(getStartPinnedTiles(appCatalog, [])).toEqual([]);
   });
 });
 
 describe("start pin persistence", () => {
+  const known = new Set(appCatalog.map((app) => app.id));
+
   afterEach(() => {
     localStorage.clear();
   });
 
-  it("round-trips the pinned set", () => {
-    persistStartPinnedAppIds(["files", "calculator"]);
-    expect(loadStartPinnedAppIds()).toEqual(["files", "calculator"]);
+  it("round-trips entries, folders included", () => {
+    const entries: StartPinnedEntry[] = [
+      { appId: "files", kind: "app" },
+      { appIds: ["calculator", "notepad"], id: "folder-1", kind: "folder", name: "도구" },
+    ];
+    persistStartPinnedEntries(entries);
+    expect(loadStartPinnedEntries(known)).toEqual(entries);
+  });
+
+  it("reads a v1 list of app ids so an existing profile keeps its tiles", () => {
+    localStorage.setItem("pocket-desk-start-pins-v1", JSON.stringify(["files", "calculator"]));
+    expect(loadStartPinnedEntries(known)).toEqual([
+      { appId: "files", kind: "app" },
+      { appId: "calculator", kind: "app" },
+    ]);
   });
 
   it("falls back to the defaults for garbage storage", () => {
     localStorage.setItem("pocket-desk-start-pins-v1", "{broken");
-    expect(loadStartPinnedAppIds().length).toBeGreaterThan(0);
+    expect(loadStartPinnedEntries(known).length).toBeGreaterThan(0);
   });
 
   it("deduplicates a stored id so no two tiles share a key", () => {
@@ -379,7 +424,15 @@ describe("start pin persistence", () => {
       "pocket-desk-start-pins-v1",
       JSON.stringify(["files", "files", "notepad"]),
     );
-    expect(loadStartPinnedAppIds()).toEqual(["files", "notepad"]);
+    expect(loadStartPinnedEntries(known)).toEqual([
+      { appId: "files", kind: "app" },
+      { appId: "notepad", kind: "app" },
+    ]);
+  });
+
+  it("drops an entry naming an app that is no longer installed", () => {
+    localStorage.setItem("pocket-desk-start-pins-v1", JSON.stringify(["files", "not-an-app"]));
+    expect(loadStartPinnedEntries(known)).toEqual([{ appId: "files", kind: "app" }]);
   });
 });
 

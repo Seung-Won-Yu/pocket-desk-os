@@ -28,10 +28,12 @@ const SAMPLE_COUNT = 48;
 const SAMPLE_INTERVAL_MS = 1000;
 
 /**
- * Per-window load figures. The window id fixes each process's baseline so it
- * keeps its character across re-renders, and the sample tick moves the CPU and
- * disk figures the way a real reading moves — they used to be frozen, so the
- * status bar printed the same string forever while the graph beside it climbed.
+ * Per-window CPU and disk figures. No browser can read either, so these are a
+ * simulation: the window id fixes each process's baseline so it keeps its
+ * character across re-renders, and the sample tick moves the figures the way a
+ * real reading moves — they used to be frozen, so the status bar printed the
+ * same string forever while the graph beside it climbed. Memory is not here:
+ * it is measured per row, in estimateProcessMemoryMb.
  */
 function getWindowLoad(windowId: string, maximized: boolean, minimized: boolean, tick: number) {
   let hash = 0;
@@ -39,9 +41,6 @@ function getWindowLoad(windowId: string, maximized: boolean, minimized: boolean,
     hash = (hash * 31 + windowId.charCodeAt(index)) % 100000;
   }
   const base = hash % 100;
-  // Memory is measured, not hashed; see the rows below.
-  // Memory is measured per row (see estimateProcessMemoryMb); nothing here.
-  const memoryMb = 0;
   const wobble = ((base + tick * 13) % 21) / 10;
   const cpu = minimized
     ? 0
@@ -49,22 +48,26 @@ function getWindowLoad(windowId: string, maximized: boolean, minimized: boolean,
   const diskMbPerSecond = minimized
     ? 0
     : Number((((base % 13) / 10) * (0.4 + ((tick + base) % 7) / 6)).toFixed(1));
-  return { cpu, diskMbPerSecond, memoryMb };
+  return { cpu, diskMbPerSecond };
 }
 
 function Sparkline({
   label,
+  max = 100,
   samples,
   unit,
 }: {
   label: string;
+  /** The value the top of the graph stands for; a percentage by default. */
+  max?: number;
   samples: number[];
   unit: string;
 }) {
+  const scale = Math.max(1, max);
   const points = samples
     .map((value, index) => {
       const x = (index / Math.max(1, SAMPLE_COUNT - 1)) * 100;
-      const y = 100 - Math.max(0, Math.min(100, value));
+      const y = 100 - Math.max(0, Math.min(100, (value / scale) * 100));
       return `${x.toFixed(2)},${y.toFixed(2)}`;
     })
     .join(" ");
@@ -80,7 +83,7 @@ function Sparkline({
         </strong>
       </div>
       <svg
-        aria-label={`${label} 사용률 그래프`}
+        aria-label={`${label} 그래프, 최대 ${max.toLocaleString("ko-KR")}${unit}`}
         preserveAspectRatio="none"
         role="img"
         viewBox="0 0 100 100"
@@ -110,10 +113,9 @@ export default function TaskManagerApp({
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [cpuSamples, setCpuSamples] = useState<number[]>(() => new Array(SAMPLE_COUNT).fill(4));
   const [memorySamples, setMemorySamples] = useState<number[]>(() =>
-    new Array(SAMPLE_COUNT).fill(28),
+    new Array(SAMPLE_COUNT).fill(0),
   );
   const [storage, setStorage] = useState<StorageEstimate | null>(null);
-  const jitterRef = useRef(0);
 
   const rows = useMemo(
     () =>
@@ -188,6 +190,15 @@ export default function TaskManagerApp({
     [rows],
   );
 
+  /*
+   * The graph's ceiling, rounded up to a 256 MB step so the line has headroom
+   * and the axis does not jump on every sample.
+   */
+  const memoryGraphMax = useMemo(
+    () => Math.max(256, Math.ceil(Math.max(...memorySamples) / 256) * 256),
+    [memorySamples],
+  );
+
   useEffect(() => {
     if (!navigator.storage?.estimate) return;
     let cancelled = false;
@@ -204,15 +215,13 @@ export default function TaskManagerApp({
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      jitterRef.current = (jitterRef.current + 7) % 23;
-      const jitter = jitterRef.current / 4;
       setSampleTick((current) => current + 1);
-      // The same figure the status bar prints, so the two cannot disagree.
+      // Both graphs plot the figures the status bar prints, so the two cannot
+      // disagree. The memory line used to be `22 + MB / 24 + jitter`, drawn as
+      // a percentage — a number that was neither the measurement beside it nor
+      // a percentage of anything.
       setCpuSamples((current) => [...current.slice(1), Math.min(100, totals.cpu)]);
-      setMemorySamples((current) => [
-        ...current.slice(1),
-        Math.min(100, 22 + totals.memoryMb / 24 + jitter / 3),
-      ]);
+      setMemorySamples((current) => [...current.slice(1), totals.memoryMb]);
     }, SAMPLE_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [totals.cpu, totals.memoryMb]);
@@ -363,7 +372,7 @@ export default function TaskManagerApp({
           role="tabpanel"
         >
           <Sparkline label="CPU" samples={cpuSamples} unit="%" />
-          <Sparkline label="메모리" samples={memorySamples} unit="%" />
+          <Sparkline label="메모리" max={memoryGraphMax} samples={memorySamples} unit=" MB" />
           <dl className="taskmgr-stats">
             <div>
               <dt>

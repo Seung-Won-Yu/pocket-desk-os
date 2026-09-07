@@ -203,29 +203,6 @@ export function getStartPinnedTiles(apps: AppDefinition[], entries: StartPinnedE
     .slice(0, START_PINNED_APP_LIMIT);
 }
 
-export function loadStartPinnedAppIds(): AppId[] {
-  try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(START_PINNED_APPS_KEY) ?? "null");
-    if (!Array.isArray(parsed)) return [...DEFAULT_START_PINS];
-    // A duplicated id would render two tiles with the same React key.
-    return [...new Set(parsed.filter((value): value is AppId => typeof value === "string"))];
-  } catch {
-    return [...DEFAULT_START_PINS];
-  }
-}
-
-export function persistStartPinnedAppIds(appIds: AppId[]) {
-  localStorage.setItem(START_PINNED_APPS_KEY, JSON.stringify(appIds));
-}
-
-export function getStartPinnedApps(apps: AppDefinition[], pinnedIds: AppId[]) {
-  const appMap = new Map(apps.map((app) => [app.id, app]));
-  return pinnedIds
-    .map((appId) => appMap.get(appId))
-    .filter((app): app is AppDefinition => Boolean(app))
-    .slice(0, START_PINNED_APP_LIMIT);
-}
-
 export function resolveRunCommand(command: string): RunCommandResolution {
   const trimmed = command.trim();
   if (!trimmed) {

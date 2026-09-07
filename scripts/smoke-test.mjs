@@ -2655,6 +2655,34 @@ async function runSmoke(baseUrl) {
       );
     }
 
+    /*
+     * 창 슬롯 memo: a commit that only moves a window has to hand every slot
+     * the identical props object, or every window re-renders on every
+     * pointermove. `data-shared-props` counts how many times that object was
+     * rebuilt; one un-memoized function in its dependency list broke this
+     * twice, and both times only a hand measurement noticed.
+     */
+    const windowLayer = page.locator(".window-layer");
+    const sharedPropsGeneration = async () =>
+      Number(await windowLayer.getAttribute("data-shared-props"));
+    const moveTitle = await page
+      .locator(".window-frame.is-active .window-titlebar")
+      .boundingBox();
+    const generationBeforeMove = await sharedPropsGeneration();
+    await page.mouse.move(moveTitle.x + 120, moveTitle.y + 12);
+    await page.mouse.down();
+    // One direction only: a zig-zag here would be an Aero Shake.
+    for (let step = 1; step <= 12; step += 1) {
+      await page.mouse.move(moveTitle.x + 120 + step * 5, moveTitle.y + 12 + step * 3);
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+    const generationAfterMove = await sharedPropsGeneration();
+    assert(
+      Number.isFinite(generationBeforeMove) && generationAfterMove === generationBeforeMove,
+      `Dragging a window rebuilt the shared props ${generationAfterMove - generationBeforeMove} time(s), so every window re-rendered with it`,
+    );
+
     // Aero Shake: shaking the front window's title bar minimizes every other
     // window; shaking again brings them back. A straight drag never does.
     const shakeTarget = page.locator(".window-frame.is-active");
@@ -2681,6 +2709,12 @@ async function runSmoke(baseUrl) {
       (await minimizedFrames.count()) === minimizedBeforeShake + arrangeCount - 1 &&
         !(await shakeTarget.getAttribute("class"))?.includes("is-minimized"),
       `Aero Shake did not minimize the other windows (${await minimizedFrames.count()} minimized)`,
+    );
+    // The counter is not simply frozen: minimizing changes something the
+    // shared props carry, so it has to move.
+    assert(
+      (await sharedPropsGeneration()) > generationAfterMove,
+      "Minimizing windows did not rebuild the shared props, so the counter says nothing",
     );
     await shake();
     assert(

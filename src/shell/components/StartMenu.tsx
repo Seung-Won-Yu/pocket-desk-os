@@ -108,6 +108,15 @@ export function StartMenu({
   );
   const openFolderName = openFolder?.name ?? "폴더";
 
+  /*
+   * A folder that drops to one app is flattened away, and 그룹 해제 removes it
+   * outright. Either left the flyout open on a folder that was no longer
+   * there: a panel headed 폴더 with nothing in it.
+   */
+  useEffect(() => {
+    if (openFolderId && !openFolder) setOpenFolderId(null);
+  }, [openFolder, openFolderId]);
+
   /** An empty or blank name keeps the one the folder had. */
   const commitFolderName = () => {
     const id = renamingFolderId;
@@ -386,7 +395,7 @@ export function StartMenu({
                   <p className="start-empty-compact">고정된 앱이 없습니다.</p>
                 )}
               </div>
-              {openFolderId && (
+              {openFolder && (
                 <div aria-label="폴더" className="start-folder-flyout" role="group">
                   <header>
                     {renamingFolderId === openFolderId ? (

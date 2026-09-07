@@ -31,9 +31,12 @@ function Harness({
       playSound={vi.fn()}
       reportDocument={vi.fn()}
       stickyNotes={store}
-      updateStickyNotes={(next) => {
-        onStore(next);
-        setStore(next);
+      updateStickyNotes={(update) => {
+        setStore((current) => {
+          const next = update(current);
+          onStore(next);
+          return next;
+        });
       }}
       windowId={windowId}
     />
