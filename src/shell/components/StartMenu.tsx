@@ -97,8 +97,29 @@ export function StartMenu({
     null,
   );
   const [openFolderId, setOpenFolderId] = useState<string | null>(null);
+  // Windows lets you name a tile folder; ours arrived as 폴더 1.
+  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
+  const [folderNameDraft, setFolderNameDraft] = useState("");
   const pinnedTiles = getStartPinnedTiles(apps, pinnedEntries);
   const pinnedAppIds = getPinnedAppIds(pinnedEntries);
+  const openFolder = pinnedEntries.find(
+    (entry): entry is Extract<StartPinnedEntry, { kind: "folder" }> =>
+      entry.kind === "folder" && entry.id === openFolderId,
+  );
+  const openFolderName = openFolder?.name ?? "폴더";
+
+  /** An empty or blank name keeps the one the folder had. */
+  const commitFolderName = () => {
+    const id = renamingFolderId;
+    const name = folderNameDraft.trim();
+    setRenamingFolderId(null);
+    if (!id || !name) return;
+    setPinnedEntries((current) =>
+      current.map((entry) =>
+        entry.kind === "folder" && entry.id === id ? { ...entry, name } : entry,
+      ),
+    );
+  };
 
   // Persisting inside the updater made it impure — StrictMode runs updaters
   // twice, so every pin wrote storage twice. The effect writes once per change.
@@ -368,17 +389,41 @@ export function StartMenu({
               {openFolderId && (
                 <div aria-label="폴더" className="start-folder-flyout" role="group">
                   <header>
-                    <strong>
-                      {pinnedEntries.find(
-                        (entry) => entry.kind === "folder" && entry.id === openFolderId,
-                      )?.kind === "folder"
-                        ? (
-                            pinnedEntries.find(
-                              (entry) => entry.kind === "folder" && entry.id === openFolderId,
-                            ) as Extract<StartPinnedEntry, { kind: "folder" }>
-                          ).name
-                        : "폴더"}
-                    </strong>
+                    {renamingFolderId === openFolderId ? (
+                      <form
+                        className="start-folder-rename"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          commitFolderName();
+                        }}
+                      >
+                        <input
+                          aria-label="폴더 이름"
+                          autoFocus
+                          onBlur={commitFolderName}
+                          onChange={(event) => setFolderNameDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Escape") return;
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setRenamingFolderId(null);
+                          }}
+                          value={folderNameDraft}
+                        />
+                      </form>
+                    ) : (
+                      <button
+                        className="start-folder-name"
+                        onClick={() => {
+                          setFolderNameDraft(openFolderName);
+                          setRenamingFolderId(openFolderId);
+                        }}
+                        title="이름 바꾸기"
+                        type="button"
+                      >
+                        <strong>{openFolderName}</strong>
+                      </button>
+                    )}
                     <button
                       aria-label="폴더 닫기"
                       onClick={() => setOpenFolderId(null)}

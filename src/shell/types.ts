@@ -2,6 +2,7 @@ import { type BrowserLaunchRequest } from "../apps/BrowserApp";
 import { type FilesLaunchRequest } from "../apps/FilesApp";
 import { type PhotosLaunchRequest } from "../apps/PhotosApp";
 import { type TerminalLaunchRequest } from "../apps/TerminalApp";
+import { type SettingsLaunchRequest } from "../apps/SettingsApp";
 import {
   type AppId,
   type ClipboardMode,
@@ -218,6 +219,10 @@ export type AppContentProps = {
   photosLaunchRequest: PhotosLaunchRequest | null;
   /** The folder 명령 프롬프트 was asked to start in. */
   terminalLaunchRequest: TerminalLaunchRequest | null;
+  /** The page 설정 was asked to open at. */
+  settingsLaunchRequest: SettingsLaunchRequest | null;
+  /** Opens 설정 straight at one page, as the tray clock's menu does. */
+  openSettingsSection: (section: SettingsLaunchRequest["section"]) => void;
   /** Opens a folder in a second Explorer window, as Windows' 새 창에서 열기 does. */
   openFolderInNewWindow: (folderId: string) => void;
   /** Opens 명령 프롬프트 already sitting in this folder. */

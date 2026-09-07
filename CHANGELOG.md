@@ -43,6 +43,10 @@ All notable changes to PocketDesk OS are documented here.
 - **그림판 도형 채우기.** 사각형 and 타원 can be solid, not only outlines.
 - **작업 관리자의 메모리는 이제 재는 값.** A process's memory was a hash of its window id: a Notepad window holding a novel read the same as an empty one. It is now a declared per-app baseline plus the measured bytes of the document that window has open.
 
+- **탐색기 탭 키와 드래그.** Ctrl+T opens a tab, Ctrl+W closes it (the window itself when the last one goes), Ctrl+Tab and Ctrl+Shift+Tab walk them, and a tab can be dragged onto another to change the order. 폴더 우클릭 → 새 탭에서 열기 sits beside 새 창에서 열기.
+- **시작 메뉴 폴더 이름 바꾸기.** A tile folder arrives as 폴더 1 and can be typed over from its flyout; Escape keeps the old name, and so does an empty one.
+- **시계 우클릭 → 날짜 및 시간 조정.** The tray clock has its own menu, and 설정 opens straight at 시간 및 언어 — the shell can deep-link any 설정 page now.
+
 ### Fixed
 
 - **The runtime-audit gate survives a registry outage without going blind.** `npm audit --omit=dev --audit-level=high` calls an endpoint npm is retiring; it answered 503, then 400, then 500, then an HTML error page, and CI failed on all of them. The gate now reads `npm audit --json` and tells the two cases apart: a high or critical advisory fails the build, and a transport failure is reported as skipped, in as many words, rather than passing quietly.

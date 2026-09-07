@@ -17,6 +17,7 @@ import {
   Bell,
   ChevronLeft,
   ChevronRight,
+  Clock3,
   Columns3,
   FolderOpen,
   Layers,
@@ -52,6 +53,7 @@ export function Taskbar({
   onClearNotifications,
   onOpenNotificationItem,
   onDismissNotification,
+  onOpenSettingsSection,
   onReorderPinnedApp,
   onOpenStart,
   getDocumentLabel,
@@ -96,6 +98,8 @@ export function Taskbar({
   onDismissNotification: (notificationId: string) => void;
   /** Drag a pinned taskbar button onto another to rearrange them. */
   onReorderPinnedApp: (movedId: AppId, targetId: AppId) => void;
+  /** The clock's 날짜 및 시간 조정 opens 설정 straight at its page. */
+  onOpenSettingsSection: (section: "time") => void;
   onOpenStart: (event: React.MouseEvent<HTMLButtonElement>) => void;
   getDocumentLabel: (windowId: string, appId: AppId) => string | undefined;
   /** 창 계단식 배열 / 위아래 정렬 / 나란히 정렬 from the taskbar menu. */
@@ -163,6 +167,7 @@ export function Taskbar({
     ),
   ];
   // Windows rearranges pinned taskbar buttons by dragging one onto another.
+  const [clockMenu, setClockMenu] = useState<{ left: number } | null>(null);
   const [draggingAppId, setDraggingAppId] = useState<AppId | null>(null);
   const [appDropTargetId, setAppDropTargetId] = useState<AppId | null>(null);
   const taskbarApps = [
@@ -697,6 +702,13 @@ export function Taskbar({
             aria-expanded={trayPanel === "notifications"}
             aria-haspopup="dialog"
             className="system-tray system-tray-clock-button"
+            onContextMenu={(event) => {
+              // Windows adjusts the clock from the clock's own menu.
+              event.preventDefault();
+              event.stopPropagation();
+              setTrayPanel(null);
+              setClockMenu({ left: event.clientX });
+            }}
             onClick={() =>
               setTrayPanel((current) => {
                 const next = current === "notifications" ? null : "notifications";
@@ -753,6 +765,37 @@ export function Taskbar({
           />
         )}
       </div>
+      {clockMenu && (
+        <div
+          aria-label="시계 메뉴"
+          className="taskbar-context-menu is-shell-menu"
+          onBlurCapture={(event) => {
+            if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+            setClockMenu(null);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            setClockMenu(null);
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          role="menu"
+          style={{ left: Math.max(8, Math.min(clockMenu.left, window.innerWidth - 220)) }}
+        >
+          <button
+            autoFocus
+            onClick={() => {
+              setClockMenu(null);
+              onOpenSettingsSection("time");
+            }}
+            role="menuitem"
+            type="button"
+          >
+            <Clock3 aria-hidden="true" size={15} />
+            날짜 및 시간 조정
+          </button>
+        </div>
+      )}
       <button
         aria-label="바탕 화면 표시"
         className="show-desktop-button"

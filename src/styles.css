@@ -10798,3 +10798,37 @@ button.notification-item.is-openable:hover {
   background: rgba(255, 255, 255, 0.1);
   border-color: var(--line);
 }
+
+/* Explorer tabs rearrange by dragging. */
+.file-tab.is-dragging {
+  opacity: 0.55;
+}
+
+.file-tab.is-drop-target {
+  box-shadow: inset 2px 0 0 var(--active);
+}
+
+/* A tile folder's name can be typed over. */
+.start-folder-name {
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: inherit;
+  font: inherit;
+  padding: 2px 5px;
+}
+
+.start-folder-name:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.start-folder-rename input {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--active);
+  border-radius: 5px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  padding: 2px 6px;
+  width: 12rem;
+}

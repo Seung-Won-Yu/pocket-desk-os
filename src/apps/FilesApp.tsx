@@ -81,6 +81,7 @@ import {
   isVfsSystemFolderId,
 } from "../vfs/model";
 import { formatVfsPathText, resolveVfsPathText } from "../vfs/pathInput";
+import { reorderList } from "../utils/reorder";
 import { handleMenuKeyboard } from "../shell/keyboardNav";
 
 type FileSortDirection = "asc" | "desc";
@@ -123,6 +124,7 @@ type FilesAppProps = {
   openVfsEntry: (item: DesktopItem) => void;
   renameVfsEntry: (itemId: string, name: string) => void;
   setCustomWallpaper: (itemId: string | null) => void;
+  closeWindow: (windowId: string) => void;
   openFolderInNewWindow: (folderId: string) => void;
   openTerminalAtFolder: (folderId: string) => void;
   reportDocument: (
@@ -202,6 +204,7 @@ export default function FilesApp({
   openVfsEntry,
   renameVfsEntry,
   setCustomWallpaper,
+  closeWindow,
   openFolderInNewWindow,
   openTerminalAtFolder,
   windowId,
@@ -226,6 +229,9 @@ export default function FilesApp({
    */
   const [tabs, setTabs] = useState<FileTab[]>(() => [createFileTab(VFS_ROOT_ID)]);
   const [activeTabId, setActiveTabId] = useState(() => tabs[0].id);
+  // Tabs rearrange by dragging, as they do in Windows 11.
+  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
+  const [tabDropTargetId, setTabDropTargetId] = useState<string | null>(null);
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
   const navigationHistory = activeTab.history;
   const navigationIndex = activeTab.index;
@@ -537,10 +543,16 @@ export default function FilesApp({
     selectionAnchorRef.current = null;
   };
 
+  /**
+   * Adding or closing a tab leaves the window holding focus. The strip's
+   * buttons come and go, and a removed button drops focus to <body> — the
+   * window then heard none of its own keys (Ctrl+T, Ctrl+W, Ctrl+L).
+   */
   const addTab = (folderId: string) => {
     const tab = createFileTab(folderId);
     setTabs((current) => [...current, tab]);
     setActiveTabId(tab.id);
+    focusFileList();
   };
 
   /** Closing the tab on top hands the window to its neighbour, as Windows does. */
@@ -553,6 +565,7 @@ export default function FilesApp({
       if (tabId === activeTabId) {
         setActiveTabId((next[index] ?? next[next.length - 1]).id);
       }
+      focusFileList();
       return next;
     });
   };
@@ -1113,9 +1126,33 @@ export default function FilesApp({
       // Ctrl+L belongs to the whole window in Explorer, not just the list: it
       // has to work with the search box, the toolbar, or nothing focused.
       onKeyDown={(event) => {
-        if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "l") return;
-        event.preventDefault();
-        setAddressDraft(formatVfsPathText(desktopItems, currentFolderId));
+        if (!(event.ctrlKey || event.metaKey)) return;
+        // Explorer's tab keys belong to the window, like Ctrl+L.
+        if (event.key === "Tab") {
+          if (tabs.length < 2) return;
+          event.preventDefault();
+          const index = tabs.findIndex((tab) => tab.id === activeTabId);
+          const step = event.shiftKey ? -1 : 1;
+          setActiveTabId(tabs[(index + step + tabs.length) % tabs.length].id);
+          return;
+        }
+        const key = event.key.toLowerCase();
+        if (key === "l") {
+          event.preventDefault();
+          setAddressDraft(formatVfsPathText(desktopItems, currentFolderId));
+          return;
+        }
+        if (key === "t") {
+          event.preventDefault();
+          addTab(currentFolderId);
+          return;
+        }
+        if (key === "w") {
+          event.preventDefault();
+          // Windows closes the window when the last tab goes.
+          if (tabs.length > 1) closeTab(activeTabId);
+          else closeWindow(windowId);
+        }
       }}
     >
       <aside>
@@ -1163,8 +1200,48 @@ export default function FilesApp({
               getVfsFolderPath(desktopItems, tabFolderId).slice(-1)[0]?.name ?? "바탕 화면";
             return (
               <div
-                className={`file-tab${tab.id === activeTabId ? " is-active" : ""}`}
+                className={`file-tab${tab.id === activeTabId ? " is-active" : ""}${
+                  draggingTabId === tab.id ? " is-dragging" : ""
+                }${tabDropTargetId === tab.id ? " is-drop-target" : ""}`}
+                draggable
                 key={tab.id}
+                onDragEnd={() => {
+                  setDraggingTabId(null);
+                  setTabDropTargetId(null);
+                }}
+                onDragEnter={(event) => {
+                  if (!draggingTabId) return;
+                  event.preventDefault();
+                  setTabDropTargetId(tab.id);
+                }}
+                onDragLeave={(event) => {
+                  if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+                  setTabDropTargetId((current) => (current === tab.id ? null : current));
+                }}
+                onDragOver={(event) => {
+                  if (!draggingTabId) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                }}
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", tab.id);
+                  setDraggingTabId(tab.id);
+                }}
+                onDrop={(event) => {
+                  const movedId = draggingTabId ?? event.dataTransfer.getData("text/plain");
+                  setDraggingTabId(null);
+                  setTabDropTargetId(null);
+                  if (!movedId || movedId === tab.id) return;
+                  event.preventDefault();
+                  setTabs((current) =>
+                    reorderList(
+                      current,
+                      current.findIndex((entry) => entry.id === movedId),
+                      current.findIndex((entry) => entry.id === tab.id),
+                    ),
+                  );
+                }}
               >
                 <button
                   aria-selected={tab.id === activeTabId}
@@ -1924,6 +2001,16 @@ export default function FilesApp({
           </button>
           {contextFile.item.kind === "folder" && (
             <>
+              <button
+                onClick={() => {
+                  setFileContextMenu(null);
+                  addTab(contextFile.id);
+                }}
+                role="menuitem"
+                type="button"
+              >
+                <SquarePlus aria-hidden="true" size={16} />새 탭에서 열기
+              </button>
               <button
                 onClick={() => {
                   setFileContextMenu(null);

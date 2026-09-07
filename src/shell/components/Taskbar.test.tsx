@@ -34,6 +34,7 @@ function makeHandlers() {
     onOpenNotificationItem: vi.fn(),
     onDismissNotification: vi.fn(),
     onReorderPinnedApp: vi.fn(),
+    onOpenSettingsSection: vi.fn(),
     getDocumentLabel: vi.fn(() => undefined) as (
       windowId: string,
       appId: AppId,

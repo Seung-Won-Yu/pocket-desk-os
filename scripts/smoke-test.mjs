@@ -2806,8 +2806,69 @@ async function runSmoke(baseUrl) {
       .click();
     await page.waitForTimeout(250);
     assert((await explorerTabs.count()) === 1, "Closing a tab did not remove it");
+    // Ctrl+T adds a tab, dragging reorders, Ctrl+Tab walks them, Ctrl+W closes.
+    await page.keyboard.press("Control+t");
+    await page.keyboard.press("Control+t");
+    await page.waitForTimeout(250);
+    assert((await explorerTabs.count()) === 3, "Ctrl+T did not add tabs");
+    await tabExplorer
+      .locator("aside")
+      .getByRole("button", { name: "사진", exact: true })
+      .click();
+    await page.waitForTimeout(250);
+    const beforeDrag = await explorerTabs.allInnerTexts();
+    await explorerTabs.nth(2).dragTo(explorerTabs.nth(0));
+    await page.waitForTimeout(300);
+    const afterDrag = await explorerTabs.allInnerTexts();
+    assert(
+      afterDrag[0] === beforeDrag[2] && afterDrag.length === beforeDrag.length,
+      `Dragging a tab did not move it: ${JSON.stringify(beforeDrag)} → ${JSON.stringify(afterDrag)}`,
+    );
+    await page.keyboard.press("Control+Tab");
+    await page.waitForTimeout(200);
+    assert(
+      (await tabExplorer.locator(".file-tab.is-active").count()) === 1,
+      "Ctrl+Tab left more than one tab active",
+    );
+    await page.keyboard.press("Control+w");
+    await page.waitForTimeout(250);
+    assert((await explorerTabs.count()) === 2, "Ctrl+W did not close a tab");
+    // 폴더를 새 탭에서 열기
+    await tabExplorer
+      .locator("aside")
+      .getByRole("button", { name: "바탕 화면", exact: true })
+      .click();
+    await page.waitForTimeout(250);
+    await tabExplorer
+      .locator(".file-list button", { hasText: "문서" })
+      .first()
+      .click({ button: "right" });
+    await tabExplorer
+      .locator(".file-context-menu")
+      .getByRole("menuitem", { name: "새 탭에서 열기" })
+      .click();
+    await page.waitForTimeout(300);
+    assert(
+      (await explorerTabs.count()) === 3 &&
+        (await explorerTabs.last().innerText()).includes("문서"),
+      `새 탭에서 열기 did not open a tab at 문서: ${await explorerTabs.allInnerTexts()}`,
+    );
+    for (let index = 0; index < 2; index += 1) {
+      await page.keyboard.press("Control+w");
+      await page.waitForTimeout(200);
+    }
+    assert((await explorerTabs.count()) === 1, "Ctrl+W did not leave one tab");
 
     // 폴더 메뉴: 새 창에서 열기 and 여기서 명령 프롬프트 열기.
+    // Whichever tab survived the Ctrl+W pair may be showing another folder.
+    await tabExplorer
+      .locator("aside")
+      .getByRole("button", { name: "바탕 화면", exact: true })
+      .click();
+    await tabExplorer
+      .locator(".file-list button", { hasText: "문서" })
+      .first()
+      .waitFor({ state: "visible" });
     const explorersBefore = await page.locator('article[data-app-id="files"]').count();
     await tabExplorer
       .locator(".file-list button", { hasText: "문서" })
@@ -3139,6 +3200,17 @@ async function runSmoke(baseUrl) {
       (await folderFlyout.locator(".start-folder-apps button").count()) === 2,
       "The folder did not hold the two tiles that made it",
     );
+    // The folder can be named, as Windows lets you name a tile folder.
+    await folderFlyout.locator(".start-folder-name").click();
+    const tileFolderNameInput = folderFlyout.getByLabel("폴더 이름");
+    await tileFolderNameInput.waitFor({ state: "visible" });
+    await tileFolderNameInput.fill("작업 도구");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(250);
+    assert(
+      (await dragMenu.locator(".start-tile-folder").innerText()).includes("작업 도구"),
+      `Renaming the folder did not take: ${await dragMenu.locator(".start-tile-folder").innerText()}`,
+    );
     await folderFlyout.getByRole("button", { name: "폴더 닫기" }).click();
     await dragMenu.locator(".start-tile-folder").click({ button: "right" });
     await page.getByRole("menuitem", { name: "그룹 해제" }).click();
@@ -3191,6 +3263,21 @@ async function runSmoke(baseUrl) {
     );
     await page.keyboard.press("Escape");
     await recommendMenu.waitFor({ state: "hidden" });
+
+    // 시계 우클릭: 날짜 및 시간 조정 opens 설정 at its own page.
+    await page.locator(".system-tray-clock-button").click({ button: "right" });
+    const clockMenu = page.locator('[aria-label="시계 메뉴"]');
+    await clockMenu.waitFor({ state: "visible" });
+    await clockMenu.getByRole("menuitem", { name: "날짜 및 시간 조정" }).click();
+    const clockSettings = page.locator('article[data-app-id="settings"]').last();
+    await clockSettings.waitFor({ state: "visible" });
+    await page.waitForTimeout(250);
+    assert(
+      (await clockSettings.innerText()).includes("24시간"),
+      "날짜 및 시간 조정 did not open 설정 at 시간 및 언어",
+    );
+    await clockSettings.getByRole("button", { name: "설정 닫기" }).click();
+    await clockSettings.waitFor({ state: "detached" });
 
     // 절전: the display goes dark; a key brings the lock screen back.
     await page.getByRole("button", { name: "시작 메뉴" }).click();

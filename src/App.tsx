@@ -2,6 +2,7 @@ import { type BrowserLaunchRequest } from "./apps/BrowserApp";
 import { type FilesLaunchRequest } from "./apps/FilesApp";
 import { type PhotosLaunchRequest } from "./apps/PhotosApp";
 import { type TerminalLaunchRequest } from "./apps/TerminalApp";
+import { type SettingsLaunchRequest } from "./apps/SettingsApp";
 import PwaUpdatePrompt from "./components/PwaUpdatePrompt";
 import {
   appCatalog,
@@ -245,6 +246,7 @@ type ContentOps = Pick<
   | "openApp"
   | "openFolderInNewWindow"
   | "openNewAppWindow"
+  | "openSettingsSection"
   | "openTerminalAtFolder"
   | "openVfsEntry"
   | "pasteFromClipboard"
@@ -380,6 +382,8 @@ export default function App() {
   );
   const [terminalLaunchRequest, setTerminalLaunchRequest] =
     useState<TerminalLaunchRequest | null>(null);
+  const [settingsLaunchRequest, setSettingsLaunchRequest] =
+    useState<SettingsLaunchRequest | null>(null);
   const [activeCanvasId, setActiveCanvasId] = useState(VFS_PRIMARY_CANVAS_ID);
   const [activeCanvasOpenKey, setActiveCanvasOpenKey] = useState(0);
   const [activeNoteId, setActiveNoteId] = useState(VFS_PRIMARY_NOTE_ID);
@@ -1339,6 +1343,12 @@ export default function App() {
   const openFolderInNewWindow = (folderId: string) => {
     const windowId = openNewAppWindow("files");
     setFilesLaunchRequest({ folderId, id: crypto.randomUUID(), windowId });
+  };
+
+  /** The tray clock's 날짜 및 시간 조정 and anything else that deep-links 설정. */
+  const openSettingsSection = (section: SettingsLaunchRequest["section"]) => {
+    setSettingsLaunchRequest({ id: crypto.randomUUID(), section });
+    openApp("settings");
   };
 
   /** Windows' 여기서 명령 프롬프트 열기: the prompt starts in that folder. */
@@ -3993,6 +4003,7 @@ export default function App() {
     openApp,
     openFolderInNewWindow,
     openNewAppWindow,
+    openSettingsSection,
     openTerminalAtFolder,
     openVfsEntry,
     pasteFromClipboard,
@@ -4035,6 +4046,7 @@ export default function App() {
       openApp: (...args) => contentOpsRef.current.openApp(...args),
       openFolderInNewWindow: (...args) => contentOpsRef.current.openFolderInNewWindow(...args),
       openNewAppWindow: (...args) => contentOpsRef.current.openNewAppWindow(...args),
+      openSettingsSection: (...args) => contentOpsRef.current.openSettingsSection(...args),
       openTerminalAtFolder: (...args) => contentOpsRef.current.openTerminalAtFolder(...args),
       openVfsEntry: (...args) => contentOpsRef.current.openVfsEntry(...args),
       pasteFromClipboard: (...args) => contentOpsRef.current.pasteFromClipboard(...args),
@@ -4111,6 +4123,7 @@ export default function App() {
       filesLaunchRequest,
       photosLaunchRequest,
       terminalLaunchRequest,
+      settingsLaunchRequest,
       growWindow,
       noteEntries,
       openWindows,
@@ -4147,6 +4160,7 @@ export default function App() {
       filesLaunchRequest,
       photosLaunchRequest,
       terminalLaunchRequest,
+      settingsLaunchRequest,
       growWindow,
       noteEntries,
       openWindows,
@@ -4373,6 +4387,7 @@ export default function App() {
         clockAlarms={clockAlarms}
         onClearNotifications={clearNotificationHistory}
         onDismissNotification={dismissNotification}
+        onOpenSettingsSection={openSettingsSection}
         onReorderPinnedApp={(movedId, targetId) =>
           setPinnedAppIds((current) => reorderById(current, movedId, targetId))
         }

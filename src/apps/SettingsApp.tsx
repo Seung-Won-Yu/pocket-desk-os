@@ -9,13 +9,20 @@ import {
   UserRound,
   Volume2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { appMetadata } from "./metadata";
 import { DEFAULT_APP_CHOICES, type DefaultAppMap } from "../shell/preferences";
 import type { AppId, SoundEffectName, ThemeName, WallpaperName } from "../types";
 import { normalizeSearchText } from "../utils/format";
 import { SHELL_SHORTCUTS } from "../shell/shortcuts";
 import { getWallpaperPreviewStyle, wallpaperGallery } from "../wallpapers";
+
+/** Which page 설정 shows. */
+export type SettingsSection =
+  "accounts" | "apps" | "keyboard" | "personalization" | "sound" | "system" | "time";
+
+/** "Open 설정 at this page" — a fresh id per request so the same page opens twice. */
+export type SettingsLaunchRequest = { id: string; section: SettingsSection };
 
 type SettingsAppProps = {
   clock24h: boolean;
@@ -32,6 +39,8 @@ type SettingsAppProps = {
   setWallpaper: (wallpaper: WallpaperName) => void;
   customWallpaperItemId: string | null;
   setCustomWallpaper: (itemId: string | null) => void;
+  /** The page 설정 was asked to open at. */
+  settingsLaunchRequest: SettingsLaunchRequest | null;
   soundEnabled: boolean;
   theme: ThemeName;
   wallpaper: WallpaperName;
@@ -54,11 +63,17 @@ export default function SettingsApp({
   setCustomWallpaper,
   soundEnabled,
   theme,
+  settingsLaunchRequest,
   wallpaper,
 }: SettingsAppProps) {
-  const [section, setSection] = useState<
-    "accounts" | "apps" | "keyboard" | "personalization" | "sound" | "system" | "time"
-  >("personalization");
+  const [section, setSection] = useState<SettingsSection>(
+    settingsLaunchRequest?.section ?? "personalization",
+  );
+
+  // A later request (the tray clock's 날짜 및 시간 조정) moves the open window.
+  useEffect(() => {
+    if (settingsLaunchRequest) setSection(settingsLaunchRequest.section);
+  }, [settingsLaunchRequest]);
   const [nameDraft, setNameDraft] = useState(userName);
   const [settingsQuery, setSettingsQuery] = useState("");
   const themes: Array<{ id: ThemeName; label: string; detail: string }> = [
