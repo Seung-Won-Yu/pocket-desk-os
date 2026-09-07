@@ -16,6 +16,7 @@ export const SHELL_SHORTCUTS: ShortcutGroup[] = [
       { action: "설정", keys: "Win + I" },
       { action: "화면 캡처 도구", keys: "Win + Shift + S" },
       { action: "화면 잠금", keys: "Win + L" },
+      { action: "작업 관리자", keys: "Ctrl + Shift + Esc" },
     ],
     title: "셸",
   },
@@ -51,7 +52,35 @@ export const SHELL_SHORTCUTS: ShortcutGroup[] = [
       { action: "모두 선택 · 복사 · 잘라내기 · 붙여넣기", keys: "Ctrl + A / C / X / V" },
       { action: "이름 바꾸기", keys: "F2" },
       { action: "뒤로 · 앞으로 · 위로", keys: "Alt + ←/→/↑" },
+      { action: "새 탭 · 탭 닫기", keys: "Ctrl + T / W" },
+      { action: "다음 · 이전 탭", keys: "Ctrl + Tab / Ctrl + Shift + Tab" },
     ],
     title: "파일 탐색기",
   },
 ];
+
+/**
+ * Chords the shell owns. On Windows a Win-modified key never reaches the app —
+ * 메모장 was taking Win+Shift+S as its own 다른 이름으로 저장 and stopping the
+ * event, so the capture tool never opened while a text field had focus.
+ *
+ * In a browser the Win key arrives as `metaKey`, which is also macOS's Cmd, so
+ * an app that reads Cmd as its Ctrl has to step aside for these.
+ */
+export function isShellReservedChord(event: {
+  altKey: boolean;
+  ctrlKey: boolean;
+  key: string;
+  metaKey: boolean;
+  shiftKey: boolean;
+}) {
+  if (event.key === "PrintScreen") return true;
+  if (event.ctrlKey && event.shiftKey && event.key === "Escape") return true;
+  if (event.ctrlKey && event.altKey && event.key.toLowerCase() === "r") return true;
+  if (!event.metaKey || event.ctrlKey || event.altKey) return false;
+  const key = event.key.toLowerCase();
+  if (event.key === "Tab") return true;
+  if (event.key.startsWith("Arrow")) return true;
+  if (event.shiftKey) return key === "s";
+  return ["d", "e", "i", "l", "m"].includes(key);
+}

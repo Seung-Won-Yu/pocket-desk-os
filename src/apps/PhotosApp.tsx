@@ -23,6 +23,7 @@ export type PhotosLaunchRequest = { id: string; itemId: string };
 
 type PhotosAppProps = {
   photosLaunchRequest: PhotosLaunchRequest | null;
+  consumeLaunchRequest: (requestId: string) => void;
   reportDocument: (
     windowId: string,
     ref: { itemId?: string; title?: string } | undefined,
@@ -64,6 +65,7 @@ export default function PhotosApp({
   notify,
   openApp,
   activateVfsEntry,
+  consumeLaunchRequest,
   photosLaunchRequest,
   playSound,
   renameVfsEntry,
@@ -102,8 +104,10 @@ export default function PhotosApp({
   }, [activeCanvasId, activeCanvasOpenKey]);
 
   useEffect(() => {
-    if (photosLaunchRequest) setViewingId(photosLaunchRequest.itemId);
-  }, [photosLaunchRequest]);
+    if (!photosLaunchRequest) return;
+    setViewingId(photosLaunchRequest.itemId);
+    consumeLaunchRequest(photosLaunchRequest.id);
+  }, [consumeLaunchRequest, photosLaunchRequest]);
 
   useEffect(() => {
     viewerRef.current?.focus({ preventScroll: true });

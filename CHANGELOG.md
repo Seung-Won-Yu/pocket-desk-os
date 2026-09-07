@@ -2,7 +2,14 @@
 
 All notable changes to PocketDesk OS are documented here.
 
-## Unreleased
+## 0.14.0
+
+The round where the desktop started showing itself. Windows are pictured
+rather than iconified — in the taskbar, Alt+Tab, Task View and the snap
+preview — the shell can take its own screenshot, a picture of your own can be
+the wallpaper, and the things Windows lets you rearrange by hand now move.
+Every behavior below was verified in a real browser, and the ones that could
+be measured were measured before and after.
 
 ### Added
 
@@ -39,13 +46,23 @@ All notable changes to PocketDesk OS are documented here.
 
 - **탐색기 진짜 탭.** Each tab keeps its own folder and its own back/forward history, as Windows 11 does; 새 탭 adds one at the folder on screen, a tab can be closed, and the window that held one label now holds a strip. 새 창 is its own button beside it.
 - **시작 메뉴 타일 폴더.** Dropping a tile on the middle of another makes a folder — Windows 11 reads where the drop lands, so an edge still reorders. The folder tile shows the icons it holds, clicking it opens a flyout of its apps, and 그룹 해제 spills them back where the folder stood. The pinned area is stored as entries now and reads the old plain list of app ids.
-- **설정 → 키보드 단축키.** Every key the shell listens for, grouped, from one list shared with the shell so the page cannot drift from what actually works.
+- **설정 → 키보드 단축키.** Every key the shell listens for, grouped, from one list (`SHELL_SHORTCUTS`) rather than prose scattered through the UI. The list and the shell's handlers are still separate code, and the page says so; a review caught the list claiming a bare Win key that nothing handled — Win now opens the Start menu, as Windows does.
 - **그림판 도형 채우기.** 사각형 and 타원 can be solid, not only outlines.
 - **작업 관리자의 메모리는 이제 재는 값.** A process's memory was a hash of its window id: a Notepad window holding a novel read the same as an empty one. It is now a declared per-app baseline plus the measured bytes of the document that window has open.
 
 - **탐색기 탭 키와 드래그.** Ctrl+T opens a tab, Ctrl+W closes it (the window itself when the last one goes), Ctrl+Tab and Ctrl+Shift+Tab walk them, and a tab can be dragged onto another to change the order. 폴더 우클릭 → 새 탭에서 열기 sits beside 새 창에서 열기.
 - **시작 메뉴 폴더 이름 바꾸기.** A tile folder arrives as 폴더 1 and can be typed over from its flyout; Escape keeps the old name, and so does an empty one.
 - **시계 우클릭 → 날짜 및 시간 조정.** The tray clock has its own menu, and 설정 opens straight at 시간 및 언어 — the shell can deep-link any 설정 page now.
+
+- **A screenshot can no longer break every later save.** The capture's PNG went straight into the virtual file system, whose save limit is a budget for the _whole_ snapshot: a few captures on a large display exhausted it, after which every write — a saved note, a new folder — failed silently, and a reload lost the lot. A capture is now measured against what is left and refused out loud if it will not fit, and the picture itself is capped at 2.4M device pixels rather than following a 4K display's devicePixelRatio.
+- **Dragging a window stopped re-rendering every other window again.** The Task Manager's new memory reading was a fresh function on every render, and it sat in the dependency list of the memo whose whole purpose is that a drag commit hands every window the same props object. The 0.13.0 invariant is restored (and the review that caught it is why the comment above that memo names the contract).
+- **An arranged window stays arranged.** 창 계단식 배열 and the tiling modes left `snapZone` set, so the first resize or restart put the window back in its old snap box, undoing the arrangement.
+- **Win+Shift+S opens the capture tool even while typing.** 메모장 was claiming that chord as its own 다른 이름으로 저장 and stopping the event. A Win-modified chord belongs to the shell, as it does in Windows, and apps now step aside for the list of them.
+- **캡처 도구's 활성 창 mode works.** Clicking 새 캡처 makes the tool the active window, so the mode could only ever report that there was nothing to capture. It pictures the window that was active before the tool, or the topmost one if that has closed.
+- **A deep-linked window no longer opens on the last request.** 여기서 명령 프롬프트 열기 left its request standing, so the next prompt opened plainly still started in that folder — and 설정 always opened at 시간 및 언어. An app now reports the request consumed.
+- **Dismissing one notification no longer resurrects the badge.** The read marker pointed at the notification just dropped, and a marker that is missing was counted as "nothing read".
+- **A search belongs to its tab.** A new Explorer tab inherited the previous tab's filter and looked empty.
+- **A wallpaper must be a picture.** `resolveCustomWallpaper` put the file's content straight into a CSS `url()` without checking it was an image data URL — an imported backup could carry anything there.
 
 ### Fixed
 

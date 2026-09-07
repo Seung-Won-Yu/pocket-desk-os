@@ -4,6 +4,7 @@ import type React from "react";
 import FileDialog from "../components/FileDialog";
 import type { DesktopItem, ToastInput } from "../types";
 import { getNextRovingIndex } from "../shell/keyboardNav";
+import { isShellReservedChord } from "../shell/shortcuts";
 import { VFS_DOCUMENTS_ID } from "../vfs/model";
 import { handleMenuKeyboard } from "../shell/keyboardNav";
 import { APP_BAR_HEIGHT } from "../shell/constants";
@@ -646,6 +647,9 @@ export default function NotepadApp({
           closeFind();
           return;
         }
+        // The shell's own chords pass straight through; Win+Shift+S is the
+        // capture tool, not 다른 이름으로 저장.
+        if (isShellReservedChord(event)) return;
         if (!(event.ctrlKey || event.metaKey)) return;
         const key = event.key.toLowerCase();
         if (key === "o") {

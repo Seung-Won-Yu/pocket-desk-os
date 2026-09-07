@@ -10,6 +10,13 @@
  * URL, because an SVG rendered as an image may not load external resources.
  */
 
+/**
+ * The most device pixels a capture will draw. A 4K display at devicePixelRatio
+ * 2 would otherwise produce a 3840×2160 PNG — several megabytes of data URL,
+ * and the virtual file system's whole save budget is 16MB.
+ */
+export const MAX_CAPTURE_PIXELS = 2_400_000;
+
 export interface CaptureOptions {
   /** Elements to leave out of the picture (the capture tool's own window). */
   exclude?: (element: Element) => boolean;
@@ -314,7 +321,10 @@ export async function captureElementToPng(
   // Images inside the foreignObject decode a beat after the SVG reports loaded.
   await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
 
-  const scale = options.scale ?? Math.min(window.devicePixelRatio || 1, 2);
+  // Sharper where there is room, never past the pixel budget.
+  const requested = options.scale ?? Math.min(window.devicePixelRatio || 1, 2);
+  const budgetScale = Math.sqrt(MAX_CAPTURE_PIXELS / Math.max(1, width * height));
+  const scale = Math.max(0.5, Math.min(requested, budgetScale));
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(width * scale);
   canvas.height = Math.round(height * scale);

@@ -2907,10 +2907,85 @@ async function runSmoke(baseUrl) {
       (await spawnedTerminal.innerText()).includes("Desktop\\문서"),
       `The prompt did not start in 문서: ${(await spawnedTerminal.innerText()).slice(-80)}`,
     );
+    const spawnedTerminalId = await spawnedTerminal.getAttribute("data-window-id");
     await spawnedTerminal.getByRole("button", { name: "명령 프롬프트 닫기" }).click();
-    await spawnedTerminal.waitFor({ state: "detached" });
+    await page
+      .locator(`article[data-window-id="${spawnedTerminalId}"]`)
+      .waitFor({ state: "detached" });
+    // The request must not stand: a prompt opened plainly starts at home.
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("cmd");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const plainTerminal = page.locator('article[data-app-id="terminal"]').last();
+    await plainTerminal.waitFor({ state: "visible" });
+    await page.waitForTimeout(300);
+    assert(
+      !(await plainTerminal.innerText()).includes("Desktop\\문서"),
+      "A plain prompt inherited the folder from an earlier 여기서 명령 프롬프트 열기",
+    );
+    const plainTerminalId = await plainTerminal.getAttribute("data-window-id");
+    await plainTerminal.getByRole("button", { name: "명령 프롬프트 닫기" }).click();
+    await page
+      .locator(`article[data-window-id="${plainTerminalId}"]`)
+      .waitFor({ state: "detached" });
     await tabExplorer.getByRole("button", { name: "파일 탐색기 닫기" }).click();
     await tabExplorer.waitFor({ state: "detached" });
+
+    // 캡처 후에도 저장이 계속되어야 한다. A screenshot is the largest thing the
+    // shell writes and the save limit is a budget for the whole snapshot; when
+    // it overflowed, every later write failed and only the first said so.
+    await page.keyboard.press("PrintScreen");
+    await page.locator(".toast", { hasText: "스크린샷 저장됨" }).waitFor({ state: "visible" });
+    await page.waitForTimeout(600);
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("explorer");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const persistExplorer = page.locator('article[data-app-id="files"]').last();
+    await persistExplorer.waitFor({ state: "visible" });
+    await persistExplorer
+      .locator("aside")
+      .getByRole("button", { name: "문서", exact: true })
+      .click();
+    await persistExplorer.getByRole("button", { name: "새로 만들기" }).click();
+    await page.getByRole("menuitem", { name: /텍스트 문서/ }).click();
+    const persistNameInput = persistExplorer.getByLabel("파일 이름");
+    await persistNameInput.waitFor({ state: "visible" });
+    await persistNameInput.fill("캡처 후 저장.txt");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(600);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await unlockPocketDesk(page);
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("explorer");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const reloadedExplorer = page.locator('article[data-app-id="files"]').last();
+    await reloadedExplorer.waitFor({ state: "visible" });
+    await reloadedExplorer
+      .locator("aside")
+      .getByRole("button", { name: "문서", exact: true })
+      .click();
+    await page.waitForTimeout(300);
+    assert(
+      (await reloadedExplorer
+        .locator(".file-list button", { hasText: "캡처 후 저장" })
+        .count()) === 1,
+      "A file saved after a screenshot did not survive the reload",
+    );
+    await reloadedExplorer
+      .locator("aside")
+      .getByRole("button", { name: "사진", exact: true })
+      .click();
+    await page.waitForTimeout(300);
+    assert(
+      (await reloadedExplorer.locator(".file-list button", { hasText: "스크린샷 " }).count()) >=
+        1,
+      "The screenshot itself did not survive the reload",
+    );
+    await reloadedExplorer.getByRole("button", { name: "파일 탐색기 닫기" }).click();
+    await reloadedExplorer.waitFor({ state: "detached" });
 
     // 설정: 키보드 단축키 lists what the shell listens for.
     await page.keyboard.press("Control+Alt+R");
@@ -3055,8 +3130,39 @@ async function runSmoke(baseUrl) {
       (await snip.getByRole("status").innerText()).includes("사진 폴더에 저장됨"),
       "Capture tool did not report the saved capture",
     );
+    // 활성 창 with no delay: the tool must picture the window you were on, not
+    // refuse because clicking 새 캡처 made the tool itself active. (With only
+    // the tool open there is genuinely nothing to picture, so open a window.)
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("notepad");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const snipSubject = page.locator('article[data-app-id="notepad"]').last();
+    await snipSubject.waitFor({ state: "visible" });
+    await page.keyboard.press("Meta+Shift+S");
+    await snip.waitFor({ state: "visible" });
+    await page.waitForTimeout(600);
+    await snip.getByLabel("캡처 모드").selectOption("window");
+    await snip.getByRole("button", { name: "새 캡처" }).click();
+    await snip.locator(".snip-preview").waitFor({ state: "visible", timeout: 15000 });
+    // The status settles a beat after the preview appears.
+    await snip
+      .getByRole("status")
+      .filter({ hasText: "사진 폴더에 저장됨" })
+      .waitFor({ state: "visible", timeout: 10000 })
+      .catch(() => undefined);
+    assert(
+      (await snip.getByRole("status").innerText()).includes("사진 폴더에 저장됨"),
+      `활성 창 capture failed: ${await snip.getByRole("status").innerText()}`,
+    );
     await snip.getByRole("button", { name: "캡처 도구 닫기" }).click();
     await snip.waitFor({ state: "detached" });
+    await snipSubject.getByRole("button", { name: "메모장 닫기" }).click();
+    await page.waitForTimeout(250);
+    if (await page.locator(".window-dialog").count()) {
+      await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
+      await page.waitForTimeout(200);
+    }
     // Alt+PrintScreen pictures the active window alone. Closing the tool hands
     // focus back to Explorer; its title bar is clear now if it did not.
     if (!(await shotExplorer.getAttribute("class"))?.includes("is-active")) {
@@ -3078,6 +3184,12 @@ async function runSmoke(baseUrl) {
     assert(
       (await centre.locator(".notification-item").count()) === notificationsBefore - 1,
       "Dismissing one notification did not drop exactly one",
+    );
+    // The read marker pointed at the notification just dropped; counting the
+    // whole history then brought the badge back.
+    assert(
+      (await page.locator(".tray-notification-badge").count()) === 0,
+      "Dismissing one notification resurrected the unread badge",
     );
     const openableNotification = centre.locator("button.notification-item.is-openable").first();
     assert(

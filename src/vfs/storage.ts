@@ -248,6 +248,15 @@ function transactionDone(transaction: IDBTransaction, message: string): Promise<
   });
 }
 
+/** Bytes the snapshot's contents take — the figure the save limit is checked against. */
+export function getSnapshotContentBytes(entries: ReadonlyArray<DesktopItem>) {
+  let contentBytes = 0;
+  for (const entry of entries) {
+    contentBytes += contentEncoder.encode(entry.content ?? "").length;
+  }
+  return contentBytes;
+}
+
 export function cloneAndValidateSnapshot(entries: DesktopItem[]) {
   if (entries.length > MAX_ENTRY_COUNT) {
     throw new VfsStorageError(`가상 파일은 최대 ${MAX_ENTRY_COUNT}개까지 저장할 수 있습니다.`);

@@ -1,5 +1,6 @@
 import type React from "react";
 import type { DesktopItem, WallpaperName } from "./types";
+import { isImageDataUrl } from "./vfs/imageCodec";
 
 export const wallpaperGallery: Array<{ id: WallpaperName; label: string; detail: string }> = [
   { id: "meadow", label: "Green Vista", detail: "초록 언덕과 푸른 하늘" },
@@ -56,7 +57,9 @@ export function resolveCustomWallpaper(
   if (!itemId) return null;
   const item = items.find((entry) => entry.id === itemId);
   if (!item || item.kind !== "canvas" || item.trashed || !item.content) return null;
-  return item.content;
+  // The content goes into a CSS url(); an imported backup could carry anything
+  // there, so only a real image data URL is allowed through.
+  return isImageDataUrl(item.content) ? item.content : null;
 }
 
 export function getWallpaperPreviewStyle(wallpaper: WallpaperName): React.CSSProperties {

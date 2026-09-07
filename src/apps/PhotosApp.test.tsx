@@ -54,6 +54,7 @@ function renderPhotos(
       activeCanvasId={options.activeCanvasId ?? "photo-b"}
       activeCanvasOpenKey={1}
       photosLaunchRequest={options.photosLaunchRequest ?? null}
+      consumeLaunchRequest={vi.fn()}
       canvasEntries={entries}
       deleteVfsEntry={handlers.deleteVfsEntry}
       notify={handlers.notify}

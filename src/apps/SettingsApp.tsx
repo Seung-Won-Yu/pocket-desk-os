@@ -41,6 +41,7 @@ type SettingsAppProps = {
   setCustomWallpaper: (itemId: string | null) => void;
   /** The page 설정 was asked to open at. */
   settingsLaunchRequest: SettingsLaunchRequest | null;
+  consumeLaunchRequest: (requestId: string) => void;
   soundEnabled: boolean;
   theme: ThemeName;
   wallpaper: WallpaperName;
@@ -63,6 +64,7 @@ export default function SettingsApp({
   setCustomWallpaper,
   soundEnabled,
   theme,
+  consumeLaunchRequest,
   settingsLaunchRequest,
   wallpaper,
 }: SettingsAppProps) {
@@ -72,8 +74,10 @@ export default function SettingsApp({
 
   // A later request (the tray clock's 날짜 및 시간 조정) moves the open window.
   useEffect(() => {
-    if (settingsLaunchRequest) setSection(settingsLaunchRequest.section);
-  }, [settingsLaunchRequest]);
+    if (!settingsLaunchRequest) return;
+    setSection(settingsLaunchRequest.section);
+    consumeLaunchRequest(settingsLaunchRequest.id);
+  }, [consumeLaunchRequest, settingsLaunchRequest]);
   const [nameDraft, setNameDraft] = useState(userName);
   const [settingsQuery, setSettingsQuery] = useState("");
   const themes: Array<{ id: ThemeName; label: string; detail: string }> = [
@@ -389,7 +393,10 @@ export default function SettingsApp({
             <h3>키보드 단축키</h3>
             {/* One list with App.tsx: 설정 shows what the shell listens for,
                 not a hand-copied menu that drifts from it. */}
-            <p>PocketDesk가 실제로 처리하는 키입니다.</p>
+            <p>
+              PocketDesk가 처리하는 키입니다. 목록과 셸 처리기는 별개 코드이므로, 키를 더하거나
+              바꿀 때 둘을 함께 고쳐야 합니다.
+            </p>
             <div className="shortcut-groups">
               {SHELL_SHORTCUTS.map((group) => (
                 <section aria-label={group.title} key={group.title}>

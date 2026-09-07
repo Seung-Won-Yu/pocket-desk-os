@@ -223,6 +223,11 @@ export type AppContentProps = {
   settingsLaunchRequest: SettingsLaunchRequest | null;
   /** Opens 설정 straight at one page, as the tray clock's menu does. */
   openSettingsSection: (section: SettingsLaunchRequest["section"]) => void;
+  /**
+   * Called by an app once it has acted on a launch request. Without this the
+   * request stands, and the next window of that app opens on the old one.
+   */
+  consumeLaunchRequest: (requestId: string) => void;
   /** Opens a folder in a second Explorer window, as Windows' 새 창에서 열기 does. */
   openFolderInNewWindow: (folderId: string) => void;
   /** Opens 명령 프롬프트 already sitting in this folder. */

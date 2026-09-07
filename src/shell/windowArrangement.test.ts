@@ -154,3 +154,20 @@ describe("arrangeWindows", () => {
     expect(new Set(result.map((item) => `${item.x},${item.y}`)).size).toBeGreaterThan(10);
   });
 });
+
+describe("arranging ends a snap", () => {
+  it("clears snapZone on every arranged window, in every mode", () => {
+    const snapped: WindowInstance[] = [
+      { ...win("left", 1), snapZone: "left" },
+      { ...win("right", 2), snapZone: "right" },
+    ];
+    for (const mode of ["cascade", "side-by-side", "stack"] as const) {
+      for (const item of arrangeWindows(snapped, 0, area, mode)) {
+        // Left set, fitWindowToViewport would put the window back in its snap
+        // box on the next resize or restart, undoing the arrangement.
+        expect(item.snapZone).toBeUndefined();
+        expect(item.maximized).toBe(false);
+      }
+    }
+  });
+});

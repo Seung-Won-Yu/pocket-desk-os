@@ -16,6 +16,7 @@ export type TerminalLaunchRequest = { folderId: string; id: string };
 type TerminalAppProps = {
   /** The folder a 여기서 명령 프롬프트 열기 asked for; null when opened plainly. */
   terminalLaunchRequest: TerminalLaunchRequest | null;
+  consumeLaunchRequest: (requestId: string) => void;
   closeWindow: (windowId: string) => void;
   deleteVfsEntry: (itemId: string) => void;
   desktopItems: DesktopItem[];
@@ -70,6 +71,7 @@ export default function TerminalApp({
   playSound,
   renameVfsEntry,
   saveNoteAs,
+  consumeLaunchRequest,
   terminalLaunchRequest,
   userName,
   windowId,
@@ -99,8 +101,10 @@ export default function TerminalApp({
 
   // A later 여기서 명령 프롬프트 열기 lands in the window that is already open.
   useEffect(() => {
-    if (terminalLaunchRequest) setCwdId(terminalLaunchRequest.folderId);
-  }, [terminalLaunchRequest]);
+    if (!terminalLaunchRequest) return;
+    setCwdId(terminalLaunchRequest.folderId);
+    consumeLaunchRequest(terminalLaunchRequest.id);
+  }, [consumeLaunchRequest, terminalLaunchRequest]);
 
   useEffect(() => {
     // cmd titles its window after the working directory.

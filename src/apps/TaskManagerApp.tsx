@@ -20,7 +20,7 @@ type TaskManagerTab = "performance" | "processes";
 const TASKMGR_COLUMNS: Array<["cpu" | "disk" | "memory" | "title", string]> = [
   ["title", "이름"],
   ["cpu", "CPU"],
-  ["memory", "메모리"],
+  ["memory", "메모리(추정)"],
   ["disk", "디스크"],
 ];
 
@@ -40,6 +40,7 @@ function getWindowLoad(windowId: string, maximized: boolean, minimized: boolean,
   }
   const base = hash % 100;
   // Memory is measured, not hashed; see the rows below.
+  // Memory is measured per row (see estimateProcessMemoryMb); nothing here.
   const memoryMb = 0;
   const wobble = ((base + tick * 13) % 21) / 10;
   const cpu = minimized

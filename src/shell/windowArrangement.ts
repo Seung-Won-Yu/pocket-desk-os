@@ -106,6 +106,9 @@ export function arrangeWindows(
       patches.set(item.id, {
         height,
         maximized: false,
+        // Arranging ends a snap. Left in place, `fitWindowToViewport` puts the
+        // window back in its snap box on the next resize or restart.
+        snapZone: undefined,
         width,
         x: clamp(
           area.x + stair * CASCADE_STEP + run * CASCADE_STEP * 2,
@@ -143,6 +146,7 @@ export function arrangeWindows(
       patches.set(item.id, {
         height: heights[row],
         maximized: false,
+        snapZone: undefined,
         width: widths[column],
         x: xs[column],
         y: ys[row],

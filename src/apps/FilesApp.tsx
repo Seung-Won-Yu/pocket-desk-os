@@ -48,6 +48,7 @@ import {
 import type React from "react";
 import AppIconTile from "../components/AppIconTile";
 import { VFS_DRAG_MIME } from "../shell/constants";
+import { isShellReservedChord } from "../shell/shortcuts";
 import {
   isLocalFolderAccessAvailable,
   pickLocalDirectory,
@@ -178,10 +179,10 @@ export function getTextPreview(content: string) {
 }
 
 /** One Explorer tab: where it is, and how it got there. */
-export type FileTab = { history: string[]; id: string; index: number };
+export type FileTab = { history: string[]; id: string; index: number; query: string };
 
 export function createFileTab(folderId: string): FileTab {
-  return { history: [folderId], id: crypto.randomUUID(), index: 0 };
+  return { history: [folderId], id: crypto.randomUUID(), index: 0, query: "" };
 }
 
 export default function FilesApp({
@@ -331,7 +332,14 @@ export default function FilesApp({
     [desktopItems, selectedIds],
   );
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
-  const [fileQuery, setFileQuery] = useState("");
+  // The search belongs to the tab, like the folder and the history: a new tab
+  // opened while a search was on used to inherit the filter and look empty.
+  const fileQuery = activeTab.query;
+  const setFileQuery = (value: string) => {
+    setTabs((current) =>
+      current.map((tab) => (tab.id === activeTabId ? { ...tab, query: value } : tab)),
+    );
+  };
   const filteredFiles = useMemo(() => {
     const normalizedQuery = normalizeSearchText(fileQuery);
     if (!normalizedQuery) return files;
@@ -557,17 +565,16 @@ export default function FilesApp({
 
   /** Closing the tab on top hands the window to its neighbour, as Windows does. */
   const closeTab = (tabId: string) => {
-    setTabs((current) => {
-      if (current.length <= 1) return current;
-      const index = current.findIndex((tab) => tab.id === tabId);
-      if (index === -1) return current;
-      const next = current.filter((tab) => tab.id !== tabId);
-      if (tabId === activeTabId) {
-        setActiveTabId((next[index] ?? next[next.length - 1]).id);
-      }
-      focusFileList();
-      return next;
-    });
+    // Read, then write. Setting other state inside the updater made it impure,
+    // and StrictMode runs updaters twice — the same mistake this file's own
+    // history records elsewhere.
+    if (tabs.length <= 1) return;
+    const index = tabs.findIndex((tab) => tab.id === tabId);
+    if (index === -1) return;
+    const next = tabs.filter((tab) => tab.id !== tabId);
+    setTabs(next);
+    if (tabId === activeTabId) setActiveTabId((next[index] ?? next[next.length - 1]).id);
+    focusFileList();
   };
 
   const navigateToFolder = (folderId: string) => {
@@ -1126,6 +1133,7 @@ export default function FilesApp({
       // Ctrl+L belongs to the whole window in Explorer, not just the list: it
       // has to work with the search box, the toolbar, or nothing focused.
       onKeyDown={(event) => {
+        if (isShellReservedChord(event)) return;
         if (!(event.ctrlKey || event.metaKey)) return;
         // Explorer's tab keys belong to the window, like Ctrl+L.
         if (event.key === "Tab") {

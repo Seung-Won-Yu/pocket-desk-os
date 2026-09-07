@@ -171,7 +171,7 @@ import {
   persistRecentOpens,
   recordRecentOpen,
 } from "./shell/jumpList";
-import { clamp, getVfsEntrySize } from "./utils/format";
+import { clamp, formatStorageSize, getVfsEntrySize } from "./utils/format";
 import { reorderById } from "./utils/reorder";
 import {
   type AppId,
@@ -205,7 +205,7 @@ import {
   getVfsTopLevelIds,
   isVfsSystemFolderId,
 } from "./vfs/model";
-import { persistVfsEntries } from "./vfs/storage";
+import { getSnapshotContentBytes, MAX_CONTENT_BYTES, persistVfsEntries } from "./vfs/storage";
 import {
   getWallpaperStyle,
   resolveCustomWallpaper,
@@ -246,6 +246,7 @@ type ContentOps = Pick<
   | "openApp"
   | "openFolderInNewWindow"
   | "openNewAppWindow"
+  | "consumeLaunchRequest"
   | "openSettingsSection"
   | "openTerminalAtFolder"
   | "openVfsEntry"
@@ -416,6 +417,12 @@ export default function App() {
   // the show-desktop strip under the pointer shows the desktop through all of them.
   const [peekWindowId, setPeekWindowId] = useState<string | null>(null);
   const [peekDesktop, setPeekDesktop] = useState(false);
+  /**
+   * Windows opens the Start menu when the Win key is pressed and released with
+   * nothing in between. Anything else pressed while it was held (Win+E, Win+D)
+   * cancels that, so the release does nothing.
+   */
+  const winKeyAloneRef = useRef(false);
   // Inside a snap zone every pointermove reported a fresh {zone} object and
   // forced a commit; an unchanged zone now returns the previous state.
   const handleSnapPreviewChange = (preview: SnapPreviewState | null) => {
@@ -1345,6 +1352,13 @@ export default function App() {
     setFilesLaunchRequest({ folderId, id: crypto.randomUUID(), windowId });
   };
 
+  /** An app has acted on its launch request; drop it so the next window is plain. */
+  const consumeLaunchRequest = (requestId: string) => {
+    setPhotosLaunchRequest((current) => (current?.id === requestId ? null : current));
+    setTerminalLaunchRequest((current) => (current?.id === requestId ? null : current));
+    setSettingsLaunchRequest((current) => (current?.id === requestId ? null : current));
+  };
+
   /** The tray clock's 날짜 및 시간 조정 and anything else that deep-links 설정. */
   const openSettingsSection = (section: SettingsLaunchRequest["section"]) => {
     setSettingsLaunchRequest({ id: crypto.randomUUID(), section });
@@ -1995,6 +2009,12 @@ export default function App() {
    * Tool. Deliberately not savePaintImage: that also points 그림판 at the file.
    */
   const lastScreenshotAtRef = useRef(0);
+  /**
+   * The window that was active before 캡처 도구 took focus. Clicking 새 캡처
+   * makes the tool itself the active window, so "활성 창" with no delay had no
+   * success path at all — it always reported that there was nothing to capture.
+   */
+  const preToolActiveWindowRef = useRef<string | null>(null);
   const captureScreenshot = async (mode: ScreenshotMode): Promise<DesktopItem | null> => {
     // Windows delivers PrintScreen as keyup in some browsers and as both in
     // others; one press is one picture.
@@ -2006,7 +2026,21 @@ export default function App() {
     if (mode === "window") {
       const activeFrame = activeWindowId ? findLiveWindowFrame(activeWindowId) : null;
       const activeIsTool = activeFrame?.getAttribute("data-app-id") === "snip";
-      target = activeFrame && !activeIsTool ? activeFrame : null;
+      /*
+       * Which window the tool pictures, in the order Windows would: the active
+       * one, unless that is the tool itself — then the window that was active
+       * before it, and if that has since closed, whichever window is on top.
+       * Only with nothing else open is there nothing to capture.
+       */
+      const remembered = preToolActiveWindowRef.current;
+      const topmostOther = desktopWindows
+        .filter((item) => item.appId !== "snip" && !item.minimized)
+        .sort((first, second) => second.z - first.z)[0]?.id;
+      const subjectId = activeIsTool ? (remembered ?? topmostOther) : activeWindowId;
+      const liveSubject =
+        (subjectId ? findLiveWindowFrame(subjectId) : null) ??
+        (topmostOther ? findLiveWindowFrame(topmostOther) : null);
+      target = activeIsTool ? liveSubject : (activeFrame ?? liveSubject);
       if (!target) {
         notify({
           detail: "먼저 캡처할 창을 선택하세요.",
@@ -2029,6 +2063,25 @@ export default function App() {
       notify({
         detail: error instanceof Error ? error.message : "화면을 그릴 수 없습니다.",
         title: "스크린샷 실패",
+      });
+      return null;
+    }
+
+    /*
+     * A screenshot is the largest thing this shell writes, and the virtual file
+     * system's save limit is a budget for the whole snapshot — a few captures
+     * could exhaust it, after which *every* write failed and only the first
+     * failure said so. So the picture is measured against what is left before
+     * it is added, and a picture that does not fit is refused out loud.
+     */
+    const pictureBytes = new Blob([picture.dataUrl]).size;
+    const usedBytes = getSnapshotContentBytes(desktopItems);
+    if (usedBytes + pictureBytes > MAX_CONTENT_BYTES) {
+      notify({
+        detail: `사진 ${formatStorageSize(pictureBytes)}, 남은 공간 ${formatStorageSize(
+          Math.max(0, MAX_CONTENT_BYTES - usedBytes),
+        )}. 사진 폴더에서 쓰지 않는 그림을 지우고 다시 시도하세요.`,
+        title: "저장 공간이 부족해 스크린샷을 저장하지 못했습니다",
       });
       return null;
     }
@@ -3266,6 +3319,13 @@ export default function App() {
     [activeDesktopIndex, windows],
   );
   const activeWindowId = resolveActiveWindowId(desktopWindows, desktopFocusZ);
+
+  useEffect(() => {
+    // Remembered for 캡처 도구: the tool's own window is never the subject.
+    if (!activeWindowId) return;
+    const app = windows.find((item) => item.id === activeWindowId)?.appId;
+    if (app !== "snip") preToolActiveWindowRef.current = activeWindowId;
+  }, [activeWindowId, windows]);
   /**
    * Windows titles a window after the document, not the program: `notes.txt -
    * 메모장`. The same string is what Alt+Tab and the taskbar preview show, so it
@@ -3275,12 +3335,17 @@ export default function App() {
    * Bytes of the document a window has open — what Task Manager counts as the
    * part of a process's memory that can actually be known.
    */
-  const getWindowDocumentBytes = (windowId: string) => {
-    const itemId = reportedDocuments[windowId]?.itemId;
-    if (!itemId) return 0;
-    const item = activeDesktopItems.find((entry) => entry.id === itemId);
-    return item ? getVfsEntrySize(item) : 0;
-  };
+  const getWindowDocumentBytes = useCallback(
+    (windowId: string) => {
+      const itemId = reportedDocuments[windowId]?.itemId;
+      if (!itemId) return 0;
+      const item = activeDesktopItems.find((entry) => entry.id === itemId);
+      return item ? getVfsEntrySize(item) : 0;
+    },
+    // Identity matters: this goes into sharedContentProps, whose whole point is
+    // that a commit which only moved a window hands every slot the same object.
+    [activeDesktopItems, reportedDocuments],
+  );
 
   const getWindowDocumentLabel = (windowId: string, appId: AppId) => {
     // What the window says it is showing wins; the ids below are only the
@@ -3468,6 +3533,7 @@ export default function App() {
   const globalShellHandlersRef = useRef({
     blur: () => {},
     down: (_event: KeyboardEvent) => {},
+    pointer: () => {},
     up: (_event: KeyboardEvent) => {},
     visibility: () => {},
   });
@@ -3514,6 +3580,9 @@ export default function App() {
 
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
       if (shellPhase !== "unlocked") return;
+      // A bare Win press arms the Start menu; any other key disarms it — and so
+      // does a click, or Cmd+click for multi-select would open it on release.
+      winKeyAloneRef.current = event.key === "Meta" && !event.repeat;
       if (event.key === "PrintScreen") {
         event.preventDefault();
         void captureScreenshot(event.altKey ? "window" : "screen");
@@ -3813,6 +3882,13 @@ export default function App() {
       if (event.key === "Alt") {
         commitAltTab();
       }
+      if (event.key === "Meta" && shellPhase === "unlocked") {
+        const alone = winKeyAloneRef.current;
+        winKeyAloneRef.current = false;
+        if (!alone) return;
+        event.preventDefault();
+        setStartOpen((current) => !current);
+      }
     };
 
     /*
@@ -3837,6 +3913,9 @@ export default function App() {
     };
     globalShellHandlersRef.current = {
       blur: commitAltTabOnLostFocus,
+      pointer: () => {
+        winKeyAloneRef.current = false;
+      },
       down: handleGlobalKeyDown,
       up: handleGlobalKeyUp,
       visibility: commitAltTabOnHide,
@@ -3847,12 +3926,15 @@ export default function App() {
     const down = (event: KeyboardEvent) => globalShellHandlersRef.current.down(event);
     const up = (event: KeyboardEvent) => globalShellHandlersRef.current.up(event);
     const blur = () => globalShellHandlersRef.current.blur();
+    const pointer = () => globalShellHandlersRef.current.pointer();
     const visibility = () => globalShellHandlersRef.current.visibility();
+    window.addEventListener("pointerdown", pointer, true);
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     window.addEventListener("blur", blur);
     document.addEventListener("visibilitychange", visibility);
     return () => {
+      window.removeEventListener("pointerdown", pointer, true);
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
       window.removeEventListener("blur", blur);
@@ -4003,6 +4085,7 @@ export default function App() {
     openApp,
     openFolderInNewWindow,
     openNewAppWindow,
+    consumeLaunchRequest,
     openSettingsSection,
     openTerminalAtFolder,
     openVfsEntry,
@@ -4046,6 +4129,7 @@ export default function App() {
       openApp: (...args) => contentOpsRef.current.openApp(...args),
       openFolderInNewWindow: (...args) => contentOpsRef.current.openFolderInNewWindow(...args),
       openNewAppWindow: (...args) => contentOpsRef.current.openNewAppWindow(...args),
+      consumeLaunchRequest: (...args) => contentOpsRef.current.consumeLaunchRequest(...args),
       openSettingsSection: (...args) => contentOpsRef.current.openSettingsSection(...args),
       openTerminalAtFolder: (...args) => contentOpsRef.current.openTerminalAtFolder(...args),
       openVfsEntry: (...args) => contentOpsRef.current.openVfsEntry(...args),

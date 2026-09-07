@@ -144,7 +144,13 @@ export function Taskbar({
   const unreadNotificationCount = (() => {
     if (!readNotificationId) return notificationHistory.length;
     const index = notificationHistory.findIndex((item) => item.id === readNotificationId);
-    return index === -1 ? notificationHistory.length : index;
+    /*
+     * A marker that is no longer in the history means the notification the
+     * reader had seen was dismissed — everything left is at least as old, so
+     * nothing is unread. Counting the whole history here made the badge come
+     * back the moment one notification was dropped.
+     */
+    return index === -1 ? 0 : index;
   })();
   const trayRef = useRef<HTMLDivElement | null>(null);
   const [preview, setPreview] = useState<{

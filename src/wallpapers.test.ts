@@ -15,6 +15,20 @@ describe("resolveCustomWallpaper", () => {
     expect(resolveCustomWallpaper(items, "pic")).toBe(PIXELS);
   });
 
+  it("refuses content that is not an image data URL, whatever a backup carried", () => {
+    const injected = [
+      {
+        content: 'x"),url("https://example.invalid/pixel.png',
+        id: "injected",
+        kind: "canvas" as const,
+        trashed: false,
+      },
+      { content: "not a data url", id: "plain", kind: "canvas" as const, trashed: false },
+    ];
+    expect(resolveCustomWallpaper(injected, "injected")).toBeNull();
+    expect(resolveCustomWallpaper(injected, "plain")).toBeNull();
+  });
+
   it("falls back to nothing for no choice, a blank picture, a binned one, a text file, or a missing id", () => {
     expect(resolveCustomWallpaper(items, null)).toBeNull();
     expect(resolveCustomWallpaper(items, "blank")).toBeNull();
