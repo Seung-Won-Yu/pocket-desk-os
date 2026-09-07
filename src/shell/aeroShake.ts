@@ -12,6 +12,13 @@ export const SHAKE_REVERSALS = 3;
 export const SHAKE_MIN_SWING = 24;
 /** The whole shake has to happen inside this window. */
 export const SHAKE_WINDOW_MS = 600;
+/**
+ * After a shake fires, the samples that keep arriving are the same gesture
+ * still finishing. Without this, one long shake reached the reversal count
+ * again and again: minimize, restore, minimize, from a single wave of the
+ * hand. A new shake is a new gesture, and a gesture takes a moment to start.
+ */
+export const SHAKE_COOLDOWN_MS = 500;
 
 export interface ShakeDetector {
   /** Feed one pointer sample; true exactly when a shake completes. */
@@ -23,6 +30,7 @@ export function createShakeDetector(): ShakeDetector {
   let anchorX: number | null = null;
   let direction = 0;
   let reversals: number[] = [];
+  let firedAt: number | null = null;
 
   const reset = () => {
     anchorX = null;
@@ -32,6 +40,10 @@ export function createShakeDetector(): ShakeDetector {
 
   return {
     feed(x, time) {
+      if (firedAt !== null) {
+        if (time - firedAt < SHAKE_COOLDOWN_MS) return false;
+        firedAt = null;
+      }
       if (anchorX === null) {
         anchorX = x;
         return false;
@@ -45,6 +57,7 @@ export function createShakeDetector(): ShakeDetector {
         reversals = [...reversals.filter((at) => time - at <= SHAKE_WINDOW_MS), time];
         if (reversals.length >= SHAKE_REVERSALS) {
           reset();
+          firedAt = time;
           return true;
         }
       }

@@ -105,9 +105,25 @@ async function openAllApps(page) {
     const title = (await entry.innerText()).split("\n")[0];
     await entry.click();
     await startMenu.waitFor({ state: "hidden" });
-    await page.waitForTimeout(180);
+    /*
+     * Each app is its own chunk now, so a window appears after a fetch rather
+     * than in the same tick. A fixed pause would drop the slow ones out of the
+     * audit silently — fewer surfaces checked, and the gate still green.
+     */
+    await page.waitForFunction(
+      (expected) =>
+        document.querySelectorAll(".window-frame:not(.window-thumbnail-clone)").length ===
+        expected,
+      index + 1,
+      { timeout: 10000 },
+    );
     opened.push(title);
   }
+  const frames = await page.locator(".window-frame:not(.window-thumbnail-clone)").count();
+  assert(
+    frames === total,
+    `Only ${frames} of ${total} app windows are on screen; the audit would have missed the rest`,
+  );
   return opened;
 }
 

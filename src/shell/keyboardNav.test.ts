@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { getNextRovingIndex, getNextTabIndex } from "./keyboardNav";
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it } from "vitest";
+import { focusTabAt, getNextRovingIndex, getNextTabIndex } from "./keyboardNav";
+
+afterEach(() => {
+  document.body.innerHTML = "";
+});
 
 describe("getNextRovingIndex", () => {
   it("returns null for a key that does not navigate", () => {
@@ -80,7 +85,42 @@ describe("getNextTabIndex", () => {
   });
 
   it("navigates nothing when there is one tab or none", () => {
-    expect(getNextTabIndex("ArrowRight", 0, 1)).toBe(0);
+    // A strip of one has nowhere to go, and the callers preventDefault()
+    // whatever they are handed: Left and Right were being swallowed.
+    expect(getNextTabIndex("ArrowRight", 0, 1)).toBeNull();
+    expect(getNextTabIndex("ArrowLeft", 0, 1)).toBeNull();
+    expect(getNextTabIndex("Home", 0, 1)).toBeNull();
     expect(getNextTabIndex("ArrowRight", 0, 0)).toBeNull();
+  });
+});
+
+describe("focusTabAt", () => {
+  function mountStrip() {
+    document.body.innerHTML = `
+      <div role="tablist">
+        <div class="file-tab" role="tab" aria-selected="true" tabindex="0">
+          <span>문서</span>
+          <button aria-label="문서 탭 닫기" type="button">x</button>
+        </div>
+        <div class="file-tab" role="tab" aria-selected="false" tabindex="-1">
+          <span>사진</span>
+          <button aria-label="사진 탭 닫기" type="button" tabindex="-1">x</button>
+        </div>
+      </div>`;
+    return document.querySelector<HTMLElement>('[role="tablist"]')!;
+  }
+
+  it("focuses the tab at that index, not a control inside it", () => {
+    const strip = mountStrip();
+    focusTabAt(strip, 1);
+    expect(document.activeElement).toBe(strip.querySelectorAll('[role="tab"]')[1]);
+    expect((document.activeElement as HTMLElement).tagName).not.toBe("BUTTON");
+  });
+
+  it("does nothing for an index the strip does not have", () => {
+    const strip = mountStrip();
+    const before = document.activeElement;
+    focusTabAt(strip, 9);
+    expect(document.activeElement).toBe(before);
   });
 });

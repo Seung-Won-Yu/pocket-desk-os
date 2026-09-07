@@ -153,10 +153,17 @@ export function loadStickyNotes(): StickyNoteStore {
   }
 }
 
+/**
+ * Writes the notes, and says whether the write happened. Losing the write must
+ * not lose the session — but it must not be a secret either: the per-note cap
+ * bounds one paste, not the whole origin's quota, and a refused write meant
+ * the note was silently back to its last saved state after a reload.
+ */
 export function persistStickyNotes(store: StickyNoteStore) {
   try {
     localStorage.setItem(STICKY_NOTES_KEY, JSON.stringify(store));
+    return true;
   } catch {
-    // Losing the write must not lose the session.
+    return false;
   }
 }

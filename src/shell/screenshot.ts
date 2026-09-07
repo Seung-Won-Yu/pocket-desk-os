@@ -55,9 +55,14 @@ function toBase64(bytes: Uint8Array) {
  * ships with the app or is a data/blob URL this app made itself.
  */
 function isInlinableUrl(url: string) {
-  if (url.startsWith("blob:")) return true;
   try {
-    return new URL(url, window.location.href).origin === window.location.origin;
+    // A blob: URL carries its creator's origin after the scheme, so the same
+    // comparison covers it — `blob:https://elsewhere/uuid` is not ours.
+    const resolved = new URL(url, window.location.href);
+    const origin = url.startsWith("blob:")
+      ? new URL(resolved.href.slice("blob:".length)).origin
+      : resolved.origin;
+    return origin === window.location.origin;
   } catch {
     return false;
   }
@@ -80,7 +85,15 @@ export function createResourceInliner(fetchImpl: typeof fetch = fetch) {
     if (!pending) {
       pending = (async () => {
         try {
-          const response = await fetchImpl(url);
+          /*
+           * Same-origin is checked above; these make the request itself
+           * unable to leave: a redirect off the origin fails instead of
+           * being followed, and no cookies ride along.
+           */
+          const response = await fetchImpl(url, {
+            credentials: "omit",
+            redirect: "error",
+          });
           if (!response.ok) return null;
           const blob = await response.blob();
           return `data:${blob.type || "application/octet-stream"};base64,${toBase64(

@@ -1309,6 +1309,10 @@ export default function FilesApp({
                     <button
                       aria-label={`${tabName} 탭 닫기`}
                       className="file-tab-close"
+                      // The strip is one tab stop: five tabs must not be six
+                      // stops. Only the tab that holds the stop lends it to
+                      // its own ✕, which is how a browser's strip behaves.
+                      tabIndex={tab.id === activeTabId ? 0 : -1}
                       // The tab under it selects on click; closing must not.
                       onClick={(event) => {
                         event.stopPropagation();

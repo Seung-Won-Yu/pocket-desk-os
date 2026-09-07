@@ -342,10 +342,13 @@ export function Taskbar({
       onPeekDesktop(true);
     }, 400);
   };
+  // Going away while peeking would leave the desktop dimmed with nothing left
+  // to un-dim it, so the last thing the bar does is put the windows back.
+  const cancelPeekRef = useRef(cancelDesktopPeek);
+  cancelPeekRef.current = cancelDesktopPeek;
   useEffect(
     () => () => {
-      if (desktopPeekTimerRef.current !== null)
-        window.clearTimeout(desktopPeekTimerRef.current);
+      cancelPeekRef.current();
     },
     [],
   );

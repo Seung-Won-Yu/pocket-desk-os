@@ -1,8 +1,8 @@
-import { lazy } from "react";
+import { lazy, type ComponentType } from "react";
 import { appMetadata, appOrder } from "../apps/metadata";
 import { type AppId } from "../types";
 import { TASKBAR_PINNED_APPS_KEY } from "./constants";
-import { type AppDefinition } from "./types";
+import { type AppContentProps, type AppDefinition } from "./types";
 
 /*
  * Every app is its own chunk, fetched when a window for it first opens. The
@@ -11,29 +11,45 @@ import { type AppDefinition } from "./types";
  * asked for yet. The service worker precaches every emitted asset from the
  * build's own list, so a deferred app is still there offline.
  */
-export const appComponents: Record<AppId, AppDefinition["component"]> = {
-  browser: lazy(() => import("../apps/BrowserApp")),
-  calculator: lazy(() => import("../apps/CalculatorApp")),
-  clock: lazy(() => import("../apps/ClockApp")),
-  eventviewer: lazy(() => import("../apps/EventViewerApp")),
-  files: lazy(() => import("../apps/FilesApp")),
-  minesweeper: lazy(() => import("../apps/MinesweeperApp")),
-  notepad: lazy(() => import("../apps/NotepadApp")),
-  paint: lazy(() => import("../apps/PaintApp")),
-  photos: lazy(() => import("../apps/PhotosApp")),
-  recycle: lazy(() => import("../apps/RecycleBinApp")),
-  registry: lazy(() => import("../apps/RegistryEditorApp")),
-  settings: lazy(() => import("../apps/SettingsApp")),
-  snip: lazy(() => import("../apps/SnipApp")),
-  stickynotes: lazy(() => import("../apps/StickyNotesApp")),
-  taskmanager: lazy(() => import("../apps/TaskManagerApp")),
-  terminal: lazy(() => import("../apps/TerminalApp")),
-  thispc: lazy(() => import("../apps/ThisPcApp")),
+type AppLoader = () => Promise<{ default: ComponentType<AppContentProps> }>;
+
+const appLoaders: Record<AppId, AppLoader> = {
+  browser: () => import("../apps/BrowserApp"),
+  calculator: () => import("../apps/CalculatorApp"),
+  clock: () => import("../apps/ClockApp"),
+  eventviewer: () => import("../apps/EventViewerApp"),
+  files: () => import("../apps/FilesApp"),
+  minesweeper: () => import("../apps/MinesweeperApp"),
+  notepad: () => import("../apps/NotepadApp"),
+  paint: () => import("../apps/PaintApp"),
+  photos: () => import("../apps/PhotosApp"),
+  recycle: () => import("../apps/RecycleBinApp"),
+  registry: () => import("../apps/RegistryEditorApp"),
+  settings: () => import("../apps/SettingsApp"),
+  snip: () => import("../apps/SnipApp"),
+  stickynotes: () => import("../apps/StickyNotesApp"),
+  taskmanager: () => import("../apps/TaskManagerApp"),
+  terminal: () => import("../apps/TerminalApp"),
+  thispc: () => import("../apps/ThisPcApp"),
 };
+
+/**
+ * A fresh `lazy` for one app. React.lazy memoizes a rejected import forever,
+ * so retrying a failed chunk needs a new instance — the same reason the
+ * reader view builds one per attempt.
+ */
+export function createAppComponent(appId: AppId): AppDefinition["component"] {
+  return lazy(appLoaders[appId]);
+}
+
+export const appComponents: Record<AppId, AppDefinition["component"]> = Object.fromEntries(
+  appOrder.map((appId) => [appId, createAppComponent(appId)]),
+) as Record<AppId, AppDefinition["component"]>;
 
 export const appCatalog: AppDefinition[] = appOrder.map((appId) => ({
   ...appMetadata[appId],
   component: appComponents[appId],
+  reload: () => createAppComponent(appId),
 }));
 
 export const appsById = new Map(appCatalog.map((app) => [app.id, app]));

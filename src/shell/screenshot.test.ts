@@ -130,12 +130,20 @@ describe("createResourceInliner", () => {
     expect(await inline("https://example.com/tracker.png")).toBeNull();
     expect(await inline("//example.com/tracker.png")).toBeNull();
     expect(await inline("https://r.jina.ai/http://example.com")).toBeNull();
+    // A blob: URL carries its creator's origin; only this page's own count.
+    expect(await inline("blob:https://evil.example/abc")).toBeNull();
     expect(fetchImpl).not.toHaveBeenCalled();
 
     // Same origin, however it is written, still resolves.
     expect(await inline("/wallpapers/w.jpg")).not.toBeNull();
     expect(await inline(`${window.location.origin}/brand/icon.png`)).not.toBeNull();
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(await inline(`blob:${window.location.origin}/abc`)).not.toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    // Nor can the request be redirected off the origin, or carry cookies.
+    expect(fetchImpl).toHaveBeenLastCalledWith(`blob:${window.location.origin}/abc`, {
+      credentials: "omit",
+      redirect: "error",
+    });
   });
 });
 

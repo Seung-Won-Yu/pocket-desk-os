@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 // The runtime-audit gate's decision, kept pure so it can be tested without a registry.
 // @ts-expect-error -- a plain .mjs build script, deliberately untyped
-import { decideAuditOutcome, formatAuditOutcome } from "../../scripts/auditReport.mjs";
+import * as auditReport from "../../scripts/auditReport.mjs";
+
+const { decideAuditExit, decideAuditOutcome, formatAuditOutcome } = auditReport;
 
 const report = (vulnerabilities: Record<string, number>) =>
   JSON.stringify({ metadata: { vulnerabilities } });
@@ -28,5 +30,22 @@ describe("decideAuditOutcome", () => {
     const jsonError = decideAuditOutcome(JSON.stringify({ error: "Internal Server Error" }));
     expect(jsonError).toMatchObject({ kind: "unavailable", reason: "Internal Server Error" });
     expect(decideAuditOutcome("").kind).toBe("unavailable");
+  });
+});
+
+describe("decideAuditExit", () => {
+  it("passes a clean audit and fails a real advisory, strict or not", () => {
+    expect(decideAuditExit({ kind: "clean" })).toBe(0);
+    expect(decideAuditExit({ kind: "clean" }, { strict: true })).toBe(0);
+    expect(decideAuditExit({ kind: "vulnerable" })).toBe(1);
+    expect(decideAuditExit({ kind: "vulnerable" }, { strict: true })).toBe(1);
+  });
+
+  it("lets an outage through the everyday gate and stops it at a release", () => {
+    // A registry outage is not a security result, so it must not fail every
+    // commit — but a version must never be tagged on an audit that never ran.
+    expect(decideAuditExit({ kind: "unavailable" })).toBe(0);
+    expect(decideAuditExit({ kind: "unavailable" }, { strict: false })).toBe(0);
+    expect(decideAuditExit({ kind: "unavailable" }, { strict: true })).toBe(1);
   });
 });

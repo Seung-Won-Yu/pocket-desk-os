@@ -2988,6 +2988,22 @@ button {
   min-height: 0;
 }
 
+/* A window whose app could not be downloaded says so, and stays a window. */
+.app-chunk-error {
+  align-items: center;
+  background: var(--mica-strong);
+  gap: 8px;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+}
+
+.app-chunk-error p {
+  color: var(--muted);
+  margin: 0;
+  max-width: 34ch;
+}
+
 .app-toolbar {
   align-items: center;
   background: rgba(38, 38, 38, 0.9);

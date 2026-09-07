@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   EMPTY_STICKY_STORE,
   STICKY_NOTE_LIMIT,
+  STICKY_NOTE_MAX_LENGTH,
   bindStickyNoteWindow,
   createStickyNote,
   deleteStickyNote,
@@ -118,5 +119,54 @@ describe("persistence", () => {
 
     localStorage.setItem(STICKY_NOTES_KEY, "{not json");
     expect(loadStickyNotes()).toEqual(EMPTY_STICKY_STORE);
+  });
+});
+
+describe("a note's length", () => {
+  it("caps what is typed or pasted into a note", () => {
+    const note = createStickyNote(1);
+    const store = { bindings: {}, notes: [note] };
+    const long = "가".repeat(STICKY_NOTE_MAX_LENGTH + 500);
+    const updated = updateStickyNote(store, note.id, { text: long }, 2);
+    expect(updated.notes[0].text).toHaveLength(STICKY_NOTE_MAX_LENGTH);
+    // A colour change must not touch the text.
+    expect(updateStickyNote(updated, note.id, { color: "pink" }, 3).notes[0].text).toHaveLength(
+      STICKY_NOTE_MAX_LENGTH,
+    );
+  });
+
+  it("caps text that comes back from storage, not just text that is typed", () => {
+    // The cap is the model's: restored or imported notes go through it too.
+    localStorage.setItem(
+      "pocket-desk-sticky-notes-v1",
+      JSON.stringify({
+        bindings: {},
+        notes: [
+          {
+            color: "yellow",
+            id: "sticky-1",
+            text: "나".repeat(STICKY_NOTE_MAX_LENGTH * 2),
+            updatedAt: 1,
+          },
+        ],
+      }),
+    );
+    expect(loadStickyNotes().notes[0].text).toHaveLength(STICKY_NOTE_MAX_LENGTH);
+  });
+});
+
+describe("persistStickyNotes", () => {
+  it("says whether the write happened, so a refused write is not a secret", () => {
+    expect(persistStickyNotes(EMPTY_STICKY_STORE)).toBe(true);
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota", "QuotaExceededError");
+    });
+    /*
+     * The per-note cap bounds one paste, not the whole origin's quota. A
+     * refused write used to be swallowed: the user kept typing and the note
+     * was back to its last saved state after a reload.
+     */
+    expect(persistStickyNotes(EMPTY_STICKY_STORE)).toBe(false);
+    setItem.mockRestore();
   });
 });

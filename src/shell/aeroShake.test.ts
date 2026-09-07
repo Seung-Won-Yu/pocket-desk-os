@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { SHAKE_MIN_SWING, SHAKE_WINDOW_MS, createShakeDetector } from "./aeroShake";
+import {
+  SHAKE_COOLDOWN_MS,
+  SHAKE_MIN_SWING,
+  SHAKE_WINDOW_MS,
+  createShakeDetector,
+} from "./aeroShake";
 
 /** Feed a zig-zag of `swings` alternating moves of `amplitude`, `stepMs` apart. */
 function zigzag(
@@ -43,6 +48,34 @@ describe("createShakeDetector", () => {
     for (let x = 0; x < 2000; x += 40) {
       expect(detector.feed(x, (time += 16))).toBe(false);
     }
+  });
+
+  it("fires once for one long shake, not on every third reversal", () => {
+    // 12 swings inside the cooldown are one gesture. Without it the detector
+    // reset and counted again: minimize, restore, minimize, from one wave.
+    const detector = createShakeDetector();
+    expect(zigzag(detector, 12, 60, 40)).toEqual([3]);
+  });
+
+  it("a second shake fires once the first gesture has had time to end", () => {
+    const detector = createShakeDetector();
+    let x = 100;
+    let time = 0;
+    const feedZigzag = (swings: number) => {
+      const fired: number[] = [];
+      for (let index = 0; index < swings; index += 1) {
+        x += index % 2 === 0 ? 60 : -60;
+        time += 40;
+        if (detector.feed(x, time)) fired.push(index);
+      }
+      return fired;
+    };
+    detector.feed(x, time);
+    expect(feedZigzag(6)).toHaveLength(1);
+    // Still inside the cooldown: shaking on does nothing.
+    expect(feedZigzag(6)).toEqual([]);
+    time += SHAKE_COOLDOWN_MS;
+    expect(feedZigzag(6)).toHaveLength(1);
   });
 
   it("reset forgets a half-finished shake", () => {

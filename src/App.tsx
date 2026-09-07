@@ -20,7 +20,7 @@ import {
 import { DesktopIcon, DesktopItemIcon } from "./shell/components/DesktopIcons";
 import { RunDialog } from "./shell/components/RunDialog";
 import { ShortcutDialog } from "./shell/components/ShortcutDialog";
-import { WindowSlot, type WindowFrameOps } from "./shell/components/WindowSlot";
+import { AppWindow, type WindowFrameOps } from "./shell/components/WindowSlot";
 import { resolveShortcutTarget } from "./utils/safeUrl";
 import { ShellGate } from "./shell/components/ShellScreens";
 import { StartMenu } from "./shell/components/StartMenu";
@@ -212,7 +212,7 @@ import {
   type WallpaperCssVars,
   wallpaperGallery,
 } from "./wallpapers";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const DESKTOP_ICON_NAV_KEYS = [
   "ArrowDown",
@@ -315,10 +315,31 @@ export default function App() {
    */
   const stickyNotesRef = useRef(stickyNotes);
   stickyNotesRef.current = stickyNotes;
+  const stickySaveErrorShownRef = useRef(false);
+  const flushStickyNotes = useCallback(() => {
+    if (persistStickyNotes(stickyNotesRef.current)) {
+      stickySaveErrorShownRef.current = false;
+      return;
+    }
+    if (stickySaveErrorShownRef.current) return;
+    stickySaveErrorShownRef.current = true;
+    notifyRef.current({
+      detail: "브라우저 저장 공간이 가득 찼습니다. 메모를 줄이거나 지우세요.",
+      title: "메모를 저장하지 못했습니다",
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs only
+  }, []);
   useEffect(() => {
-    const timer = window.setTimeout(() => persistStickyNotes(stickyNotes), 300);
+    const timer = window.setTimeout(flushStickyNotes, 300);
     return () => window.clearTimeout(timer);
-  }, [stickyNotes]);
+  }, [flushStickyNotes, stickyNotes]);
+  /*
+   * The debounce is a window in which the notes exist only in memory, and
+   * pagehide is not the only way out of it: a crash elsewhere unmounts this
+   * tree, taking the timer and the pagehide listener with it, and the reload
+   * from the crash screen would come back to the last saved state.
+   */
+  useEffect(() => () => flushStickyNotes(), [flushStickyNotes]);
 
   useEffect(() => {
     persistClockAlarms(clockAlarms);
@@ -684,7 +705,7 @@ export default function App() {
     const flushAll = () => {
       persistWindowState(windowsRef.current);
       persistDesktopIconLayout(iconLayoutRef.current);
-      persistStickyNotes(stickyNotesRef.current);
+      flushStickyNotes();
       if (vfsReadyRef.current) flushVfsPersist(desktopItemsRef.current);
     };
     const flushWhenHidden = () => {
@@ -696,7 +717,7 @@ export default function App() {
       window.removeEventListener("pagehide", flushAll);
       document.removeEventListener("visibilitychange", flushWhenHidden);
     };
-  }, [flushVfsPersist]);
+  }, [flushStickyNotes, flushVfsPersist]);
 
   useEffect(() => {
     if (!desktopMenu && !desktopIconMenu) return;
@@ -2043,9 +2064,15 @@ export default function App() {
        * Only with nothing else open is there nothing to capture.
        */
       const remembered = preToolActiveWindowRef.current;
+      /*
+       * A window can be open, on top and not yet in the DOM — its app's chunk
+       * is still arriving. Picking it by z alone left the fallback empty and
+       * refused the capture while a perfectly good window sat on screen.
+       */
       const topmostOther = desktopWindows
         .filter((item) => item.appId !== "snip" && !item.minimized)
-        .sort((first, second) => second.z - first.z)[0]?.id;
+        .sort((first, second) => second.z - first.z)
+        .find((item) => findLiveWindowFrame(item.id))?.id;
       const subjectId = activeIsTool ? (remembered ?? topmostOther) : activeWindowId;
       const liveSubject =
         (subjectId ? findLiveWindowFrame(subjectId) : null) ??
@@ -4414,25 +4441,24 @@ export default function App() {
       >
         {desktopWindows.map((item) => (
           /*
-           * Each app is its own chunk, so a window waits for its app before it
-           * appears — one boundary per window, so one app loading never blanks
-           * the others. The frame used to mount first and the app a beat
-           * later: the window was on screen and deaf, and a chord pressed at
-           * it went nowhere.
+           * AppWindow owns this window's chunk: one Suspense and one error
+           * boundary per window, so a window waits for its app instead of
+           * appearing on screen and deaf, one app loading never blanks the
+           * others, and one app failing to download does not take the desktop
+           * down with it.
            */
-          <Suspense fallback={null} key={item.id}>
-            <WindowSlot
-              active={activeWindowId === item.id}
-              app={getApp(item.appId)}
-              contentProps={sharedContentProps}
-              documentLabel={getWindowDocumentLabel(item.id, item.appId)}
-              frameOps={stableFrameOps}
-              hasUnsavedChanges={unsavedWindowIds.has(item.id)}
-              instance={item}
-              motion={windowMotions[item.id]}
-              peeked={peekWindowId === item.id}
-            />
-          </Suspense>
+          <AppWindow
+            active={activeWindowId === item.id}
+            app={getApp(item.appId)}
+            contentProps={sharedContentProps}
+            documentLabel={getWindowDocumentLabel(item.id, item.appId)}
+            frameOps={stableFrameOps}
+            hasUnsavedChanges={unsavedWindowIds.has(item.id)}
+            instance={item}
+            key={item.id}
+            motion={windowMotions[item.id]}
+            peeked={peekWindowId === item.id}
+          />
         ))}
       </section>
 

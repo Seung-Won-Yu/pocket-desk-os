@@ -298,4 +298,9 @@ export type AppDefinition = {
    * as well as a plain function component. WindowSlot renders it in Suspense.
    */
   component: ComponentType<AppContentProps>;
+  /**
+   * A fresh component for a retry after the app's chunk failed to load.
+   * Optional: a hand-built definition in a test has nothing to reload.
+   */
+  reload?: () => ComponentType<AppContentProps>;
 };

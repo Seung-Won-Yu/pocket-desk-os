@@ -568,6 +568,8 @@ export default function BrowserApp({
                 <button
                   aria-label={`${title} 탭 닫기`}
                   className="browser-tab-close"
+                  // One tab stop per strip; see FilesApp's tab strip.
+                  tabIndex={isCurrent ? 0 : -1}
                   // The tab under it selects on click; closing must not.
                   onClick={(event) => {
                     event.stopPropagation();

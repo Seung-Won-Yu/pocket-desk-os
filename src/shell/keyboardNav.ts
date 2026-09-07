@@ -45,6 +45,9 @@ export function handleMenuKeyboard(event: React.KeyboardEvent, container: HTMLEl
  */
 export function getNextTabIndex(key: string, currentIndex: number, tabCount: number) {
   if (key === "ArrowUp" || key === "ArrowDown") return null;
+  // One tab has nowhere to go, and the caller preventDefault()s whatever it is
+  // given: Left and Right were being swallowed by a strip of one.
+  if (tabCount <= 1) return null;
   return getNextRovingIndex(key, currentIndex, tabCount);
 }
 

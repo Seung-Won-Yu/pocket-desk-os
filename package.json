@@ -1,9 +1,10 @@
 {
   "name": "pocket-desk-os",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "private": true,
   "type": "module",
   "scripts": {
+    "audit:release": "node scripts/audit-runtime.mjs --strict",
     "audit:runtime": "node scripts/audit-runtime.mjs",
     "build": "tsc -b && vite build",
     "dev": "vite --host 127.0.0.1",
@@ -17,6 +18,7 @@
     "qa:all": "npm run lint && npm run format:check && npm test && npm run audit:runtime && npm run release:check && npm run qa:pages && npm run qa:smoke && npm run qa:a11y && npm run qa:pwa",
     "qa:pages": "node scripts/check-pages-build.mjs",
     "qa:pwa": "npm run build && node scripts/pwa-test.mjs",
+    "qa:release": "npm run qa:all && npm run audit:release",
     "qa:smoke": "npm run build && node scripts/smoke-test.mjs",
     "release:check": "node scripts/release-check.mjs",
     "social:preview": "npm run build && node scripts/generate-social-preview.mjs",

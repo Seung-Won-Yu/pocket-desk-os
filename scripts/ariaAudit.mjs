@@ -181,6 +181,31 @@ export function auditAria(rootSelector = "body") {
     if (role === "tab" && !element.parentElement?.closest('[role="tablist"]')) {
       report("orphan-tab", element, "no tablist above it");
     }
+    /*
+     * A tablist is one tab stop: Tab reaches the strip, arrows move inside it.
+     * Five tabs each holding a focusable ✕ made six stops, so tabbing through
+     * a window walked every tab's close button.
+     */
+    if (role === "tablist") {
+      const tabs = [...element.querySelectorAll('[role="tab"]')].filter(
+        (tab) => !isExcluded(tab),
+      );
+      if (tabs.length > 0) {
+        const stops = [element, ...element.querySelectorAll("*")].filter(
+          (node) =>
+            !isExcluded(node) && isFocusable(node) && node.getAttribute("tabindex") !== "-1",
+        );
+        const selected = tabs.find((tab) => tab.getAttribute("aria-selected") === "true");
+        const strays = stops.filter((stop) => {
+          const owner = stop.closest('[role="tab"]');
+          return owner !== selected && stop !== selected;
+        });
+        if (!selected) report("roving-tablist", element, "no tab is selected");
+        for (const stray of strays) {
+          report("roving-tablist", element, `${where(stray)} is a second tab stop`);
+        }
+      }
+    }
     if (
       role &&
       ["menuitem", "menuitemcheckbox", "menuitemradio"].includes(role) &&

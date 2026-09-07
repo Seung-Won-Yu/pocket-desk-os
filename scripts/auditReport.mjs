@@ -41,6 +41,20 @@ export function decideAuditOutcome(stdout) {
   return blocking > 0 ? { counts, kind: "vulnerable" } : { counts, kind: "clean" };
 }
 
+/**
+ * The exit code the gate should use. A registry outage is not a security
+ * result, so it passes the everyday gate — but `--strict`, which is what a
+ * release runs, refuses to pass an audit that never happened.
+ *
+ * @param {{ kind: "clean" | "unavailable" | "vulnerable" }} outcome
+ * @param {{ strict?: boolean }} [options]
+ */
+export function decideAuditExit(outcome, options = {}) {
+  if (outcome.kind === "vulnerable") return 1;
+  if (outcome.kind === "unavailable") return options.strict ? 1 : 0;
+  return 0;
+}
+
 /** One line for the gate's output. */
 export function formatAuditOutcome(outcome) {
   if (outcome.kind === "unavailable") {

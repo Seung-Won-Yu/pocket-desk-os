@@ -175,6 +175,33 @@ async function runPwaTest(baseUrl) {
       "System tray did not report offline state",
     );
 
+    await page.keyboard.press("Escape");
+    /*
+     * Every app is its own chunk, fetched when its first window opens. So an
+     * app nobody opened while online has to open offline, out of the cache the
+     * worker filled from the build's own asset list — otherwise code splitting
+     * quietly took the offline promise away.
+     */
+    for (const [command, appId] of [
+      ["mspaint", "paint"],
+      ["minesweeper", "minesweeper"],
+      ["regedit", "registry"],
+    ]) {
+      await page.keyboard.press("Control+Alt+R");
+      const runDialog = page.locator(".run-dialog");
+      await runDialog.waitFor({ state: "visible" });
+      await runDialog.getByLabel("열기").fill(command);
+      await runDialog.getByRole("button", { name: "확인" }).click();
+      const app = page.locator(`article[data-app-id="${appId}"]`).last();
+      const appeared = await app
+        .waitFor({ state: "visible", timeout: 8000 })
+        .then(() => true)
+        .catch(() => false);
+      assert(appeared, `${appId} could not open offline: its chunk was not precached`);
+      await app.getByRole("button", { name: /닫기$/ }).first().click();
+      await page.waitForTimeout(150);
+    }
+
     await context.setOffline(false);
     await page.waitForFunction(() => navigator.onLine);
     assert(consoleErrors.length === 0, `Console errors found: ${consoleErrors.join(" | ")}`);

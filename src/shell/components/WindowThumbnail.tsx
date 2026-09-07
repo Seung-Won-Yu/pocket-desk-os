@@ -66,7 +66,13 @@ export function WindowThumbnail({
     };
 
     takePicture();
-    const timer = refreshMs > 0 ? window.setInterval(takePicture, refreshMs) : 0;
+    // A hidden tab still runs its intervals: nothing is looking at the picture,
+    // and taking one clones a whole window frame. The first picture is always
+    // taken — a thumbnail mounted while hidden would otherwise stay an icon.
+    const refresh = () => {
+      if (!document.hidden) takePicture();
+    };
+    const timer = refreshMs > 0 ? window.setInterval(refresh, refreshMs) : 0;
     return () => {
       if (timer) window.clearInterval(timer);
       box.replaceChildren();

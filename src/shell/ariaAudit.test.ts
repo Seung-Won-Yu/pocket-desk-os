@@ -127,6 +127,29 @@ describe("auditAria", () => {
     ).toEqual([]);
   });
 
+  it("catches a tab strip that is more than one tab stop", () => {
+    const found = rules(`
+      <div role="tablist" aria-label="탐색기 탭">
+        <div role="tab" aria-label="문서" aria-selected="true" tabindex="0">
+          <button aria-label="문서 탭 닫기" type="button">x</button>
+        </div>
+        <div role="tab" aria-label="사진" aria-selected="false" tabindex="-1">
+          <button aria-label="사진 탭 닫기" type="button">x</button>
+        </div>
+      </div>`);
+    // The unselected tab's ✕ is the second stop; the selected tab's is fine.
+    expect(found.filter((rule) => rule === "roving-tablist")).toHaveLength(1);
+  });
+
+  it("catches a tab strip with nothing selected", () => {
+    expect(
+      rules(`
+        <div role="tablist" aria-label="탭">
+          <div role="tab" aria-label="문서" aria-selected="false" tabindex="-1">문서</div>
+        </div>`),
+    ).toContain("roving-tablist");
+  });
+
   it("counts a tab's own close button as allowed, unlike every other control", () => {
     // ARIA 1.3 drops presentational children from `tab` for exactly this: a
     // closable tab has to be able to expose its own ✕.
