@@ -628,12 +628,23 @@ export default function FilesApp({
   useLayoutEffect(() => {
     const root = filesRootRef.current;
     if (!root || !hadFocusRef.current) return;
+    /*
+     * A field that is about to take focus owns it: the rename box and the
+     * address bar focus themselves from their own effects, and a guard that
+     * reached for the list first — or, worse, on a later frame — took it back
+     * off them. Nothing to guard while one of those is open.
+     */
+    if (renaming || addressDraft !== null) return;
     const active = document.activeElement;
     if (active && active !== document.body && active !== document.documentElement) {
       hadFocusRef.current = root.contains(active);
       return;
     }
-    focusFileList();
+    // Synchronous, and only here: no frame is scheduled, so this cannot fire
+    // later and pull focus out of something that has since claimed it.
+    const list = fileListRef.current;
+    if (!list) return;
+    (list.querySelector<HTMLElement>('[tabindex="0"]') ?? list).focus({ preventScroll: true });
   });
 
   const resetTransientState = () => {

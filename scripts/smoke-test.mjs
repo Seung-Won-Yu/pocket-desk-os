@@ -3497,7 +3497,12 @@ async function runSmoke(baseUrl) {
     await page.waitForTimeout(200);
     await page.keyboard.press("Alt+PrintScreen");
     const windowShotToast = page.locator(".toast", { hasText: "창 스크린샷 저장됨" });
-    await windowShotToast.waitFor({ state: "visible", timeout: 15000 });
+    // On failure, say what the shell actually said: a capture can be refused
+    // for space or fail outright, and both of those are toasts of their own.
+    await windowShotToast.waitFor({ state: "visible", timeout: 15000 }).catch(async () => {
+      const said = (await page.locator(".toast").allInnerTexts()).join(" | ") || "(no toast)";
+      throw new Error(`Alt+PrintScreen produced no 창 스크린샷 저장됨. On screen: ${said}`);
+    });
     /*
      * 텍스트 크기: one multiplier on the root font size, which every rem in the
      * stylesheet reads — so the whole shell grows with one setting, and the
