@@ -20,6 +20,7 @@ import {
 import { type ComponentType } from "react";
 import { type LucideIcon } from "lucide-react";
 import { type DefaultAppMap, type TextScale } from "./preferences";
+import { type TaskbarPosition } from "./taskbarPosition";
 import { type ClockAlarm, type ClockTimer } from "./clock";
 import { type StickyNoteStore } from "./stickyNotes";
 import { type ScreenshotMode } from "./screenshotTypes";
@@ -267,6 +268,9 @@ export type AppContentProps = {
   setFocusAssist: (enabled: boolean) => void;
   /** 텍스트 크기: the multiplier on the root font size, as a percentage. */
   textScale: TextScale;
+  /** 작업 표시줄 위치, and the setter 설정 uses to move it. */
+  taskbarPosition: TaskbarPosition;
+  setTaskbarPosition: (position: TaskbarPosition) => void;
   setTextScale: (scale: TextScale) => void;
   /** Folders pinned to Explorer's sidebar — 빠른 액세스, shared by every window. */
   quickAccessIds: string[];

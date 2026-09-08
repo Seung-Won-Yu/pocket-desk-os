@@ -18,6 +18,11 @@ import {
   TEXT_SCALES,
   type TextScale,
 } from "../shell/preferences";
+import {
+  TASKBAR_POSITIONS,
+  TASKBAR_POSITION_LABELS,
+  type TaskbarPosition,
+} from "../shell/taskbarPosition";
 import type { AppId, SoundEffectName, ThemeName, WallpaperName } from "../types";
 import { normalizeSearchText } from "../utils/format";
 import { SHELL_SHORTCUTS } from "../shell/shortcuts";
@@ -43,6 +48,8 @@ type SettingsAppProps = {
   setFocusAssist: (enabled: boolean) => void;
   setTextScale: (scale: TextScale) => void;
   textScale: TextScale;
+  setTaskbarPosition: (position: TaskbarPosition) => void;
+  taskbarPosition: TaskbarPosition;
   defaultApps: DefaultAppMap;
   setClock24h: (enabled: boolean) => void;
   setDefaultApp: (extension: string, appId: AppId) => void;
@@ -70,6 +77,8 @@ export default function SettingsApp({
   setFocusAssist,
   setTextScale,
   textScale,
+  setTaskbarPosition,
+  taskbarPosition,
   defaultApps,
   setClock24h,
   setDefaultApp,
@@ -125,8 +134,8 @@ export default function SettingsApp({
       id: "personalization" as const,
       icon: Palette,
       label: "개인 설정",
-      keywords: "테마 배경 화면",
-      aliases: "personalization theme wallpaper background",
+      keywords: "테마 배경 화면 작업 표시줄 위치",
+      aliases: "personalization theme wallpaper background taskbar position",
     },
     {
       id: "sound" as const,
@@ -292,6 +301,35 @@ export default function SettingsApp({
                   </button>
                 </p>
               )}
+            </section>
+            <section className="settings-section">
+              <h3>작업 표시줄</h3>
+              <p>
+                작업 표시줄을 화면의 다른 가장자리로 옮깁니다. 창이 최대화되는 영역, 스냅 위치,
+                바탕 화면 아이콘 격자가 모두 따라 움직입니다.
+              </p>
+              <div
+                aria-label="작업 표시줄 위치"
+                className="settings-taskbar-position"
+                role="radiogroup"
+              >
+                {TASKBAR_POSITIONS.map((position) => (
+                  <button
+                    aria-checked={taskbarPosition === position}
+                    className={taskbarPosition === position ? "is-selected" : ""}
+                    key={position}
+                    onClick={() => setTaskbarPosition(position)}
+                    role="radio"
+                    type="button"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`taskbar-position-preview is-${position}`}
+                    />
+                    <small>{TASKBAR_POSITION_LABELS[position]}</small>
+                  </button>
+                ))}
+              </div>
             </section>
           </>
         )}

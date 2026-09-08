@@ -2,7 +2,6 @@ import { type DesktopItem, type IconPosition } from "../types";
 import { clamp } from "../utils/format";
 import { desktopApps } from "./appCatalog";
 import {
-  APP_BAR_HEIGHT,
   CONTEXT_MENU_HEIGHT,
   CONTEXT_MENU_WIDTH,
   DESKTOP_ICON_HEIGHT,
@@ -20,6 +19,7 @@ import {
   type DesktopViewMode,
   type PersistedIconPosition,
 } from "./types";
+import { getDesktopWorkArea } from "./windowGeometry";
 
 export function createDefaultIconLayout(): DesktopIconLayout {
   return desktopApps.reduce<DesktopIconLayout>((layout, app, index) => {
@@ -49,21 +49,19 @@ export function createDesktopGridPositions(
   viewMode: DesktopViewMode,
 ): IconPosition[] {
   const metrics = getDesktopIconMetrics(viewMode);
+  const area = getDesktopWorkArea();
   const gapX = 18;
   const gapY = 10;
   const origin = 18;
-  const availableHeight = Math.max(
-    metrics.height,
-    window.innerHeight - APP_BAR_HEIGHT - origin * 2,
-  );
+  const availableHeight = Math.max(metrics.height, area.height - origin * 2);
   const rows = Math.max(1, Math.floor((availableHeight + gapY) / (metrics.height + gapY)));
 
   return Array.from({ length: count }, (_, index) => {
     const column = Math.floor(index / rows);
     const row = index % rows;
     return clampIconPosition(
-      origin + column * (metrics.width + gapX),
-      origin + row * (metrics.height + gapY),
+      area.x + origin + column * (metrics.width + gapX),
+      area.y + origin + row * (metrics.height + gapY),
       viewMode,
     );
   });
@@ -153,47 +151,53 @@ export function clampIconPosition(
   viewMode: DesktopViewMode = "medium",
 ): IconPosition {
   const metrics = getDesktopIconMetrics(viewMode);
-  const maxX = Math.max(8, window.innerWidth - metrics.width - 8);
-  const maxY = Math.max(8, window.innerHeight - APP_BAR_HEIGHT - metrics.height - 8);
+  const area = getDesktopWorkArea();
+  const minX = area.x + 8;
+  const minY = area.y + 8;
+  const maxX = Math.max(minX, area.x + area.width - metrics.width - 8);
+  const maxY = Math.max(minY, area.y + area.height - metrics.height - 8);
   return {
-    x: clamp(Number.isFinite(x) ? x : 18, 8, maxX),
-    y: clamp(Number.isFinite(y) ? y : 18, 8, maxY),
+    x: clamp(Number.isFinite(x) ? x : minX + 10, minX, maxX),
+    y: clamp(Number.isFinite(y) ? y : minY + 10, minY, maxY),
   };
 }
 
 export function snapDesktopIconPosition(position: IconPosition, viewMode: DesktopViewMode) {
   const metrics = getDesktopIconMetrics(viewMode);
-  const origin = 18;
+  const area = getDesktopWorkArea();
+  // The grid starts at the corner of the work area, so the columns stay whole
+  // when the taskbar moves to a side and shifts that corner.
+  const originX = area.x + 18;
+  const originY = area.y + 18;
   const x =
-    origin + Math.round((position.x - origin) / (metrics.width + 18)) * (metrics.width + 18);
+    originX + Math.round((position.x - originX) / (metrics.width + 18)) * (metrics.width + 18);
   const y =
-    origin + Math.round((position.y - origin) / (metrics.height + 10)) * (metrics.height + 10);
+    originY +
+    Math.round((position.y - originY) / (metrics.height + 10)) * (metrics.height + 10);
   return clampIconPosition(x, y, viewMode);
 }
 
 export function clampContextMenuPosition(x: number, y: number): IconPosition {
-  const safeX = Number.isFinite(x) ? x : 18;
-  const safeY = Number.isFinite(y) ? y : 18;
+  const area = getDesktopWorkArea();
+  const safeX = Number.isFinite(x) ? x : area.x + 18;
+  const safeY = Number.isFinite(y) ? y : area.y + 18;
+  const minX = area.x + 8;
+  const minY = area.y + 8;
   return {
-    x: clamp(safeX, 8, Math.max(8, window.innerWidth - CONTEXT_MENU_WIDTH - 8)),
-    y: clamp(
-      safeY,
-      8,
-      Math.max(8, window.innerHeight - APP_BAR_HEIGHT - CONTEXT_MENU_HEIGHT - 8),
-    ),
+    x: clamp(safeX, minX, Math.max(minX, area.x + area.width - CONTEXT_MENU_WIDTH - 8)),
+    y: clamp(safeY, minY, Math.max(minY, area.y + area.height - CONTEXT_MENU_HEIGHT - 8)),
   };
 }
 
 export function clampWindowSystemMenuPosition(x: number, y: number): IconPosition {
-  const safeX = Number.isFinite(x) ? x : 18;
-  const safeY = Number.isFinite(y) ? y : 18;
+  const area = getDesktopWorkArea();
+  const safeX = Number.isFinite(x) ? x : area.x + 18;
+  const safeY = Number.isFinite(y) ? y : area.y + 18;
+  const minX = area.x + 8;
+  const minY = area.y + 8;
   return {
-    x: clamp(safeX, 8, Math.max(8, window.innerWidth - WINDOW_SYSTEM_MENU_WIDTH - 8)),
-    y: clamp(
-      safeY,
-      8,
-      Math.max(8, window.innerHeight - APP_BAR_HEIGHT - WINDOW_SYSTEM_MENU_HEIGHT - 8),
-    ),
+    x: clamp(safeX, minX, Math.max(minX, area.x + area.width - WINDOW_SYSTEM_MENU_WIDTH - 8)),
+    y: clamp(safeY, minY, Math.max(minY, area.y + area.height - WINDOW_SYSTEM_MENU_HEIGHT - 8)),
   };
 }
 

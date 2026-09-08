@@ -14,6 +14,11 @@ function setViewport(width: number, height: number) {
   vi.stubGlobal("window", { innerHeight: height, innerWidth: width });
 }
 
+/** The geometry reads the bar's edge off the element the stylesheet keys on. */
+function setTaskbar(position: string) {
+  vi.stubGlobal("document", { documentElement: { dataset: { taskbar: position } } });
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -121,9 +126,9 @@ describe("getDesktopWorkArea", () => {
     expect(getDesktopWorkArea()).toEqual({ height: 752, width: 1280, x: 0, y: 0 });
   });
 
-  it("floors the work area at the minimum window size on tiny viewports", () => {
+  it("reports the space that is really left on a tiny viewport", () => {
     setViewport(200, 200);
-    expect(getDesktopWorkArea()).toEqual({ height: 240, width: 320, x: 0, y: 0 });
+    expect(getDesktopWorkArea()).toEqual({ height: 152, width: 200, x: 0, y: 0 });
   });
 });
 
@@ -261,7 +266,7 @@ describe("getWindowSnapPatch", () => {
     const right = getWindowSnapPatch("right");
     expect(left.width).toBe(320);
     expect(right.width).toBe(320);
-    // The floored width fills the whole work area, so both halves share one origin.
+    // A half wider than the screen cannot start off it, so both share one origin.
     expect(left.x).toBe(0);
     expect(right.x).toBe(0);
   });
@@ -414,5 +419,61 @@ describe("getWindowSnapPatch: 스냅 레이아웃 columns", () => {
   it("keeps a column usable on a narrow screen", () => {
     setViewport(600, 500);
     expect(getWindowSnapPatch("center-third").width).toBeGreaterThanOrEqual(280);
+  });
+});
+
+describe("the work area follows 작업 표시줄 위치", () => {
+  it("takes the edge the bar is on out of the area", () => {
+    setViewport(1440, 900);
+    setTaskbar("left");
+    expect(getDesktopWorkArea()).toEqual({ height: 900, width: 1372, x: 68, y: 0 });
+    setTaskbar("right");
+    expect(getDesktopWorkArea()).toEqual({ height: 900, width: 1372, x: 0, y: 0 });
+    setTaskbar("top");
+    expect(getDesktopWorkArea()).toEqual({ height: 852, width: 1440, x: 0, y: 48 });
+  });
+
+  it("moves the right-edge snap band in by the width of a right-hand bar", () => {
+    setViewport(1440, 900);
+    setTaskbar("right");
+    // 1440 - 68 (bar) - 24 (edge band) = 1348
+    expect(getWindowSnapZone(1347, 400)).toBeNull();
+    expect(getWindowSnapZone(1348, 400)).toBe("right");
+  });
+
+  it("moves the top-edge snap band down past a top bar", () => {
+    setViewport(1440, 900);
+    setTaskbar("top");
+    expect(getWindowSnapZone(700, 47)).toBe("top");
+    expect(getWindowSnapZone(700, 73)).toBeNull();
+  });
+
+  it("snaps the halves inside the area a side bar leaves", () => {
+    setViewport(1440, 900);
+    setTaskbar("left");
+    const left = getWindowSnapPatch("left");
+    const right = getWindowSnapPatch("right");
+    expect(left).toEqual({
+      height: 900,
+      maximized: false,
+      minimized: false,
+      width: 686,
+      x: 68,
+      y: 0,
+    });
+    // Still flush with each other and with the far edge of the screen.
+    expect((right.x ?? 0) - ((left.x ?? 0) + (left.width ?? 0))).toBe(0);
+    expect(1440 - ((right.x ?? 0) + (right.width ?? 0))).toBe(0);
+  });
+
+  it("stops a resize at the bar rather than under it", () => {
+    setViewport(1440, 900);
+    setTaskbar("left");
+    const instance = { height: 400, width: 400, x: 500, y: 100 } as never;
+    // Dragging the left edge left stops 8px clear of a 68px-wide bar.
+    expect(resizeWindowEdge(instance, "left", "ArrowLeft", 600)).toEqual({
+      width: 824,
+      x: 76,
+    });
   });
 });

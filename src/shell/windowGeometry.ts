@@ -1,14 +1,24 @@
 import { clamp } from "../utils/format";
-import { APP_BAR_HEIGHT, SNAP_CORNER_SIZE, SNAP_EDGE_SIZE } from "./constants";
+import { SNAP_CORNER_SIZE, SNAP_EDGE_SIZE } from "./constants";
+import { getTaskbarPosition, getWorkArea } from "./taskbarPosition";
 import { type SnapZone, type WindowInstance } from "./types";
 
+/**
+ * Snap zones hug the work area, not the viewport: with the taskbar on the left
+ * the left-edge zone starts where the bar ends, so a drag that crosses the bar
+ * does not offer a half-screen the window could never occupy.
+ */
 export function getWindowSnapZone(clientX: number, clientY: number): SnapZone | null {
   if (window.innerWidth < 720 || window.innerHeight < 420) return null;
 
-  const nearLeft = clientX <= SNAP_CORNER_SIZE;
-  const nearRight = clientX >= window.innerWidth - SNAP_CORNER_SIZE;
-  const nearTop = clientY <= SNAP_CORNER_SIZE;
-  const nearBottom = clientY >= window.innerHeight - APP_BAR_HEIGHT - SNAP_CORNER_SIZE;
+  const area = getDesktopWorkArea();
+  const areaRight = area.x + area.width;
+  const areaBottom = area.y + area.height;
+
+  const nearLeft = clientX <= area.x + SNAP_CORNER_SIZE;
+  const nearRight = clientX >= areaRight - SNAP_CORNER_SIZE;
+  const nearTop = clientY <= area.y + SNAP_CORNER_SIZE;
+  const nearBottom = clientY >= areaBottom - SNAP_CORNER_SIZE;
 
   // Corners win over edges so the quarter layouts stay reachable by drag.
   if (nearTop && nearLeft) return "top-left";
@@ -16,25 +26,25 @@ export function getWindowSnapZone(clientX: number, clientY: number): SnapZone | 
   if (nearBottom && nearLeft) return "bottom-left";
   if (nearBottom && nearRight) return "bottom-right";
 
-  if (clientY <= SNAP_EDGE_SIZE) return "top";
-  if (clientX <= SNAP_EDGE_SIZE) return "left";
-  if (clientX >= window.innerWidth - SNAP_EDGE_SIZE) return "right";
+  if (clientY <= area.y + SNAP_EDGE_SIZE) return "top";
+  if (clientX <= area.x + SNAP_EDGE_SIZE) return "left";
+  if (clientX >= areaRight - SNAP_EDGE_SIZE) return "right";
   return null;
 }
 
 /**
- * Snapped windows tile against each other and against the screen edges, the way
- * Windows does. The work area used to be inset by a gutter on every side, so two
- * halves floated with a gap between them while a maximized window sat flush —
- * the same gesture produced two different geometries.
+ * The part of the screen the taskbar does not cover — which edge that is comes
+ * from 작업 표시줄 위치. Snapped windows tile against each other and against the
+ * edges of this rectangle, the way Windows does. The work area used to be inset
+ * by a gutter on every side, so two halves floated with a gap between them
+ * while a maximized window sat flush — the same gesture produced two different
+ * geometries.
  */
 export function getDesktopWorkArea() {
-  return {
-    height: Math.max(240, window.innerHeight - APP_BAR_HEIGHT),
-    width: Math.max(320, window.innerWidth),
-    x: 0,
-    y: 0,
-  };
+  return getWorkArea(
+    { height: window.innerHeight, width: window.innerWidth },
+    getTaskbarPosition(),
+  );
 }
 
 /** The column widths 스냅 레이아웃 offers, as a share of the work area. */
@@ -71,17 +81,24 @@ export function getWindowSnapPatch(zone: SnapZone): Partial<WindowInstance> {
     };
   }
 
+  /*
+   * The minimum size belongs here rather than to the work area: a window has
+   * one, the area does not. On a viewport too small to hold two halves the
+   * floored half overflows, and the far half starts at the work area's own
+   * corner instead of at a negative coordinate off screen.
+   */
   const halfWidth = Math.max(320, Math.floor(area.width / 2));
   const halfHeight = Math.max(220, Math.floor(area.height / 2));
-  const rightX = area.x + area.width - halfWidth;
-  const bottomY = area.y + area.height - halfHeight;
+  const fullHeight = Math.max(240, area.height);
+  const rightX = Math.max(area.x, area.x + area.width - halfWidth);
+  const bottomY = Math.max(area.y, area.y + area.height - halfHeight);
 
   const isQuarter = zone !== "left" && zone !== "right";
   const onRight = zone === "right" || zone === "top-right" || zone === "bottom-right";
   const onBottom = zone === "bottom-left" || zone === "bottom-right";
 
   return {
-    height: isQuarter ? halfHeight : area.height,
+    height: isQuarter ? halfHeight : fullHeight,
     maximized: false,
     minimized: false,
     width: halfWidth,
@@ -131,8 +148,9 @@ export function resizeWindowEdge(
 
   const minWidth = 320;
   const minHeight = 240;
-  const maxRight = Math.max(minWidth, window.innerWidth - 8);
-  const maxBottom = Math.max(minHeight, window.innerHeight - APP_BAR_HEIGHT - 8);
+  const area = getDesktopWorkArea();
+  const maxRight = Math.max(minWidth, area.x + area.width - 8);
+  const maxBottom = Math.max(minHeight, area.y + area.height - 8);
 
   if (edge === "right") {
     // The ceiling never drops below the floor: with the window hard against
@@ -153,11 +171,11 @@ export function resizeWindowEdge(
   }
   if (edge === "left") {
     const right = instance.x + instance.width;
-    const x = clamp(instance.x + delta, 8, right - minWidth);
+    const x = clamp(instance.x + delta, area.x + 8, right - minWidth);
     return { width: right - x, x };
   }
   const bottom = instance.y + instance.height;
-  const y = clamp(instance.y + delta, 8, bottom - minHeight);
+  const y = clamp(instance.y + delta, area.y + 8, bottom - minHeight);
   return { height: bottom - y, y };
 }
 

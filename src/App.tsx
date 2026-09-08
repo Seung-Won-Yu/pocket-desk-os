@@ -29,7 +29,6 @@ import { ToastStack } from "./shell/components/ToastStack";
 import { SnapPreview } from "./shell/components/WindowFrame";
 import { WindowSystemMenu } from "./shell/components/WindowSystemMenu";
 import {
-  APP_BAR_HEIGHT,
   CLOCK_24H_KEY,
   CUSTOM_WALLPAPER_KEY,
   DESKTOP_ICON_GRID_KEY,
@@ -138,6 +137,12 @@ import {
   loadUserName,
   persistDefaultApps,
 } from "./shell/preferences";
+import {
+  type TaskbarPosition,
+  applyTaskbarPosition,
+  loadTaskbarPosition,
+  persistTaskbarPosition,
+} from "./shell/taskbarPosition";
 import { getNeighbourByPosition } from "./shell/keyboardNav";
 import { type AppContentProps, type WindowDocumentRef } from "./shell/types";
 import { formatWindowTitle } from "./shell/windowTitle";
@@ -231,7 +236,7 @@ import {
   type WallpaperCssVars,
   wallpaperGallery,
 } from "./wallpapers";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 const DESKTOP_ICON_NAV_KEYS = [
   "ArrowDown",
@@ -249,6 +254,7 @@ type ContentOps = Pick<
   | "addVfsEntries"
   | "setFocusAssist"
   | "setTextScale"
+  | "setTaskbarPosition"
   | "toggleQuickAccessFolder"
   | "captureScreenshot"
   | "closeWindow"
@@ -341,6 +347,10 @@ export default function App() {
   /** Only the names the user typed; an unnamed desktop is "데스크톱 N". */
   const [desktopNames, setDesktopNames] = useState<string[]>(() => loadDesktopNames());
   const [textScale, setTextScale] = useState<TextScale>(() => loadTextScale());
+  /** 작업 표시줄 위치: which screen edge the bar — and so the work area — sits on. */
+  const [taskbarPosition, setTaskbarPosition] = useState<TaskbarPosition>(() =>
+    loadTaskbarPosition(),
+  );
   /** 집중 지원: notifications wait in the centre instead of appearing. */
   const [focusAssist, setFocusAssist] = useState(() => loadFocusAssist());
   // notify() outlives the render that called it, so it reads the setting here.
@@ -429,6 +439,16 @@ export default function App() {
   useEffect(() => {
     persistDesktopNames(desktopNames);
   }, [desktopNames]);
+
+  /*
+   * A layout effect, and declared before the effect that re-fits the windows:
+   * the geometry reads the position off this attribute, so the attribute has to
+   * be right before anything measures against it.
+   */
+  useLayoutEffect(() => {
+    applyTaskbarPosition(taskbarPosition);
+    persistTaskbarPosition(taskbarPosition);
+  }, [taskbarPosition]);
 
   useEffect(() => {
     // On the document element, not the shell root: `rem` resolves against the
@@ -699,15 +719,45 @@ export default function App() {
     persistDefaultApps(defaultApps);
   }, [defaultApps]);
 
+  /*
+   * Moving the taskbar changes the work area exactly the way resizing the
+   * window does, so it runs the same fit: windows and desktop icons that the
+   * bar now covers move back inside. Without this a left-hand bar sat on top of
+   * the first icon column and on every window parked at x=8.
+   */
   useEffect(() => {
     const fitWindowsToViewport = () => {
       setWindows((current) => current.map(fitWindowToViewport));
+      setIconLayout((current) => {
+        let changed = false;
+        const next: DesktopIconLayout = { ...current };
+        for (const app of desktopApps) {
+          const position = current[app.id];
+          if (!position) continue;
+          const fitted = clampIconPosition(position.x, position.y, desktopViewMode);
+          if (fitted.x === position.x && fitted.y === position.y) continue;
+          next[app.id] = fitted;
+          changed = true;
+        }
+        return changed ? next : current;
+      });
+      setDesktopItems((current) => {
+        let changed = false;
+        const next = current.map((item) => {
+          if (!item.showOnDesktop) return item;
+          const fitted = clampIconPosition(item.x, item.y, desktopViewMode);
+          if (fitted.x === item.x && fitted.y === item.y) return item;
+          changed = true;
+          return { ...item, ...fitted };
+        });
+        return changed ? next : current;
+      });
     };
 
     fitWindowsToViewport();
     window.addEventListener("resize", fitWindowsToViewport);
     return () => window.removeEventListener("resize", fitWindowsToViewport);
-  }, []);
+  }, [desktopViewMode, taskbarPosition]);
 
   // Windows comes back to the desktop you were on, with the notifications you
   // had not read. Neither survived a reload.
@@ -1453,21 +1503,21 @@ export default function App() {
       }
 
       const offset = current.length * 24;
-      const width = Math.min(app.defaultSize.width, Math.max(320, window.innerWidth - 28));
-      const height = Math.min(
-        app.defaultSize.height,
-        Math.max(260, window.innerHeight - APP_BAR_HEIGHT - 28),
-      );
-      const maxX = Math.max(12, window.innerWidth - width - 18);
-      const maxY = Math.max(12, window.innerHeight - APP_BAR_HEIGHT - height - 18);
+      const area = getDesktopWorkArea();
+      const width = Math.min(app.defaultSize.width, Math.max(320, area.width - 28));
+      const height = Math.min(app.defaultSize.height, Math.max(260, area.height - 28));
+      const maxX = Math.max(area.x + 12, area.x + area.width - width - 18);
+      const maxY = Math.max(area.y + 12, area.y + area.height - height - 18);
 
       return [
         ...current,
         {
           id: nextWindowId,
           appId,
-          x: Math.min(52 + offset, maxX),
-          y: Math.min(42 + offset, maxY),
+          // The cascade starts at the work area's own corner, not the screen's,
+          // or a new window opened partly under a side or top bar.
+          x: clamp(area.x + 52 + offset, area.x + 12, maxX),
+          y: clamp(area.y + 42 + offset, area.y + 12, maxY),
           width,
           height,
           z: topZ + 1,
@@ -3143,8 +3193,9 @@ export default function App() {
       let changed = false;
       const next = current.map((item) => {
         if (item.id !== id || item.maximized) return item;
-        const maxWidth = Math.max(320, window.innerWidth - 16);
-        const maxHeight = Math.max(240, window.innerHeight - APP_BAR_HEIGHT - 16);
+        const area = getDesktopWorkArea();
+        const maxWidth = Math.max(320, area.width - 16);
+        const maxHeight = Math.max(240, area.height - 16);
         const width = Math.min(maxWidth, item.width + Math.max(0, delta.width));
         const height = Math.min(maxHeight, item.height + Math.max(0, delta.height));
         if (width === item.width && height === item.height) return item;
@@ -3156,8 +3207,8 @@ export default function App() {
           width,
           // Growing off the right or bottom edge would push the window out of
           // reach, so it slides back inside the work area instead.
-          x: clamp(item.x, 8, Math.max(8, window.innerWidth - width - 8)),
-          y: clamp(item.y, 8, Math.max(8, window.innerHeight - APP_BAR_HEIGHT - height - 8)),
+          x: clamp(item.x, area.x + 8, Math.max(area.x + 8, area.x + area.width - width - 8)),
+          y: clamp(item.y, area.y + 8, Math.max(area.y + 8, area.y + area.height - height - 8)),
         };
       });
       return changed ? next : current;
@@ -4197,13 +4248,18 @@ export default function App() {
       if (windowKeyboardDrag.mode === "move") {
         const dx = event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0;
         const dy = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0;
+        const dragArea = getDesktopWorkArea();
         updateWindow(target.id, {
           snapZone: undefined,
-          x: clamp(target.x + dx, 8, Math.max(8, window.innerWidth - target.width - 8)),
+          x: clamp(
+            target.x + dx,
+            dragArea.x + 8,
+            Math.max(dragArea.x + 8, dragArea.x + dragArea.width - target.width - 8),
+          ),
           y: clamp(
             target.y + dy,
-            8,
-            Math.max(8, window.innerHeight - APP_BAR_HEIGHT - target.height - 8),
+            dragArea.y + 8,
+            Math.max(dragArea.y + 8, dragArea.y + dragArea.height - target.height - 8),
           ),
         });
         return;
@@ -4275,6 +4331,7 @@ export default function App() {
     addVfsEntries,
     setFocusAssist,
     setTextScale,
+    setTaskbarPosition,
     toggleQuickAccessFolder,
     onImportLocalEntries: (imported) => {
       addVfsEntries(imported);
@@ -4325,6 +4382,7 @@ export default function App() {
       addVfsEntries: (...args) => contentOpsRef.current.addVfsEntries(...args),
       setFocusAssist: (...args) => contentOpsRef.current.setFocusAssist(...args),
       setTextScale: (...args) => contentOpsRef.current.setTextScale(...args),
+      setTaskbarPosition: (...args) => contentOpsRef.current.setTaskbarPosition(...args),
       toggleQuickAccessFolder: (...args) =>
         contentOpsRef.current.toggleQuickAccessFolder(...args),
       onImportLocalEntries: (...args) => contentOpsRef.current.onImportLocalEntries(...args),
@@ -4410,6 +4468,7 @@ export default function App() {
       quickAccessIds,
       focusAssist,
       textScale,
+      taskbarPosition,
       defaultApps,
       desktopItems: activeDesktopItems,
       customWallpaperItemId,
@@ -4450,6 +4509,7 @@ export default function App() {
       quickAccessIds,
       focusAssist,
       textScale,
+      taskbarPosition,
       defaultApps,
       activeDesktopItems,
       customWallpaperItemId,
@@ -4701,6 +4761,7 @@ export default function App() {
         activeDesktopName={getDesktopName(desktopNames, activeDesktopIndex)}
         focusAssist={focusAssist}
         onSetFocusAssist={setFocusAssist}
+        taskbarPosition={taskbarPosition}
         activeWindowId={activeWindowId}
         availableApps={availableApps}
         desktopCount={desktopCount}

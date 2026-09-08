@@ -698,3 +698,36 @@ describe("persistDesktopIconLayout", () => {
     expect(loadDesktopIconLayout().thispc).toEqual({ x: 500, y: 600 });
   });
 });
+
+describe("작업 표시줄 위치를 따라가는 아이콘 격자", () => {
+  /** The layout reads the bar's edge off the element the stylesheet keys on. */
+  function setTaskbar(position: string) {
+    vi.stubGlobal("document", { documentElement: { dataset: { taskbar: position } } });
+  }
+
+  it("starts the grid past a left-hand bar instead of under it", () => {
+    setTaskbar("left");
+    const [first, second] = createDesktopGridPositions(2, "medium");
+    // 68 (bar) + 18 (margin)
+    expect(first).toEqual({ x: 86, y: 18 });
+    expect(second).toEqual({ x: 86, y: 122 });
+  });
+
+  it("drops the first row below a top bar", () => {
+    setTaskbar("top");
+    expect(createDesktopGridPositions(1, "medium")[0]).toEqual({ x: 18, y: 66 });
+  });
+
+  it("clamps an icon out from under the bar it now sits on", () => {
+    setTaskbar("left");
+    expect(clampIconPosition(18, 300)).toEqual({ x: 76, y: 300 });
+    // The far edge is the screen's; only the bar's own side moved.
+    expect(clampIconPosition(9999, 9999)).toEqual({ x: 1186, y: 698 });
+  });
+
+  it("keeps a context menu clear of a right-hand bar", () => {
+    setTaskbar("right");
+    // 1280 - 68 (bar) - 220 (menu) - 8 = 984
+    expect(clampContextMenuPosition(9999, 100)).toEqual({ x: 984, y: 100 });
+  });
+});

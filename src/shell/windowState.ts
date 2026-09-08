@@ -3,7 +3,6 @@ import { clamp } from "../utils/format";
 import { appsById, getApp } from "./appCatalog";
 import {
   ACTIVE_DESKTOP_KEY,
-  APP_BAR_HEIGHT,
   NOTIFICATION_HISTORY_KEY,
   NOTIFICATION_HISTORY_LIMIT,
   MAX_VIRTUAL_DESKTOPS,
@@ -16,7 +15,7 @@ import {
   type ToastMessage,
   type WindowInstance,
 } from "./types";
-import { getWindowSnapPatch } from "./windowGeometry";
+import { getDesktopWorkArea, getWindowSnapPatch } from "./windowGeometry";
 
 export function createDefaultWindows(): WindowInstance[] {
   return [];
@@ -50,15 +49,12 @@ export function fitWindowToViewport(item: WindowInstance): WindowInstance {
   const snapBox = getSnapBox(item.snapZone);
   if (snapBox) return { ...item, ...snapBox };
 
+  const area = getDesktopWorkArea();
   const minWidth = window.innerWidth <= 740 ? 288 : 320;
-  const width = clamp(item.width, minWidth, Math.max(minWidth, window.innerWidth - 16));
-  const height = clamp(
-    item.height,
-    240,
-    Math.max(240, window.innerHeight - APP_BAR_HEIGHT - 16),
-  );
-  const x = clamp(item.x, 8, Math.max(8, window.innerWidth - width - 8));
-  const y = clamp(item.y, 8, Math.max(8, window.innerHeight - APP_BAR_HEIGHT - height - 8));
+  const width = clamp(item.width, minWidth, Math.max(minWidth, area.width - 16));
+  const height = clamp(item.height, 240, Math.max(240, area.height - 16));
+  const x = clamp(item.x, area.x + 8, Math.max(area.x + 8, area.x + area.width - width - 8));
+  const y = clamp(item.y, area.y + 8, Math.max(area.y + 8, area.y + area.height - height - 8));
 
   if (width === item.width && height === item.height && x === item.x && y === item.y) {
     return item;
@@ -80,19 +76,17 @@ export function makeWindow(
     MAX_VIRTUAL_DESKTOPS - 1,
   );
   const app = getApp(appId);
-  const width = Math.min(app.defaultSize.width, Math.max(320, window.innerWidth - 28));
-  const height = Math.min(
-    app.defaultSize.height,
-    Math.max(260, window.innerHeight - APP_BAR_HEIGHT - 28),
-  );
-  const maxX = Math.max(8, window.innerWidth - width - 8);
-  const maxY = Math.max(8, window.innerHeight - APP_BAR_HEIGHT - height - 8);
+  const area = getDesktopWorkArea();
+  const width = Math.min(app.defaultSize.width, Math.max(320, area.width - 28));
+  const height = Math.min(app.defaultSize.height, Math.max(260, area.height - 28));
+  const maxX = Math.max(area.x + 8, area.x + area.width - width - 8);
+  const maxY = Math.max(area.y + 8, area.y + area.height - height - 8);
 
   return {
     id: `${appId}-${crypto.randomUUID()}`,
     appId,
-    x: clamp(x, 8, maxX),
-    y: clamp(y, 8, maxY),
+    x: clamp(x, area.x + 8, maxX),
+    y: clamp(y, area.y + 8, maxY),
     width,
     height,
     z,
@@ -144,27 +138,28 @@ export function normalizePersistedWindow(
 
   const appId = item.appId as AppId;
   const app = getApp(appId);
+  const area = getDesktopWorkArea();
   const width = clamp(
     Number(item.width) || app.defaultSize.width,
     320,
-    Math.max(320, window.innerWidth - 16),
+    Math.max(320, area.width - 16),
   );
   const height = clamp(
     Number(item.height) || app.defaultSize.height,
     240,
-    Math.max(240, window.innerHeight - APP_BAR_HEIGHT - 16),
+    Math.max(240, area.height - 16),
   );
   const persistedX = Number(item.x);
   const persistedY = Number(item.y);
   const x = clamp(
-    Number.isFinite(persistedX) ? persistedX : 8,
-    8,
-    Math.max(8, window.innerWidth - width - 8),
+    Number.isFinite(persistedX) ? persistedX : area.x + 8,
+    area.x + 8,
+    Math.max(area.x + 8, area.x + area.width - width - 8),
   );
   const y = clamp(
-    Number.isFinite(persistedY) ? persistedY : 8,
-    8,
-    Math.max(8, window.innerHeight - APP_BAR_HEIGHT - height - 8),
+    Number.isFinite(persistedY) ? persistedY : area.y + 8,
+    area.y + 8,
+    Math.max(area.y + 8, area.y + area.height - height - 8),
   );
   const z = Number.isFinite(Number(item.z)) ? Number(item.z) : 12 + index;
 

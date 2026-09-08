@@ -182,6 +182,20 @@ async function checkFocusStaysInWindow(page) {
   return failures;
 }
 
+/**
+ * Moves the bar the way a person would: the taskbar's own 작업 표시줄
+ * 설정, which is the entry that opens 개인 설정 at that setting.
+ */
+async function setTaskbarPosition(page, label) {
+  await page.locator(".taskbar").click({ button: "right", position: { x: 4, y: 4 } });
+  await page.locator(".taskbar-context-menu.is-shell-menu").waitFor({ state: "visible" });
+  await page.getByRole("menuitem", { name: "작업 표시줄 설정" }).click();
+  const settings = page.locator('article[data-app-id="settings"]').last();
+  await settings.waitFor({ state: "visible" });
+  await settings.getByRole("radio", { name: label }).click();
+  await page.waitForTimeout(400);
+}
+
 async function runAudit(baseUrl) {
   const browser = await launchBrowser();
   const page = await browser.newPage({
@@ -251,6 +265,32 @@ async function runAudit(baseUrl) {
     defects.push(...(await auditSurface(page, "작업 표시줄 메뉴", ".taskbar-context-menu")));
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
+
+    /*
+     * 작업 표시줄 위치: a vertical bar re-lays out the bar and re-anchors every
+     * flyout, so each of those surfaces is audited again on that layout rather
+     * than only on the default one.
+     */
+    await setTaskbarPosition(page, "왼쪽");
+    defects.push(...(await auditSurface(page, "세로 작업 표시줄", ".taskbar")));
+
+    await page.locator(".start-button").click();
+    await page.locator(".start-menu").waitFor({ state: "visible" });
+    defects.push(...(await auditSurface(page, "세로 막대 시작 메뉴", ".start-menu")));
+    await page.keyboard.press("Escape");
+
+    await page.getByRole("button", { name: "빠른 설정 열기" }).click();
+    await page.locator(".quick-settings-panel").waitFor({ state: "visible" });
+    defects.push(...(await auditSurface(page, "세로 막대 빠른 설정", ".quick-settings-panel")));
+    await page.keyboard.press("Escape");
+
+    await page.locator(".taskbar-app").first().click({ button: "right" });
+    await page.locator(".taskbar-context-menu").waitFor({ state: "visible" });
+    defects.push(
+      ...(await auditSurface(page, "세로 막대 작업 표시줄 메뉴", ".taskbar-context-menu")),
+    );
+    await page.keyboard.press("Escape");
+    await setTaskbarPosition(page, "아래쪽");
 
     const focusFailures = await checkFocusStaysInWindow(page);
 

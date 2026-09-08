@@ -8,6 +8,7 @@ import { getVfsEntryAssociation } from "../../vfs/model";
 import { formatWindowTitle } from "../windowTitle";
 import { createCalendarGrid, formatNotificationTime, getLocalDateKey } from "../startSearch";
 import { type ClockAlarm, getAlarmDateKeys } from "../clock";
+import { type TaskbarPosition, isVerticalTaskbar } from "../taskbarPosition";
 import { type ArrangeMode } from "../windowArrangement";
 import { type AppDefinition, type ToastMessage, type WindowInstance } from "../types";
 import { BrandMark, StartGlyph } from "./Branding";
@@ -38,7 +39,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { getNextRovingIndex, handleMenuKeyboard } from "../keyboardNav";
 
 export function Taskbar({
@@ -71,6 +72,7 @@ export function Taskbar({
   onSetBrightness,
   focusAssist,
   onSetFocusAssist,
+  taskbarPosition,
   onSetSoundEnabled,
   onSetVolume,
   onShowDesktop,
@@ -104,8 +106,8 @@ export function Taskbar({
   onDismissNotification: (notificationId: string) => void;
   /** Drag a pinned taskbar button onto another to rearrange them. */
   onReorderPinnedApp: (movedId: AppId, targetId: AppId) => void;
-  /** The clock's 날짜 및 시간 조정 opens 설정 straight at its page. */
-  onOpenSettingsSection: (section: "time") => void;
+  /** The clock's 날짜 및 시간 조정 and 작업 표시줄 설정 open 설정 at their page. */
+  onOpenSettingsSection: (section: "personalization" | "time") => void;
   onOpenStart: (event: React.MouseEvent<HTMLButtonElement>) => void;
   getDocumentLabel: (windowId: string, appId: AppId) => string | undefined;
   /** 창 계단식 배열 / 위아래 정렬 / 나란히 정렬 from the taskbar menu. */
@@ -123,6 +125,8 @@ export function Taskbar({
   onSetBrightness: (brightness: number) => void;
   focusAssist: boolean;
   onSetFocusAssist: (enabled: boolean) => void;
+  /** Which screen edge the bar is on; the flyouts anchor off it. */
+  taskbarPosition: TaskbarPosition;
   onSetSoundEnabled: (enabled: boolean) => void;
   onSetVolume: (volume: number) => void;
   onShowDesktop: () => void;
@@ -161,13 +165,16 @@ export function Taskbar({
     return index === -1 ? 0 : index;
   })();
   const trayRef = useRef<HTMLDivElement | null>(null);
+  const vertical = isVerticalTaskbar(taskbarPosition);
   const [preview, setPreview] = useState<{
+    anchor: CSSProperties;
     app: AppDefinition;
-    left: number;
     windows: WindowInstance[];
   } | null>(null);
-  const [taskbarMenu, setTaskbarMenu] = useState<{ appId: AppId; left: number } | null>(null);
-  const [shellMenu, setShellMenu] = useState<{ left: number } | null>(null);
+  const [taskbarMenu, setTaskbarMenu] = useState<{ appId: AppId; x: number; y: number } | null>(
+    null,
+  );
+  const [shellMenu, setShellMenu] = useState<{ x: number; y: number } | null>(null);
   const taskbarMenuButtonRef = useRef<HTMLButtonElement>(null);
   const shellMenuButtonRef = useRef<HTMLButtonElement>(null);
   const [trayPanel, setTrayPanel] = useState<"notifications" | "quick" | null>(null);
@@ -181,7 +188,7 @@ export function Taskbar({
     ),
   ];
   // Windows rearranges pinned taskbar buttons by dragging one onto another.
-  const [clockMenu, setClockMenu] = useState<{ left: number } | null>(null);
+  const [clockMenu, setClockMenu] = useState<{ x: number; y: number } | null>(null);
   const [draggingAppId, setDraggingAppId] = useState<AppId | null>(null);
   const [appDropTargetId, setAppDropTargetId] = useState<AppId | null>(null);
   const taskbarApps = [
@@ -205,19 +212,38 @@ export function Taskbar({
     taskbarApps[0]?.app.id ??
     null;
 
+  /**
+   * Where a flyout sits along the bar. A menu opened from a horizontal bar
+   * follows the pointer left to right and the stylesheet lifts it clear of the
+   * bar; on a vertical bar the roles of the two axes swap, and the anchor has
+   * to swap with them or every menu piles up at the top-left corner.
+   *
+   * Measured inside the bar, because that is the containing block these
+   * flyouts are positioned against.
+   */
+  const anchorOnBar = (point: { x: number; y: number }, half: number): CSSProperties => {
+    const box = taskbarRef.current?.getBoundingClientRect();
+    if (vertical) {
+      const span = box?.height ?? window.innerHeight;
+      return { top: clamp(point.y - (box?.top ?? 0), half, Math.max(half, span - half)) };
+    }
+    const span = box?.width ?? window.innerWidth;
+    return { left: clamp(point.x - (box?.left ?? 0), half, Math.max(half, span - half)) };
+  };
+
   const showPreview = (
     element: HTMLElement,
     app: AppDefinition,
     windowItems: WindowInstance[],
   ) => {
     cancelPreviewClose();
-    const taskbarBox = taskbarRef.current?.getBoundingClientRect();
     const buttonBox = element.getBoundingClientRect();
-    const rawLeft = buttonBox.left + buttonBox.width / 2 - (taskbarBox?.left ?? 0);
-    const maxLeft = Math.max(118, (taskbarBox?.width ?? window.innerWidth) - 118);
     setPreview({
+      anchor: anchorOnBar(
+        { x: buttonBox.left + buttonBox.width / 2, y: buttonBox.top + buttonBox.height / 2 },
+        118,
+      ),
       app,
-      left: clamp(rawLeft, 118, maxLeft),
       windows: windowItems,
     });
   };
@@ -318,7 +344,7 @@ export function Taskbar({
     event.preventDefault();
     setPreview(null);
     setTaskbarMenu(null);
-    setShellMenu({ left: event.clientX });
+    setShellMenu({ x: event.clientX, y: event.clientY });
   };
 
   const shellMenuItems: Array<{ icon: LucideIcon; label: string; run: () => void }> = [
@@ -331,6 +357,11 @@ export function Taskbar({
     { icon: Rows3, label: "창 위아래 정렬", run: () => onArrangeWindows("stack") },
     { icon: Columns3, label: "창 나란히 정렬", run: () => onArrangeWindows("side-by-side") },
     { icon: MonitorDown, label: "바탕 화면 보기", run: onShowDesktop },
+    {
+      icon: Settings,
+      label: "작업 표시줄 설정",
+      run: () => onOpenSettingsSection("personalization"),
+    },
   ];
 
   // Resting the pointer on the show-desktop strip peeks at the desktop; a
@@ -531,7 +562,7 @@ export function Taskbar({
                     event.stopPropagation();
                     setPreview(null);
                     setShellMenu(null);
-                    setTaskbarMenu({ appId: app.id, left: event.clientX });
+                    setTaskbarMenu({ appId: app.id, x: event.clientX, y: event.clientY });
                   }}
                   title={`${app.title} · 우클릭으로 ${isPinned ? "고정 해제" : "작업표시줄에 고정"}`}
                   type="button"
@@ -576,7 +607,7 @@ export function Taskbar({
           onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
           onPointerDown={(event) => event.stopPropagation()}
           role="menu"
-          style={{ left: clamp(taskbarMenu.left, 112, window.innerWidth - 112) }}
+          style={anchorOnBar(taskbarMenu, 112)}
         >
           {/* 최근 항목 — the documents this app would open, newest first. */}
           {(recentDocumentsByApp.get(taskbarMenu.appId) ?? []).length > 0 && (
@@ -683,7 +714,7 @@ export function Taskbar({
           onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
           onPointerDown={(event) => event.stopPropagation()}
           role="menu"
-          style={{ left: clamp(shellMenu.left, 112, window.innerWidth - 112) }}
+          style={anchorOnBar(shellMenu, 112)}
         >
           {shellMenuItems.map((item, index) => (
             <button
@@ -724,7 +755,7 @@ export function Taskbar({
               event.preventDefault();
               event.stopPropagation();
               setTrayPanel(null);
-              setClockMenu({ left: event.clientX });
+              setClockMenu({ x: event.clientX, y: event.clientY });
             }}
             onClick={() =>
               setTrayPanel((current) => {
@@ -812,7 +843,7 @@ export function Taskbar({
           }}
           onPointerDown={(event) => event.stopPropagation()}
           role="menu"
-          style={{ left: Math.max(8, Math.min(clockMenu.left, window.innerWidth - 220)) }}
+          style={anchorOnBar(clockMenu, 112)}
         >
           <button
             autoFocus
@@ -1177,9 +1208,9 @@ export function NotificationCenterPanel({
 }
 
 export function TaskbarPreview({
+  anchor,
   app,
   getDocumentLabel,
-  left,
   onCloseWindow,
   onPeekWindow,
   onPointerEnter,
@@ -1187,9 +1218,9 @@ export function TaskbarPreview({
   onSelectWindow,
   windows,
 }: {
+  anchor: CSSProperties;
   app: AppDefinition;
   getDocumentLabel: (windowId: string, appId: AppId) => string | undefined;
-  left: number;
   onCloseWindow: (windowId: string) => void;
   /** Aero Peek: the window whose thumbnail is under the pointer or focus. */
   onPeekWindow: (windowId: string | null) => void;
@@ -1222,7 +1253,7 @@ export function TaskbarPreview({
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
       role="group"
-      style={{ left }}
+      style={anchor}
     >
       {windows.length === 0 ? (
         <div className="taskbar-preview-pinned">

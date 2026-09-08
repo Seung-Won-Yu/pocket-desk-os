@@ -1,7 +1,7 @@
 import AppIconTile from "../../components/AppIconTile";
 import { WindowThumbnail } from "./WindowThumbnail";
 import { clamp } from "../../utils/format";
-import { APP_BAR_HEIGHT, WINDOW_DRAG_THRESHOLD } from "../constants";
+import { WINDOW_DRAG_THRESHOLD } from "../constants";
 import { formatWindowTitle } from "../windowTitle";
 import {
   type AppDefinition,
@@ -11,7 +11,12 @@ import {
   type WindowMotion,
 } from "../types";
 import { SNAP_LAYOUTS, SNAP_LAYOUT_COLUMNS, SNAP_LAYOUT_ROWS } from "../snapLayouts";
-import { getSnapPreviewStyle, getWindowSnapPatch, getWindowSnapZone } from "../windowGeometry";
+import {
+  getDesktopWorkArea,
+  getSnapPreviewStyle,
+  getWindowSnapPatch,
+  getWindowSnapZone,
+} from "../windowGeometry";
 import { createShakeDetector } from "../aeroShake";
 import { Copy, Minus, Square, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
@@ -91,8 +96,9 @@ export function WindowFrame({
   } as CSSProperties;
   const frameStyle: CSSProperties = instance.maximized
     ? {
+        // Inset by the taskbar's edge, whichever edge that is now.
         ...minSizeVars,
-        inset: `0 0 ${APP_BAR_HEIGHT}px 0`,
+        inset: "var(--work-area-inset)",
         zIndex: instance.z,
       }
     : {
@@ -164,16 +170,19 @@ export function WindowFrame({
      * Windows does. The restored window is placed so the pointer keeps the same
      * proportional grip on its title bar, rather than jumping to a corner.
      */
+    const area = getDesktopWorkArea();
     const restoring = instance.maximized;
-    const width = restoring ? Math.min(instance.width, window.innerWidth - 16) : instance.width;
-    const height = restoring
-      ? Math.min(instance.height, window.innerHeight - APP_BAR_HEIGHT - 16)
-      : instance.height;
+    const width = restoring ? Math.min(instance.width, area.width - 16) : instance.width;
+    const height = restoring ? Math.min(instance.height, area.height - 16) : instance.height;
     const grip = restoring ? Math.min(0.9, startX / Math.max(1, window.innerWidth)) : 0;
     const baseX = restoring
-      ? clamp(startX - width * grip, 8, Math.max(8, window.innerWidth - width - 8))
+      ? clamp(
+          startX - width * grip,
+          area.x + 8,
+          Math.max(area.x + 8, area.x + area.width - width - 8),
+        )
       : instance.x;
-    const baseY = restoring ? 8 : instance.y;
+    const baseY = restoring ? area.y + 8 : instance.y;
     // Windows only leaves the maximized state once the pointer actually travels;
     // committing on pointerdown restored the window on a plain click too.
     let pendingRestore = restoring;
@@ -206,8 +215,8 @@ export function WindowFrame({
       );
       onUpdate({
         snapZone: undefined,
-        x: clamp(nextX, 8, Math.max(8, window.innerWidth - width - 8)),
-        y: clamp(nextY, 8, Math.max(8, window.innerHeight - APP_BAR_HEIGHT - height - 8)),
+        x: clamp(nextX, area.x + 8, Math.max(area.x + 8, area.x + area.width - width - 8)),
+        y: clamp(nextY, area.y + 8, Math.max(area.y + 8, area.y + area.height - height - 8)),
       });
     };
 
@@ -256,7 +265,9 @@ export function WindowFrame({
     const { width, height, x, y } = instance;
     const right = x + width;
     const bottom = y + height;
-    const maxBottom = window.innerHeight - APP_BAR_HEIGHT - 8;
+    const area = getDesktopWorkArea();
+    const maxRight = area.x + area.width - 8;
+    const maxBottom = area.y + area.height - 8;
     const grow = {
       east: edge.includes("e"),
       north: edge.includes("n"),
@@ -268,13 +279,9 @@ export function WindowFrame({
       const patch: Partial<WindowInstance> = {};
 
       if (grow.east) {
-        patch.width = clamp(
-          width + moveEvent.clientX - startX,
-          minWidth,
-          window.innerWidth - x - 8,
-        );
+        patch.width = clamp(width + moveEvent.clientX - startX, minWidth, maxRight - x);
       } else if (grow.west) {
-        const nextX = clamp(x + moveEvent.clientX - startX, 8, right - minWidth);
+        const nextX = clamp(x + moveEvent.clientX - startX, area.x + 8, right - minWidth);
         patch.width = right - nextX;
         patch.x = nextX;
       }
@@ -282,7 +289,7 @@ export function WindowFrame({
       if (grow.south) {
         patch.height = clamp(height + moveEvent.clientY - startY, minHeight, maxBottom - y);
       } else if (grow.north) {
-        const nextY = clamp(y + moveEvent.clientY - startY, 8, bottom - minHeight);
+        const nextY = clamp(y + moveEvent.clientY - startY, area.y + 8, bottom - minHeight);
         patch.height = bottom - nextY;
         patch.y = nextY;
       }

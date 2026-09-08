@@ -68,6 +68,7 @@ function makeProps(
     activeDesktopIndex: 0,
     activeDesktopName: "데스크톱 1",
     focusAssist: false,
+    taskbarPosition: "bottom",
     availableApps: appCatalog,
     recentDocumentsByApp: new Map(),
     brightness: 100,
@@ -237,7 +238,7 @@ describe("TaskbarPreview 포커스 유지", () => {
       <TaskbarPreview
         app={appCatalog[0]}
         getDocumentLabel={() => undefined}
-        left={100}
+        anchor={{ left: 100 }}
         onCloseWindow={vi.fn()}
         onPeekWindow={vi.fn()}
         onPointerEnter={onPointerEnter}
@@ -260,7 +261,7 @@ describe("TaskbarPreview 포커스 유지", () => {
       <TaskbarPreview
         app={appCatalog[0]}
         getDocumentLabel={() => undefined}
-        left={100}
+        anchor={{ left: 100 }}
         onCloseWindow={vi.fn()}
         onPeekWindow={onPeekWindow}
         onPointerEnter={vi.fn()}
@@ -449,6 +450,7 @@ describe("Taskbar 배경 우클릭 셸 메뉴", () => {
       "창 위아래 정렬",
       "창 나란히 정렬",
       "바탕 화면 보기",
+      "작업 표시줄 설정",
     ]);
   });
 
@@ -687,5 +689,38 @@ describe("집중 지원", () => {
   it("names itself on the clock button while it is on", () => {
     renderTaskbar({ focusAssist: true });
     expect(screen.getByRole("button", { name: /집중 지원 켜짐/ })).toBeVisible();
+  });
+});
+
+describe("세로 작업 표시줄", () => {
+  it("메뉴를 막대 옆으로, 세로 좌표에 맞춰 연다", async () => {
+    const { user } = renderTaskbar({ taskbarPosition: "left" });
+
+    await user.pointer({
+      coords: { clientX: 30, clientY: 420 },
+      keys: "[MouseRight]",
+      target: taskbarBackground(),
+    });
+
+    const menu = screen.getByRole("menu");
+    // A vertical bar runs down the screen, so the menu is placed by `top`; the
+    // stylesheet pushes it out to the side. Anchoring by `left` piled every
+    // menu into the bar's own top-left corner.
+    expect(menu.style.top).not.toBe("");
+    expect(menu.style.left).toBe("");
+  });
+
+  it("가로 막대에서는 그대로 가로 좌표에 맞춘다", async () => {
+    const { user } = renderTaskbar();
+
+    await user.pointer({
+      coords: { clientX: 420, clientY: 30 },
+      keys: "[MouseRight]",
+      target: taskbarBackground(),
+    });
+
+    const menu = screen.getByRole("menu");
+    expect(menu.style.left).not.toBe("");
+    expect(menu.style.top).toBe("");
   });
 });

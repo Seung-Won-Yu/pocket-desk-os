@@ -3544,6 +3544,102 @@ async function runSmoke(baseUrl) {
       (await rootFontSize()) === baseFontSize,
       "100% did not put the text size back where it started",
     );
+
+    /*
+     * 작업 표시줄 위치: the bar moves to another screen edge and the work area
+     * moves with it. What is worth asserting is not where the bar is drawn but
+     * what measures against it — a maximized window, a snapped one, and the
+     * desktop icon grid all have to leave the bar its edge.
+     */
+    await scaleSettings.getByRole("button", { name: "개인 설정" }).click();
+    await page.waitForTimeout(200);
+    const barBox = () => page.locator(".taskbar").boundingBox();
+    const dismissSnapAssist = async () => {
+      const assist = page.locator(".snap-assist");
+      if ((await assist.count()) === 0) return;
+      await page.keyboard.press("Escape");
+      await assist.waitFor({ state: "detached" });
+    };
+    const activeWindowBox = () =>
+      page.locator('article[data-app-id="settings"]').last().boundingBox();
+    const leftmostIcon = () =>
+      page.evaluate(() =>
+        Math.min(
+          ...[...document.querySelectorAll(".desktop-icon")].map(
+            (icon) => icon.getBoundingClientRect().left,
+          ),
+        ),
+      );
+
+    await page.keyboard.press("Meta+ArrowLeft");
+    await page.waitForTimeout(250);
+    const snappedAtBottomBar = await activeWindowBox();
+    assert(
+      Math.round(snappedAtBottomBar.x) === 0,
+      `With the bar at the bottom, Win+Left snapped to x=${snappedAtBottomBar.x}`,
+    );
+    // Snapping a half opens Snap Assist over the other one; it is modal.
+    await dismissSnapAssist();
+
+    await scaleSettings.getByRole("radio", { name: "왼쪽" }).click();
+    await page.waitForTimeout(400);
+    const sideBar = await barBox();
+    assert(
+      Math.round(sideBar.x) === 0 && Math.round(sideBar.width) === 68,
+      `The side bar landed at x=${sideBar.x} width=${sideBar.width}`,
+    );
+    assert(
+      (await page.evaluate(() => localStorage.getItem("pocket-desk-taskbar-position-v1"))) ===
+        "left",
+      "작업 표시줄 위치 was not written to storage",
+    );
+    assert(
+      (await leftmostIcon()) >= 68,
+      `A desktop icon stayed under the side bar (leftmost ${await leftmostIcon()})`,
+    );
+
+    await page.keyboard.press("Meta+ArrowLeft");
+    await page.waitForTimeout(250);
+    const snappedBesideBar = await activeWindowBox();
+    assert(
+      Math.round(snappedBesideBar.x) === 68,
+      `Win+Left snapped to x=${snappedBesideBar.x}, under the side bar`,
+    );
+    await dismissSnapAssist();
+
+    const viewport = await page.evaluate(() => ({
+      height: window.innerHeight,
+      width: window.innerWidth,
+    }));
+    await scaleSettings.getByRole("button", { name: "최대화" }).click();
+    await page.waitForTimeout(250);
+    const maximizedBesideBar = await activeWindowBox();
+    assert(
+      Math.round(maximizedBesideBar.x) === 68 &&
+        Math.round(maximizedBesideBar.width) === viewport.width - 68 &&
+        Math.round(maximizedBesideBar.height) === viewport.height,
+      `A maximized window is ${maximizedBesideBar.width}x${maximizedBesideBar.height} at x=${maximizedBesideBar.x}; the side bar should own 68px of the width and none of the height`,
+    );
+
+    await scaleSettings.getByRole("radio", { name: "아래쪽" }).click();
+    await page.waitForTimeout(400);
+    const bottomBar = await barBox();
+    assert(
+      Math.round(bottomBar.y + bottomBar.height) === viewport.height &&
+        Math.round(bottomBar.height) === 48,
+      `The bar did not go back to the bottom (y=${bottomBar.y} h=${bottomBar.height})`,
+    );
+    // The same window, still maximized, now fills the area the bottom bar leaves.
+    const maximizedAgain = await activeWindowBox();
+    assert(
+      Math.round(maximizedAgain.x) === 0 &&
+        Math.round(maximizedAgain.width) === viewport.width &&
+        Math.round(maximizedAgain.height) === viewport.height - 48,
+      `Back at the bottom, the maximized window is ${maximizedAgain.width}x${maximizedAgain.height} at x=${maximizedAgain.x}`,
+    );
+    await scaleSettings.getByRole("button", { name: "복원" }).click();
+    await page.waitForTimeout(200);
+
     await scaleSettings.getByRole("button", { name: "설정 닫기" }).click();
     await page.waitForTimeout(200);
 

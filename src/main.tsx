@@ -4,6 +4,7 @@ import App from "./App";
 import { ShellErrorBoundary } from "./ErrorBoundary";
 import { registerPocketDeskServiceWorker } from "./pwa/registerServiceWorker";
 import { isFramed, renderFrameRefusal } from "./security/frameGuard";
+import { applyTaskbarPosition, loadTaskbarPosition } from "./shell/taskbarPosition";
 import "./styles.css";
 
 const container = document.getElementById("root")!;
@@ -13,6 +14,11 @@ const container = document.getElementById("root")!;
 if (isFramed()) {
   renderFrameRefusal(container);
 } else {
+  // Before the first paint, so the bar never flashes at the bottom on the way
+  // to the edge the user chose — and so the first geometry React computes is
+  // already measured against the right work area.
+  applyTaskbarPosition(loadTaskbarPosition());
+
   ReactDOM.createRoot(container).render(
     <React.StrictMode>
       <ShellErrorBoundary>

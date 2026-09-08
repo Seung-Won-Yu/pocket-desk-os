@@ -34,6 +34,7 @@ export const SOUND_VOLUME_KEY = "pocket-desk-volume-v1";
 export const SOUND_ENABLED_KEY = "pocket-desk-sound-enabled-v1";
 export const DISPLAY_BRIGHTNESS_KEY = "pocket-desk-display-brightness-v1";
 export const TASKBAR_PINNED_APPS_KEY = "pocket-desk-taskbar-pinned-v2";
+export const TASKBAR_POSITION_KEY = "pocket-desk-taskbar-position-v1";
 export const VFS_DRAG_MIME = "application/x-pocketdesk-vfs";
 export const ACTIVE_DESKTOP_KEY = "pocket-desk-active-desktop-v1";
 export const EVENT_LOG_KEY = "pocket-desk-event-log-v1";

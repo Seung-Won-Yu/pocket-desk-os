@@ -5,8 +5,9 @@ import { WindowThumbnail } from "./WindowThumbnail";
 import { trapDialogFocus, useReturnFocus } from "../dialogFocus";
 import { getApp } from "../appCatalog";
 import { formatWindowTitle } from "../windowTitle";
-import { APP_BAR_HEIGHT, MAX_VIRTUAL_DESKTOPS } from "../constants";
+import { MAX_VIRTUAL_DESKTOPS } from "../constants";
 import { MAX_DESKTOP_NAME_LENGTH, getDesktopName } from "../desktopNames";
+import { getDesktopWorkArea } from "../windowGeometry";
 import { type WindowInstance } from "../types";
 
 /**
@@ -76,18 +77,20 @@ export function TaskView({
     return () => window.cancelAnimationFrame(frameId);
   }, []);
 
-  const workAreaWidth = Math.max(320, window.innerWidth);
-  const workAreaHeight = Math.max(240, window.innerHeight - APP_BAR_HEIGHT);
+  // A card is a picture of the work area, so window positions are measured
+  // from that area's corner — which is not the screen's when the bar is on a
+  // side, and every preview sat one bar-width too far right without this.
+  const area = getDesktopWorkArea();
 
   const previewStyle = (item: WindowInstance) => {
     if (item.maximized) {
       return { height: "100%", left: 0, top: 0, width: "100%" };
     }
     return {
-      height: `${(item.height / workAreaHeight) * 100}%`,
-      left: `${(item.x / workAreaWidth) * 100}%`,
-      top: `${(item.y / workAreaHeight) * 100}%`,
-      width: `${(item.width / workAreaWidth) * 100}%`,
+      height: `${(item.height / area.height) * 100}%`,
+      left: `${((item.x - area.x) / area.width) * 100}%`,
+      top: `${((item.y - area.y) / area.height) * 100}%`,
+      width: `${(item.width / area.width) * 100}%`,
     };
   };
 
