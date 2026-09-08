@@ -34,6 +34,7 @@ export const SHELL_SHORTCUTS: ShortcutGroup[] = [
   {
     items: [
       { action: "창 스냅 (절반 → 사분면 → 최대화 → 복원)", keys: "Win + ←/→/↑/↓" },
+      { action: "스냅 레이아웃 열기 (3분할·4분할 포함)", keys: "Win + Z" },
       { action: "현재 창 스냅", keys: "Ctrl + Alt + ←/→/↑" },
       { action: "가상 데스크톱 전환", keys: "Ctrl + Win + ←/→" },
     ],
@@ -82,5 +83,5 @@ export function isShellReservedChord(event: {
   if (event.key === "Tab") return true;
   if (event.key.startsWith("Arrow")) return true;
   if (event.shiftKey) return key === "s";
-  return ["d", "e", "i", "l", "m"].includes(key);
+  return ["d", "e", "i", "l", "m", "z"].includes(key);
 }

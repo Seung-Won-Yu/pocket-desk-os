@@ -39,6 +39,8 @@ function makeFrameOps(): WindowFrameOps {
     openSystemMenu: vi.fn(),
     setInteracting: vi.fn(),
     shake: vi.fn(),
+    snap: vi.fn(),
+    closeSnapFlyout: vi.fn(),
     snapPreviewChange: vi.fn(),
     toggleMaximize: vi.fn(),
     update: vi.fn(),

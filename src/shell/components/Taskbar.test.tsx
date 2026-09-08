@@ -65,6 +65,7 @@ function makeProps(
 ) {
   const props: TaskbarProps = {
     activeDesktopIndex: 0,
+    activeDesktopName: "데스크톱 1",
     availableApps: appCatalog,
     recentDocumentsByApp: new Map(),
     brightness: 100,
@@ -149,7 +150,7 @@ describe("Taskbar 작업 보기", () => {
   it("작업 보기 버튼이 onToggleTaskView를 호출한다", async () => {
     const { handlers, user } = renderTaskbar();
 
-    const button = screen.getByRole("button", { name: "작업 보기 (데스크톱 1/1)" });
+    const button = screen.getByRole("button", { name: "작업 보기 (데스크톱 1, 1/1)" });
     expect(button).toHaveAttribute("aria-pressed", "false");
 
     await user.click(button);
@@ -160,15 +161,21 @@ describe("Taskbar 작업 보기", () => {
   it("데스크톱이 하나면 번호 배지를 숨긴다", () => {
     renderTaskbar({ activeDesktopIndex: 0, desktopCount: 1 });
 
-    const button = screen.getByRole("button", { name: "작업 보기 (데스크톱 1/1)" });
+    const button = screen.getByRole("button", { name: "작업 보기 (데스크톱 1, 1/1)" });
     expect(button).toBeVisible();
     expect(button.textContent).toBe("");
   });
 
-  it("데스크톱이 여러 개면 현재 번호를 보여 준다", () => {
-    renderTaskbar({ activeDesktopIndex: 1, desktopCount: 3, taskViewOpen: true });
+  it("데스크톱이 여러 개면 현재 번호를 보여 주고, 이름은 버튼이 읽어 준다", () => {
+    renderTaskbar({
+      activeDesktopIndex: 1,
+      activeDesktopName: "작업",
+      desktopCount: 3,
+      taskViewOpen: true,
+    });
 
-    const button = screen.getByRole("button", { name: "작업 보기 (데스크톱 2/3)" });
+    // The badge stays a number; the name is what the button is called.
+    const button = screen.getByRole("button", { name: "작업 보기 (작업, 2/3)" });
     expect(button.textContent).toBe("2");
     expect(button).toHaveAttribute("aria-pressed", "true");
   });

@@ -123,8 +123,24 @@ export type ToastMessage = Required<Omit<ToastInput, "actions" | "onAction">> & 
   onAction?: (actionId: string) => void;
 };
 export type ShellPhase = "booting" | "locked" | "shutdown" | "sleeping" | "unlocked";
+/**
+ * Where a snapped window sits. The halves, quarters and maximize come from
+ * dragging to an edge; the thirds only from 스냅 레이아웃, since no screen edge
+ * means "middle column".
+ */
 export type SnapZone =
-  "bottom-left" | "bottom-right" | "left" | "right" | "top" | "top-left" | "top-right";
+  | "bottom-left"
+  | "bottom-right"
+  | "center-third"
+  | "left"
+  | "left-third"
+  | "left-two-thirds"
+  | "right"
+  | "right-third"
+  | "right-two-thirds"
+  | "top"
+  | "top-left"
+  | "top-right";
 export type SnapPreviewState = {
   /** The window being dragged, so the preview can show a picture of it. */
   windowId: string;

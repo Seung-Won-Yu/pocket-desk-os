@@ -34,6 +34,7 @@ function renderTaskView(overrides: Partial<Parameters<typeof TaskView>[0]> = {})
     onCloseWindow: vi.fn(),
     onDismiss: vi.fn(),
     onMoveWindowToDesktop: vi.fn(),
+    onRenameDesktop: vi.fn(),
     onSelectDesktop: vi.fn(),
     onSelectWindow: vi.fn(),
   };
@@ -42,6 +43,7 @@ function renderTaskView(overrides: Partial<Parameters<typeof TaskView>[0]> = {})
     <TaskView
       activeDesktopIndex={0}
       desktopCount={1}
+      desktopNames={[]}
       windows={[makeWindow("win-notes", "notepad")]}
       {...handlers}
       {...overrides}
@@ -136,5 +138,42 @@ describe("TaskView 데스크톱 간 드래그", () => {
   it("데스크톱이 하나면 카드는 드래그할 수 없다", () => {
     renderTaskView();
     expect(document.querySelector(".task-view-card")!.getAttribute("draggable")).toBe("false");
+  });
+});
+
+describe("TaskView 데스크톱 이름", () => {
+  it("names a desktop after its number until one is typed", () => {
+    renderTaskView({ desktopCount: 2, desktopNames: ["작업"] });
+    // Scoped to the cards: the move-window control lists the names too.
+    const labels = document.querySelectorAll(".task-view-desktop-label");
+    expect([...labels].map((label) => label.textContent)).toEqual([
+      "작업1개 창",
+      "데스크톱 20개 창",
+    ]);
+  });
+
+  it("renames in place, and Enter commits what was typed", async () => {
+    const { handlers, user } = renderTaskView({ desktopCount: 2, desktopNames: [] });
+    await user.click(screen.getByRole("button", { name: "데스크톱 2 이름 바꾸기" }));
+    const field = screen.getByRole("textbox", { name: "데스크톱 2 이름 바꾸기" });
+    expect(field).toHaveFocus();
+    await user.type(field, "게임{Enter}");
+    expect(handlers.onRenameDesktop).toHaveBeenCalledWith(1, "게임");
+  });
+
+  it("Escape keeps the name it had", async () => {
+    const { handlers, user } = renderTaskView({ desktopCount: 2, desktopNames: ["작업"] });
+    await user.click(screen.getByRole("button", { name: "작업 이름 바꾸기" }));
+    const field = screen.getByRole("textbox", { name: "작업 이름 바꾸기" });
+    await user.clear(field);
+    await user.type(field, "다른 이름{Escape}");
+    expect(handlers.onRenameDesktop).not.toHaveBeenCalled();
+    expect(document.querySelector(".task-view-desktop-label")?.textContent).toBe("작업1개 창");
+  });
+
+  it("closing a desktop is named after the desktop, not its number", async () => {
+    const { handlers, user } = renderTaskView({ desktopCount: 2, desktopNames: ["작업"] });
+    await user.click(screen.getByRole("button", { name: "작업 닫기" }));
+    expect(handlers.onCloseDesktop).toHaveBeenCalledWith(0);
   });
 });

@@ -37,10 +37,38 @@ export function getDesktopWorkArea() {
   };
 }
 
+/** The column widths 스냅 레이아웃 offers, as a share of the work area. */
+const COLUMN_ZONES: Partial<Record<SnapZone, { share: number; start: number }>> = {
+  "center-third": { share: 1 / 3, start: 1 / 3 },
+  "left-third": { share: 1 / 3, start: 0 },
+  "left-two-thirds": { share: 2 / 3, start: 0 },
+  "right-third": { share: 1 / 3, start: 2 / 3 },
+  "right-two-thirds": { share: 2 / 3, start: 1 / 3 },
+};
+
 export function getWindowSnapPatch(zone: SnapZone): Partial<WindowInstance> {
   const area = getDesktopWorkArea();
   if (zone === "top") {
     return { maximized: true, minimized: false };
+  }
+
+  const column = COLUMN_ZONES[zone];
+  if (column) {
+    /*
+     * Rounded so the columns of one layout meet exactly: the right edge of a
+     * third is the left edge of the next, or a one-pixel strip of wallpaper
+     * shows between two windows that are supposed to be flush.
+     */
+    const start = area.x + Math.round(area.width * column.start);
+    const end = area.x + Math.round(area.width * (column.start + column.share));
+    return {
+      height: area.height,
+      maximized: false,
+      minimized: false,
+      width: Math.max(280, end - start),
+      x: start,
+      y: area.y,
+    };
   }
 
   const halfWidth = Math.max(320, Math.floor(area.width / 2));

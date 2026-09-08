@@ -1610,9 +1610,11 @@ async function runSmoke(baseUrl) {
     await frame.getByRole("button", { name: "Microsoft Edge 최대화" }).hover();
     const snapLayoutMenu = frame.getByRole("menu", { name: "스냅 레이아웃" });
     await snapLayoutMenu.waitFor({ state: "visible" });
+    // Four whole-screen arrangements, eleven places between them.
     assert(
-      (await snapLayoutMenu.getByRole("menuitem").count()) === 3,
-      "Snap layout choices missing",
+      (await snapLayoutMenu.locator(".snap-layout-option").count()) === 4 &&
+        (await snapLayoutMenu.getByRole("menuitem").count()) === 11,
+      `Snap layout choices missing: ${await snapLayoutMenu.getByRole("menuitem").count()} cells`,
     );
     await page.mouse.move(8, 8);
     await snapLayoutMenu.waitFor({ state: "hidden" });
@@ -2425,8 +2427,41 @@ async function runSmoke(baseUrl) {
         (await taskView.locator(".task-view-desktop").nth(1).innerText()).includes("0개 창"),
       `Creating a desktop switched to it or moved windows (current ${JSON.stringify(currentDesktops)})`,
     );
+    /*
+     * 데스크톱 이름 바꾸기: Windows 11 renames a desktop in place in Task View.
+     * The name replaces the number everywhere the number was — the card, its
+     * ✕, and the taskbar's own button.
+     */
+    await taskView.getByRole("button", { name: "데스크톱 2 이름 바꾸기" }).click();
+    const desktopNameField = taskView.getByRole("textbox", { name: /이름 바꾸기/ });
+    await desktopNameField.waitFor({ state: "visible" });
+    await desktopNameField.fill("게임");
+    await desktopNameField.press("Enter");
+    await page.waitForTimeout(300);
+    assert(
+      (await taskView.locator(".task-view-desktop-label").nth(1).innerText()).startsWith(
+        "게임",
+      ),
+      `이름 바꾸기 did not rename the desktop: ${await taskView.locator(".task-view-desktop-label").nth(1).innerText()}`,
+    );
+    assert(
+      await taskView.getByRole("button", { name: "게임 닫기" }).count(),
+      "The desktop's ✕ is still named after its number",
+    );
+    assert(
+      JSON.parse(
+        (await page.evaluate(() => localStorage.getItem("pocket-desk-desktop-names-v1"))) ??
+          "[]",
+      )[1] === "게임",
+      "The desktop name was not written to storage",
+    );
+
     await taskView.locator(".task-view-desktop").nth(1).click();
     await taskView.waitFor({ state: "hidden" });
+    assert(
+      await page.getByRole("button", { name: /작업 보기 \(게임, 2\/2\)/ }).count(),
+      "The taskbar does not call the desktop by its name",
+    );
     assert(
       !(await taskManager.isVisible()),
       "A window from desktop 1 is still rendered on desktop 2",
@@ -2456,7 +2491,22 @@ async function runSmoke(baseUrl) {
       (await taskView.locator(".task-view-desktop").nth(1).innerText()).includes("1개 창"),
       "Desktop 2 does not count the dragged window",
     );
-    await taskView.getByRole("button", { name: "데스크톱 2 닫기" }).click();
+    // By position, not by name: a desktop can be renamed, and one was above.
+    await taskView
+      .locator(".task-view-desktop-slot")
+      .nth(1)
+      .locator(".task-view-desktop-close")
+      .click();
+    await page.waitForTimeout(300);
+    // The names move up with their desktops. 게임 was desktop 2 and is gone, so
+    // nothing may be called 게임 any more — the name must not slide onto
+    // whichever desktop took its place.
+    assert(
+      !(await taskView.locator(".task-view-desktop-label").first().innerText()).includes(
+        "게임",
+      ),
+      "Closing a desktop handed its name to the one that replaced it",
+    );
     await taskView.locator(".task-view-desktop").nth(1).waitFor({ state: "detached" });
     assert(
       (await taskView.locator(".task-view-desktop").count()) === 1,
@@ -2681,6 +2731,43 @@ async function runSmoke(baseUrl) {
     assert(
       Number.isFinite(generationBeforeMove) && generationAfterMove === generationBeforeMove,
       `Dragging a window rebuilt the shared props ${generationAfterMove - generationBeforeMove} time(s), so every window re-rendered with it`,
+    );
+
+    /*
+     * 스냅 레이아웃: Win+Z offers the whole-screen arrangements, including the
+     * thirds — which no screen edge can mean, so the picker is the only way to
+     * them. Picking a cell goes through the shell's snap, so the window
+     * remembers where it is.
+     */
+    await page.keyboard.press("Meta+z");
+    const snapFlyout = page.locator(".snap-layout-flyout");
+    await snapFlyout.waitFor({ state: "visible", timeout: 6000 });
+    assert(
+      (await snapFlyout.locator(".snap-layout-option").count()) === 4,
+      `Win+Z offered ${await snapFlyout.locator(".snap-layout-option").count()} layouts`,
+    );
+    const middleThird = snapFlyout.getByRole("menuitem", { name: /가운데 3분의 1/ });
+    assert(await middleThird.count(), "The thirds layout is missing its middle column");
+    await middleThird.click();
+    await page.waitForTimeout(450);
+    const thirdBox = await page.locator(".window-frame.is-active").boundingBox();
+    const workAreaWidth = 1280;
+    assert(
+      Math.abs(thirdBox.x - Math.round(workAreaWidth / 3)) <= 1 &&
+        Math.abs(thirdBox.width - Math.round(workAreaWidth / 3)) <= 2,
+      `The middle third landed at ${JSON.stringify({ w: thirdBox.width, x: thirdBox.x })}`,
+    );
+    assert(
+      (await page.locator(".snap-layout-flyout").count()) === 0,
+      "Picking a layout left the flyout open",
+    );
+    // A snapped window is remembered as snapped: Win+↑ maximizes from here
+    // rather than treating the column as a floating size.
+    assert(
+      await page
+        .locator(".window-frame.is-active")
+        .evaluate((frame) => frame.style.width !== ""),
+      "The snapped column has no width of its own",
     );
 
     // Aero Shake: shaking the front window's title bar minimizes every other

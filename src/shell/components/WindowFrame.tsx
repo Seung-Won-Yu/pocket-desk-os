@@ -10,6 +10,7 @@ import {
   type WindowInstance,
   type WindowMotion,
 } from "../types";
+import { SNAP_LAYOUTS, SNAP_LAYOUT_COLUMNS, SNAP_LAYOUT_ROWS } from "../snapLayouts";
 import { getSnapPreviewStyle, getWindowSnapPatch, getWindowSnapZone } from "../windowGeometry";
 import { createShakeDetector } from "../aeroShake";
 import { Copy, Minus, Square, X } from "lucide-react";
@@ -38,6 +39,9 @@ export function WindowFrame({
   onOpenSystemMenu,
   onShake,
   onSnapPreviewChange,
+  onSnap,
+  onCloseSnapFlyout,
+  snapFlyoutRequested = false,
   onToggleMaximize,
   onUpdate,
   peeked = false,
@@ -59,11 +63,18 @@ export function WindowFrame({
   onShake?: () => void;
   onSnapPreviewChange: (preview: SnapPreviewState | null) => void;
   onToggleMaximize: () => void;
+  /** Puts this window in a snap zone, through the shell. */
+  onSnap: (zone: SnapZone) => void;
+  /** Win+Z asked for the layout flyout; this window clears the request. */
+  onCloseSnapFlyout?: () => void;
+  snapFlyoutRequested?: boolean;
   onUpdate: (patch: Partial<WindowInstance>) => void;
   /** Aero Peek: this window is shown alone, in place, above the dimmed rest. */
   peeked?: boolean;
 }) {
   const [snapFlyoutOpen, setSnapFlyoutOpen] = useState(false);
+  // Win+Z opens it from the shell; the pointer and the keyboard open it here.
+  const isSnapFlyoutOpen = snapFlyoutOpen || snapFlyoutRequested;
   // An app declares the size its own UI stops working below.
   const minWidth = app.minSize?.width ?? FALLBACK_MIN_WIDTH;
   const minHeight = app.minSize?.height ?? FALLBACK_MIN_HEIGHT;
@@ -302,8 +313,11 @@ export function WindowFrame({
 
   const applySnapLayout = (zone: SnapZone) => {
     onFocus();
-    onUpdate(getWindowSnapPatch(zone));
+    // Through the shell, not straight onto the geometry: that is what records
+    // where the window is snapped and offers the leftover half to the rest.
+    onSnap(zone);
     setSnapFlyoutOpen(false);
+    onCloseSnapFlyout?.();
   };
 
   return (
@@ -419,49 +433,54 @@ export function WindowFrame({
                 <Square aria-hidden="true" size={11} />
               )}
             </button>
-            {snapFlyoutOpen && !instance.maximized && (
+            {isSnapFlyoutOpen && !instance.maximized && (
+              /*
+               * 스냅 레이아웃, built from the layouts rather than by hand: each
+               * cell is a place to put this window, so the thirds — which no
+               * screen edge can mean — are reachable at all. Picking one goes
+               * through the shell's own snap, so the window remembers where it
+               * is and Snap Assist offers the hole, exactly as a drag does.
+               */
               <div
                 aria-label="스냅 레이아웃"
                 className="snap-layout-flyout"
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setSnapFlyoutOpen(false);
+                    onCloseSnapFlyout?.();
+                    return;
+                  }
+                  handleMenuKeyboard(event, event.currentTarget);
+                }}
                 role="menu"
-                onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
               >
-                <button
-                  aria-label="왼쪽 절반에 맞춤"
-                  onClick={() => applySnapLayout("left")}
-                  role="menuitem"
-                  title="왼쪽 절반"
-                  type="button"
-                >
-                  <span className="snap-layout-thumb snap-left" aria-hidden="true">
-                    <span />
-                    <span />
+                {SNAP_LAYOUTS.map((layout) => (
+                  <span
+                    className="snap-layout-option"
+                    key={layout.id}
+                    style={{
+                      gridTemplateColumns: `repeat(${SNAP_LAYOUT_COLUMNS}, 1fr)`,
+                      gridTemplateRows: `repeat(${SNAP_LAYOUT_ROWS}, 1fr)`,
+                    }}
+                  >
+                    {layout.cells.map((cell) => (
+                      <button
+                        aria-label={`${layout.label} · ${cell.label}에 맞춤`}
+                        className="snap-layout-cell"
+                        key={cell.zone + cell.rowStart}
+                        onClick={() => applySnapLayout(cell.zone)}
+                        role="menuitem"
+                        style={{
+                          gridColumn: `${cell.columnStart} / span ${cell.columnSpan}`,
+                          gridRow: `${cell.rowStart} / span ${cell.rowSpan}`,
+                        }}
+                        title={cell.label}
+                        type="button"
+                      />
+                    ))}
                   </span>
-                </button>
-                <button
-                  aria-label="오른쪽 절반에 맞춤"
-                  onClick={() => applySnapLayout("right")}
-                  role="menuitem"
-                  title="오른쪽 절반"
-                  type="button"
-                >
-                  <span className="snap-layout-thumb snap-right" aria-hidden="true">
-                    <span />
-                    <span />
-                  </span>
-                </button>
-                <button
-                  aria-label="화면에 최대화"
-                  onClick={() => applySnapLayout("top")}
-                  role="menuitem"
-                  title="최대화"
-                  type="button"
-                >
-                  <span className="snap-layout-thumb snap-top" aria-hidden="true">
-                    <span />
-                    <span />
-                  </span>
-                </button>
+                ))}
               </div>
             )}
           </div>

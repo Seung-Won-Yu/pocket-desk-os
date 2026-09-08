@@ -4,6 +4,7 @@ import {
   type AppContentProps,
   type AppDefinition,
   type SnapPreviewState,
+  type SnapZone,
   type WindowInstance,
   type WindowMotion,
 } from "../types";
@@ -18,6 +19,10 @@ export type WindowFrameOps = {
   /** Aero Shake: minimize every other window, or bring them back. */
   shake: (windowId: string) => void;
   snapPreviewChange: (preview: SnapPreviewState | null) => void;
+  /** Puts a window in a snap zone: 스냅 레이아웃 goes through the shell. */
+  snap: (windowId: string, zone: SnapZone) => void;
+  /** Win+Z asked for a window's layout flyout; the window clears it. */
+  closeSnapFlyout: () => void;
   toggleMaximize: (windowId: string) => void;
   update: (windowId: string, patch: Partial<WindowInstance>) => void;
 };
@@ -34,6 +39,8 @@ export type WindowSlotProps = {
   motion?: WindowMotion;
   /** Aero Peek target: shown alone while the rest are dimmed. */
   peeked?: boolean;
+  /** Win+Z is asking this window for its layout flyout. */
+  snapFlyoutRequested?: boolean;
 };
 
 /**
@@ -56,6 +63,7 @@ export const WindowSlot = memo(function WindowSlot({
   instance,
   motion,
   peeked = false,
+  snapFlyoutRequested = false,
 }: WindowSlotProps) {
   const AppContent = app.component;
   return (
@@ -72,7 +80,10 @@ export const WindowSlot = memo(function WindowSlot({
       onShake={() => frameOps.shake(instance.id)}
       documentLabel={documentLabel}
       hasUnsavedChanges={hasUnsavedChanges}
+      onCloseSnapFlyout={frameOps.closeSnapFlyout}
+      onSnap={(zone) => frameOps.snap(instance.id, zone)}
       onSnapPreviewChange={frameOps.snapPreviewChange}
+      snapFlyoutRequested={snapFlyoutRequested}
       onToggleMaximize={() => frameOps.toggleMaximize(instance.id)}
       onUpdate={(patch) => frameOps.update(instance.id, patch)}
       peeked={peeked}

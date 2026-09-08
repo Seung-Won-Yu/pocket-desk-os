@@ -1,4 +1,4 @@
-import { Plus, X } from "lucide-react";
+import { Pencil, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import AppIconTile from "../../components/AppIconTile";
 import { WindowThumbnail } from "./WindowThumbnail";
@@ -6,6 +6,7 @@ import { trapDialogFocus, useReturnFocus } from "../dialogFocus";
 import { getApp } from "../appCatalog";
 import { formatWindowTitle } from "../windowTitle";
 import { APP_BAR_HEIGHT, MAX_VIRTUAL_DESKTOPS } from "../constants";
+import { MAX_DESKTOP_NAME_LENGTH, getDesktopName } from "../desktopNames";
 import { type WindowInstance } from "../types";
 
 /**
@@ -15,39 +16,63 @@ import { type WindowInstance } from "../types";
 export function TaskView({
   activeDesktopIndex,
   desktopCount,
+  desktopNames,
   getDocumentLabel,
   onAddDesktop,
   onCloseDesktop,
   onCloseWindow,
   onDismiss,
   onMoveWindowToDesktop,
+  onRenameDesktop,
   onSelectDesktop,
   onSelectWindow,
   windows,
 }: {
   activeDesktopIndex: number;
   desktopCount: number;
+  /** Only the names that were typed; the rest are numbered. */
+  desktopNames: string[];
   getDocumentLabel: (windowId: string, appId: WindowInstance["appId"]) => string | undefined;
   onAddDesktop: () => void;
   onCloseDesktop: (index: number) => void;
   onCloseWindow: (windowId: string) => void;
   onDismiss: () => void;
   onMoveWindowToDesktop: (windowId: string, index: number) => void;
+  onRenameDesktop: (index: number, name: string) => void;
   onSelectDesktop: (index: number) => void;
   onSelectWindow: (windowId: string) => void;
   windows: WindowInstance[];
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [dragOverDesktop, setDragOverDesktop] = useState<number | null>(null);
+  // Which desktop is being renamed, and what has been typed so far.
+  const [renamingDesktop, setRenamingDesktop] = useState<number | null>(null);
+  const [nameDraft, setNameDraft] = useState("");
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+  // Escape unmounts the field, which fires its own blur — and the blur commits.
+  const cancelRenameRef = useRef(false);
   const [draggingWindowId, setDraggingWindowId] = useState<string | null>(null);
 
   // Closing this overlay hands focus back to whatever opened it; it used to
   // fall to <body>, so the next Tab restarted at the top of the desktop.
   useReturnFocus();
 
+  useEffect(() => {
+    if (renamingDesktop === null) return;
+    const input = nameInputRef.current;
+    input?.focus();
+    input?.select();
+  }, [renamingDesktop]);
+
   // Focus has to enter the overlay, or Tab keeps walking the desktop behind it.
   useEffect(() => {
-    const frameId = window.requestAnimationFrame(() => rootRef.current?.focus());
+    const frameId = window.requestAnimationFrame(() => {
+      // Only if nothing inside has it already: this frame can land after a
+      // rename field has opened, and taking focus off it closes the field.
+      const active = document.activeElement;
+      if (active && rootRef.current?.contains(active)) return;
+      rootRef.current?.focus();
+    });
     return () => window.cancelAnimationFrame(frameId);
   }, []);
 
@@ -140,13 +165,65 @@ export function TaskView({
                   ))}
                 </span>
                 <span className="task-view-desktop-label">
-                  데스크톱 {index + 1}
+                  {getDesktopName(desktopNames, index)}
                   <em>{desktopWindows.length}개 창</em>
                 </span>
               </button>
-              {desktopCount > 1 && (
+              {renamingDesktop === index ? (
+                /*
+                 * Windows 11 renames a desktop in place in Task View. The form
+                 * sits outside the card's button — a control inside a control
+                 * is not reachable.
+                 */
+                <form
+                  className="task-view-desktop-rename"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    onRenameDesktop(index, nameDraft);
+                    setRenamingDesktop(null);
+                  }}
+                >
+                  <input
+                    aria-label={`${getDesktopName(desktopNames, index)} 이름 바꾸기`}
+                    maxLength={MAX_DESKTOP_NAME_LENGTH}
+                    onBlur={() => {
+                      if (cancelRenameRef.current) {
+                        cancelRenameRef.current = false;
+                        setRenamingDesktop(null);
+                        return;
+                      }
+                      onRenameDesktop(index, nameDraft);
+                      setRenamingDesktop(null);
+                    }}
+                    onChange={(event) => setNameDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Escape") return;
+                      event.preventDefault();
+                      // Escape keeps the name it had, so the blur must not write.
+                      cancelRenameRef.current = true;
+                      setRenamingDesktop(null);
+                    }}
+                    ref={nameInputRef}
+                    value={nameDraft}
+                  />
+                </form>
+              ) : (
                 <button
-                  aria-label={`데스크톱 ${index + 1} 닫기`}
+                  aria-label={`${getDesktopName(desktopNames, index)} 이름 바꾸기`}
+                  className="task-view-desktop-rename-button"
+                  onClick={() => {
+                    setNameDraft(desktopNames[index] ?? "");
+                    setRenamingDesktop(index);
+                  }}
+                  title="이름 바꾸기"
+                  type="button"
+                >
+                  <Pencil aria-hidden="true" size={12} />
+                </button>
+              )}
+              {desktopCount > 1 && renamingDesktop !== index && (
+                <button
+                  aria-label={`${getDesktopName(desktopNames, index)} 닫기`}
                   className="task-view-desktop-close"
                   onClick={() => onCloseDesktop(index)}
                   title="데스크톱 닫기"
@@ -166,7 +243,7 @@ export function TaskView({
       </div>
 
       <div
-        aria-label={`데스크톱 ${activeDesktopIndex + 1}의 창`}
+        aria-label={`${getDesktopName(desktopNames, activeDesktopIndex)}의 창`}
         className="task-view-windows"
         role="group"
       >
@@ -247,7 +324,7 @@ export function TaskView({
                       >
                         {Array.from({ length: desktopCount }, (_, index) => (
                           <option key={index} value={index}>
-                            데스크톱 {index + 1}
+                            {getDesktopName(desktopNames, index)}
                           </option>
                         ))}
                       </select>

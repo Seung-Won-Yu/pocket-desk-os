@@ -161,6 +161,14 @@ import {
   persistShellEventLog,
 } from "./shell/eventLog";
 import { loadStickyNotes, persistStickyNotes, type StickyNoteStore } from "./shell/stickyNotes";
+import { getSnapZoneComplement } from "./shell/snapLayouts";
+import {
+  getDesktopName,
+  loadDesktopNames,
+  persistDesktopNames,
+  removeDesktopName,
+  renameDesktop,
+} from "./shell/desktopNames";
 import {
   QUICK_ACCESS_LIMIT,
   loadQuickAccess,
@@ -323,6 +331,8 @@ export default function App() {
   const [quickAccessIds, setQuickAccessIds] = useState<string[]>(() =>
     loadQuickAccess(() => true),
   );
+  /** Only the names the user typed; an unnamed desktop is "데스크톱 N". */
+  const [desktopNames, setDesktopNames] = useState<string[]>(() => loadDesktopNames());
 
   /*
    * Typing in a note rewrote the whole store on every keystroke — a
@@ -402,6 +412,10 @@ export default function App() {
   useEffect(() => {
     persistQuickAccess(quickAccessIds);
   }, [quickAccessIds]);
+
+  useEffect(() => {
+    persistDesktopNames(desktopNames);
+  }, [desktopNames]);
 
   const toggleQuickAccessFolder = (folderId: string) => {
     const next = toggleQuickAccess(quickAccessIds, folderId);
@@ -510,6 +524,8 @@ export default function App() {
     setSnapPreview((current) => (current?.zone === preview?.zone ? current : preview));
   };
   const [snapAssistZone, setSnapAssistZone] = useState<SnapZone | null>(null);
+  /** Win+Z: which window was asked for its 스냅 레이아웃 flyout. */
+  const [snapFlyoutWindowId, setSnapFlyoutWindowId] = useState<string | null>(null);
   const [shellEventLog, setShellEventLog] = useState(() => loadShellEventLog());
   const [notificationHistory, setNotificationHistory] = useState<ToastMessage[]>(() =>
     loadNotificationHistory(),
@@ -3296,6 +3312,9 @@ export default function App() {
       }),
     );
     setStoredDesktopCount(desktopCount - 1);
+    // The names move up with their desktops; otherwise closing one handed its
+    // name to whichever desktop slid into its place.
+    setDesktopNames((current) => removeDesktopName(current, index));
     setActiveDesktopIndex((current) =>
       clamp(current > index ? current - 1 : current, 0, desktopCount - 2),
     );
@@ -3307,15 +3326,12 @@ export default function App() {
     updateWindow(windowId, { desktopIndex: target });
   };
 
-  /** The half opposite a left/right snap, where Snap Assist offers the rest. */
-  const getOppositeSnapZone = (zone: SnapZone): SnapZone | null => {
-    if (zone === "left") return "right";
-    if (zone === "right") return "left";
-    return null;
-  };
+  /** The one place left over after a snap, where Snap Assist offers the rest. */
+  const getOppositeSnapZone = getSnapZoneComplement;
 
   const snapWindow = (id: string, zone: SnapZone) => {
     playSound("toggle");
+    setSnapFlyoutWindowId(null);
     updateWindow(id, { ...getWindowSnapPatch(zone), snapZone: zone });
 
     const opposite = getOppositeSnapZone(zone);
@@ -3768,6 +3784,15 @@ export default function App() {
         if (key === "l") {
           event.preventDefault();
           lockDesktop();
+          return;
+        }
+        if (key === "z") {
+          event.preventDefault();
+          // 스냅 레이아웃 for the window in front: the thirds are not reachable
+          // by dragging to an edge, so this is the keyboard's way to them.
+          const target = windows.find((item) => item.id === activeWindowId);
+          if (!target || target.maximized) return;
+          setSnapFlyoutWindowId((current) => (current === target.id ? null : target.id));
           return;
         }
         if (event.key.startsWith("Arrow") && activeWindowId) {
@@ -4298,6 +4323,8 @@ export default function App() {
         interacting ? windowId : current === windowId ? null : current,
       ),
     shake: toggleShakeMinimize,
+    snap: snapWindow,
+    closeSnapFlyout: () => setSnapFlyoutWindowId(null),
     snapPreviewChange: handleSnapPreviewChange,
     toggleMaximize,
     update: updateWindow,
@@ -4310,6 +4337,8 @@ export default function App() {
       openSystemMenu: (event, id) => frameOpsRef.current.openSystemMenu(event, id),
       setInteracting: (id, interacting) => frameOpsRef.current.setInteracting(id, interacting),
       shake: (id) => frameOpsRef.current.shake(id),
+      snap: (id, zone) => frameOpsRef.current.snap(id, zone),
+      closeSnapFlyout: () => frameOpsRef.current.closeSnapFlyout(),
       snapPreviewChange: (preview) => frameOpsRef.current.snapPreviewChange(preview),
       toggleMaximize: (id) => frameOpsRef.current.toggleMaximize(id),
       update: (id, patch) => frameOpsRef.current.update(id, patch),
@@ -4545,6 +4574,7 @@ export default function App() {
             key={item.id}
             motion={windowMotions[item.id]}
             peeked={peekWindowId === item.id}
+            snapFlyoutRequested={snapFlyoutWindowId === item.id}
           />
         ))}
       </section>
@@ -4619,6 +4649,7 @@ export default function App() {
 
       <Taskbar
         activeDesktopIndex={activeDesktopIndex}
+        activeDesktopName={getDesktopName(desktopNames, activeDesktopIndex)}
         activeWindowId={activeWindowId}
         availableApps={availableApps}
         desktopCount={desktopCount}
@@ -4858,7 +4889,11 @@ export default function App() {
           desktopCount={desktopCount}
           getDocumentLabel={getWindowDocumentLabel}
           onAddDesktop={addDesktop}
+          desktopNames={desktopNames}
           onCloseDesktop={closeDesktop}
+          onRenameDesktop={(index, name) =>
+            setDesktopNames((current) => renameDesktop(current, index, name))
+          }
           onCloseWindow={closeWindow}
           onDismiss={() => setTaskViewOpen(false)}
           onMoveWindowToDesktop={moveWindowToDesktop}

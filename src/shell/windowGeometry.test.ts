@@ -377,3 +377,42 @@ describe("getMinimizeVector", () => {
     });
   });
 });
+
+describe("getWindowSnapPatch: 스냅 레이아웃 columns", () => {
+  it("cuts the work area into thirds that meet exactly", () => {
+    // 1281 is deliberately not divisible by three: the columns still have to
+    // touch, or a strip of wallpaper shows between two flush windows.
+    setViewport(1281, 869);
+    const left = getWindowSnapPatch("left-third");
+    const center = getWindowSnapPatch("center-third");
+    const right = getWindowSnapPatch("right-third");
+
+    expect(left.x).toBe(0);
+    expect((left.x ?? 0) + (left.width ?? 0)).toBe(center.x);
+    expect((center.x ?? 0) + (center.width ?? 0)).toBe(right.x);
+    expect((right.x ?? 0) + (right.width ?? 0)).toBe(1281);
+    // Full height (the work area is the viewport less the 48px bar), and not
+    // maximized: a column is a snapped window, not a maximized one.
+    expect(left.height).toBe(869 - 48);
+    expect(left.maximized).toBe(false);
+  });
+
+  it("a two-thirds column and its third fill the width between them", () => {
+    setViewport(1280, 800);
+    const wide = getWindowSnapPatch("left-two-thirds");
+    const narrow = getWindowSnapPatch("right-third");
+    expect(wide.x).toBe(0);
+    expect((wide.x ?? 0) + (wide.width ?? 0)).toBe(narrow.x);
+    expect((narrow.x ?? 0) + (narrow.width ?? 0)).toBe(1280);
+    expect(wide.width).toBeGreaterThan(narrow.width ?? 0);
+
+    const mirrored = getWindowSnapPatch("right-two-thirds");
+    expect(mirrored.x).toBe(getWindowSnapPatch("center-third").x);
+    expect((mirrored.x ?? 0) + (mirrored.width ?? 0)).toBe(1280);
+  });
+
+  it("keeps a column usable on a narrow screen", () => {
+    setViewport(600, 500);
+    expect(getWindowSnapPatch("center-third").width).toBeGreaterThanOrEqual(280);
+  });
+});

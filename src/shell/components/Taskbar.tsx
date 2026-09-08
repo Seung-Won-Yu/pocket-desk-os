@@ -42,6 +42,7 @@ import { getNextRovingIndex, handleMenuKeyboard } from "../keyboardNav";
 
 export function Taskbar({
   activeDesktopIndex,
+  activeDesktopName,
   activeWindowId,
   availableApps,
   brightness,
@@ -82,6 +83,8 @@ export function Taskbar({
   windows,
 }: {
   activeDesktopIndex: number;
+  /** What the desktop in front is called — its own name, or its number. */
+  activeDesktopName: string;
   activeWindowId?: string;
   availableApps: AppDefinition[];
   brightness: number;
@@ -380,7 +383,7 @@ export function Taskbar({
           />
         </div>
         <button
-          aria-label={`작업 보기 (데스크톱 ${activeDesktopIndex + 1}/${desktopCount})`}
+          aria-label={`작업 보기 (${activeDesktopName}, ${activeDesktopIndex + 1}/${desktopCount})`}
           aria-pressed={taskViewOpen}
           className={`task-view-button${taskViewOpen ? " is-active" : ""}`}
           onClick={onToggleTaskView}
