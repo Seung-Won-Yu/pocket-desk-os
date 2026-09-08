@@ -53,6 +53,7 @@ export const CLOCK_24H_KEY = "pocket-desk-clock-24h-v1";
 export const TEXT_SCALE_KEY = "pocket-desk-text-scale-v1";
 export const FOCUS_ASSIST_KEY = "pocket-desk-focus-assist-v1";
 export const CLOCK_ALARMS_KEY = "pocket-desk-clock-alarms-v1";
+export const CALENDAR_EVENTS_KEY = "pocket-desk-calendar-events-v1";
 export const CLOCK_TIMER_KEY = "pocket-desk-clock-timer-v1";
 export const CLOCK_WORLD_KEY = "pocket-desk-clock-world-v1";
 export const RECENT_OPENS_KEY = "pocket-desk-recent-opens-v1";

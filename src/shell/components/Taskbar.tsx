@@ -8,6 +8,15 @@ import { getVfsEntryAssociation } from "../../vfs/model";
 import { formatWindowTitle } from "../windowTitle";
 import { createCalendarGrid, formatNotificationTime, getLocalDateKey } from "../startSearch";
 import { type ClockAlarm, getAlarmDateKeys } from "../clock";
+import {
+  CALENDAR_EVENT_LIMIT,
+  type CalendarEvent,
+  MAX_CALENDAR_TITLE_LENGTH,
+  formatCalendarEventDay,
+  getEventDateKeys,
+  getEventsForDate,
+  isValidEventTime,
+} from "../calendarEvents";
 import { type TaskbarPosition, isVerticalTaskbar } from "../taskbarPosition";
 import { type ArrangeMode } from "../windowArrangement";
 import { type AppDefinition, type ToastMessage, type WindowInstance } from "../types";
@@ -37,6 +46,8 @@ import {
   Volume2,
   Wifi,
   X,
+  AlarmClock,
+  Plus,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
@@ -49,11 +60,15 @@ export function Taskbar({
   availableApps,
   brightness,
   clockAlarms,
+  calendarEvents,
+  onAddCalendarEvent,
+  onRemoveCalendarEvent,
   desktopCount,
   onToggleTaskView,
   taskViewOpen,
   notificationHistory,
   onClearNotifications,
+  onNotificationCentreOpenChange,
   onOpenNotificationItem,
   onDismissNotification,
   onOpenSettingsSection,
@@ -99,11 +114,20 @@ export function Taskbar({
   notificationHistory: ToastMessage[];
   /** The clock's alarms; the tray calendar dots the days they ring on. */
   clockAlarms: ClockAlarm[];
+  /** 캘린더 일정: the entries the tray calendar lists, dots and adds to. */
+  calendarEvents: CalendarEvent[];
+  onAddCalendarEvent: (date: string, time: string | null, title: string) => void;
+  onRemoveCalendarEvent: (eventId: string) => void;
   onClearNotifications: () => void;
   /** Opens the entry a notification is about, the way Windows notifications act. */
   onOpenNotificationItem: (itemId: string) => void;
   /** Drops one notification from the centre, as Windows dismisses them singly. */
   onDismissNotification: (notificationId: string) => void;
+  /**
+   * The banners belong to the panel while it is open: the ones already up go
+   * with it, and no new one is raised until it closes.
+   */
+  onNotificationCentreOpenChange: (open: boolean) => void;
   /** Drag a pinned taskbar button onto another to rearrange them. */
   onReorderPinnedApp: (movedId: AppId, targetId: AppId) => void;
   /** The clock's 날짜 및 시간 조정 and 작업 표시줄 설정 open 설정 at their page. */
@@ -178,6 +202,17 @@ export function Taskbar({
   const taskbarMenuButtonRef = useRef<HTMLButtonElement>(null);
   const shellMenuButtonRef = useRef<HTMLButtonElement>(null);
   const [trayPanel, setTrayPanel] = useState<"notifications" | "quick" | null>(null);
+  /*
+   * Reported from an effect rather than from the toggle, because the panel also
+   * closes on Escape and on a click outside it — hooking only the button would
+   * have left the shell believing the centre was still open, and suppressed
+   * every banner from then on.
+   */
+  const centreOpenChangeRef = useRef(onNotificationCentreOpenChange);
+  centreOpenChangeRef.current = onNotificationCentreOpenChange;
+  useEffect(() => {
+    centreOpenChangeRef.current(trayPanel === "notifications");
+  }, [trayPanel]);
   const availableAppIds = new Set(availableApps.map((app) => app.id));
   const pinnedApps = pinnedAppIds
     .filter((appId) => availableAppIds.has(appId))
@@ -815,8 +850,11 @@ export function Taskbar({
         )}
         {trayPanel === "notifications" && (
           <NotificationCenterPanel
+            calendarEvents={calendarEvents}
             clockAlarms={clockAlarms}
             focusAssist={focusAssist}
+            onAddCalendarEvent={onAddCalendarEvent}
+            onRemoveCalendarEvent={onRemoveCalendarEvent}
             onSetFocusAssist={onSetFocusAssist}
             notifications={notificationHistory}
             onClearNotifications={onClearNotifications}
@@ -977,17 +1015,25 @@ export function QuickSettingsPanel({
 }
 
 export function NotificationCenterPanel({
+  calendarEvents = [],
   clockAlarms = [],
   focusAssist,
+  onAddCalendarEvent,
+  onRemoveCalendarEvent,
   onSetFocusAssist,
   notifications,
   onClearNotifications,
   onDismissNotification,
   onOpenNotificationItem,
 }: {
+  /** 캘린더 일정: the entries the picked day's agenda lists, and the grid dots. */
+  calendarEvents?: CalendarEvent[];
   /** Alarms mark their days on the calendar, as Windows dots days with events. */
   clockAlarms?: ClockAlarm[];
   focusAssist: boolean;
+  /** A time of null is an all-day entry, which carries no reminder. */
+  onAddCalendarEvent?: (date: string, time: string | null, title: string) => void;
+  onRemoveCalendarEvent?: (eventId: string) => void;
   onSetFocusAssist: (enabled: boolean) => void;
   notifications: ToastMessage[];
   onClearNotifications: () => void;
@@ -1003,8 +1049,37 @@ export function NotificationCenterPanel({
   const [selectedDate, setSelectedDate] = useState(
     () => new Date(now.getFullYear(), now.getMonth(), now.getDate()),
   );
+  const [draftTime, setDraftTime] = useState("");
+  const [draftTitle, setDraftTitle] = useState("");
+  const draftTitleRef = useRef<HTMLInputElement | null>(null);
   const calendarDays = createCalendarGrid(visibleMonth);
   const alarmDays = getAlarmDateKeys(clockAlarms, calendarDays);
+  const eventDays = getEventDateKeys(calendarEvents, calendarDays);
+  const selectedKey = getLocalDateKey(selectedDate);
+  const dayEvents = getEventsForDate(calendarEvents, selectedKey);
+  /*
+   * An alarm belongs to the picked day if it repeats on that weekday, or if it
+   * is a one-shot whose next ring lands there — the same rule that dots the day.
+   */
+  const dayAlarms = clockAlarms
+    .filter(
+      (alarm) =>
+        alarm.enabled &&
+        (alarm.repeatDays.includes(selectedDate.getDay()) ||
+          (alarm.repeatDays.length === 0 &&
+            getLocalDateKey(new Date(alarm.nextFireAt)) === selectedKey)),
+    )
+    .sort((a, b) => a.time.localeCompare(b.time));
+
+  const addEvent = () => {
+    const title = draftTitle.trim();
+    if (!title || !onAddCalendarEvent) return;
+    onAddCalendarEvent(selectedKey, isValidEventTime(draftTime) ? draftTime : null, title);
+    setDraftTitle("");
+    setDraftTime("");
+    // Adding one appointment usually means adding another.
+    draftTitleRef.current?.focus();
+  };
 
   return (
     <section
@@ -1166,7 +1241,7 @@ export function NotificationCenterPanel({
                 aria-pressed={isSelected}
                 className={`${isCurrentMonth ? "" : "is-outside"} ${isToday ? "is-today" : ""} ${
                   alarmDays.has(dateKey) ? "has-alarm" : ""
-                }`}
+                } ${eventDays.has(dateKey) ? "has-event" : ""}`}
                 key={dateKey}
                 onClick={() => setSelectedDate(date)}
                 type="button"
@@ -1176,32 +1251,90 @@ export function NotificationCenterPanel({
             );
           })}
         </div>
-        {/* Windows shows the picked day under the grid; picking one here used
-            to change nothing visible at all. No agenda exists to show, and it
-            says so instead of pretending. */}
+        {/* Windows shows the picked day under the grid, with what is on it and
+            a line to add something. */}
         <p className="tray-calendar-selection">
           {selectedDate.toLocaleDateString("ko-KR", {
-            month: "long",
             day: "numeric",
+            month: "long",
             weekday: "long",
           })}
           <span>
-            {alarmDays.has(getLocalDateKey(selectedDate))
-              ? `알람 ${clockAlarms
-                  .filter(
-                    (alarm) =>
-                      alarm.enabled &&
-                      (alarm.repeatDays.includes(selectedDate.getDay()) ||
-                        (alarm.repeatDays.length === 0 &&
-                          getLocalDateKey(new Date(alarm.nextFireAt)) ===
-                            getLocalDateKey(selectedDate))),
-                  )
-                  .map((alarm) => alarm.time)
-                  .sort()
-                  .join(", ")}`
-              : "일정 없음"}
+            {dayEvents.length === 0 && dayAlarms.length === 0
+              ? "일정 없음"
+              : [
+                  dayEvents.length > 0 ? `일정 ${dayEvents.length}개` : null,
+                  dayAlarms.length > 0 ? `알람 ${dayAlarms.length}개` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
           </span>
         </p>
+        {(dayEvents.length > 0 || dayAlarms.length > 0) && (
+          <ul aria-label="이 날의 일정" className="tray-agenda-list">
+            {dayAlarms.map((alarm) => (
+              <li className="is-alarm" key={alarm.id}>
+                <span className="tray-agenda-time">{alarm.time}</span>
+                <span className="tray-agenda-title">{alarm.label || "알람"}</span>
+                {/* An alarm is 알람 및 시계's; the calendar shows it and does
+                    not offer to delete something it does not own. */}
+                <AlarmClock aria-label="알람" className="tray-agenda-mark" size={13} />
+              </li>
+            ))}
+            {dayEvents.map((event) => (
+              <li key={event.id}>
+                <span className="tray-agenda-time">{event.time ?? "종일"}</span>
+                <span className="tray-agenda-title">{event.title}</span>
+                <button
+                  aria-label={`일정 삭제: ${event.title}`}
+                  className="tray-agenda-remove"
+                  onClick={() => onRemoveCalendarEvent?.(event.id)}
+                  title="일정 삭제"
+                  type="button"
+                >
+                  <X aria-hidden="true" size={12} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <form
+          className="tray-agenda-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            addEvent();
+          }}
+        >
+          <input
+            aria-label="일정 시간 (선택)"
+            onChange={(event) => setDraftTime(event.target.value)}
+            type="time"
+            value={draftTime}
+          />
+          <input
+            aria-label={`일정 제목 (${formatCalendarEventDay(selectedKey)})`}
+            maxLength={MAX_CALENDAR_TITLE_LENGTH}
+            onChange={(event) => setDraftTitle(event.target.value)}
+            placeholder="일정 추가"
+            ref={draftTitleRef}
+            type="text"
+            value={draftTitle}
+          />
+          <button
+            disabled={
+              draftTitle.trim().length === 0 || calendarEvents.length >= CALENDAR_EVENT_LIMIT
+            }
+            title={
+              calendarEvents.length >= CALENDAR_EVENT_LIMIT
+                ? `일정은 ${CALENDAR_EVENT_LIMIT}개까지 저장됩니다`
+                : "일정 추가"
+            }
+            type="submit"
+          >
+            <Plus aria-hidden="true" size={14} />
+            <span className="sr-only">일정 추가</span>
+          </button>
+        </form>
       </section>
     </section>
   );

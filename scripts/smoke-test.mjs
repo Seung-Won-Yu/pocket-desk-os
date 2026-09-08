@@ -3681,6 +3681,161 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("Escape");
     await page.waitForTimeout(200);
 
+    /*
+     * 캘린더 일정: the tray calendar keeps appointments and the shell reminds
+     * about them. The reminder is the part worth asserting — an entry that only
+     * sits in a list is a note, not an appointment — so this drives a clock the
+     * test owns and watches the reminder arrive rather than waiting out a real
+     * minute.
+     */
+    await page.locator(".system-tray-clock-button").click();
+    const calendarCentre = page.locator(".notification-center-panel");
+    await calendarCentre.waitFor({ state: "visible" });
+    assert(
+      (await calendarCentre.locator(".tray-calendar-selection span").innerText()).trim() ===
+        "일정 없음",
+      "The tray calendar claims to have entries before any were added",
+    );
+
+    const todayKey = await page.evaluate(() => {
+      const now = new Date();
+      return [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, "0"),
+        String(now.getDate()).padStart(2, "0"),
+      ].join("-");
+    });
+    await calendarCentre.getByLabel(/일정 제목/).fill("치과 예약");
+    await calendarCentre.getByLabel(/일정 제목/).press("Enter");
+    await page.waitForTimeout(200);
+    // A minute from now, so the reminder is armed rather than already past.
+    const soonTime = await page.evaluate(() => {
+      const soon = new Date(Date.now() + 60000);
+      return `${String(soon.getHours()).padStart(2, "0")}:${String(soon.getMinutes()).padStart(2, "0")}`;
+    });
+    await calendarCentre.getByLabel("일정 시간 (선택)").fill(soonTime);
+    await calendarCentre.getByLabel(/일정 제목/).fill("팀 회의");
+    await calendarCentre.getByLabel(/일정 제목/).press("Enter");
+    await page.waitForTimeout(250);
+
+    const agendaRows = calendarCentre.locator(".tray-agenda-list li");
+    const agenda = await agendaRows.allInnerTexts();
+    assert(
+      agenda.length === 2 && agenda[0].startsWith("종일") && agenda[0].includes("치과 예약"),
+      `The agenda reads ${JSON.stringify(agenda)}; an all-day entry belongs first`,
+    );
+    assert(
+      (await calendarCentre.locator(".calendar-days button.has-event").count()) === 1,
+      "The day carrying the entries is not marked on the grid",
+    );
+    const storedEvents = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("pocket-desk-calendar-events-v1") ?? "[]"),
+    );
+    assert(
+      storedEvents.length === 2 &&
+        storedEvents.every((event) => event.date === todayKey) &&
+        storedEvents.some((event) => event.time === null && event.remindAt === null),
+      `The entries were stored as ${JSON.stringify(storedEvents)}`,
+    );
+
+    /*
+     * An entry written for a moment that has already gone by must not set off a
+     * reminder for it. Checked with the centre closed: an open centre holds all
+     * banners back, so leaving it open would prove nothing.
+     */
+    await calendarCentre.getByLabel("일정 시간 (선택)").fill("00:01");
+    await calendarCentre.getByLabel(/일정 제목/).fill("지난 일정");
+    await calendarCentre.getByLabel(/일정 제목/).press("Enter");
+    await page.waitForTimeout(200);
+    await page.keyboard.press("Escape");
+    await calendarCentre.waitFor({ state: "hidden" });
+    await page.waitForTimeout(900);
+    assert(
+      (await page.locator(".toast").count()) === 0,
+      `Writing down a past appointment set off ${await page.locator(".toast").count()} reminder(s)`,
+    );
+    await page.locator(".system-tray-clock-button").click();
+    await calendarCentre.waitFor({ state: "visible" });
+
+    await calendarCentre.getByRole("button", { name: "일정 삭제: 치과 예약" }).click();
+    await page.waitForTimeout(200);
+    assert(
+      (await agendaRows.allInnerTexts()).every((row) => !row.includes("치과 예약")),
+      "일정 삭제 left the entry on the agenda",
+    );
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+
+    // The reminder itself, on a clock this test drives forward.
+    const reminderContext = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+    });
+    try {
+      await reminderContext.clock.install({ time: new Date("2026-09-08T10:00:00") });
+      const reminderPage = await reminderContext.newPage();
+      await reminderPage.goto(baseUrl, { waitUntil: "load" });
+      await unlockPocketDesk(reminderPage);
+      await reminderPage.locator(".system-tray-clock-button").click();
+      const reminderCentre = reminderPage.locator(".notification-center-panel");
+      await reminderCentre.waitFor({ state: "visible" });
+      await reminderCentre.getByLabel("일정 시간 (선택)").fill("10:05");
+      await reminderCentre.getByLabel(/일정 제목/).fill("팀 회의");
+      await reminderCentre.getByLabel(/일정 제목/).press("Enter");
+      await reminderPage.waitForTimeout(200);
+      assert(
+        (await reminderPage.locator(".toast").count()) === 0,
+        "The reminder arrived before its moment",
+      );
+
+      /*
+       * With the centre open Windows raises no banner — the panel is already
+       * showing the same notification, and both are anchored to the tray. The
+       * notification still has to land in the centre.
+       */
+      await reminderContext.clock.fastForward("05:30");
+      await reminderPage.waitForTimeout(400);
+      assert(
+        (await reminderPage.locator(".toast").count()) === 0,
+        "A banner was raised on top of the open notification centre",
+      );
+      assert(
+        (await reminderCentre.innerText()).includes("팀 회의"),
+        "The reminder did not reach the notification centre",
+      );
+
+      // Closed, and the next reminder does raise a banner.
+      await reminderCentre.getByLabel("일정 시간 (선택)").fill("10:20");
+      await reminderCentre.getByLabel(/일정 제목/).fill("점심 약속");
+      await reminderCentre.getByLabel(/일정 제목/).press("Enter");
+      await reminderPage.waitForTimeout(200);
+      await reminderPage.keyboard.press("Escape");
+      await reminderCentre.waitFor({ state: "hidden" });
+      await reminderContext.clock.fastForward("15:10");
+      await reminderPage.waitForTimeout(400);
+      const reminderToasts = await reminderPage.locator(".toast").allInnerTexts();
+      assert(
+        reminderToasts.some((toast) => toast.includes("점심 약속") && toast.includes("10:20")),
+        `The reminder did not arrive. On screen: ${reminderToasts.join(" | ") || "(nothing)"}`,
+      );
+      const deliveredOnce = await reminderPage.locator(".toast").count();
+      await reminderContext.clock.fastForward("05:00");
+      await reminderPage.waitForTimeout(400);
+      assert(
+        (await reminderPage.locator(".toast").count()) <= deliveredOnce,
+        "The reminder arrived a second time",
+      );
+      assert(
+        (await reminderPage
+          .evaluate(() =>
+            JSON.parse(localStorage.getItem("pocket-desk-calendar-events-v1") ?? "[]"),
+          )
+          .then((events) => events.every((event) => event.notified))) === true,
+        "A delivered reminder was not marked delivered, so a reload would repeat it",
+      );
+    } finally {
+      await reminderContext.close();
+    }
+
     // 알림 센터: a notification that names a file opens it.
     await page.locator(".tray-clock").click();
     const centre = page.locator(".notification-center-panel");

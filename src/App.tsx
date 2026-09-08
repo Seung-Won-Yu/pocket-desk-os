@@ -160,6 +160,17 @@ import {
   type ClockTimer,
 } from "./shell/clock";
 import {
+  type CalendarEvent,
+  addCalendarEvent,
+  collectDueCalendarEvents,
+  createCalendarEvent,
+  formatCalendarEventDay,
+  isMissedEventReminder,
+  loadCalendarEvents,
+  persistCalendarEvents,
+  removeCalendarEvent,
+} from "./shell/calendarEvents";
+import {
   SHELL_EVENT_LOGON,
   SHELL_EVENT_POWER_OFF,
   SHELL_EVENT_PROCESS_ENDED,
@@ -333,6 +344,10 @@ export default function App() {
    * nothing was stored.
    */
   const [clockAlarms, setClockAlarms] = useState<ClockAlarm[]>(() => loadClockAlarms());
+  /** 캘린더 일정: appointments the tray calendar keeps, and the shell reminds about. */
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(() =>
+    loadCalendarEvents(),
+  );
   const [clockTimer, setClockTimer] = useState<ClockTimer>(() => loadClockTimer());
   const [stickyNotes, setStickyNotes] = useState<StickyNoteStore>(() => loadStickyNotes());
   /*
@@ -356,6 +371,13 @@ export default function App() {
   // notify() outlives the render that called it, so it reads the setting here.
   const focusAssistRef = useRef(focusAssist);
   focusAssistRef.current = focusAssist;
+  /*
+   * The notification centre being open is the other reason not to raise a
+   * banner: the panel is already showing the same notification, and both are
+   * anchored to the tray, so a banner would land on top of the panel. Windows
+   * does not show one while the action centre is open.
+   */
+  const notificationCentreOpenRef = useRef(false);
 
   /*
    * Typing in a note rewrote the whole store on every keystroke — a
@@ -394,6 +416,10 @@ export default function App() {
   useEffect(() => {
     persistClockAlarms(clockAlarms);
   }, [clockAlarms]);
+
+  useEffect(() => {
+    persistCalendarEvents(calendarEvents);
+  }, [calendarEvents]);
 
   useEffect(() => {
     persistClockTimer(clockTimer);
@@ -932,7 +958,8 @@ export default function App() {
      * goes to the centre below, so nothing is lost — it waits there with an
      * unread count, which is exactly what Windows' Focus assist does.
      */
-    if (!focusAssistRef.current) {
+    const showBanner = !focusAssistRef.current && !notificationCentreOpenRef.current;
+    if (showBanner) {
       setToasts((current) => {
         // A toast pushed out by the cap unmounts without a pointerleave/blur,
         // so its hold would otherwise outlive it and re-arm its timer forever.
@@ -967,7 +994,7 @@ export default function App() {
       ),
     );
     // A toast asking a question needs longer on screen than one stating a fact.
-    if (!focusAssistRef.current) {
+    if (showBanner) {
       scheduleToastDismiss(nextToast.actions.length > 0 ? 9000 : 3400);
     }
   };
@@ -1033,6 +1060,27 @@ export default function App() {
               );
             },
             title: isMissedAlarmFire(alarm, timestamp) ? "놓친 알람" : "알람",
+            tone: "info",
+          });
+        }
+        playSound("success");
+      }
+
+      /*
+       * 캘린더 일정 rides the same tick, for the same reason: an appointment
+       * whose reminder only arrives while some window is open is a note, not a
+       * reminder. One that came due while the tab was closed arrives as 놓친
+       * 일정 on the first tick after unlock.
+       */
+      const dueEvents = collectDueCalendarEvents(calendarEvents, timestamp);
+      if (dueEvents.due.length > 0) {
+        setCalendarEvents(dueEvents.next);
+        for (const event of dueEvents.due) {
+          notify({
+            detail: `${formatCalendarEventDay(event.date)}${event.time ? ` ${event.time}` : ""}`,
+            title: isMissedEventReminder(event, timestamp)
+              ? `놓친 일정 · ${event.title}`
+              : event.title,
             tone: "info",
           });
         }
@@ -4769,8 +4817,25 @@ export default function App() {
         taskViewOpen={taskViewOpen}
         notificationHistory={notificationHistory}
         brightness={displayBrightness}
+        calendarEvents={calendarEvents}
         clockAlarms={clockAlarms}
+        onAddCalendarEvent={(date, time, title) => {
+          const event = createCalendarEvent(date, time, title, Date.now());
+          if (!event) return;
+          setCalendarEvents((current) => addCalendarEvent(current, event));
+          playSound("toggle");
+        }}
+        onRemoveCalendarEvent={(eventId) => {
+          setCalendarEvents((current) => removeCalendarEvent(current, eventId));
+          playSound("toggle");
+        }}
         onClearNotifications={clearNotificationHistory}
+        onNotificationCentreOpenChange={(open) => {
+          notificationCentreOpenRef.current = open;
+          // The banners standing when it opens are the same notifications the
+          // panel now lists, so they go with it.
+          if (open) setToasts([]);
+        }}
         onDismissNotification={dismissNotification}
         onOpenSettingsSection={openSettingsSection}
         onReorderPinnedApp={(movedId, targetId) =>

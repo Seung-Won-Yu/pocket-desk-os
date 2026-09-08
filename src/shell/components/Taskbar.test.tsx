@@ -57,6 +57,9 @@ function makeHandlers() {
     onCloseWindow: vi.fn(),
     onOpenRecentDocument: vi.fn(),
     onToggleWindow: vi.fn(),
+    onAddCalendarEvent: vi.fn(),
+    onNotificationCentreOpenChange: vi.fn(),
+    onRemoveCalendarEvent: vi.fn(),
   };
 }
 
@@ -69,6 +72,7 @@ function makeProps(
     activeDesktopName: "데스크톱 1",
     focusAssist: false,
     taskbarPosition: "bottom",
+    calendarEvents: [],
     availableApps: appCatalog,
     recentDocumentsByApp: new Map(),
     brightness: 100,
@@ -722,5 +726,97 @@ describe("세로 작업 표시줄", () => {
     const menu = screen.getByRole("menu");
     expect(menu.style.left).not.toBe("");
     expect(menu.style.top).toBe("");
+  });
+});
+
+describe("트레이 캘린더 일정", () => {
+  const today = new Date();
+  const todayKey = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, "0"),
+    String(today.getDate()).padStart(2, "0"),
+  ].join("-");
+
+  const events = [
+    {
+      date: todayKey,
+      id: "event-timed",
+      notified: false,
+      remindAt: null,
+      time: "14:30",
+      title: "팀 회의",
+    },
+    {
+      date: todayKey,
+      id: "event-all-day",
+      notified: false,
+      remindAt: null,
+      time: null,
+      title: "치과 예약",
+    },
+  ];
+
+  async function openCentre(overrides: Partial<TaskbarProps> = {}) {
+    const rendered = renderTaskbar(overrides);
+    await rendered.user.click(screen.getByRole("button", { name: /알림 센터 열기/ }));
+    return rendered;
+  }
+
+  it("고른 날의 일정을 종일 먼저, 시간 순으로 보여준다", async () => {
+    await openCentre({ calendarEvents: events });
+
+    const rows = screen.getByRole("list", { name: "이 날의 일정" }).querySelectorAll("li");
+    expect([...rows].map((row) => row.textContent)).toEqual(["종일치과 예약", "14:30팀 회의"]);
+    expect(screen.getByText("일정 2개")).toBeInTheDocument();
+  });
+
+  it("일정이 없으면 없다고 말한다", async () => {
+    await openCentre();
+
+    expect(screen.getByText("일정 없음")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "이 날의 일정" })).toBeNull();
+  });
+
+  it("제목만 넣으면 종일 일정으로 추가한다", async () => {
+    const { handlers, user } = await openCentre();
+
+    await user.type(screen.getByLabelText(/일정 제목/), "치과 예약");
+    await user.click(screen.getByRole("button", { name: "일정 추가" }));
+
+    expect(handlers.onAddCalendarEvent).toHaveBeenCalledWith(todayKey, null, "치과 예약");
+  });
+
+  it("제목이 비어 있으면 추가 단추가 눌리지 않는다", async () => {
+    await openCentre();
+
+    expect(screen.getByRole("button", { name: "일정 추가" })).toBeDisabled();
+  });
+
+  it("일정을 지우면 그 일정만 지운다", async () => {
+    const { handlers, user } = await openCentre({ calendarEvents: events });
+
+    await user.click(screen.getByRole("button", { name: "일정 삭제: 팀 회의" }));
+
+    expect(handlers.onRemoveCalendarEvent).toHaveBeenCalledWith("event-timed");
+  });
+
+  it("일정이 있는 날에 표시를 남긴다", async () => {
+    const { view } = await openCentre({ calendarEvents: events });
+
+    const dotted = view.container.querySelectorAll(".calendar-days button.has-event");
+    expect(dotted).toHaveLength(1);
+    expect(dotted[0].textContent).toBe(String(today.getDate()));
+  });
+
+  it("알림 센터가 열리고 닫히는 것을 셸에 알린다", async () => {
+    const { handlers, user } = await openCentre();
+
+    expect(handlers.onNotificationCentreOpenChange).toHaveBeenLastCalledWith(true);
+
+    // Escape closes it too; reporting only the button would leave the shell
+    // believing the centre was still open and suppress every later banner.
+    await user.keyboard("{Escape}");
+
+    expect(handlers.onNotificationCentreOpenChange).toHaveBeenLastCalledWith(false);
   });
 });

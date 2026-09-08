@@ -227,7 +227,13 @@ async function runAudit(baseUrl) {
     await page.keyboard.press("Escape");
 
     await page.locator(".tray-clock").click();
-    await page.locator(".notification-center-panel").waitFor({ state: "visible" });
+    const notificationCentre = page.locator(".notification-center-panel");
+    await notificationCentre.waitFor({ state: "visible" });
+    // With an entry on the day, the agenda list and its delete buttons exist to
+    // be audited; an empty calendar renders neither.
+    await notificationCentre.getByLabel(/일정 제목/).fill("치과 예약");
+    await notificationCentre.getByLabel(/일정 제목/).press("Enter");
+    await page.waitForTimeout(250);
     defects.push(...(await auditSurface(page, "알림 센터", ".notification-center-panel")));
     await page.keyboard.press("Escape");
 
