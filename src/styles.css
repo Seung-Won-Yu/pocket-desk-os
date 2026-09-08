@@ -1,3 +1,13 @@
+/*
+ * 텍스트 크기: one multiplier on the root font size, which every `rem` in this
+ * file already reads. The chrome around the text keeps its pixel sizes, the
+ * way Windows' own text-size slider works — the window buttons do not grow
+ * with the labels.
+ */
+html {
+  font-size: calc(100% * var(--text-scale, 1));
+}
+
 :root {
   /* Mirrors APP_BAR_HEIGHT. The work area is everything above the taskbar, so
      maximize, snap and Task View all measure against this one value. */
@@ -1951,7 +1961,7 @@ button {
 .taskbar-menu-caption {
   color: var(--muted);
   display: block;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 600;
   padding: 6px 10px 2px;
 }
@@ -9637,7 +9647,7 @@ button {
 
 .clock-now {
   color: var(--text);
-  font-size: 30px;
+  font-size: 1.875rem;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   letter-spacing: 0.5px;
@@ -9657,7 +9667,7 @@ button {
   color: var(--muted);
   cursor: pointer;
   display: inline-flex;
-  font-size: 13px;
+  font-size: 0.8125rem;
   gap: 6px;
   padding: 8px 12px;
 }
@@ -9694,7 +9704,7 @@ button {
   border: 1px solid var(--line);
   border-radius: 6px;
   color: var(--text);
-  font-size: 13px;
+  font-size: 0.8125rem;
   padding: 7px 9px;
 }
 
@@ -9714,7 +9724,7 @@ button {
   color: var(--text);
   cursor: pointer;
   display: inline-flex;
-  font-size: 13px;
+  font-size: 0.8125rem;
   gap: 6px;
   justify-content: center;
   padding: 7px 14px;
@@ -9735,14 +9745,14 @@ button {
 
 .clock-summary {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 0.8125rem;
   margin: 0;
 }
 
 .clock-empty,
 .clock-hint {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1.6;
   margin: 0;
 }
@@ -9776,7 +9786,7 @@ button {
   border: 1px solid transparent;
   border-radius: 6px;
   color: var(--text);
-  font-size: 20px;
+  font-size: 1.25rem;
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   padding: 2px 4px;
@@ -9796,7 +9806,7 @@ button {
 }
 
 .clock-alarm-meta strong {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -9805,7 +9815,7 @@ button {
 
 .clock-alarm-meta small {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .clock-alarm-toggle {
@@ -9832,7 +9842,7 @@ button {
 
 .clock-readout {
   color: var(--text);
-  font-size: 56px;
+  font-size: 3.5rem;
   font-variant-numeric: tabular-nums;
   font-weight: 300;
   letter-spacing: 1px;
@@ -9863,7 +9873,7 @@ button {
 .clock-timer-setup label {
   color: var(--muted);
   display: grid;
-  font-size: 12px;
+  font-size: 0.75rem;
   gap: 4px;
   justify-items: center;
 }
@@ -9882,7 +9892,7 @@ button {
 
 .clock-laps {
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-variant-numeric: tabular-nums;
   width: 100%;
 }
@@ -9910,7 +9920,7 @@ button {
   border: 1px solid var(--line);
   border-radius: 6px;
   color: var(--text);
-  font-size: 13px;
+  font-size: 0.8125rem;
   padding: 7px 9px;
 }
 
@@ -9926,7 +9936,7 @@ button {
   color: var(--text);
   cursor: pointer;
   display: inline-flex;
-  font-size: 13px;
+  font-size: 0.8125rem;
   gap: 6px;
   padding: 7px 14px;
 }
@@ -9966,17 +9976,17 @@ button {
 }
 
 .clock-world-meta strong {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 600;
 }
 
 .clock-world-meta small {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .clock-world-time {
-  font-size: 26px;
+  font-size: 1.625rem;
   font-variant-numeric: tabular-nums;
   font-weight: 300;
 }
@@ -9993,7 +10003,7 @@ button {
   border-radius: 999px;
   color: var(--muted);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 0.6875rem;
   height: 22px;
   line-height: 1;
   padding: 0;
@@ -10061,7 +10071,7 @@ button {
 
 .browser-reader-loading {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 0.8125rem;
   padding: 24px;
   text-align: center;
 }
@@ -10167,7 +10177,7 @@ button {
   color: inherit;
   flex: 1;
   font-family: inherit;
-  font-size: 15px;
+  font-size: 0.9375rem;
   line-height: 1.5;
   min-height: 0;
   outline: none;
@@ -10689,6 +10699,81 @@ button {
   font-size: 0.76rem;
   gap: 5px;
   margin-top: 4px;
+}
+
+/* 텍스트 크기: each choice shows itself at the size it sets. */
+.settings-text-scale {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-text-scale button {
+  align-items: center;
+  background: var(--control-hover);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  min-width: 68px;
+  padding: 10px 12px;
+}
+
+.settings-text-scale button.is-selected {
+  border-color: var(--active);
+  box-shadow: inset 0 0 0 1px var(--active);
+}
+
+.settings-text-scale button small {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.settings-text-scale-sample {
+  margin-top: 4px;
+}
+
+/* The centre says why it is quiet, and offers the way out. */
+.notification-focus-banner {
+  align-items: center;
+  background: rgba(247, 200, 115, 0.14);
+  border: 1px solid rgba(247, 200, 115, 0.3);
+  border-radius: 8px;
+  color: var(--text);
+  display: flex;
+  font-size: 0.76rem;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+}
+
+.notification-focus-banner svg {
+  color: var(--accent);
+  flex: none;
+}
+
+.notification-focus-banner span {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-focus-banner button {
+  background: var(--control-hover);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--text);
+  flex: none;
+  font: inherit;
+  padding: 3px 9px;
+}
+
+/* The moon the tray shows while 집중 지원 holds the toasts back. */
+.tray-focus-assist-mark {
+  color: var(--accent);
+  flex: none;
+  margin-right: 2px;
 }
 
 /* A desktop's name is edited in place in Task View, beside its ✕. */

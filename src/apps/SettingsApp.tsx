@@ -6,12 +6,18 @@ import {
   Palette,
   RotateCcw,
   Search,
+  Type,
   UserRound,
   Volume2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { appMetadata } from "./metadata";
-import { DEFAULT_APP_CHOICES, type DefaultAppMap } from "../shell/preferences";
+import {
+  DEFAULT_APP_CHOICES,
+  type DefaultAppMap,
+  TEXT_SCALES,
+  type TextScale,
+} from "../shell/preferences";
 import type { AppId, SoundEffectName, ThemeName, WallpaperName } from "../types";
 import { normalizeSearchText } from "../utils/format";
 import { SHELL_SHORTCUTS } from "../shell/shortcuts";
@@ -19,13 +25,24 @@ import { getWallpaperPreviewStyle, wallpaperGallery } from "../wallpapers";
 
 /** Which page 설정 shows. */
 export type SettingsSection =
-  "accounts" | "apps" | "keyboard" | "personalization" | "sound" | "system" | "time";
+  | "accessibility"
+  | "accounts"
+  | "apps"
+  | "keyboard"
+  | "personalization"
+  | "sound"
+  | "system"
+  | "time";
 
 /** "Open 설정 at this page" — a fresh id per request so the same page opens twice. */
 export type SettingsLaunchRequest = { id: string; section: SettingsSection };
 
 type SettingsAppProps = {
   clock24h: boolean;
+  focusAssist: boolean;
+  setFocusAssist: (enabled: boolean) => void;
+  setTextScale: (scale: TextScale) => void;
+  textScale: TextScale;
   defaultApps: DefaultAppMap;
   setClock24h: (enabled: boolean) => void;
   setDefaultApp: (extension: string, appId: AppId) => void;
@@ -49,6 +66,10 @@ type SettingsAppProps = {
 
 export default function SettingsApp({
   clock24h,
+  focusAssist,
+  setFocusAssist,
+  setTextScale,
+  textScale,
   defaultApps,
   setClock24h,
   setDefaultApp,
@@ -92,6 +113,13 @@ export default function SettingsApp({
       label: "시스템",
       keywords: "창 바탕 화면 배치",
       aliases: "system display window desktop",
+    },
+    {
+      id: "accessibility" as const,
+      icon: Type,
+      label: "접근성",
+      keywords: "텍스트 크기 글자 크기 확대",
+      aliases: "accessibility text size font scale larger",
     },
     {
       id: "personalization" as const,
@@ -268,22 +296,67 @@ export default function SettingsApp({
           </>
         )}
         {section === "system" && (
+          <>
+            <section className="settings-section">
+              <h3>집중 지원</h3>
+              <p>
+                켜면 알림이 화면에 뜨지 않고 알림 센터에서 기다립니다. 알림 자체는 그대로
+                도착합니다.
+              </p>
+              <label className="settings-toggle">
+                <input
+                  checked={focusAssist}
+                  onChange={(event) => setFocusAssist(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>
+                  <strong>알림을 화면에 띄우지 않음</strong>
+                  <small>{focusAssist ? "켜짐 · 알림 센터에 모임" : "꺼짐"}</small>
+                </span>
+              </label>
+            </section>
+            <section className="settings-section">
+              <h3>창과 바탕 화면</h3>
+              <p>창 위치와 크기, 아이콘 위치를 기본값으로 되돌립니다.</p>
+              <div className="settings-action-row">
+                <button className="settings-action" onClick={resetWindowLayout} type="button">
+                  <RotateCcw aria-hidden="true" size={16} />창 배치 초기화
+                </button>
+                <button
+                  className="settings-action"
+                  onClick={resetDesktopIconLayout}
+                  type="button"
+                >
+                  <RotateCcw aria-hidden="true" size={16} />
+                  아이콘 배치 초기화
+                </button>
+              </div>
+            </section>
+          </>
+        )}
+        {section === "accessibility" && (
           <section className="settings-section">
-            <h3>창과 바탕 화면</h3>
-            <p>창 위치와 크기, 아이콘 위치를 기본값으로 되돌립니다.</p>
-            <div className="settings-action-row">
-              <button className="settings-action" onClick={resetWindowLayout} type="button">
-                <RotateCcw aria-hidden="true" size={16} />창 배치 초기화
-              </button>
-              <button
-                className="settings-action"
-                onClick={resetDesktopIconLayout}
-                type="button"
-              >
-                <RotateCcw aria-hidden="true" size={16} />
-                아이콘 배치 초기화
-              </button>
+            <h3>텍스트 크기</h3>
+            <p>
+              셸과 앱의 글자 크기를 함께 키웁니다. 창 단추와 아이콘은 그대로입니다 — 윈도우의
+              텍스트 크기 조정과 같은 방식입니다.
+            </p>
+            <div aria-label="텍스트 크기" className="settings-text-scale" role="radiogroup">
+              {TEXT_SCALES.map((scale) => (
+                <button
+                  aria-checked={textScale === scale}
+                  className={textScale === scale ? "is-selected" : ""}
+                  key={scale}
+                  onClick={() => setTextScale(scale)}
+                  role="radio"
+                  type="button"
+                >
+                  <span style={{ fontSize: `${Math.round(13 * (scale / 100))}px` }}>가나</span>
+                  <small>{scale}%</small>
+                </button>
+              ))}
             </div>
+            <p className="settings-text-scale-sample">이 문장은 지금 고른 크기로 보입니다.</p>
           </section>
         )}
         {section === "sound" && (

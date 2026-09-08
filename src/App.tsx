@@ -37,6 +37,7 @@ import {
   DESKTOP_ICON_SORT_KEY,
   DESKTOP_ICON_VIEW_KEY,
   DISPLAY_BRIGHTNESS_KEY,
+  FOCUS_ASSIST_KEY,
   MAX_VIRTUAL_DESKTOPS,
   NOTE_KEY,
   NOTE_OPEN_EVENT,
@@ -51,6 +52,7 @@ import {
   SOUND_ENABLED_KEY,
   SOUND_VOLUME_KEY,
   TASKBAR_PINNED_APPS_KEY,
+  TEXT_SCALE_KEY,
   USER_NAME_KEY,
   VFS_DRAG_MIME,
   VFS_PRIMARY_CANVAS_ID,
@@ -127,11 +129,14 @@ import {
 import { SnapAssist } from "./shell/components/SnapAssist";
 import { TaskView } from "./shell/components/TaskView";
 import {
+  type DefaultAppMap,
+  type TextScale,
   loadClock24h,
   loadDefaultApps,
+  loadFocusAssist,
+  loadTextScale,
   loadUserName,
   persistDefaultApps,
-  type DefaultAppMap,
 } from "./shell/preferences";
 import { getNeighbourByPosition } from "./shell/keyboardNav";
 import { type AppContentProps, type WindowDocumentRef } from "./shell/types";
@@ -242,6 +247,8 @@ type ContentOps = Pick<
   AppContentProps,
   | "activateVfsEntry"
   | "addVfsEntries"
+  | "setFocusAssist"
+  | "setTextScale"
   | "toggleQuickAccessFolder"
   | "captureScreenshot"
   | "closeWindow"
@@ -333,6 +340,12 @@ export default function App() {
   );
   /** Only the names the user typed; an unnamed desktop is "데스크톱 N". */
   const [desktopNames, setDesktopNames] = useState<string[]>(() => loadDesktopNames());
+  const [textScale, setTextScale] = useState<TextScale>(() => loadTextScale());
+  /** 집중 지원: notifications wait in the centre instead of appearing. */
+  const [focusAssist, setFocusAssist] = useState(() => loadFocusAssist());
+  // notify() outlives the render that called it, so it reads the setting here.
+  const focusAssistRef = useRef(focusAssist);
+  focusAssistRef.current = focusAssist;
 
   /*
    * Typing in a note rewrote the whole store on every keystroke — a
@@ -416,6 +429,25 @@ export default function App() {
   useEffect(() => {
     persistDesktopNames(desktopNames);
   }, [desktopNames]);
+
+  useEffect(() => {
+    // On the document element, not the shell root: `rem` resolves against the
+    // root font size, and dialogs and toasts render outside the desktop tree.
+    document.documentElement.style.setProperty("--text-scale", String(textScale / 100));
+    try {
+      localStorage.setItem(TEXT_SCALE_KEY, String(textScale));
+    } catch {
+      // A refused write costs the preference, not the session.
+    }
+  }, [textScale]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FOCUS_ASSIST_KEY, focusAssist ? "on" : "off");
+    } catch {
+      // As above.
+    }
+  }, [focusAssist]);
 
   const toggleQuickAccessFolder = (folderId: string) => {
     const next = toggleQuickAccess(quickAccessIds, folderId);
@@ -845,13 +877,20 @@ export default function App() {
       tone: toast.tone ?? "info",
     };
 
-    setToasts((current) => {
-      // A toast pushed out by the cap unmounts without a pointerleave/blur, so
-      // its hold would otherwise outlive it and re-arm its timer forever.
-      // Mutating the ref here is idempotent, so a double-invoked updater is safe.
-      for (const evicted of current.slice(0, -3)) heldToastsRef.current.delete(evicted.id);
-      return [...current.slice(-3), nextToast];
-    });
+    /*
+     * 집중 지원 suppresses the toast, not the notification: the entry still
+     * goes to the centre below, so nothing is lost — it waits there with an
+     * unread count, which is exactly what Windows' Focus assist does.
+     */
+    if (!focusAssistRef.current) {
+      setToasts((current) => {
+        // A toast pushed out by the cap unmounts without a pointerleave/blur,
+        // so its hold would otherwise outlive it and re-arm its timer forever.
+        // Mutating the ref here is idempotent, so a double-invoked updater is safe.
+        for (const evicted of current.slice(0, -3)) heldToastsRef.current.delete(evicted.id);
+        return [...current.slice(-3), nextToast];
+      });
+    }
     let heldFor = 0;
     const scheduleToastDismiss = (delay: number) => {
       window.setTimeout(() => {
@@ -878,7 +917,9 @@ export default function App() {
       ),
     );
     // A toast asking a question needs longer on screen than one stating a fact.
-    scheduleToastDismiss(nextToast.actions.length > 0 ? 9000 : 3400);
+    if (!focusAssistRef.current) {
+      scheduleToastDismiss(nextToast.actions.length > 0 ? 9000 : 3400);
+    }
   };
   notifyRef.current = notify;
 
@@ -4232,6 +4273,8 @@ export default function App() {
     moveVfsEntries,
     notify,
     addVfsEntries,
+    setFocusAssist,
+    setTextScale,
     toggleQuickAccessFolder,
     onImportLocalEntries: (imported) => {
       addVfsEntries(imported);
@@ -4280,6 +4323,8 @@ export default function App() {
       moveVfsEntries: (...args) => contentOpsRef.current.moveVfsEntries(...args),
       notify: (...args) => contentOpsRef.current.notify(...args),
       addVfsEntries: (...args) => contentOpsRef.current.addVfsEntries(...args),
+      setFocusAssist: (...args) => contentOpsRef.current.setFocusAssist(...args),
+      setTextScale: (...args) => contentOpsRef.current.setTextScale(...args),
       toggleQuickAccessFolder: (...args) =>
         contentOpsRef.current.toggleQuickAccessFolder(...args),
       onImportLocalEntries: (...args) => contentOpsRef.current.onImportLocalEntries(...args),
@@ -4363,6 +4408,8 @@ export default function App() {
       clockTimer,
       stickyNotes,
       quickAccessIds,
+      focusAssist,
+      textScale,
       defaultApps,
       desktopItems: activeDesktopItems,
       customWallpaperItemId,
@@ -4401,6 +4448,8 @@ export default function App() {
       clockTimer,
       stickyNotes,
       quickAccessIds,
+      focusAssist,
+      textScale,
       defaultApps,
       activeDesktopItems,
       customWallpaperItemId,
@@ -4650,6 +4699,8 @@ export default function App() {
       <Taskbar
         activeDesktopIndex={activeDesktopIndex}
         activeDesktopName={getDesktopName(desktopNames, activeDesktopIndex)}
+        focusAssist={focusAssist}
+        onSetFocusAssist={setFocusAssist}
         activeWindowId={activeWindowId}
         availableApps={availableApps}
         desktopCount={desktopCount}

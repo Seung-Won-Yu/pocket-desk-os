@@ -3498,6 +3498,88 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("Alt+PrintScreen");
     const windowShotToast = page.locator(".toast", { hasText: "창 스크린샷 저장됨" });
     await windowShotToast.waitFor({ state: "visible", timeout: 15000 });
+    /*
+     * 텍스트 크기: one multiplier on the root font size, which every rem in the
+     * stylesheet reads — so the whole shell grows with one setting, and the
+     * chrome around the text keeps its pixel sizes, as in Windows.
+     */
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("settings");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const scaleSettings = page.locator('article[data-app-id="settings"]').last();
+    await scaleSettings.waitFor({ state: "visible" });
+    await scaleSettings.getByRole("button", { name: "접근성" }).click();
+    await page.waitForTimeout(250);
+    const rootFontSize = () =>
+      page.evaluate(() => getComputedStyle(document.documentElement).fontSize);
+    const baseFontSize = await rootFontSize();
+    await scaleSettings.getByRole("radio", { name: /150/ }).click();
+    await page.waitForTimeout(350);
+    assert(
+      parseFloat(await rootFontSize()) === parseFloat(baseFontSize) * 1.5,
+      `텍스트 크기 150% left the root at ${await rootFontSize()} (was ${baseFontSize})`,
+    );
+    assert(
+      (await page.evaluate(() => localStorage.getItem("pocket-desk-text-scale-v1"))) === "150",
+      "The text size was not written to storage",
+    );
+    // The taskbar is outside the settings window and grows with it.
+    assert(
+      parseFloat(
+        await page.evaluate(
+          () => getComputedStyle(document.querySelector(".system-tray-clock-button")).fontSize,
+        ),
+      ) > parseFloat(baseFontSize),
+      "The taskbar did not follow the text size",
+    );
+    await scaleSettings.getByRole("radio", { name: /100/ }).click();
+    await page.waitForTimeout(300);
+    assert(
+      (await rootFontSize()) === baseFontSize,
+      "100% did not put the text size back where it started",
+    );
+    await scaleSettings.getByRole("button", { name: "설정 닫기" }).click();
+    await page.waitForTimeout(200);
+
+    /*
+     * 집중 지원: the notification still arrives, the toast is what is held
+     * back. That distinction is the whole feature, so it is what is asserted.
+     */
+    await page.getByRole("button", { name: "빠른 설정 열기" }).click();
+    await page.getByRole("button", { name: /집중 지원/ }).click();
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(250);
+    assert(
+      await page.getByRole("button", { name: /집중 지원 켜짐/ }).count(),
+      "The tray does not say 집중 지원 is on",
+    );
+    await page.keyboard.press("PrintScreen");
+    await page.waitForTimeout(2500);
+    assert(
+      (await page.locator(".toast").count()) === 0,
+      `집중 지원 let ${await page.locator(".toast").count()} toast(s) through`,
+    );
+    await page.locator(".system-tray-clock-button").click();
+    const quietCentre = page.locator(".notification-center-panel");
+    await quietCentre.waitFor({ state: "visible" });
+    assert(
+      (await quietCentre.locator(".notification-focus-banner").count()) === 1,
+      "The notification centre does not say why it is quiet",
+    );
+    assert(
+      (await quietCentre.innerText()).includes("스크린샷"),
+      "집중 지원 dropped the notification instead of holding the toast",
+    );
+    await quietCentre.locator(".notification-focus-banner button").click();
+    await page.waitForTimeout(250);
+    assert(
+      (await page.getByRole("button", { name: /집중 지원 켜짐/ }).count()) === 0,
+      "끄기 in the centre did not turn 집중 지원 off",
+    );
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+
     // 알림 센터: a notification that names a file opens it.
     await page.locator(".tray-clock").click();
     const centre = page.locator(".notification-center-panel");

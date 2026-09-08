@@ -19,7 +19,7 @@ import {
 } from "../types";
 import { type ComponentType } from "react";
 import { type LucideIcon } from "lucide-react";
-import { type DefaultAppMap } from "./preferences";
+import { type DefaultAppMap, type TextScale } from "./preferences";
 import { type ClockAlarm, type ClockTimer } from "./clock";
 import { type StickyNoteStore } from "./stickyNotes";
 import { type ScreenshotMode } from "./screenshotTypes";
@@ -262,6 +262,12 @@ export type AppContentProps = {
    * the save limit is a budget for the whole snapshot, not per file.
    */
   addVfsEntries: (entries: DesktopItem[]) => boolean;
+  /** 집중 지원: while on, a notification waits in the centre instead of appearing. */
+  focusAssist: boolean;
+  setFocusAssist: (enabled: boolean) => void;
+  /** 텍스트 크기: the multiplier on the root font size, as a percentage. */
+  textScale: TextScale;
+  setTextScale: (scale: TextScale) => void;
   /** Folders pinned to Explorer's sidebar — 빠른 액세스, shared by every window. */
   quickAccessIds: string[];
   toggleQuickAccessFolder: (folderId: string) => void;

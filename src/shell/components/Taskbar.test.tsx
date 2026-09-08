@@ -45,6 +45,7 @@ function makeHandlers() {
     onOpenStart: vi.fn(),
     onSearch: vi.fn(),
     onSetBrightness: vi.fn(),
+    onSetFocusAssist: vi.fn(),
     onSetSoundEnabled: vi.fn(),
     onSetVolume: vi.fn(),
     onShowDesktop: vi.fn(),
@@ -66,6 +67,7 @@ function makeProps(
   const props: TaskbarProps = {
     activeDesktopIndex: 0,
     activeDesktopName: "데스크톱 1",
+    focusAssist: false,
     availableApps: appCatalog,
     recentDocumentsByApp: new Map(),
     brightness: 100,
@@ -655,5 +657,35 @@ describe("알림 센터", () => {
     );
     await user.click(screen.getByRole("button", { name: "모두 지우기" }));
     expect(handlers.onClearNotifications).toHaveBeenCalled();
+  });
+});
+
+describe("집중 지원", () => {
+  it("says why the centre is quiet, and offers the way out", async () => {
+    const { handlers, user } = renderTaskbar({ focusAssist: true });
+    await user.click(screen.getByRole("button", { name: /알림 센터 열기/ }));
+    const banner = document.querySelector(".notification-focus-banner");
+    expect(banner).not.toBeNull();
+    expect(banner).toHaveTextContent("집중 지원이 켜져 있어");
+    await user.click(screen.getByRole("button", { name: "끄기" }));
+    expect(handlers.onSetFocusAssist).toHaveBeenCalledWith(false);
+  });
+
+  it("the quick toggle flips it, and the tray says it is on", async () => {
+    const { handlers, user } = renderTaskbar({ focusAssist: false });
+    // The tray button carries it in its name, since the moon is decorative.
+    expect(screen.getByRole("button", { name: /알림 센터 열기/ }).textContent).not.toContain(
+      "집중 지원",
+    );
+    await user.click(screen.getByRole("button", { name: "빠른 설정 열기" }));
+    const toggle = screen.getByRole("button", { name: /집중 지원/ });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await user.click(toggle);
+    expect(handlers.onSetFocusAssist).toHaveBeenCalledWith(true);
+  });
+
+  it("names itself on the clock button while it is on", () => {
+    renderTaskbar({ focusAssist: true });
+    expect(screen.getByRole("button", { name: /집중 지원 켜짐/ })).toBeVisible();
   });
 });

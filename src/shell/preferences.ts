@@ -1,6 +1,13 @@
 import { type AppId } from "../types";
 import { appsById } from "./appCatalog";
-import { CLOCK_24H_KEY, DEFAULT_APPS_KEY, DEFAULT_USER_NAME, USER_NAME_KEY } from "./constants";
+import {
+  CLOCK_24H_KEY,
+  DEFAULT_APPS_KEY,
+  DEFAULT_USER_NAME,
+  FOCUS_ASSIST_KEY,
+  TEXT_SCALE_KEY,
+  USER_NAME_KEY,
+} from "./constants";
 
 /** File extensions the user is allowed to reassign, and what each may open with. */
 export const DEFAULT_APP_CHOICES: Array<{
@@ -23,6 +30,42 @@ export function loadUserName() {
     return stored ? stored.slice(0, 20) : DEFAULT_USER_NAME;
   } catch {
     return DEFAULT_USER_NAME;
+  }
+}
+
+/**
+ * 텍스트 크기 — the scale Windows' own "텍스트 크기" slider applies: every
+ * label, button and body line grows, while the chrome around them keeps its
+ * size. Held as a multiplier on the root font size, so the whole shell reads
+ * it through `rem` without a single component knowing about it.
+ */
+export const TEXT_SCALES = [100, 110, 125, 150] as const;
+export type TextScale = (typeof TEXT_SCALES)[number];
+export const DEFAULT_TEXT_SCALE: TextScale = 100;
+
+export function isTextScale(value: unknown): value is TextScale {
+  return (TEXT_SCALES as readonly number[]).includes(Number(value));
+}
+
+export function loadTextScale(): TextScale {
+  try {
+    const stored = Number(localStorage.getItem(TEXT_SCALE_KEY));
+    return isTextScale(stored) ? (stored as TextScale) : DEFAULT_TEXT_SCALE;
+  } catch {
+    return DEFAULT_TEXT_SCALE;
+  }
+}
+
+/**
+ * 집중 지원 — Windows' Focus assist: notifications stop appearing on screen
+ * and wait in the notification centre instead. Nothing is dropped; the toast
+ * is what is suppressed.
+ */
+export function loadFocusAssist() {
+  try {
+    return localStorage.getItem(FOCUS_ASSIST_KEY) === "on";
+  } catch {
+    return false;
   }
 }
 

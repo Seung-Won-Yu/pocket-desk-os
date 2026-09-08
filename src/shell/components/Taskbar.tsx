@@ -23,6 +23,7 @@ import {
   Layers,
   LayoutGrid,
   MonitorDown,
+  Moon,
   Pin,
   PinOff,
   Play,
@@ -32,10 +33,10 @@ import {
   SquarePlus,
   SquareTerminal,
   Sun,
-  type LucideIcon,
   Volume2,
   Wifi,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { getNextRovingIndex, handleMenuKeyboard } from "../keyboardNav";
@@ -68,6 +69,8 @@ export function Taskbar({
   onSearch,
   searchQuery,
   onSetBrightness,
+  focusAssist,
+  onSetFocusAssist,
   onSetSoundEnabled,
   onSetVolume,
   onShowDesktop,
@@ -118,6 +121,8 @@ export function Taskbar({
   onSearch: (query: string) => void;
   searchQuery: string;
   onSetBrightness: (brightness: number) => void;
+  focusAssist: boolean;
+  onSetFocusAssist: (enabled: boolean) => void;
   onSetSoundEnabled: (enabled: boolean) => void;
   onSetVolume: (volume: number) => void;
   onShowDesktop: () => void;
@@ -739,7 +744,18 @@ export function Taskbar({
               {unreadNotificationCount > 0
                 ? `알림 센터 열기, 읽지 않은 알림 ${unreadNotificationCount}개, `
                 : "알림 센터 열기, "}
+              {focusAssist ? "집중 지원 켜짐, " : ""}
             </span>
+            {/* Windows puts a moon in the tray while Focus assist is on, so the
+                absence of toasts is something you can see rather than guess. */}
+            {focusAssist && (
+              <Moon
+                aria-hidden="true"
+                className="tray-focus-assist-mark"
+                size={13}
+                strokeWidth={2.4}
+              />
+            )}
             <Clock hour24={clock24h} />
             {/* Windows shows the unread count on the tray; nothing here said a
                 notification had arrived unless the panel happened to be open. */}
@@ -753,6 +769,8 @@ export function Taskbar({
         {trayPanel === "quick" && (
           <QuickSettingsPanel
             brightness={brightness}
+            focusAssist={focusAssist}
+            onSetFocusAssist={onSetFocusAssist}
             onOpenSettings={() => {
               setTrayPanel(null);
               onOpenApp("settings");
@@ -767,6 +785,8 @@ export function Taskbar({
         {trayPanel === "notifications" && (
           <NotificationCenterPanel
             clockAlarms={clockAlarms}
+            focusAssist={focusAssist}
+            onSetFocusAssist={onSetFocusAssist}
             notifications={notificationHistory}
             onClearNotifications={onClearNotifications}
             onDismissNotification={onDismissNotification}
@@ -828,16 +848,20 @@ export function Taskbar({
 
 export function QuickSettingsPanel({
   brightness,
+  focusAssist,
   onOpenSettings,
   onSetBrightness,
+  onSetFocusAssist,
   onSetSoundEnabled,
   onSetVolume,
   soundEnabled,
   volume,
 }: {
   brightness: number;
+  focusAssist: boolean;
   onOpenSettings: () => void;
   onSetBrightness: (brightness: number) => void;
+  onSetFocusAssist: (enabled: boolean) => void;
   onSetSoundEnabled: (enabled: boolean) => void;
   onSetVolume: (volume: number) => void;
   soundEnabled: boolean;
@@ -877,6 +901,18 @@ export function QuickSettingsPanel({
           <span>시스템 소리</span>
           <small>{soundEnabled ? "켜짐" : "꺼짐"}</small>
         </button>
+        {/* 집중 지원 sits with the other quick toggles, as it does in Windows:
+            the notifications keep arriving, they just wait in the centre. */}
+        <button
+          aria-pressed={focusAssist}
+          className={focusAssist ? "is-enabled" : ""}
+          onClick={() => onSetFocusAssist(!focusAssist)}
+          type="button"
+        >
+          <Moon aria-hidden="true" size={17} />
+          <span>집중 지원</span>
+          <small>{focusAssist ? "알림 숨김" : "꺼짐"}</small>
+        </button>
       </div>
       <label className="quick-slider">
         <Sun aria-hidden="true" size={17} />
@@ -911,6 +947,8 @@ export function QuickSettingsPanel({
 
 export function NotificationCenterPanel({
   clockAlarms = [],
+  focusAssist,
+  onSetFocusAssist,
   notifications,
   onClearNotifications,
   onDismissNotification,
@@ -918,6 +956,8 @@ export function NotificationCenterPanel({
 }: {
   /** Alarms mark their days on the calendar, as Windows dots days with events. */
   clockAlarms?: ClockAlarm[];
+  focusAssist: boolean;
+  onSetFocusAssist: (enabled: boolean) => void;
   notifications: ToastMessage[];
   onClearNotifications: () => void;
   /** Drops this one notification; Windows dismisses them one at a time too. */
@@ -958,6 +998,17 @@ export function NotificationCenterPanel({
           </button>
         )}
       </header>
+      {focusAssist && (
+        /* Windows says so at the top of the centre, with the way out: the
+           toasts are being held here, and this is where to stop holding them. */
+        <div className="notification-focus-banner">
+          <Moon aria-hidden="true" size={15} />
+          <span>집중 지원이 켜져 있어 알림이 화면에 뜨지 않습니다.</span>
+          <button onClick={() => onSetFocusAssist(false)} type="button">
+            끄기
+          </button>
+        </div>
+      )}
       {notifications.length > 0 ? (
         <div className="notification-list">
           {/* The header counts what the panel holds, so the panel shows all of
