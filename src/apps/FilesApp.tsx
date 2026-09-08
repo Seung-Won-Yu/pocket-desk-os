@@ -39,13 +39,13 @@ import {
   X,
 } from "lucide-react";
 import {
+  type ChangeEvent,
+  type FormEvent,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
-  type FormEvent,
 } from "react";
 import type React from "react";
 import AppIconTile from "../components/AppIconTile";
@@ -250,6 +250,7 @@ export default function FilesApp({
   windowId,
 }: FilesAppProps) {
   const fileListRef = useRef<HTMLDivElement | null>(null);
+  const filesRootRef = useRef<HTMLDivElement | null>(null);
   const fileContextMenuRef = useRef<HTMLDivElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const newControlRef = useRef<HTMLDivElement | null>(null);
@@ -611,6 +612,29 @@ export default function FilesApp({
     focusActive();
     window.requestAnimationFrame(focusActive);
   };
+
+  /*
+   * One rule instead of a call at every site: focus must not fall out of this
+   * window when the element holding it goes away. It has gone wrong four times
+   * — the address bar, adding a tab, closing one, and the address bar again on
+   * a slow machine, where the frame that was supposed to put focus back ran
+   * before the commit that removed the field.
+   *
+   * Restores only when focus was *lost* (nothing, or <body>), never when it
+   * moved: clicking the taskbar leaves the activeElement on a taskbar button,
+   * and pulling focus back from there would be the shell fighting the user.
+   */
+  const hadFocusRef = useRef(false);
+  useLayoutEffect(() => {
+    const root = filesRootRef.current;
+    if (!root || !hadFocusRef.current) return;
+    const active = document.activeElement;
+    if (active && active !== document.body && active !== document.documentElement) {
+      hadFocusRef.current = root.contains(active);
+      return;
+    }
+    focusFileList();
+  });
 
   const resetTransientState = () => {
     setSelectedIds([]);
@@ -1294,6 +1318,10 @@ export default function FilesApp({
   return (
     <div
       className="files-app app-fill"
+      onFocusCapture={() => {
+        hadFocusRef.current = true;
+      }}
+      ref={filesRootRef}
       // Ctrl+L belongs to the whole window in Explorer, not just the list: it
       // has to work with the search box, the toolbar, or nothing focused.
       onKeyDown={(event) => {
@@ -1587,9 +1615,9 @@ export default function FilesApp({
                   navigateToFolder(target);
                   // The field unmounts on submit; without this the window has
                   // no focus at all afterwards and Ctrl+L cannot reopen it.
-                  window.requestAnimationFrame(() =>
-                    fileListRef.current?.focus({ preventScroll: true }),
-                  );
+                  // One helper, like every other site — this used to be its own
+                  // single rAF, which is a race the guard above now also covers.
+                  focusFileList();
                 }}
               >
                 <input

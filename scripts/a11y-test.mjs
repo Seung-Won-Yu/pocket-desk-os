@@ -167,8 +167,13 @@ async function checkFocusStaysInWindow(page) {
   await check("Ctrl+T (탭 추가)");
   await page.keyboard.press("Control+w");
   await check("Ctrl+W (탭 닫기)");
+  /*
+   * Back to back on purpose. The pause that used to be here hid the race this
+   * check exists for: on a slow machine the frame that puts focus back ran
+   * before the commit that removed the address field, and focus fell to
+   * <body>. CI found it; this makes it findable here.
+   */
   await page.keyboard.press("Control+l");
-  await page.waitForTimeout(150);
   await page.keyboard.press("Enter");
   await check("Ctrl+L then Enter (주소 입력)");
 
