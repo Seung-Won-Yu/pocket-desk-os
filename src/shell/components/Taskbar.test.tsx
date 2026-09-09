@@ -73,6 +73,8 @@ function makeProps(
     focusAssist: false,
     taskbarPosition: "bottom",
     calendarEvents: [],
+    nightLight: false,
+    onSetNightLight: vi.fn(),
     availableApps: appCatalog,
     recentDocumentsByApp: new Map(),
     brightness: 100,

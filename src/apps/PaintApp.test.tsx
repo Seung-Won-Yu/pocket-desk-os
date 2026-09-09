@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { floodFill } from "./PaintApp";
+import { floodFill, getPaintTextSize } from "./PaintApp";
 
 /**
  * jsdom has no real canvas, so the 2D context is stubbed with a plain pixel
@@ -74,5 +74,19 @@ describe("floodFill", () => {
     expect(floodFill(context, 1, 1, RED)).toBe(true);
     // Everything except the 5-pixel wall is one region.
     expect(countRed(data)).toBe(7 * 7 - 5);
+  });
+});
+
+describe("getPaintTextSize", () => {
+  it("scales the type with the same control the brush uses", () => {
+    // One size control for everything about to be put down, as Paint has.
+    expect(getPaintTextSize(1)).toBe(14);
+    expect(getPaintTextSize(5)).toBe(30);
+    expect(getPaintTextSize(20)).toBe(90);
+  });
+
+  it("never asks the canvas for a zero or negative font size", () => {
+    expect(getPaintTextSize(0)).toBe(14);
+    expect(getPaintTextSize(-8)).toBe(14);
   });
 });

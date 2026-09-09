@@ -18,6 +18,7 @@ import {
   TEXT_SCALES,
   type TextScale,
 } from "../shell/preferences";
+import { MAX_NIGHT_LIGHT_STRENGTH, MIN_NIGHT_LIGHT_STRENGTH } from "../shell/nightLight";
 import {
   TASKBAR_POSITIONS,
   TASKBAR_POSITION_LABELS,
@@ -52,6 +53,10 @@ type SettingsAppProps = {
   taskbarPosition: TaskbarPosition;
   autoHideTaskbar: boolean;
   setAutoHideTaskbar: (autoHide: boolean) => void;
+  nightLight: boolean;
+  setNightLight: (enabled: boolean) => void;
+  nightLightStrength: number;
+  setNightLightStrength: (strength: number) => void;
   smallTaskbarButtons: boolean;
   setSmallTaskbarButtons: (small: boolean) => void;
   defaultApps: DefaultAppMap;
@@ -85,6 +90,10 @@ export default function SettingsApp({
   taskbarPosition,
   autoHideTaskbar,
   setAutoHideTaskbar,
+  nightLight,
+  setNightLight,
+  nightLightStrength,
+  setNightLightStrength,
   smallTaskbarButtons,
   setSmallTaskbarButtons,
   defaultApps,
@@ -128,8 +137,8 @@ export default function SettingsApp({
       id: "system" as const,
       icon: Monitor,
       label: "시스템",
-      keywords: "창 바탕 화면 배치",
-      aliases: "system display window desktop",
+      keywords: "창 바탕 화면 배치 야간 조명 집중 지원",
+      aliases: "system display window desktop night light blue focus",
     },
     {
       id: "accessibility" as const,
@@ -368,6 +377,36 @@ export default function SettingsApp({
         )}
         {section === "system" && (
           <>
+            <section className="settings-section">
+              <h3>야간 조명</h3>
+              <p>
+                화면에 따뜻한 색을 덮어 파란 빛을 줄입니다. 빠른 설정에서도 켜고 끌 수 있고,
+                세기는 껐다 켜도 그대로입니다.
+              </p>
+              <label className="settings-toggle">
+                <input
+                  checked={nightLight}
+                  onChange={(event) => setNightLight(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>
+                  <strong>야간 조명</strong>
+                  <small>{nightLight ? `켜짐 · 세기 ${nightLightStrength}` : "꺼짐"}</small>
+                </span>
+              </label>
+              <label className="settings-slider">
+                <span>세기</span>
+                <input
+                  aria-label="야간 조명 세기"
+                  max={MAX_NIGHT_LIGHT_STRENGTH}
+                  min={MIN_NIGHT_LIGHT_STRENGTH}
+                  onChange={(event) => setNightLightStrength(Number(event.target.value))}
+                  type="range"
+                  value={nightLightStrength}
+                />
+                <small>{nightLightStrength}</small>
+              </label>
+            </section>
             <section className="settings-section">
               <h3>집중 지원</h3>
               <p>

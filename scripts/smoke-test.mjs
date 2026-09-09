@@ -492,6 +492,49 @@ async function runSmoke(baseUrl) {
       (await paint.locator(".canvas-file-label").innerText()).includes("QA 그림.png"),
       "Paint Save As did not create and activate the PNG file",
     );
+    /*
+     * 그림판 텍스트 도구. A click places a field over the canvas at the point
+     * clicked; Enter puts the letters on the bitmap. Blur deliberately does not
+     * commit — measured, the window frame takes focus back the moment the click
+     * that opened the field activates the window, and a blur commit wrote half
+     * a word and closed the field before a key was pressed.
+     */
+    const paintCanvas = paint.locator(".paint-canvas");
+    const canvasBytes = () =>
+      paintCanvas.evaluate((node) => node.toDataURL("image/png").length);
+    const beforeText = await canvasBytes();
+    await paint.getByRole("button", { name: "텍스트" }).click();
+    const paintCanvasBox = await paintCanvas.boundingBox();
+    await page.mouse.click(paintCanvasBox.x + 120, paintCanvasBox.y + 90);
+    const paintTextField = paint.getByLabel("캔버스에 넣을 텍스트");
+    await paintTextField.waitFor({ state: "visible" });
+    await paintTextField.fill("취소할 글");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(250);
+    assert(
+      (await canvasBytes()) === beforeText,
+      "Escape left the cancelled text on the drawing",
+    );
+
+    await page.mouse.click(paintCanvasBox.x + 120, paintCanvasBox.y + 90);
+    await paintTextField.waitFor({ state: "visible" });
+    await paintTextField.fill("PocketDesk");
+    await paintTextField.press("Enter");
+    await page.waitForTimeout(300);
+    assert(
+      (await paint.getByLabel("캔버스에 넣을 텍스트").count()) === 0,
+      "The text field stayed open after Enter committed it",
+    );
+    assert((await canvasBytes()) !== beforeText, "The text never reached the drawing");
+    // One undo step for the whole word, not one per keystroke.
+    await paint.getByRole("button", { name: /실행 취소/ }).click();
+    await page.waitForTimeout(300);
+    assert(
+      (await canvasBytes()) === beforeText,
+      "실행 취소 did not take the text back off in one step",
+    );
+    await paint.getByRole("button", { name: "브러시" }).click();
+
     await page.keyboard.press("Control+o");
     const paintOpenDialog = paint.getByRole("dialog", { name: "열기" });
     await paintOpenDialog.waitFor({ state: "visible" });
@@ -3812,6 +3855,55 @@ async function runSmoke(baseUrl) {
     );
     await scaleSettings.getByRole("button", { name: "복원" }).click();
     await page.waitForTimeout(200);
+
+    /*
+     * 야간 조명. What matters is that the warm overlay actually paints, and that
+     * its strength is remembered separately from the switch — turning it off
+     * and on again has to come back where it was.
+     */
+    const nightAlpha = () =>
+      page.evaluate(() =>
+        Number(
+          getComputedStyle(document.querySelector(".desktop"))
+            .getPropertyValue("--night-light")
+            .trim() || 0,
+        ),
+      );
+    assert(
+      (await nightAlpha()) === 0,
+      "야간 조명 was already painting before it was turned on",
+    );
+    await scaleSettings.getByRole("button", { name: "시스템" }).click();
+    await page.waitForTimeout(250);
+    const nightToggle = scaleSettings
+      .locator(".settings-toggle", { hasText: "야간 조명" })
+      .first()
+      .locator("input");
+    await nightToggle.check();
+    await page.waitForTimeout(300);
+    const defaultWarmth = await nightAlpha();
+    assert(
+      defaultWarmth > 0 && defaultWarmth < 0.5,
+      `야간 조명 painted ${defaultWarmth}; it should warm the screen without hiding it`,
+    );
+    await scaleSettings.getByLabel("야간 조명 세기").fill("100");
+    await page.waitForTimeout(300);
+    const fullWarmth = await nightAlpha();
+    assert(
+      fullWarmth > defaultWarmth,
+      `세기 100 painted ${fullWarmth}, no warmer than the default ${defaultWarmth}`,
+    );
+    await nightToggle.uncheck();
+    await page.waitForTimeout(300);
+    assert((await nightAlpha()) === 0, "야간 조명 kept painting after it was turned off");
+    await nightToggle.check();
+    await page.waitForTimeout(300);
+    assert(
+      (await nightAlpha()) === fullWarmth,
+      "야간 조명 forgot its strength when it was switched off and on",
+    );
+    await nightToggle.uncheck();
+    await page.waitForTimeout(250);
 
     await scaleSettings.getByRole("button", { name: "설정 닫기" }).click();
     await page.waitForTimeout(200);

@@ -48,6 +48,7 @@ import {
   X,
   AlarmClock,
   Plus,
+  SunMoon,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
@@ -59,6 +60,8 @@ export function Taskbar({
   activeWindowId,
   availableApps,
   brightness,
+  nightLight,
+  onSetNightLight,
   clockAlarms,
   calendarEvents,
   onAddCalendarEvent,
@@ -108,6 +111,9 @@ export function Taskbar({
   activeWindowId?: string;
   availableApps: AppDefinition[];
   brightness: number;
+  /** 야간 조명 — the warm wash, toggled from 빠른 설정. */
+  nightLight: boolean;
+  onSetNightLight: (enabled: boolean) => void;
   desktopCount: number;
   onToggleTaskView: () => void;
   taskViewOpen: boolean;
@@ -858,6 +864,8 @@ export function Taskbar({
         {trayPanel === "quick" && (
           <QuickSettingsPanel
             brightness={brightness}
+            nightLight={nightLight}
+            onSetNightLight={onSetNightLight}
             focusAssist={focusAssist}
             onSetFocusAssist={onSetFocusAssist}
             onOpenSettings={() => {
@@ -940,6 +948,8 @@ export function Taskbar({
 
 export function QuickSettingsPanel({
   brightness,
+  nightLight,
+  onSetNightLight,
   focusAssist,
   onOpenSettings,
   onSetBrightness,
@@ -950,6 +960,8 @@ export function QuickSettingsPanel({
   volume,
 }: {
   brightness: number;
+  nightLight: boolean;
+  onSetNightLight: (enabled: boolean) => void;
   focusAssist: boolean;
   onOpenSettings: () => void;
   onSetBrightness: (brightness: number) => void;
@@ -1004,6 +1016,18 @@ export function QuickSettingsPanel({
           <Moon aria-hidden="true" size={17} />
           <span>집중 지원</span>
           <small>{focusAssist ? "알림 숨김" : "꺼짐"}</small>
+        </button>
+        {/* 야간 조명: the same quick toggle Windows puts here, with its strength
+            in 설정 → 시스템 → 디스플레이. */}
+        <button
+          aria-pressed={nightLight}
+          className={nightLight ? "is-enabled" : ""}
+          onClick={() => onSetNightLight(!nightLight)}
+          type="button"
+        >
+          <SunMoon aria-hidden="true" size={17} />
+          <span>야간 조명</span>
+          <small>{nightLight ? "켜짐" : "꺼짐"}</small>
         </button>
       </div>
       <label className="quick-slider">

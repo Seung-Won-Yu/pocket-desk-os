@@ -194,6 +194,22 @@ button {
   z-index: 9890;
 }
 
+/*
+ * 야간 조명. A second overlay rather than a filter on the shell: a filter would
+ * re-raster every window on each step of the strength slider, and this is one
+ * composited layer that takes no pointer events. Above the dim, so the two
+ * stack the way brightness and warmth do on a real panel.
+ */
+.desktop::before {
+  background: rgba(255, 148, 42, var(--night-light, 0));
+  content: "";
+  inset: 0;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  position: absolute;
+  z-index: 9891;
+}
+
 .wallpaper-ribbon {
   --desktop-wallpaper:
     linear-gradient(rgba(0, 16, 48, 0.04), rgba(0, 14, 36, 0.1)),
@@ -11824,4 +11840,55 @@ button {
 [data-taskbar-small="on"][data-taskbar="left"] .start-button,
 [data-taskbar-small="on"][data-taskbar="right"] .start-button {
   width: 30px;
+}
+
+/* ---------- 야간 조명 세기 ---------- */
+
+.settings-slider {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 3rem minmax(0, 1fr) 2.5rem;
+  margin-top: 10px;
+}
+
+.settings-slider > span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.settings-slider input[type="range"] {
+  accent-color: var(--active);
+  width: 100%;
+}
+
+.settings-slider > small {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ---------- 그림판 텍스트 도구 ---------- */
+
+.paint-canvas-wrap {
+  position: relative;
+}
+
+/*
+ * The field sits over the canvas at the point that was clicked, at the size
+ * and colour the text will land in — so what is typed looks like what will be
+ * on the bitmap, rather than being a dialog somewhere else.
+ */
+.paint-text-input {
+  background: transparent;
+  border: 1px dashed currentColor;
+  border-radius: 2px;
+  font-family: Inter, system-ui, sans-serif;
+  line-height: 1.1;
+  margin: 0;
+  min-width: 6ch;
+  outline: none;
+  padding: 0 2px;
+  position: absolute;
+  width: auto;
 }

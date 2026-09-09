@@ -276,6 +276,11 @@ export type AppContentProps = {
   setAutoHideTaskbar: (autoHide: boolean) => void;
   smallTaskbarButtons: boolean;
   setSmallTaskbarButtons: (small: boolean) => void;
+  /** 야간 조명 and how warm it goes. */
+  nightLight: boolean;
+  setNightLight: (enabled: boolean) => void;
+  nightLightStrength: number;
+  setNightLightStrength: (strength: number) => void;
   /** 폴더 옵션 — shell-wide, so Explorer and the desktop agree. */
   showFileExtensions: boolean;
   setShowFileExtensions: (show: boolean) => void;

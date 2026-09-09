@@ -22,7 +22,7 @@ import type { DesktopItem } from "../types";
 import { VFS_PICTURES_ID } from "../vfs/model";
 import { handleMenuKeyboard } from "../shell/keyboardNav";
 
-type PaintTool = "brush" | "eraser" | "fill" | "line" | "rect" | "ellipse";
+type PaintTool = "brush" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "text";
 const PAINT_SAVE_EVENT = "pocket-desk-save-paint";
 const PAINT_OPEN_EVENT = "pocket-desk-open-paint";
 const PAINT_SAVE_AS_EVENT = "pocket-desk-save-paint-as";
@@ -73,7 +73,17 @@ const paintTools: Array<{ id: PaintTool; label: string }> = [
   { id: "line", label: "선" },
   { id: "rect", label: "사각형" },
   { id: "ellipse", label: "타원" },
+  { id: "text", label: "텍스트" },
 ];
+
+/**
+ * The type size the 텍스트 tool writes at. Paint ties it to the same size
+ * control the brush uses rather than adding a second one, so the slider means
+ * "how big is what I am about to put down" for every tool.
+ */
+export function getPaintTextSize(brushSize: number) {
+  return Math.round(Math.max(1, brushSize) * 4 + 10);
+}
 
 /**
  * Paint's paint-bucket: every pixel connected to the click that shares its
@@ -177,6 +187,17 @@ export default function PaintApp({
   const activeCanvas =
     canvasEntries.find((item) => item.id === activeCanvasId) ?? canvasEntries[0];
   const [tool, setTool] = useState<PaintTool>("brush");
+  /*
+   * 텍스트: a click places the caret and a field appears over the canvas at
+   * that spot. Nothing is on the bitmap until it is committed, so Escape leaves
+   * the drawing exactly as it was and undo has one step to take, not one per
+   * keystroke.
+   */
+  const [textDraft, setTextDraft] = useState<{ value: string; x: number; y: number } | null>(
+    null,
+  );
+  const textDraftRef = useRef(textDraft);
+  textDraftRef.current = textDraft;
   const [color, setColor] = useState("#0f6c81");
   const [size, setSize] = useState(5);
   // Windows' Paint fills a shape with the second colour; here one switch says
@@ -418,6 +439,8 @@ export default function PaintApp({
   };
 
   const save = () => {
+    // Saving with text still in the field would write a picture without it.
+    commitTextRef.current();
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -554,6 +577,13 @@ export default function PaintApp({
     strokeRectRef.current = null;
     const point = getPoint(event);
 
+    if (tool === "text") {
+      // A second click while typing puts the first text down and starts again.
+      commitTextRef.current();
+      setTextDraft({ value: "", x: point.x, y: point.y });
+      return;
+    }
+
     if (tool === "fill") {
       /*
        * Snapshot first — undo needs the pre-fill bitmap — but a click on an
@@ -575,6 +605,31 @@ export default function PaintApp({
     shapeSnapshot.current = context.getImageData(0, 0, canvas.width, canvas.height);
     canvas.setPointerCapture(event.pointerId);
   };
+
+  const commitText = () => {
+    const draft = textDraftRef.current;
+    setTextDraft(null);
+    if (!draft) return;
+    const value = draft.value.trim();
+    if (!value) return;
+
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+
+    pushUndoSnapshot();
+    context.save();
+    context.fillStyle = color;
+    context.textBaseline = "top";
+    context.font = `${getPaintTextSize(size)}px Inter, system-ui, sans-serif`;
+    context.fillText(value, draft.x, draft.y);
+    context.restore();
+    markDirty();
+  };
+  // The commit outlives the render that armed it: a click elsewhere on the
+  // canvas, or the tool changing, has to put down what was already typed.
+  const commitTextRef = useRef(commitText);
+  commitTextRef.current = commitText;
 
   const finishDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (drawing.current && tool !== "brush" && tool !== "eraser") {
@@ -726,7 +781,12 @@ export default function PaintApp({
                     aria-pressed={tool === option.id}
                     className={tool === option.id ? "is-selected" : ""}
                     key={option.id}
-                    onClick={() => setTool(option.id)}
+                    onClick={() => {
+                      // Switching tools with text half-typed puts it down,
+                      // rather than dropping what was written.
+                      commitTextRef.current();
+                      setTool(option.id);
+                    }}
                     title={option.label}
                     type="button"
                   >
@@ -845,30 +905,72 @@ export default function PaintApp({
           strokeRectRef.current = null;
         }}
       >
-        <canvas
-          aria-label="그림판 캔버스"
-          className="paint-canvas"
-          height={PAINT_CANVAS_HEIGHT}
-          onPointerDown={startDrawing}
-          onPointerLeave={() => {
-            drawing.current = false;
-            lastPoint.current = null;
-            shapeStart.current = null;
-            shapeSnapshot.current = null;
-          }}
-          onPointerMove={draw}
-          onPointerUp={finishDrawing}
-          ref={canvasRef}
-          /*
-           * The zoom is anchored to the bitmap, so 100% means one bitmap pixel
-           * per CSS pixel — what 100% means in Paint. It used to be a
-           * percentage of the stage, so the status bar claimed 100% while the
-           * real scale was 71%, and maximizing the window silently rescaled
-           * the drawing to 126% with the readout unchanged.
-           */
-          style={{ width: `${Math.round((canvasSize.width * zoom) / 100)}px` }}
-          width={PAINT_CANVAS_WIDTH}
-        />
+        <div className="paint-canvas-wrap" data-text-draft={textDraft ? "on" : "off"}>
+          <canvas
+            aria-label="그림판 캔버스"
+            className="paint-canvas"
+            height={PAINT_CANVAS_HEIGHT}
+            onPointerDown={startDrawing}
+            onPointerLeave={() => {
+              drawing.current = false;
+              lastPoint.current = null;
+              shapeStart.current = null;
+              shapeSnapshot.current = null;
+            }}
+            onPointerMove={draw}
+            onPointerUp={finishDrawing}
+            ref={canvasRef}
+            /*
+             * The zoom is anchored to the bitmap, so 100% means one bitmap pixel
+             * per CSS pixel — what 100% means in Paint. It used to be a
+             * percentage of the stage, so the status bar claimed 100% while the
+             * real scale was 71%, and maximizing the window silently rescaled
+             * the drawing to 126% with the readout unchanged.
+             */
+            style={{ width: `${Math.round((canvasSize.width * zoom) / 100)}px` }}
+            width={PAINT_CANVAS_WIDTH}
+          />
+          {textDraft && (
+            <input
+              aria-label="캔버스에 넣을 텍스트"
+              autoFocus
+              className="paint-text-input"
+              /*
+               * No commit on blur. Measured: the field mounts, focuses, and the
+               * window frame takes focus back a moment later when the click
+               * that opened it activates the window — a blur commit put half a
+               * word on the bitmap and closed the field before a key was
+               * pressed. Enter commits, Escape cancels, and clicking on the
+               * canvas again or changing tool puts down what is there.
+               */
+              onChange={(event) =>
+                setTextDraft((current) =>
+                  current ? { ...current, value: event.target.value } : current,
+                )
+              }
+              onKeyDown={(event) => {
+                event.stopPropagation();
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  commitText();
+                  return;
+                }
+                if (event.key !== "Escape") return;
+                // Escape leaves the bitmap exactly as it was.
+                event.preventDefault();
+                setTextDraft(null);
+                canvasRef.current?.focus();
+              }}
+              style={{
+                color,
+                fontSize: `${Math.round((getPaintTextSize(size) * zoom) / 100)}px`,
+                left: `${Math.round((textDraft.x * zoom) / 100)}px`,
+                top: `${Math.round((textDraft.y * zoom) / 100)}px`,
+              }}
+              value={textDraft.value}
+            />
+          )}
+        </div>
       </div>
       <div className="paint-statusbar">
         <span>{`${canvasSize.width} × ${canvasSize.height}px`}</span>

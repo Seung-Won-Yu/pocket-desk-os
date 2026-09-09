@@ -153,6 +153,13 @@ import {
   persistShowFileExtensions,
   persistShowHiddenItems,
 } from "./shell/folderOptions";
+import {
+  getNightLightAlpha,
+  loadNightLight,
+  loadNightLightStrength,
+  persistNightLight,
+  persistNightLightStrength,
+} from "./shell/nightLight";
 import { getNeighbourByPosition } from "./shell/keyboardNav";
 import { type AppContentProps, type WindowDocumentRef } from "./shell/types";
 import { formatWindowTitle } from "./shell/windowTitle";
@@ -280,6 +287,8 @@ type ContentOps = Pick<
   | "setTaskbarPosition"
   | "setAutoHideTaskbar"
   | "setSmallTaskbarButtons"
+  | "setNightLight"
+  | "setNightLightStrength"
   | "setShowFileExtensions"
   | "setShowHiddenItems"
   | "setVfsEntryHidden"
@@ -392,6 +401,9 @@ export default function App() {
   const [smallTaskbarButtons, setSmallTaskbarButtons] = useState(() =>
     loadSmallTaskbarButtons(),
   );
+  /** 야간 조명: a warm wash over the whole shell, remembered with its strength. */
+  const [nightLight, setNightLight] = useState(() => loadNightLight());
+  const [nightLightStrength, setNightLightStrength] = useState(() => loadNightLightStrength());
   const [showFileExtensions, setShowFileExtensions] = useState(() => loadShowFileExtensions());
   const [showHiddenItems, setShowHiddenItems] = useState(() => loadShowHiddenItems());
   /** 집중 지원: notifications wait in the centre instead of appearing. */
@@ -448,6 +460,14 @@ export default function App() {
   useEffect(() => {
     persistCalendarEvents(calendarEvents);
   }, [calendarEvents]);
+
+  useEffect(() => {
+    persistNightLight(nightLight);
+  }, [nightLight]);
+
+  useEffect(() => {
+    persistNightLightStrength(nightLightStrength);
+  }, [nightLightStrength]);
 
   useEffect(() => {
     persistShowFileExtensions(showFileExtensions);
@@ -4461,6 +4481,8 @@ export default function App() {
     setTaskbarPosition,
     setAutoHideTaskbar,
     setSmallTaskbarButtons,
+    setNightLight,
+    setNightLightStrength,
     setShowFileExtensions,
     setShowHiddenItems,
     setVfsEntryHidden,
@@ -4516,6 +4538,8 @@ export default function App() {
       setTextScale: (...args) => contentOpsRef.current.setTextScale(...args),
       setTaskbarPosition: (...args) => contentOpsRef.current.setTaskbarPosition(...args),
       setAutoHideTaskbar: (...args) => contentOpsRef.current.setAutoHideTaskbar(...args),
+      setNightLight: (...args) => contentOpsRef.current.setNightLight(...args),
+      setNightLightStrength: (...args) => contentOpsRef.current.setNightLightStrength(...args),
       setSmallTaskbarButtons: (...args) =>
         contentOpsRef.current.setSmallTaskbarButtons(...args),
       setShowFileExtensions: (...args) => contentOpsRef.current.setShowFileExtensions(...args),
@@ -4609,6 +4633,8 @@ export default function App() {
       taskbarPosition,
       autoHideTaskbar,
       smallTaskbarButtons,
+      nightLight,
+      nightLightStrength,
       showFileExtensions,
       showHiddenItems,
       defaultApps,
@@ -4654,6 +4680,8 @@ export default function App() {
       taskbarPosition,
       autoHideTaskbar,
       smallTaskbarButtons,
+      nightLight,
+      nightLightStrength,
       showFileExtensions,
       showHiddenItems,
       defaultApps,
@@ -4714,6 +4742,7 @@ export default function App() {
         {
           ...getWallpaperStyle(wallpaper, customWallpaperImage),
           "--display-dim": ((100 - displayBrightness) / 100) * 0.7,
+          "--night-light": getNightLightAlpha(nightLight, nightLightStrength),
         } as WallpaperCssVars
       }
     >
@@ -4916,6 +4945,8 @@ export default function App() {
         taskViewOpen={taskViewOpen}
         notificationHistory={notificationHistory}
         brightness={displayBrightness}
+        nightLight={nightLight}
+        onSetNightLight={setNightLight}
         calendarEvents={calendarEvents}
         clockAlarms={clockAlarms}
         onAddCalendarEvent={(date, time, title) => {
