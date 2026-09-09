@@ -4,7 +4,16 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const host = "127.0.0.1";
-const smokeTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 180000);
+/*
+ * The budget was 180s when this suite was a fraction of its size. It now walks
+ * 폴더 옵션, 속성, 작업 표시줄 위치·자동 숨기기·작은 단추, 야간 조명, 캘린더
+ * 일정, 그림판 텍스트, 그룹화 and 보내기 on top of everything it already did —
+ * measured at 153s on this machine, which left the runner nothing and timed CI
+ * out. 360s is headroom for a slower runner, not permission to be slow: 59s of
+ * the run is still fixed `waitForTimeout` sleeps across 203 calls, and those
+ * are worth replacing with condition waits.
+ */
+const smokeTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 360000);
 const viteBin = fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url));
 
 function assert(condition, message) {
