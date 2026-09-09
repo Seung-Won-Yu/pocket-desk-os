@@ -3699,7 +3699,32 @@ async function runSmoke(baseUrl) {
      */
     await scaleSettings.getByRole("button", { name: "개인 설정" }).click();
     await page.waitForTimeout(200);
-    const barBox = () => page.locator(".taskbar").boundingBox();
+    /*
+     * A window that has just maximized or restored is still running its
+     * transform animation, and a box read mid-animation is both fractional and
+     * wrong — CI once read a "maximized" window as 1193.82x807.70 at x=77.09.
+     * Read until two reads in a row agree instead of guessing at a delay.
+     */
+    const settledBox = async (locator, attempts = 40) => {
+      let previous = null;
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        const box = await locator.boundingBox();
+        if (
+          previous &&
+          box &&
+          previous.x === box.x &&
+          previous.y === box.y &&
+          previous.width === box.width &&
+          previous.height === box.height
+        ) {
+          return box;
+        }
+        previous = box;
+        await page.waitForTimeout(50);
+      }
+      return previous;
+    };
+    const barBox = () => settledBox(page.locator(".taskbar"));
     const dismissSnapAssist = async () => {
       const assist = page.locator(".snap-assist");
       if ((await assist.count()) === 0) return;
@@ -3707,7 +3732,7 @@ async function runSmoke(baseUrl) {
       await assist.waitFor({ state: "detached" });
     };
     const activeWindowBox = () =>
-      page.locator('article[data-app-id="settings"]').last().boundingBox();
+      settledBox(page.locator('article[data-app-id="settings"]').last());
     const leftmostIcon = () =>
       page.evaluate(() =>
         Math.min(
