@@ -271,6 +271,13 @@ export type AppContentProps = {
   /** 작업 표시줄 위치, and the setter 설정 uses to move it. */
   taskbarPosition: TaskbarPosition;
   setTaskbarPosition: (position: TaskbarPosition) => void;
+  /** 폴더 옵션 — shell-wide, so Explorer and the desktop agree. */
+  showFileExtensions: boolean;
+  setShowFileExtensions: (show: boolean) => void;
+  showHiddenItems: boolean;
+  setShowHiddenItems: (show: boolean) => void;
+  /** The 숨김 attribute, set from an entry's 속성. */
+  setVfsEntryHidden: (itemId: string, hidden: boolean) => void;
   setTextScale: (scale: TextScale) => void;
   /** Folders pinned to Explorer's sidebar — 빠른 액세스, shared by every window. */
   quickAccessIds: string[];

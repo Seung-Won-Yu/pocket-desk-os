@@ -227,6 +227,9 @@ export function normalizePersistedDesktopItem(
         : undefined,
     content: typeof item.content === "string" ? item.content : undefined,
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now() - index * 1000,
+    // Absent rather than false when it is not set, so a store written before
+    // the attribute existed round-trips unchanged.
+    hidden: item.hidden === true ? true : undefined,
     id: typeof item.id === "string" ? item.id : `${item.kind}-${crypto.randomUUID()}`,
     kind: item.kind,
     name:

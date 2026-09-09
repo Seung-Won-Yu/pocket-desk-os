@@ -143,6 +143,12 @@ import {
   loadTaskbarPosition,
   persistTaskbarPosition,
 } from "./shell/taskbarPosition";
+import {
+  loadShowFileExtensions,
+  loadShowHiddenItems,
+  persistShowFileExtensions,
+  persistShowHiddenItems,
+} from "./shell/folderOptions";
 import { getNeighbourByPosition } from "./shell/keyboardNav";
 import { type AppContentProps, type WindowDocumentRef } from "./shell/types";
 import { formatWindowTitle } from "./shell/windowTitle";
@@ -233,6 +239,8 @@ import {
   getUniqueVfsCopyName,
   getUniqueVfsEntryName,
   getVfsDescendantIds,
+  applyVfsRenameInput,
+  getVfsDisplayName,
   getVfsEntryAssociation,
   getVfsEntryExtension,
   getVfsShortcutTarget,
@@ -266,6 +274,9 @@ type ContentOps = Pick<
   | "setFocusAssist"
   | "setTextScale"
   | "setTaskbarPosition"
+  | "setShowFileExtensions"
+  | "setShowHiddenItems"
+  | "setVfsEntryHidden"
   | "toggleQuickAccessFolder"
   | "captureScreenshot"
   | "closeWindow"
@@ -366,6 +377,12 @@ export default function App() {
   const [taskbarPosition, setTaskbarPosition] = useState<TaskbarPosition>(() =>
     loadTaskbarPosition(),
   );
+  /*
+   * 폴더 옵션 — Windows applies these system-wide, so they live here rather
+   * than in one Explorer window: the desktop shows names and entries too.
+   */
+  const [showFileExtensions, setShowFileExtensions] = useState(() => loadShowFileExtensions());
+  const [showHiddenItems, setShowHiddenItems] = useState(() => loadShowHiddenItems());
   /** 집중 지원: notifications wait in the centre instead of appearing. */
   const [focusAssist, setFocusAssist] = useState(() => loadFocusAssist());
   // notify() outlives the render that called it, so it reads the setting here.
@@ -420,6 +437,14 @@ export default function App() {
   useEffect(() => {
     persistCalendarEvents(calendarEvents);
   }, [calendarEvents]);
+
+  useEffect(() => {
+    persistShowFileExtensions(showFileExtensions);
+  }, [showFileExtensions]);
+
+  useEffect(() => {
+    persistShowHiddenItems(showHiddenItems);
+  }, [showHiddenItems]);
 
   useEffect(() => {
     persistClockTimer(clockTimer);
@@ -2434,6 +2459,35 @@ export default function App() {
     });
   };
 
+  /**
+   * The 숨김 attribute, set from an entry's own 속성 the way Windows does. A
+   * system folder keeps its place — hiding 문서 would take the folder out of
+   * Explorer's sidebar while every path still pointed through it.
+   */
+  const setVfsEntryHidden = (itemId: string, hidden: boolean) => {
+    const target = activeDesktopItems.find((item) => item.id === itemId);
+    if (!target || isVfsSystemFolderId(itemId) || Boolean(target.hidden) === hidden) return;
+
+    playSound("toggle");
+    setDesktopItems((current) =>
+      current.map((item) =>
+        item.id === itemId
+          ? { ...item, hidden: hidden || undefined, updatedAt: Date.now() }
+          : item,
+      ),
+    );
+    if (hidden && !showHiddenItems) {
+      notify({
+        actions: [{ id: "reveal", label: "숨긴 항목 보기" }],
+        detail: "숨긴 항목을 보기 전까지 목록에 나타나지 않습니다.",
+        onAction: (actionId) => {
+          if (actionId === "reveal") setShowHiddenItems(true);
+        },
+        title: `${target.name} 숨김`,
+      });
+    }
+  };
+
   const deleteVfsEntry = (itemId: string) => {
     const target = activeDesktopItems.find((item) => item.id === itemId);
     if (!target || isVfsSystemFolderId(itemId)) return;
@@ -2535,7 +2589,9 @@ export default function App() {
     desktopRenameGuardRef.current = false;
     setDesktopIconMenu(null);
     setSelectedDesktopIds([`item:${item.id}`]);
-    setDesktopRenameDraft(item.name);
+    // The box holds what the icon shows, so an entry whose extension is hidden
+    // is renamed by its base name and keeps the extension.
+    setDesktopRenameDraft(getVfsDisplayName(item, showFileExtensions));
     setDesktopRenamingItemId(item.id);
   };
 
@@ -2546,7 +2602,13 @@ export default function App() {
     }
     if (!desktopRenamingItemId) return;
     desktopRenameGuardRef.current = true;
-    renameVfsEntry(desktopRenamingItemId, desktopRenameDraft);
+    const renaming = activeDesktopItems.find((item) => item.id === desktopRenamingItemId);
+    renameVfsEntry(
+      desktopRenamingItemId,
+      renaming
+        ? applyVfsRenameInput(renaming, desktopRenameDraft, showFileExtensions)
+        : desktopRenameDraft,
+    );
     setDesktopRenamingItemId(null);
     window.requestAnimationFrame(() => {
       desktopRenameGuardRef.current = false;
@@ -4380,6 +4442,9 @@ export default function App() {
     setFocusAssist,
     setTextScale,
     setTaskbarPosition,
+    setShowFileExtensions,
+    setShowHiddenItems,
+    setVfsEntryHidden,
     toggleQuickAccessFolder,
     onImportLocalEntries: (imported) => {
       addVfsEntries(imported);
@@ -4431,6 +4496,9 @@ export default function App() {
       setFocusAssist: (...args) => contentOpsRef.current.setFocusAssist(...args),
       setTextScale: (...args) => contentOpsRef.current.setTextScale(...args),
       setTaskbarPosition: (...args) => contentOpsRef.current.setTaskbarPosition(...args),
+      setShowFileExtensions: (...args) => contentOpsRef.current.setShowFileExtensions(...args),
+      setShowHiddenItems: (...args) => contentOpsRef.current.setShowHiddenItems(...args),
+      setVfsEntryHidden: (...args) => contentOpsRef.current.setVfsEntryHidden(...args),
       toggleQuickAccessFolder: (...args) =>
         contentOpsRef.current.toggleQuickAccessFolder(...args),
       onImportLocalEntries: (...args) => contentOpsRef.current.onImportLocalEntries(...args),
@@ -4517,6 +4585,8 @@ export default function App() {
       focusAssist,
       textScale,
       taskbarPosition,
+      showFileExtensions,
+      showHiddenItems,
       defaultApps,
       desktopItems: activeDesktopItems,
       customWallpaperItemId,
@@ -4558,6 +4628,8 @@ export default function App() {
       focusAssist,
       textScale,
       taskbarPosition,
+      showFileExtensions,
+      showHiddenItems,
       defaultApps,
       activeDesktopItems,
       customWallpaperItemId,
@@ -4670,9 +4742,10 @@ export default function App() {
           />
         ))}
         {activeDesktopItems
-          .filter((item) => item.showOnDesktop)
+          .filter((item) => item.showOnDesktop && (showHiddenItems || !item.hidden))
           .map((item) => (
             <DesktopItemIcon
+              displayName={getVfsDisplayName(item, showFileExtensions)}
               draftName={desktopRenameDraft}
               item={item}
               key={item.id}

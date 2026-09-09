@@ -4,15 +4,18 @@ import {
   Folder,
   HardDrive,
   House,
+  Info,
   LayoutGrid,
   List,
   Monitor,
   Search,
   Trash2,
+  X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AppId } from "../types";
 import { clamp, formatStorageSize, normalizeSearchText } from "../utils/format";
+import { trapDialogFocus } from "../shell/dialogFocus";
 
 type ThisPcAppProps = {
   openApp: (appId: AppId) => void;
@@ -23,6 +26,7 @@ export default function ThisPcApp({ openApp }: ThisPcAppProps) {
   const [driveSelected, setDriveSelected] = useState(false);
   const [driveView, setDriveView] = useState<"details" | "tiles">("tiles");
   const [devicesExpanded, setDevicesExpanded] = useState(true);
+  const [propertiesOpen, setPropertiesOpen] = useState(false);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
@@ -60,6 +64,13 @@ export default function ThisPcApp({ openApp }: ThisPcAppProps) {
   };
   const driveVisible = normalizeSearchText(drive.label).includes(normalizeSearchText(query));
   const openDrive = () => openApp("files");
+  /*
+   * The numbers behind 속성 come from the same estimate the tile shows, so the
+   * dialog cannot disagree with the bar next to it. A browser that will not
+   * estimate reports neither, rather than a made-up total.
+   */
+  const measured = quota > 0;
+  const usedShare = measured ? Math.min(100, (used / quota) * 100) : 0;
 
   return (
     <div className="this-pc-app app-fill">
@@ -114,6 +125,15 @@ export default function ThisPcApp({ openApp }: ThisPcAppProps) {
               <ExternalLink aria-hidden="true" size={15} />
               <span>열기</span>
             </button>
+            <button
+              className="file-command-action"
+              disabled={!driveSelected}
+              onClick={() => setPropertiesOpen(true)}
+              type="button"
+            >
+              <Info aria-hidden="true" size={15} />
+              <span>속성</span>
+            </button>
             <div aria-label="보기 방식" className="file-view-control" role="group">
               <button
                 aria-label="타일 보기"
@@ -165,6 +185,13 @@ export default function ThisPcApp({ openApp }: ThisPcAppProps) {
                       event.stopPropagation();
                       setDriveSelected(true);
                     }}
+                    onContextMenu={(event) => {
+                      // Windows opens a drive's 속성 from its own right-click.
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setDriveSelected(true);
+                      setPropertiesOpen(true);
+                    }}
                     onDoubleClick={openDrive}
                     onKeyDown={(event) => {
                       if (event.key !== "Enter") return;
@@ -199,6 +226,89 @@ export default function ThisPcApp({ openApp }: ThisPcAppProps) {
           <span>{driveVisible ? "1개 항목" : "0개 항목"}</span>
           <span>{driveSelected ? "1개 선택됨" : "선택한 항목 없음"}</span>
         </div>
+        {propertiesOpen && (
+          <div className="file-properties-overlay">
+            <section
+              aria-label={`${drive.label} 속성`}
+              aria-modal="true"
+              className="file-properties-dialog drive-properties"
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.stopPropagation();
+                  setPropertiesOpen(false);
+                  return;
+                }
+                trapDialogFocus(event, event.currentTarget);
+              }}
+              role="dialog"
+            >
+              <header>
+                <HardDrive aria-hidden="true" size={28} />
+                <div>
+                  <h2>{drive.label}</h2>
+                  <span>로컬 디스크</span>
+                </div>
+                <button
+                  aria-label="드라이브 속성 닫기"
+                  onClick={() => setPropertiesOpen(false)}
+                  type="button"
+                >
+                  <X aria-hidden="true" size={16} />
+                </button>
+              </header>
+              <div className="drive-properties-usage">
+                <span
+                  aria-hidden="true"
+                  className="drive-donut"
+                  style={{ "--used-share": `${usedShare}%` } as React.CSSProperties}
+                />
+                <dl>
+                  <div>
+                    <dt>
+                      <span aria-hidden="true" className="drive-swatch is-used" />
+                      사용 중
+                    </dt>
+                    <dd>{measured ? formatStorageSize(used) : "알 수 없음"}</dd>
+                  </div>
+                  <div>
+                    <dt>
+                      <span aria-hidden="true" className="drive-swatch is-free" />
+                      사용 가능
+                    </dt>
+                    <dd>{measured ? formatStorageSize(free) : "알 수 없음"}</dd>
+                  </div>
+                  <div>
+                    <dt>용량</dt>
+                    <dd>{measured ? formatStorageSize(quota) : "알 수 없음"}</dd>
+                  </div>
+                </dl>
+              </div>
+              <dl className="drive-properties-facts">
+                <div>
+                  <dt>종류</dt>
+                  <dd>로컬 디스크</dd>
+                </div>
+                <div>
+                  <dt>파일 시스템</dt>
+                  <dd>PocketDesk VFS (IndexedDB)</dd>
+                </div>
+                <div>
+                  <dt>사용량</dt>
+                  <dd>
+                    {measured
+                      ? `${usedShare.toFixed(1)}% 사용 중`
+                      : "브라우저가 사용량을 알려주지 않습니다"}
+                  </dd>
+                </div>
+              </dl>
+              <footer>
+                <button autoFocus onClick={() => setPropertiesOpen(false)} type="button">
+                  확인
+                </button>
+              </footer>
+            </section>
+          </div>
+        )}
       </section>
     </div>
   );

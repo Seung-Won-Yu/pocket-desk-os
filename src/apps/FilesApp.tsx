@@ -21,6 +21,7 @@ import {
   Grid2X2,
   House,
   Info,
+  SlidersHorizontal,
   LayoutGrid,
   List,
   Monitor,
@@ -77,6 +78,8 @@ import {
   formatDesktopItemTime,
   getVfsEntryAssociation,
   getVfsEntryDetail,
+  applyVfsRenameInput,
+  getVfsDisplayName,
   getVfsFolderPath,
   getVfsNameParts,
   getVfsDescendantIds,
@@ -85,6 +88,7 @@ import {
   hasForbiddenVfsNameChar,
   isVfsSystemFolderId,
 } from "../vfs/model";
+import { describeVfsFolderContents, getVfsFolderStats } from "../vfs/folderStats";
 import {
   archiveFromDataUrl,
   archiveToDataUrl,
@@ -140,6 +144,12 @@ type FilesAppProps = {
   openNewAppWindow: (appId: AppId) => string;
   openVfsEntry: (item: DesktopItem) => void;
   renameVfsEntry: (itemId: string, name: string) => void;
+  /** 폴더 옵션, owned by the shell so the desktop agrees with every window. */
+  showFileExtensions: boolean;
+  setShowFileExtensions: (show: boolean) => void;
+  showHiddenItems: boolean;
+  setShowHiddenItems: (show: boolean) => void;
+  setVfsEntryHidden: (itemId: string, hidden: boolean) => void;
   setCustomWallpaper: (itemId: string | null) => void;
   closeWindow: (windowId: string) => void;
   openFolderInNewWindow: (folderId: string) => void;
@@ -243,6 +253,11 @@ export default function FilesApp({
   openNewAppWindow,
   openVfsEntry,
   renameVfsEntry,
+  showFileExtensions,
+  setShowFileExtensions,
+  showHiddenItems,
+  setShowHiddenItems,
+  setVfsEntryHidden,
   setCustomWallpaper,
   closeWindow,
   openFolderInNewWindow,
@@ -264,6 +279,7 @@ export default function FilesApp({
   const selectionAnchorRef = useRef<string | null>(null);
   const typeAheadRef = useRef({ at: 0, query: "" });
   const sortControlRef = useRef<HTMLDivElement | null>(null);
+  const optionsControlRef = useRef<HTMLDivElement | null>(null);
   /**
    * Explorer's tabs. Each keeps its own place and its own back/forward history,
    * the way Windows 11 does; the strip was one label that could not be added to.
@@ -308,6 +324,7 @@ export default function FilesApp({
     return stored === "list" || stored === "icons" ? stored : "details";
   });
   const [sortOpen, setSortOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   // Off by default, like the Windows preview pane: it costs 248px of a 900px
   // window, which is width the file list needs more than the summary does.
@@ -371,30 +388,32 @@ export default function FilesApp({
   }, [currentFolderId, desktopItems, fileQueryValue, locationItems]);
   const files = useMemo(
     () =>
-      searchItems.map((item) => {
-        const association = getVfsEntryAssociation(item);
-        // Where a search result actually is, relative to the folder searched.
-        const location =
-          item.parentId === currentFolderId
-            ? ""
-            : getVfsFolderPath(desktopItems, item.parentId)
-                .slice(getVfsFolderPath(desktopItems, currentFolderId).length)
-                .map((segment) => segment.name)
-                .join(" › ");
-        return {
-          association,
-          detail: getVfsEntryDetail(item),
-          icon: association.icon,
-          id: item.id,
-          item,
-          location,
-          name: item.name,
-          modified: formatDesktopItemTime(item.updatedAt),
-          type: association.typeLabel,
-          updatedAt: item.updatedAt,
-        };
-      }),
-    [currentFolderId, desktopItems, searchItems],
+      searchItems
+        .filter((item) => showHiddenItems || !item.hidden)
+        .map((item) => {
+          const association = getVfsEntryAssociation(item);
+          // Where a search result actually is, relative to the folder searched.
+          const location =
+            item.parentId === currentFolderId
+              ? ""
+              : getVfsFolderPath(desktopItems, item.parentId)
+                  .slice(getVfsFolderPath(desktopItems, currentFolderId).length)
+                  .map((segment) => segment.name)
+                  .join(" › ");
+          return {
+            association,
+            detail: getVfsEntryDetail(item),
+            icon: association.icon,
+            id: item.id,
+            item,
+            location,
+            name: getVfsDisplayName(item, showFileExtensions),
+            modified: formatDesktopItemTime(item.updatedAt),
+            type: association.typeLabel,
+            updatedAt: item.updatedAt,
+          };
+        }),
+    [currentFolderId, desktopItems, searchItems, showFileExtensions, showHiddenItems],
   );
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   /** Bytes the selection holds; Windows shows this beside the count. */
@@ -418,7 +437,7 @@ export default function FilesApp({
     const normalizedQuery = normalizeSearchText(fileQuery);
     if (!normalizedQuery) return files;
     return files.filter((file) =>
-      [file.name, file.type, file.detail, file.association.appTitle]
+      [file.name, file.item.name, file.type, file.detail, file.association.appTitle]
         .map(normalizeSearchText)
         .some((field) => field.includes(normalizedQuery)),
     );
@@ -451,7 +470,25 @@ export default function FilesApp({
   const selectedFile =
     visibleFiles.find((file) => file.id === activeFileId && selectedIds.includes(file.id)) ??
     visibleFiles.find((file) => selectedIds.includes(file.id));
-  const propertiesFile = files.find((file) => file.id === propertiesFileId);
+  /*
+   * Built from the whole store, not from the rows on screen. Ticking 숨김 in
+   * this dialog takes the entry out of the list, and looking the dialog's own
+   * subject up in that list closed it the instant the box was ticked — the
+   * checkbox appeared not to work at all.
+   */
+  const propertiesFile = useMemo(() => {
+    if (!propertiesFileId) return undefined;
+    const item = desktopItems.find((entry) => entry.id === propertiesFileId);
+    if (!item) return undefined;
+    const association = getVfsEntryAssociation(item);
+    return {
+      association,
+      id: item.id,
+      item,
+      name: getVfsDisplayName(item, showFileExtensions),
+      type: association.typeLabel,
+    };
+  }, [desktopItems, propertiesFileId, showFileExtensions]);
   /*
    * The clamp above budgets a constant for the menu's height, and a constant
    * can only guess: the file menu renders 282px tall against a 226px reserve,
@@ -515,20 +552,19 @@ export default function FilesApp({
   }, [viewMode]);
 
   useEffect(() => {
-    if (!sortOpen && !newOpen) return;
+    if (!sortOpen && !newOpen && !optionsOpen) return;
 
     const closeOnOutsidePointer = (event: Event) => {
-      if (event.target instanceof Node && !sortControlRef.current?.contains(event.target)) {
-        setSortOpen(false);
-      }
-      if (event.target instanceof Node && !newControlRef.current?.contains(event.target)) {
-        setNewOpen(false);
-      }
+      if (!(event.target instanceof Node)) return;
+      if (!sortControlRef.current?.contains(event.target)) setSortOpen(false);
+      if (!newControlRef.current?.contains(event.target)) setNewOpen(false);
+      if (!optionsControlRef.current?.contains(event.target)) setOptionsOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setNewOpen(false);
       setSortOpen(false);
+      setOptionsOpen(false);
     };
 
     window.addEventListener("pointerdown", closeOnOutsidePointer);
@@ -537,7 +573,7 @@ export default function FilesApp({
       window.removeEventListener("pointerdown", closeOnOutsidePointer);
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [newOpen, sortOpen]);
+  }, [newOpen, optionsOpen, sortOpen]);
 
   useEffect(() => {
     if (!fileContextMenu && !propertiesFileId) return;
@@ -952,7 +988,11 @@ export default function FilesApp({
       });
       return false;
     }
-    renameVfsEntry(fileId, name);
+    const target = files.find((file) => file.id === fileId);
+    renameVfsEntry(
+      fileId,
+      target ? applyVfsRenameInput(target.item, name, showFileExtensions) : name,
+    );
     return true;
   };
 
@@ -1929,6 +1969,48 @@ export default function FilesApp({
                 <Grid2X2 aria-hidden="true" size={16} />
               </button>
             </div>
+            <div className="file-options-control" ref={optionsControlRef}>
+              <button
+                aria-expanded={optionsOpen}
+                aria-haspopup="menu"
+                aria-label="보기 옵션"
+                className="file-details-toggle"
+                onClick={() => setOptionsOpen((current) => !current)}
+                title="보기 옵션"
+                type="button"
+              >
+                <SlidersHorizontal aria-hidden="true" size={16} />
+              </button>
+              {optionsOpen && (
+                <div
+                  aria-label="보기 옵션"
+                  className="file-sort-menu file-options-menu"
+                  onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+                  role="menu"
+                >
+                  {/* Windows keeps these two on its 보기 tab, and applies them
+                      everywhere at once rather than per window. */}
+                  <button
+                    aria-checked={showFileExtensions}
+                    onClick={() => setShowFileExtensions(!showFileExtensions)}
+                    role="menuitemcheckbox"
+                    type="button"
+                  >
+                    {showFileExtensions ? <Check aria-hidden="true" size={15} /> : <span />}
+                    파일 확장명
+                  </button>
+                  <button
+                    aria-checked={showHiddenItems}
+                    onClick={() => setShowHiddenItems(!showHiddenItems)}
+                    role="menuitemcheckbox"
+                    type="button"
+                  >
+                    {showHiddenItems ? <Check aria-hidden="true" size={15} /> : <span />}
+                    숨긴 항목
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               aria-label="세부 정보 창"
               aria-pressed={detailsPaneOpen}
@@ -2637,8 +2719,24 @@ export default function FilesApp({
               </div>
               <div>
                 <dt>크기</dt>
-                <dd>{formatVfsEntrySize(propertiesFile.item)}</dd>
+                <dd>
+                  {propertiesFile.item.kind === "folder"
+                    ? formatStorageSize(
+                        getVfsFolderStats(desktopItems, propertiesFile.id).bytes,
+                      )
+                    : formatVfsEntrySize(propertiesFile.item)}
+                </dd>
               </div>
+              {propertiesFile.item.kind === "folder" && (
+                <div>
+                  <dt>내용</dt>
+                  <dd>
+                    {describeVfsFolderContents(
+                      getVfsFolderStats(desktopItems, propertiesFile.id),
+                    )}
+                  </dd>
+                </div>
+              )}
               <div>
                 <dt>만든 날짜</dt>
                 <dd>{formatVfsPropertyDate(propertiesFile.item.createdAt)}</dd>
@@ -2646,6 +2744,27 @@ export default function FilesApp({
               <div>
                 <dt>수정한 날짜</dt>
                 <dd>{formatVfsPropertyDate(propertiesFile.item.updatedAt)}</dd>
+              </div>
+              <div>
+                <dt>특성</dt>
+                <dd>
+                  {/* Windows' 숨김 checkbox, and it does what it says: the
+                      entry leaves Explorer and the desktop until 숨긴 항목 is
+                      on. A system folder keeps its place — hiding 문서 would
+                      take it out of the sidebar while paths still ran
+                      through it. */}
+                  <label className="file-properties-attribute">
+                    <input
+                      checked={Boolean(propertiesFile.item.hidden)}
+                      disabled={isVfsSystemFolderId(propertiesFile.id)}
+                      onChange={(event) =>
+                        setVfsEntryHidden(propertiesFile.id, event.target.checked)
+                      }
+                      type="checkbox"
+                    />
+                    숨김
+                  </label>
+                </dd>
               </div>
             </dl>
             <footer>

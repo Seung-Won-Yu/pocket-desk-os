@@ -8,6 +8,7 @@ import {
   VFS_PICTURES_ID,
   VFS_ROOT_ID,
   VFS_SYSTEM_FOLDER_IDS,
+  applyVfsRenameInput,
   canMoveVfsEntries,
   createVfsEntryAssociation,
   createVfsSystemFolders,
@@ -20,6 +21,7 @@ import {
   getUniqueVfsCopyName,
   getUniqueVfsEntryName,
   getVfsDescendantIds,
+  getVfsDisplayName,
   getVfsEntryAssociation,
   getVfsEntryDetail,
   getVfsEntryExtension,
@@ -955,5 +957,76 @@ describe("name length capping", () => {
     const items = [makeNote("n1", "folder-a", existing)];
     expect(getUniqueVfsEntryName(items, "folder-a", existing).endsWith(".txt")).toBe(true);
     expect(getUniqueVfsCopyName(new Set([existing]), existing).endsWith(".txt")).toBe(true);
+  });
+});
+
+describe("getVfsDisplayName", () => {
+  const file = (name: string, kind: DesktopItem["kind"] = "note") =>
+    ({
+      createdAt: 0,
+      id: name,
+      kind,
+      name,
+      parentId: "desktop",
+      showOnDesktop: false,
+      updatedAt: 0,
+      x: 0,
+      y: 0,
+    }) satisfies DesktopItem;
+
+  it("drops the extension unless 파일 확장명 is on", () => {
+    expect(getVfsDisplayName(file("notes.txt"), false)).toBe("notes");
+    expect(getVfsDisplayName(file("notes.txt"), true)).toBe("notes.txt");
+  });
+
+  it("never takes a dot out of a folder's name", () => {
+    // "v1.2" is a folder called v1.2, not a folder called v1 of type 2.
+    expect(getVfsDisplayName(file("v1.2", "folder"), false)).toBe("v1.2");
+  });
+
+  it("leaves a name with no extension alone", () => {
+    expect(getVfsDisplayName(file("읽어보기"), false)).toBe("읽어보기");
+    expect(getVfsDisplayName(file(".gitignore"), false)).toBe(".gitignore");
+  });
+});
+
+describe("applyVfsRenameInput", () => {
+  const note = {
+    createdAt: 0,
+    id: "n",
+    kind: "note" as const,
+    name: "notes.txt",
+    parentId: "desktop",
+    showOnDesktop: false,
+    updatedAt: 0,
+    x: 0,
+    y: 0,
+  };
+
+  it("puts back the extension the rename box never showed", () => {
+    expect(applyVfsRenameInput(note, "report", false)).toBe("report.txt");
+  });
+
+  it("takes the typed name as-is once extensions are shown", () => {
+    expect(applyVfsRenameInput(note, "report.md", true)).toBe("report.md");
+  });
+
+  it("does not double an extension the user typed anyway", () => {
+    // Windows produces "report.txt.txt" here; that is the bug, not the rule.
+    expect(applyVfsRenameInput(note, "report.txt", false)).toBe("report.txt");
+    expect(applyVfsRenameInput(note, "report.TXT", false)).toBe("report.TXT");
+  });
+
+  it("keeps a deliberately different extension", () => {
+    expect(applyVfsRenameInput(note, "report.md", false)).toBe("report.md.txt");
+  });
+
+  it("leaves folders and extensionless entries alone", () => {
+    expect(applyVfsRenameInput({ ...note, kind: "folder", name: "v1.2" }, "v2", false)).toBe(
+      "v2",
+    );
+    expect(applyVfsRenameInput({ ...note, name: "읽어보기" }, "새 이름", false)).toBe(
+      "새 이름",
+    );
   });
 });

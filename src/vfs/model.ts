@@ -170,6 +170,32 @@ export function getVfsNameParts(name: string) {
   };
 }
 
+/**
+ * The name Explorer and the desktop show. Windows hides a file's extension
+ * unless 파일 확장명 is on; a folder never has one hidden, or a folder called
+ * "v1.2" would show as "v1".
+ */
+export function getVfsDisplayName(item: DesktopItem, showExtensions: boolean) {
+  if (showExtensions || item.kind === "folder") return item.name;
+  return getVfsNameParts(item.name).base;
+}
+
+/**
+ * What a rename typed against a hidden extension actually means. The box held
+ * only the base name, so the extension it never showed is put back.
+ *
+ * Windows appends unconditionally here, which is why renaming a file to
+ * "report.txt" with extensions hidden famously produces "report.txt.txt". That
+ * is a bug people work around, not a behaviour worth copying, so a name that
+ * already ends in the entry's own extension is left alone.
+ */
+export function applyVfsRenameInput(item: DesktopItem, input: string, showExtensions: boolean) {
+  if (showExtensions || item.kind === "folder") return input;
+  const { extension } = getVfsNameParts(item.name);
+  if (!extension) return input;
+  return input.toLowerCase().endsWith(extension.toLowerCase()) ? input : `${input}${extension}`;
+}
+
 export function getUniqueRenamedVfsItemName(
   items: DesktopItem[],
   itemId: string,

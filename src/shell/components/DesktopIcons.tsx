@@ -47,6 +47,7 @@ export function DesktopIcon({
 }
 
 export function DesktopItemIcon({
+  displayName,
   draftName,
   item,
   onCancelRename,
@@ -62,6 +63,8 @@ export function DesktopItemIcon({
   tabStop,
   viewMode,
 }: {
+  /** What the icon is labelled with — the name without its extension while 파일 확장명 is off. */
+  displayName?: string;
   draftName: string;
   item: DesktopItem;
   onCancelRename: () => void;
@@ -92,7 +95,7 @@ export function DesktopItemIcon({
         position={item}
         selected={selected}
         tabStop={tabStop}
-        title={item.name}
+        title={displayName ?? item.name}
         tone="file"
       />
       {renaming && (

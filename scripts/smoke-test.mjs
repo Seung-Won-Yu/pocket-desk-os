@@ -893,7 +893,110 @@ async function runSmoke(baseUrl) {
       propertiesLayout.windowScrollTop === 0,
       "Explorer Properties scrolled the whole app",
     );
+    /*
+     * 폴더 속성과 폴더 옵션. 사진 holds the PNG the Paint step saved, so its
+     * size is a real total — which is the point: 속성 called the per-entry size
+     * helper, and a folder's own size is zero, so every folder reported "0 B"
+     * however much was inside it.
+     */
+    assert(
+      propertiesText.includes("특성") && propertiesText.includes("숨김"),
+      "Explorer Properties does not offer the 숨김 attribute",
+    );
     await propertiesDialog.getByRole("button", { name: "확인" }).click();
+    await page.waitForTimeout(200);
+
+    const explorerRows = files.locator('.file-list button[role="option"]');
+    const readProperties = async (rowText) => {
+      await explorerRows.filter({ hasText: rowText }).first().click({ button: "right" });
+      await fileContextMenu.getByRole("menuitem", { name: "속성" }).click();
+      await propertiesDialog.waitFor({ state: "visible" });
+      return propertiesDialog.innerText();
+    };
+    const parseFolderBytes = (text) => {
+      const match = /크기\n([\d.]+)\s*(B|KB|MB)/.exec(text);
+      if (!match) return -1;
+      return Number(match[1]) * { B: 1, KB: 1024, MB: 1024 * 1024 }[match[2]];
+    };
+
+    const picturesProperties = await readProperties("사진");
+    assert(
+      parseFolderBytes(picturesProperties) > 0,
+      `사진 holds a saved PNG and 속성 reports ${parseFolderBytes(picturesProperties)} bytes; a folder's size is the sum of what is inside it`,
+    );
+    assert(
+      /내용\n파일 \d+개, 폴더 \d+개/.test(picturesProperties),
+      `Folder Properties did not say what the folder holds: ${picturesProperties}`,
+    );
+    // A system folder cannot be hidden: 사진 would leave the sidebar while
+    // every path still ran through it.
+    assert(
+      await propertiesDialog.getByLabel("숨김").isDisabled(),
+      "속성 offered to hide a system folder",
+    );
+    await propertiesDialog.getByRole("button", { name: "확인" }).click();
+    await page.waitForTimeout(200);
+
+    // 숨김 is set from the entry's own 속성, and the dialog stays open when it
+    // is — looking its own subject up in the filtered list used to close it.
+    const rowsBeforeHide = await explorerRows.count();
+    await readProperties("작업 메모.txt");
+    await propertiesDialog.getByLabel("숨김").check();
+    assert(
+      await propertiesDialog.isVisible(),
+      "Ticking 숨김 closed the dialog it was ticked in",
+    );
+    await propertiesDialog.getByRole("button", { name: "확인" }).click();
+    await page.waitForTimeout(300);
+    assert(
+      (await explorerRows.count()) === rowsBeforeHide - 1,
+      "A hidden file stayed in the list",
+    );
+    assert(
+      (await page.locator(".toast").allInnerTexts()).some((toast) =>
+        toast.includes("숨긴 항목 보기"),
+      ),
+      "Hiding an entry offered no way back to it",
+    );
+
+    await files.getByRole("button", { name: "보기 옵션" }).click();
+    await files.getByRole("menuitemcheckbox", { name: "숨긴 항목" }).click();
+    await page.waitForTimeout(300);
+    assert(
+      (await explorerRows.count()) === rowsBeforeHide,
+      "숨긴 항목 did not bring the hidden file back",
+    );
+
+    // 파일 확장명 changes what the list shows, not what is stored.
+    const namesWithExtensions = await explorerRows.allInnerTexts();
+    await files.getByRole("menuitemcheckbox", { name: "파일 확장명" }).click();
+    await page.waitForTimeout(300);
+    const namesWithoutExtensions = await explorerRows.allInnerTexts();
+    assert(
+      namesWithExtensions.some((row) => row.startsWith("작업 메모.txt")) &&
+        namesWithoutExtensions.some((row) => row.startsWith("작업 메모\n")),
+      `확장명 on/off read ${JSON.stringify([namesWithExtensions, namesWithoutExtensions])}`,
+    );
+    assert(
+      namesWithoutExtensions.some((row) => row.startsWith("사진")),
+      "The extension toggle took a name apart that had no extension to hide",
+    );
+    await files.getByRole("menuitemcheckbox", { name: "파일 확장명" }).click();
+    await page.waitForTimeout(250);
+
+    // Put the note back on show for the steps that follow.
+    await readProperties("작업 메모.txt");
+    await propertiesDialog.getByLabel("숨김").uncheck();
+    await propertiesDialog.getByRole("button", { name: "확인" }).click();
+    await page.waitForTimeout(250);
+    await files.getByRole("button", { name: "보기 옵션" }).click();
+    await files.getByRole("menuitemcheckbox", { name: "숨긴 항목" }).click();
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(250);
+    assert(
+      (await explorerRows.count()) === rowsBeforeHide,
+      "The note did not come back once it was unhidden",
+    );
 
     await workNote.click();
     await page.keyboard.press("Control+c");

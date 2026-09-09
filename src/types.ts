@@ -42,6 +42,12 @@ export type DesktopItem = {
   appId?: AppId;
   content?: string;
   createdAt: number;
+  /**
+   * The Windows 숨김 attribute. Explorer and the desktop leave a hidden entry
+   * out until 숨긴 항목 is on; nothing else about it changes, and it is set from
+   * the entry's own 속성.
+   */
+  hidden?: boolean;
   id: string;
   kind: VfsEntryKind;
   name: string;
