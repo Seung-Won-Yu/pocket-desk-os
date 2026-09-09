@@ -50,6 +50,10 @@ type SettingsAppProps = {
   textScale: TextScale;
   setTaskbarPosition: (position: TaskbarPosition) => void;
   taskbarPosition: TaskbarPosition;
+  autoHideTaskbar: boolean;
+  setAutoHideTaskbar: (autoHide: boolean) => void;
+  smallTaskbarButtons: boolean;
+  setSmallTaskbarButtons: (small: boolean) => void;
   defaultApps: DefaultAppMap;
   setClock24h: (enabled: boolean) => void;
   setDefaultApp: (extension: string, appId: AppId) => void;
@@ -79,6 +83,10 @@ export default function SettingsApp({
   textScale,
   setTaskbarPosition,
   taskbarPosition,
+  autoHideTaskbar,
+  setAutoHideTaskbar,
+  smallTaskbarButtons,
+  setSmallTaskbarButtons,
   defaultApps,
   setClock24h,
   setDefaultApp,
@@ -134,8 +142,8 @@ export default function SettingsApp({
       id: "personalization" as const,
       icon: Palette,
       label: "개인 설정",
-      keywords: "테마 배경 화면 작업 표시줄 위치",
-      aliases: "personalization theme wallpaper background taskbar position",
+      keywords: "테마 배경 화면 작업 표시줄 위치 자동 숨기기 작은 단추",
+      aliases: "personalization theme wallpaper background taskbar position autohide small",
     },
     {
       id: "sound" as const,
@@ -330,6 +338,31 @@ export default function SettingsApp({
                   </button>
                 ))}
               </div>
+              <label className="settings-toggle">
+                <input
+                  checked={autoHideTaskbar}
+                  onChange={(event) => setAutoHideTaskbar(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>
+                  <strong>데스크톱 모드에서 작업 표시줄 자동 숨기기</strong>
+                  <small>
+                    작업 표시줄이 화면 밖으로 물러나고 창이 화면 전체를 씁니다. 가장자리에
+                    포인터를 대면 다시 나옵니다.
+                  </small>
+                </span>
+              </label>
+              <label className="settings-toggle">
+                <input
+                  checked={smallTaskbarButtons}
+                  onChange={(event) => setSmallTaskbarButtons(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>
+                  <strong>작은 작업 표시줄 단추 사용</strong>
+                  <small>막대가 얇아지고 단추와 시계가 함께 작아집니다.</small>
+                </span>
+              </label>
             </section>
           </>
         )}

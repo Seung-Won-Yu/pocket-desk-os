@@ -1,4 +1,4 @@
-import { getTaskbarPosition, getWorkArea } from "./taskbarPosition";
+import { getTaskbarLayout, getWorkArea } from "./taskbarPosition";
 import { type WindowInstance } from "./types";
 
 /**
@@ -25,7 +25,7 @@ export function getWindowFrameSize(
   viewport = { height: window.innerHeight, width: window.innerWidth },
 ) {
   if (instance.maximized) {
-    const area = getWorkArea(viewport, getTaskbarPosition());
+    const area = getWorkArea(viewport, getTaskbarLayout());
     return { height: Math.max(1, area.height), width: Math.max(1, area.width) };
   }
   return { height: Math.max(1, instance.height), width: Math.max(1, instance.width) };

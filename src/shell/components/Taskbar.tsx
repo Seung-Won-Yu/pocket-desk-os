@@ -382,6 +382,19 @@ export function Taskbar({
     setShellMenu({ x: event.clientX, y: event.clientY });
   };
 
+  /*
+   * What keeps a hidden bar out: anything of the bar's own that is open. The
+   * Start menu counts, and so does a window preview — the pointer travels off
+   * the bar to reach either of them.
+   */
+  const revealed =
+    startOpen ||
+    trayPanel !== null ||
+    preview !== null ||
+    taskbarMenu !== null ||
+    shellMenu !== null ||
+    clockMenu !== null;
+
   const shellMenuItems: Array<{ icon: LucideIcon; label: string; run: () => void }> = [
     { icon: Activity, label: "작업 관리자", run: () => onOpenApp("taskmanager") },
     { icon: SquareTerminal, label: "명령 프롬프트", run: () => onOpenApp("terminal") },
@@ -428,7 +441,17 @@ export function Taskbar({
   );
 
   return (
-    <footer className="taskbar" onContextMenu={openShellMenu} ref={taskbarRef}>
+    /*
+     * 자동 숨기기: the bar slides away, and hovering the sliver at the edge
+     * brings it back. It must also stay out while something of its own is open
+     * — a menu or a panel would otherwise be left hanging over an empty edge
+     * the moment the pointer moved off the bar and onto the menu itself.
+     */
+    <footer
+      className={`taskbar${revealed ? " is-revealed" : ""}`}
+      onContextMenu={openShellMenu}
+      ref={taskbarRef}
+    >
       <div className="taskbar-center">
         <button
           aria-expanded={startOpen}

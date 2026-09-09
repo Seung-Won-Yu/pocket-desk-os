@@ -139,8 +139,12 @@ import {
 } from "./shell/preferences";
 import {
   type TaskbarPosition,
-  applyTaskbarPosition,
+  applyTaskbarLayout,
+  loadAutoHideTaskbar,
+  loadSmallTaskbarButtons,
   loadTaskbarPosition,
+  persistAutoHideTaskbar,
+  persistSmallTaskbarButtons,
   persistTaskbarPosition,
 } from "./shell/taskbarPosition";
 import {
@@ -274,6 +278,8 @@ type ContentOps = Pick<
   | "setFocusAssist"
   | "setTextScale"
   | "setTaskbarPosition"
+  | "setAutoHideTaskbar"
+  | "setSmallTaskbarButtons"
   | "setShowFileExtensions"
   | "setShowHiddenItems"
   | "setVfsEntryHidden"
@@ -381,6 +387,11 @@ export default function App() {
    * 폴더 옵션 — Windows applies these system-wide, so they live here rather
    * than in one Explorer window: the desktop shows names and entries too.
    */
+  /** 자동 숨기기 and 작은 작업 표시줄 단추 — both change what the work area is. */
+  const [autoHideTaskbar, setAutoHideTaskbar] = useState(() => loadAutoHideTaskbar());
+  const [smallTaskbarButtons, setSmallTaskbarButtons] = useState(() =>
+    loadSmallTaskbarButtons(),
+  );
   const [showFileExtensions, setShowFileExtensions] = useState(() => loadShowFileExtensions());
   const [showHiddenItems, setShowHiddenItems] = useState(() => loadShowHiddenItems());
   /** 집중 지원: notifications wait in the centre instead of appearing. */
@@ -497,9 +508,15 @@ export default function App() {
    * be right before anything measures against it.
    */
   useLayoutEffect(() => {
-    applyTaskbarPosition(taskbarPosition);
+    applyTaskbarLayout({
+      autoHide: autoHideTaskbar,
+      position: taskbarPosition,
+      smallButtons: smallTaskbarButtons,
+    });
     persistTaskbarPosition(taskbarPosition);
-  }, [taskbarPosition]);
+    persistAutoHideTaskbar(autoHideTaskbar);
+    persistSmallTaskbarButtons(smallTaskbarButtons);
+  }, [autoHideTaskbar, smallTaskbarButtons, taskbarPosition]);
 
   useEffect(() => {
     // On the document element, not the shell root: `rem` resolves against the
@@ -808,7 +825,7 @@ export default function App() {
     fitWindowsToViewport();
     window.addEventListener("resize", fitWindowsToViewport);
     return () => window.removeEventListener("resize", fitWindowsToViewport);
-  }, [desktopViewMode, taskbarPosition]);
+  }, [autoHideTaskbar, desktopViewMode, smallTaskbarButtons, taskbarPosition]);
 
   // Windows comes back to the desktop you were on, with the notifications you
   // had not read. Neither survived a reload.
@@ -4442,6 +4459,8 @@ export default function App() {
     setFocusAssist,
     setTextScale,
     setTaskbarPosition,
+    setAutoHideTaskbar,
+    setSmallTaskbarButtons,
     setShowFileExtensions,
     setShowHiddenItems,
     setVfsEntryHidden,
@@ -4496,6 +4515,9 @@ export default function App() {
       setFocusAssist: (...args) => contentOpsRef.current.setFocusAssist(...args),
       setTextScale: (...args) => contentOpsRef.current.setTextScale(...args),
       setTaskbarPosition: (...args) => contentOpsRef.current.setTaskbarPosition(...args),
+      setAutoHideTaskbar: (...args) => contentOpsRef.current.setAutoHideTaskbar(...args),
+      setSmallTaskbarButtons: (...args) =>
+        contentOpsRef.current.setSmallTaskbarButtons(...args),
       setShowFileExtensions: (...args) => contentOpsRef.current.setShowFileExtensions(...args),
       setShowHiddenItems: (...args) => contentOpsRef.current.setShowHiddenItems(...args),
       setVfsEntryHidden: (...args) => contentOpsRef.current.setVfsEntryHidden(...args),
@@ -4585,6 +4607,8 @@ export default function App() {
       focusAssist,
       textScale,
       taskbarPosition,
+      autoHideTaskbar,
+      smallTaskbarButtons,
       showFileExtensions,
       showHiddenItems,
       defaultApps,
@@ -4628,6 +4652,8 @@ export default function App() {
       focusAssist,
       textScale,
       taskbarPosition,
+      autoHideTaskbar,
+      smallTaskbarButtons,
       showFileExtensions,
       showHiddenItems,
       defaultApps,

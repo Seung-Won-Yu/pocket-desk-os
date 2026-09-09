@@ -3743,6 +3743,76 @@ async function runSmoke(baseUrl) {
     await scaleSettings.getByRole("button", { name: "복원" }).click();
     await page.waitForTimeout(200);
 
+    /*
+     * 작은 작업 표시줄 단추 and 자동 숨기기. Both are settings about the work
+     * area, so what is asserted is the work area: a thinner bar gives the
+     * windows the pixels it stopped using, and a hidden one gives them all of
+     * them.
+     */
+    await scaleSettings.getByRole("button", { name: "최대화" }).click();
+    await page.waitForTimeout(250);
+    await scaleSettings.getByLabel(/작은 작업 표시줄 단추/).check();
+    await page.waitForTimeout(400);
+    const smallBar = await barBox();
+    const smallMaximized = await activeWindowBox();
+    assert(
+      Math.round(smallBar.height) === 32 &&
+        Math.round(smallMaximized.height) === viewport.height - 32,
+      `작은 단추: bar ${smallBar.height}px, maximized ${smallMaximized.height}px of ${viewport.height}`,
+    );
+    await scaleSettings.getByLabel(/작은 작업 표시줄 단추/).uncheck();
+    await page.waitForTimeout(400);
+
+    await scaleSettings.getByLabel(/자동 숨기기/).check();
+    await page.waitForTimeout(500);
+    const hiddenMaximized = await activeWindowBox();
+    assert(
+      Math.round(hiddenMaximized.height) === viewport.height,
+      `자동 숨기기 left the window ${hiddenMaximized.height}px of ${viewport.height}; a hidden bar takes none of the work area`,
+    );
+    const hiddenBar = await barBox();
+    assert(
+      Math.round(hiddenBar.y + hiddenBar.height) === viewport.height + 46,
+      `The hidden bar sits at y=${hiddenBar.y}; all but a 2px sliver belongs off screen`,
+    );
+
+    // Pointing at the edge brings it back, and moving away puts it away.
+    await page.mouse.move(viewport.width / 2, viewport.height - 1);
+    await page.waitForTimeout(450);
+    assert(
+      Math.round((await barBox()).y + hiddenBar.height) === viewport.height,
+      "The bar did not come back when the pointer reached the edge",
+    );
+    await page.mouse.move(viewport.width / 2, viewport.height / 2);
+    await page.waitForTimeout(450);
+    assert(
+      Math.round((await barBox()).y + hiddenBar.height) === viewport.height + 46,
+      "The bar stayed out after the pointer left it",
+    );
+
+    // An open Start menu keeps it out, or the menu would hang over an empty edge.
+    await page.mouse.move(viewport.width / 2, viewport.height - 1);
+    await page.waitForTimeout(350);
+    await page.getByRole("button", { name: "시작 메뉴" }).click();
+    await page.locator(".start-menu").waitFor({ state: "visible" });
+    await page.mouse.move(viewport.width / 2, viewport.height / 2);
+    await page.waitForTimeout(450);
+    assert(
+      Math.round((await barBox()).y + hiddenBar.height) === viewport.height,
+      "The bar slid away from under its own Start menu",
+    );
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+
+    await scaleSettings.getByLabel(/자동 숨기기/).uncheck();
+    await page.waitForTimeout(400);
+    assert(
+      Math.round((await activeWindowBox()).height) === viewport.height - 48,
+      "Turning 자동 숨기기 off did not give the bar its space back",
+    );
+    await scaleSettings.getByRole("button", { name: "복원" }).click();
+    await page.waitForTimeout(200);
+
     await scaleSettings.getByRole("button", { name: "설정 닫기" }).click();
     await page.waitForTimeout(200);
 

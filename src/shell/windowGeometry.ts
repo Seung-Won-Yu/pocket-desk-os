@@ -1,6 +1,6 @@
 import { clamp } from "../utils/format";
 import { SNAP_CORNER_SIZE, SNAP_EDGE_SIZE } from "./constants";
-import { getTaskbarPosition, getWorkArea } from "./taskbarPosition";
+import { getTaskbarLayout, getWorkArea } from "./taskbarPosition";
 import { type SnapZone, type WindowInstance } from "./types";
 
 /**
@@ -43,7 +43,7 @@ export function getWindowSnapZone(clientX: number, clientY: number): SnapZone | 
 export function getDesktopWorkArea() {
   return getWorkArea(
     { height: window.innerHeight, width: window.innerWidth },
-    getTaskbarPosition(),
+    getTaskbarLayout(),
   );
 }
 

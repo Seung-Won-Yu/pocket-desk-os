@@ -271,6 +271,11 @@ export type AppContentProps = {
   /** 작업 표시줄 위치, and the setter 설정 uses to move it. */
   taskbarPosition: TaskbarPosition;
   setTaskbarPosition: (position: TaskbarPosition) => void;
+  /** 자동 숨기기 and 작은 작업 표시줄 단추; both resize the work area. */
+  autoHideTaskbar: boolean;
+  setAutoHideTaskbar: (autoHide: boolean) => void;
+  smallTaskbarButtons: boolean;
+  setSmallTaskbarButtons: (small: boolean) => void;
   /** 폴더 옵션 — shell-wide, so Explorer and the desktop agree. */
   showFileExtensions: boolean;
   setShowFileExtensions: (show: boolean) => void;
