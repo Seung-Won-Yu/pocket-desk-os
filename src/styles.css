@@ -11892,3 +11892,32 @@ button {
   position: absolute;
   width: auto;
 }
+
+/* ---------- 탐색기 그룹화와 보내기 ---------- */
+
+/*
+ * A heading between the rows. Presentational, so the listbox still contains
+ * only its options; it spans the whole row in every view.
+ */
+.file-group-header {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  grid-column: 1 / -1;
+  letter-spacing: 0.01em;
+  padding: 10px 8px 4px;
+}
+
+.file-view-icons .file-group-header,
+.file-view-list .file-group-header {
+  width: 100%;
+}
+
+.file-sort-caption {
+  color: var(--muted);
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 6px 10px 2px;
+}

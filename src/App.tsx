@@ -2050,11 +2050,13 @@ export default function App() {
       return [...current, ...copies];
     });
     playSound("success");
-    notify({
-      detail: "선택한 항목의 복사본을 만들었습니다.",
-      title: `${sourceIds.length}개 항목 붙여넣기 완료`,
-      tone: "success",
-    });
+    if (!options?.silent) {
+      notify({
+        detail: "선택한 항목의 복사본을 만들었습니다.",
+        title: `${sourceIds.length}개 항목 붙여넣기 완료`,
+        tone: "success",
+      });
+    }
     return copiedRootIds;
   };
 

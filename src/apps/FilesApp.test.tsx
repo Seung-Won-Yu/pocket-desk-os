@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { TEXT_PREVIEW_LINES, closeFileTab, createFileTab, getTextPreview } from "./FilesApp";
+import {
+  TEXT_PREVIEW_LINES,
+  closeFileTab,
+  createFileTab,
+  getFileGroupLabel,
+  getTextPreview,
+} from "./FilesApp";
 
 describe("getTextPreview", () => {
   it("shows a short file whole", () => {
@@ -54,5 +60,39 @@ describe("Explorer tabs", () => {
     // The window closes on the last tab, which is the shell's decision.
     expect(closeFileTab([tabs[0]], "a", "a")).toBeNull();
     expect(closeFileTab(tabs, "missing", "a")).toBeNull();
+  });
+});
+
+describe("getFileGroupLabel", () => {
+  /** 2026-09-09 14:00 local. */
+  const now = new Date(2026, 8, 9, 14, 0, 0, 0).getTime();
+  const at = (date: Date) => ({ type: "텍스트 문서", updatedAt: date.getTime() });
+
+  it("groups nothing while 그룹화 is off", () => {
+    expect(getFileGroupLabel(at(new Date(now)), "none", now)).toBeNull();
+  });
+
+  it("groups by the type column when asked", () => {
+    expect(getFileGroupLabel({ type: "파일 폴더", updatedAt: now }, "type", now)).toBe(
+      "파일 폴더",
+    );
+  });
+
+  it("puts a date in the bucket Explorer would", () => {
+    const day = 24 * 60 * 60 * 1000;
+    const startOfToday = new Date(2026, 8, 9).getTime();
+    expect(getFileGroupLabel(at(new Date(now)), "modified", now)).toBe("오늘");
+    // Midnight belongs to today, not to yesterday.
+    expect(getFileGroupLabel(at(new Date(startOfToday)), "modified", now)).toBe("오늘");
+    expect(getFileGroupLabel(at(new Date(startOfToday - 1)), "modified", now)).toBe("어제");
+    expect(getFileGroupLabel(at(new Date(startOfToday - 3 * day)), "modified", now)).toBe(
+      "이번 주 초",
+    );
+    expect(getFileGroupLabel(at(new Date(startOfToday - 10 * day)), "modified", now)).toBe(
+      "이번 달 초",
+    );
+    expect(getFileGroupLabel(at(new Date(startOfToday - 400 * day)), "modified", now)).toBe(
+      "오래 전",
+    );
   });
 });

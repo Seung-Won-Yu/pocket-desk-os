@@ -73,6 +73,12 @@ export type SystemClipboard = {
 
 export type VfsDuplicateOptions = {
   parentId?: string;
+  /**
+   * The caller reports the outcome itself. 보내기 names the folder it copied
+   * into, and the generic "붙여넣기 완료" beside it was a second toast for one
+   * action.
+   */
+  silent?: boolean;
   position?: IconPosition;
   showOnDesktop?: boolean;
 };

@@ -1027,6 +1027,73 @@ async function runSmoke(baseUrl) {
     await files.getByRole("menuitemcheckbox", { name: "파일 확장명" }).click();
     await page.waitForTimeout(250);
 
+    /*
+     * 그룹화 and 보내기. Grouping is a second sort applied first, so the check
+     * that matters is that the rows are still one list the keyboard can walk —
+     * headers appear between them, nothing is lost, and turning it off leaves
+     * the list as it was.
+     */
+    const groupHeaders = files.locator(".file-group-header");
+    assert(
+      (await groupHeaders.count()) === 0,
+      "The list was grouped before it was asked to be",
+    );
+    const rowsBeforeGrouping = await explorerRows.count();
+    await files.getByRole("button", { name: "정렬", exact: true }).click();
+    await files.getByRole("menuitemradio", { name: "유형", exact: true }).click();
+    await page.waitForTimeout(300);
+    const headerLabels = await groupHeaders.allInnerTexts();
+    assert(
+      headerLabels.length >= 2 && headerLabels.includes("파일 폴더"),
+      `그룹화(유형) produced headings ${JSON.stringify(headerLabels)}`,
+    );
+    assert(
+      (await explorerRows.count()) === rowsBeforeGrouping,
+      "Grouping added or dropped rows instead of only reordering them",
+    );
+    await explorerRows.first().click();
+    await page.keyboard.press("ArrowDown");
+    assert(
+      (await files.locator(".file-list button.is-selected").count()) === 1,
+      "The arrow keys stopped walking the list once it was grouped",
+    );
+    await files.getByRole("button", { name: "정렬", exact: true }).click();
+    await files.getByRole("menuitemradio", { name: "없음", exact: true }).click();
+    await page.waitForTimeout(300);
+    assert((await groupHeaders.count()) === 0, "그룹화 없음 left the headings behind");
+
+    // 보내기 copies: the original stays where it is, and one toast names where
+    // the copy went — the generic paste toast beside it was two for one action.
+    await explorerRows.filter({ hasText: "web-surf.url" }).first().click({ button: "right" });
+    await fileContextMenu.getByRole("menuitem", { name: "보내기" }).click();
+    await page.waitForTimeout(200);
+    const sendMenu = page.locator('[aria-label="보내기"]');
+    await sendMenu.waitFor({ state: "visible" });
+    // Counted against what was already on screen: earlier steps leave toasts of
+    // their own, and the claim is that this action adds one, not that the
+    // screen holds one.
+    const toastsBeforeSend = await page.locator(".toast").count();
+    await sendMenu.getByRole("menuitem", { name: "문서", exact: true }).click();
+    await page.waitForTimeout(400);
+    const sendToasts = await page.locator(".toast").allInnerTexts();
+    assert(
+      sendToasts.length === toastsBeforeSend + 1 &&
+        sendToasts.some((toast) => toast.includes("문서(으)로 보냄")),
+      `보내기 went from ${toastsBeforeSend} to ${sendToasts.length} toast(s): ${sendToasts.join(" | ").replace(/\n/g, " ")}`,
+    );
+    assert(
+      (await explorerRows.filter({ hasText: "web-surf.url" }).count()) === 1,
+      "보내기 moved the original instead of copying it",
+    );
+    await explorerSidebar.getByRole("button", { name: "문서", exact: true }).click();
+    await page.waitForTimeout(350);
+    assert(
+      (await explorerRows.filter({ hasText: "web-surf" }).count()) === 1,
+      "The copy 보내기 made never arrived in 문서",
+    );
+    await explorerSidebar.getByRole("button", { name: "바탕 화면", exact: true }).click();
+    await page.waitForTimeout(300);
+
     // Put the note back on show for the steps that follow.
     await readProperties("작업 메모.txt");
     await propertiesDialog.getByLabel("숨김").uncheck();

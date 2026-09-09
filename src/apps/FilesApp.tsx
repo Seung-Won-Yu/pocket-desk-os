@@ -21,6 +21,7 @@ import {
   Grid2X2,
   House,
   Info,
+  Share2,
   SlidersHorizontal,
   LayoutGrid,
   List,
@@ -42,6 +43,7 @@ import {
 import {
   type ChangeEvent,
   type FormEvent,
+  Fragment,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -59,7 +61,14 @@ import {
   writeLocalFolder,
 } from "../vfs/localFolder";
 import { trapDialogFocus } from "../shell/dialogFocus";
-import type { AppId, ClipboardMode, DesktopItem, SystemClipboard, ToastInput } from "../types";
+import type {
+  AppId,
+  ClipboardMode,
+  DesktopItem,
+  SystemClipboard,
+  ToastInput,
+  VfsDuplicateOptions,
+} from "../types";
 import {
   clamp,
   formatStorageSize,
@@ -116,6 +125,8 @@ type FileContextMenuState = {
 };
 
 type FileFolderSubmenu = "new" | "sort" | "view";
+type FileGroupKey = "modified" | "none" | "type";
+type FileSendToTarget = { id: string; label: string };
 
 export type FilesLaunchRequest = {
   folderId: string;
@@ -138,6 +149,7 @@ type FilesAppProps = {
   exportVfsZip: () => void;
   filesLaunchRequest: FilesLaunchRequest | null;
   importVfsZip: (file: File) => Promise<void>;
+  duplicateVfsEntries: (itemIds: string[], options?: VfsDuplicateOptions) => string[];
   moveVfsEntries: (itemIds: string[], parentId: string) => boolean;
   notify: (toast: ToastInput) => void;
   openApp: (appId: AppId) => void;
@@ -163,6 +175,7 @@ type FilesAppProps = {
 
 const APP_BAR_HEIGHT = 48;
 const FILE_EXPLORER_SORT_KEY = "pocket-desk-explorer-sort-v1";
+const FILE_EXPLORER_GROUP_KEY = "pocket-desk-explorer-group-v1";
 const FILE_EXPLORER_SORT_DIRECTION_KEY = "pocket-desk-explorer-sort-direction-v1";
 const FILE_EXPLORER_VIEW_KEY = "pocket-desk-explorer-view-v1";
 // The command strip and the folder background menu offer the same choices, so
@@ -172,6 +185,37 @@ const FILE_SORT_OPTIONS: Array<[FileSortKey, string]> = [
   ["type", "항목 유형"],
   ["modified", "수정한 날짜"],
 ];
+/**
+ * 그룹화 — Explorer's group-by. The rows keep their order within a group, so
+ * grouping is a second sort applied first rather than a different list: the
+ * keyboard still walks `visibleFiles` by index, and the headers are painted
+ * between the rows that changed group.
+ */
+const FILE_GROUP_OPTIONS: Array<[FileGroupKey, string]> = [
+  ["none", "없음"],
+  ["type", "유형"],
+  ["modified", "수정한 날짜"],
+];
+
+/** Which heading a row belongs under. Null when nothing is being grouped. */
+export function getFileGroupLabel(
+  entry: { type: string; updatedAt: number },
+  key: FileGroupKey,
+  now = Date.now(),
+): string | null {
+  if (key === "none") return null;
+  if (key === "type") return entry.type;
+
+  // The buckets Explorer uses for a date column, coarsest last.
+  const day = 24 * 60 * 60 * 1000;
+  const startOfToday = new Date(now).setHours(0, 0, 0, 0);
+  if (entry.updatedAt >= startOfToday) return "오늘";
+  if (entry.updatedAt >= startOfToday - day) return "어제";
+  if (entry.updatedAt >= startOfToday - 7 * day) return "이번 주 초";
+  if (entry.updatedAt >= startOfToday - 30 * day) return "이번 달 초";
+  return "오래 전";
+}
+
 const FILE_SORT_DIRECTION_OPTIONS: Array<[FileSortDirection, string]> = [
   ["asc", "오름차순"],
   ["desc", "내림차순"],
@@ -247,6 +291,7 @@ export default function FilesApp({
   exportVfsZip,
   filesLaunchRequest,
   importVfsZip,
+  duplicateVfsEntries,
   moveVfsEntries,
   notify,
   openApp,
@@ -323,6 +368,10 @@ export default function FilesApp({
     const stored = localStorage.getItem(FILE_EXPLORER_VIEW_KEY);
     return stored === "list" || stored === "icons" ? stored : "details";
   });
+  const [groupKey, setGroupKey] = useState<FileGroupKey>(() => {
+    const stored = localStorage.getItem(FILE_EXPLORER_GROUP_KEY);
+    return stored === "type" || stored === "modified" ? stored : "none";
+  });
   const [sortOpen, setSortOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
@@ -331,6 +380,7 @@ export default function FilesApp({
   const [detailsPaneOpen, setDetailsPaneOpen] = useState(false);
   const [fileContextMenu, setFileContextMenu] = useState<FileContextMenuState | null>(null);
   const [folderSubmenu, setFolderSubmenu] = useState<FileFolderSubmenu | null>(null);
+  const [fileSubmenuOpen, setFileSubmenuOpen] = useState(false);
   const [pendingRenameId, setPendingRenameId] = useState<string | null>(null);
   const [propertiesFileId, setPropertiesFileId] = useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
@@ -444,7 +494,25 @@ export default function FilesApp({
   }, [fileQuery, files]);
   const visibleFiles = useMemo(() => {
     const direction = sortDirection === "asc" ? 1 : -1;
+    /*
+     * Grouping is applied before the sort rather than instead of it: rows keep
+     * their order inside a group, and the keyboard still walks this one array
+     * by index, so nothing about selection or arrow keys has to know grouping
+     * exists.
+     */
+    const groupOrder = new Map<string, number>();
+    if (groupKey !== "none") {
+      for (const file of filteredFiles) {
+        const label = getFileGroupLabel(file, groupKey);
+        if (label !== null && !groupOrder.has(label)) groupOrder.set(label, groupOrder.size);
+      }
+    }
     return [...filteredFiles].sort((first, second) => {
+      if (groupKey !== "none") {
+        const firstGroup = groupOrder.get(getFileGroupLabel(first, groupKey) ?? "") ?? 0;
+        const secondGroup = groupOrder.get(getFileGroupLabel(second, groupKey) ?? "") ?? 0;
+        if (firstGroup !== secondGroup) return firstGroup - secondGroup;
+      }
       if (first.item.kind === "folder" && second.item.kind !== "folder") return -1;
       if (first.item.kind !== "folder" && second.item.kind === "folder") return 1;
       let order = 0;
@@ -466,7 +534,7 @@ export default function FilesApp({
       }
       return order * direction;
     });
-  }, [filteredFiles, sortDirection, sortKey]);
+  }, [filteredFiles, groupKey, sortDirection, sortKey]);
   const selectedFile =
     visibleFiles.find((file) => file.id === activeFileId && selectedIds.includes(file.id)) ??
     visibleFiles.find((file) => selectedIds.includes(file.id));
@@ -552,6 +620,10 @@ export default function FilesApp({
   }, [viewMode]);
 
   useEffect(() => {
+    localStorage.setItem(FILE_EXPLORER_GROUP_KEY, groupKey);
+  }, [groupKey]);
+
+  useEffect(() => {
     if (!sortOpen && !newOpen && !optionsOpen) return;
 
     const closeOnOutsidePointer = (event: Event) => {
@@ -584,11 +656,13 @@ export default function FilesApp({
         !fileContextMenuRef.current?.contains(event.target)
       ) {
         setFileContextMenu(null);
+        setFileSubmenuOpen(false);
       }
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setFileContextMenu(null);
+      setFileSubmenuOpen(false);
       setPropertiesFileId(null);
     };
     window.addEventListener("pointerdown", closeOnOutsidePointer);
@@ -851,11 +925,46 @@ export default function FilesApp({
     navigateToFolder(filesLaunchRequest.folderId);
   }, [filesLaunchRequest?.id]);
 
-  const getSelectedCommandIds = () =>
+  const getSelectedCommandIds = (contextId?: string) =>
     getVfsTopLevelIds(
       desktopItems,
-      selectedIds.length > 0 ? selectedIds : selectedFile ? [selectedFile.id] : [],
+      contextId && !selectedIds.includes(contextId)
+        ? [contextId]
+        : selectedIds.length > 0
+          ? selectedIds
+          : selectedFile
+            ? [selectedFile.id]
+            : [],
     );
+
+  /** Where 보내기 can put a copy: the well-known folders, minus where it is. */
+  const sendToTargets: FileSendToTarget[] = [
+    { id: VFS_ROOT_ID, label: "바탕 화면" },
+    { id: VFS_DOCUMENTS_ID, label: "문서" },
+    { id: VFS_PICTURES_ID, label: "사진" },
+  ];
+
+  const sendSelectionTo = (target: FileSendToTarget) => {
+    const contextId = fileContextMenu?.fileId ?? undefined;
+    const ids = getSelectedCommandIds(contextId ?? undefined);
+    setFileContextMenu(null);
+    setFileSubmenuOpen(false);
+    if (ids.length === 0) return;
+
+    // A copy, as Windows' 보내기 makes: the original stays where it is.
+    const created = duplicateVfsEntries(ids, {
+      parentId: target.id,
+      showOnDesktop: target.id === VFS_ROOT_ID,
+      // One toast for one action, and it is the one that names the folder.
+      silent: true,
+    });
+    if (created.length === 0) return;
+    notify({
+      detail: `${created.length}개 항목을 ${target.label}(으)로 복사했습니다.`,
+      title: `${target.label}(으)로 보냄`,
+      tone: "success",
+    });
+  };
 
   const copySelectedFiles = (
     itemIds = getSelectedCommandIds(),
@@ -948,6 +1057,7 @@ export default function FilesApp({
     event.preventDefault();
     setRenaming(false);
     setFolderSubmenu(null);
+    setFileSubmenuOpen(false);
     setFileContextMenu({
       fileId: null,
       // The same edge test the desktop background menu makes, on the viewport
@@ -1937,6 +2047,29 @@ export default function FilesApp({
                       {label}
                     </button>
                   ))}
+                  <span aria-hidden="true" className="menu-separator" />
+                  <strong aria-hidden="true" className="file-sort-caption">
+                    그룹화
+                  </strong>
+                  {FILE_GROUP_OPTIONS.map(([nextGroupKey, label]) => (
+                    <button
+                      aria-checked={groupKey === nextGroupKey}
+                      key={nextGroupKey}
+                      onClick={() => {
+                        setGroupKey(nextGroupKey);
+                        setSortOpen(false);
+                      }}
+                      role="menuitemradio"
+                      type="button"
+                    >
+                      {groupKey === nextGroupKey ? (
+                        <Check aria-hidden="true" size={15} />
+                      ) : (
+                        <span />
+                      )}
+                      {label}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
@@ -2113,105 +2246,123 @@ export default function FilesApp({
             >
               {visibleFiles.map((file, index) => {
                 const FileIcon = file.icon;
+                // A heading is painted where the group changes, not per row.
+                const groupLabel = getFileGroupLabel(file, groupKey);
+                const startsGroup =
+                  groupLabel !== null &&
+                  groupLabel !==
+                    (index > 0 ? getFileGroupLabel(visibleFiles[index - 1], groupKey) : null);
                 return (
-                  <div className="file-list-item" key={file.id} role="presentation">
-                    <button
-                      aria-selected={selectedIds.includes(file.id)}
-                      className={`${selectedIds.includes(file.id) ? "is-selected" : ""}${
-                        dragOverFolderId === file.id ? " is-drop-target" : ""
-                      }${
-                        // Windows dims an item waiting to be moved. Nothing marked
-                        // a cut item here, so Ctrl+X looked like it did nothing.
-                        clipboard.mode === "cut" && clipboard.itemIds.includes(file.id)
-                          ? " is-cut"
-                          : ""
-                      }`}
-                      data-file-id={file.id}
-                      draggable={!isVfsSystemFolderId(file.id)}
-                      tabIndex={file.id === (activeFileId ?? visibleFiles[0]?.id) ? 0 : -1}
-                      onClick={(event) => selectFile(file.id, index, event)}
-                      onContextMenu={(event) => showFileContextMenu(event, file.id)}
-                      onDoubleClick={() => openFile(file.item)}
-                      onDragEnd={() => setDragOverFolderId(null)}
-                      onDragStart={(event) => startFileDrag(event, file.id)}
-                      onDragEnter={() => {
-                        if (file.item.kind === "folder") setDragOverFolderId(file.id);
-                      }}
-                      onDragLeave={() => {
-                        if (dragOverFolderId === file.id) setDragOverFolderId(null);
-                      }}
-                      onDragOver={(event) => {
-                        if (file.item.kind !== "folder") return;
-                        event.preventDefault();
-                        event.stopPropagation();
-                        event.dataTransfer.dropEffect = "move";
-                      }}
-                      onDrop={(event) => {
-                        if (file.item.kind === "folder") dropFilesIntoFolder(event, file.id);
-                      }}
-                      role="option"
-                      type="button"
-                    >
-                      {file.item.kind === "canvas" && file.item.content ? (
-                        <img
-                          alt=""
-                          className="file-row-thumbnail"
-                          draggable={false}
-                          src={file.item.content}
-                        />
-                      ) : (
-                        <FileIcon aria-hidden="true" size={18} />
-                      )}
-                      <span>
-                        {/* Unmatched runs stay bare text: wrapping them in
+                  <Fragment key={file.id}>
+                    {startsGroup && (
+                      /* Presentational: the listbox's children are its options,
+                         and a heading between them must not read as one. */
+                      <div className="file-group-header" role="presentation">
+                        {groupLabel}
+                      </div>
+                    )}
+                    <div className="file-list-item" role="presentation">
+                      <button
+                        aria-selected={selectedIds.includes(file.id)}
+                        className={`${selectedIds.includes(file.id) ? "is-selected" : ""}${
+                          dragOverFolderId === file.id ? " is-drop-target" : ""
+                        }${
+                          // Windows dims an item waiting to be moved. Nothing marked
+                          // a cut item here, so Ctrl+X looked like it did nothing.
+                          clipboard.mode === "cut" && clipboard.itemIds.includes(file.id)
+                            ? " is-cut"
+                            : ""
+                        }`}
+                        data-file-id={file.id}
+                        draggable={!isVfsSystemFolderId(file.id)}
+                        tabIndex={file.id === (activeFileId ?? visibleFiles[0]?.id) ? 0 : -1}
+                        onClick={(event) => selectFile(file.id, index, event)}
+                        onContextMenu={(event) => showFileContextMenu(event, file.id)}
+                        onDoubleClick={() => openFile(file.item)}
+                        onDragEnd={() => setDragOverFolderId(null)}
+                        onDragStart={(event) => startFileDrag(event, file.id)}
+                        onDragEnter={() => {
+                          if (file.item.kind === "folder") setDragOverFolderId(file.id);
+                        }}
+                        onDragLeave={() => {
+                          if (dragOverFolderId === file.id) setDragOverFolderId(null);
+                        }}
+                        onDragOver={(event) => {
+                          if (file.item.kind !== "folder") return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          event.dataTransfer.dropEffect = "move";
+                        }}
+                        onDrop={(event) => {
+                          if (file.item.kind === "folder") dropFilesIntoFolder(event, file.id);
+                        }}
+                        role="option"
+                        type="button"
+                      >
+                        {file.item.kind === "canvas" && file.item.content ? (
+                          <img
+                            alt=""
+                            className="file-row-thumbnail"
+                            draggable={false}
+                            src={file.item.content}
+                          />
+                        ) : (
+                          <FileIcon aria-hidden="true" size={18} />
+                        )}
+                        <span>
+                          {/* Unmatched runs stay bare text: wrapping them in
                             spans would change what every locator that reads a
                             row's name sees. */}
-                        {splitSearchMatch(file.name, fileQuery).map((part, index) =>
-                          part.match ? <mark key={index}>{part.text}</mark> : part.text,
-                        )}
-                        {file.location && (
-                          <em className="file-row-location">{file.location}</em>
-                        )}
-                      </span>
-                      <small>{file.modified}</small>
-                      <small>{file.type}</small>
-                      <small>
-                        {file.item.kind === "folder" ? "" : formatVfsEntrySize(file.item)}
-                      </small>
-                    </button>
-                    {renaming && selectedFile?.id === file.id && (
-                      <form className="file-inline-rename" onSubmit={submitRename}>
-                        <input
-                          aria-label="파일 이름"
-                          onBlur={() => {
-                            if (!cancelRenameRef.current && !commitRename(file.id, draftName)) {
-                              // The name was refused: keep editing rather than
-                              // silently discarding what was typed. Submit
-                              // already behaves this way; blur did not.
-                              renameInputRef.current?.focus();
-                              return;
-                            }
-                            cancelRenameRef.current = false;
-                            setRenaming(false);
-                          }}
-                          onChange={(event) => setDraftName(event.target.value)}
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => {
-                            if (event.key !== "Escape") return;
-                            event.preventDefault();
-                            event.stopPropagation();
-                            cancelRenameRef.current = true;
-                            setDraftName(file.name);
-                            setRenaming(false);
-                            focusFileList();
-                          }}
-                          onPointerDown={(event) => event.stopPropagation()}
-                          ref={renameInputRef}
-                          value={draftName}
-                        />
-                      </form>
-                    )}
-                  </div>
+                          {splitSearchMatch(file.name, fileQuery).map((part, index) =>
+                            part.match ? <mark key={index}>{part.text}</mark> : part.text,
+                          )}
+                          {file.location && (
+                            <em className="file-row-location">{file.location}</em>
+                          )}
+                        </span>
+                        <small>{file.modified}</small>
+                        <small>{file.type}</small>
+                        <small>
+                          {file.item.kind === "folder" ? "" : formatVfsEntrySize(file.item)}
+                        </small>
+                      </button>
+                      {renaming && selectedFile?.id === file.id && (
+                        <form className="file-inline-rename" onSubmit={submitRename}>
+                          <input
+                            aria-label="파일 이름"
+                            onBlur={() => {
+                              if (
+                                !cancelRenameRef.current &&
+                                !commitRename(file.id, draftName)
+                              ) {
+                                // The name was refused: keep editing rather than
+                                // silently discarding what was typed. Submit
+                                // already behaves this way; blur did not.
+                                renameInputRef.current?.focus();
+                                return;
+                              }
+                              cancelRenameRef.current = false;
+                              setRenaming(false);
+                            }}
+                            onChange={(event) => setDraftName(event.target.value)}
+                            onClick={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Escape") return;
+                              event.preventDefault();
+                              event.stopPropagation();
+                              cancelRenameRef.current = true;
+                              setDraftName(file.name);
+                              setRenaming(false);
+                              focusFileList();
+                            }}
+                            onPointerDown={(event) => event.stopPropagation()}
+                            ref={renameInputRef}
+                            value={draftName}
+                          />
+                        </form>
+                      )}
+                    </div>
+                  </Fragment>
                 );
               })}
               {visibleFiles.length === 0 && (
@@ -2479,6 +2630,63 @@ export default function FilesApp({
             <Trash2 aria-hidden="true" size={16} />
             삭제
           </button>
+          <span aria-hidden="true" className="menu-separator" />
+          {/*
+           * 보내기 — Windows' Send to. Every row here is something the shell
+           * can already do, wired to one place: a copy into a well-known
+           * folder, or the archive command. Nothing is offered that would only
+           * pretend to work.
+           */}
+          <div className="desktop-menu-row" onMouseEnter={() => setFileSubmenuOpen(true)}>
+            <button
+              aria-expanded={fileSubmenuOpen}
+              aria-haspopup="menu"
+              // Opens, never toggles: the pointer that reaches the row has
+              // already opened it on hover, and a toggling click then shut it
+              // again the moment it was clicked.
+              onClick={() => setFileSubmenuOpen(true)}
+              role="menuitem"
+              type="button"
+            >
+              <Share2 aria-hidden="true" size={16} />
+              <span>보내기</span>
+              <ChevronRight aria-hidden="true" className="menu-chevron" size={15} />
+            </button>
+            {fileSubmenuOpen && (
+              <div
+                aria-label="보내기"
+                className="desktop-context-submenu"
+                onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+                role="menu"
+              >
+                {sendToTargets.map((target) => (
+                  <button
+                    disabled={target.id === currentFolderId}
+                    key={target.id}
+                    onClick={() => sendSelectionTo(target)}
+                    role="menuitem"
+                    type="button"
+                  >
+                    <Folder aria-hidden="true" size={16} />
+                    {target.label}
+                  </button>
+                ))}
+                <span aria-hidden="true" className="menu-separator" />
+                <button
+                  onClick={() => {
+                    setFileContextMenu(null);
+                    setFileSubmenuOpen(false);
+                    compressSelection(getSelectedCommandIds(contextFile.id));
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <FileArchive aria-hidden="true" size={16} />
+                  압축(ZIP) 폴더
+                </button>
+              </div>
+            )}
+          </div>
           <span aria-hidden="true" className="menu-separator" />
           <button
             onClick={() => openFileProperties(contextFile.id)}
