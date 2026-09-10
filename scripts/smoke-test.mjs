@@ -1412,6 +1412,73 @@ async function runSmoke(baseUrl) {
     await page.waitForTimeout(250);
 
     /*
+     * 열 너비. The three trailing columns were hard-coded, so 유형 showed
+     * "인터넷 바로 가…" with no way to widen it. 이름 is still the track that
+     * absorbs the pane — widening 유형 takes the space from 이름 — which is
+     * what keeps this list free of the sideways scroll its header, a sibling
+     * of the scroller, could not follow.
+     */
+    const typeGrip = files.locator('.file-column-grip[data-column="type"]');
+    const columnEdges = async () => {
+      const head = await files.locator(".file-column-head").nth(2).boundingBox();
+      const cell = await explorerRows
+        .first()
+        .evaluate((row) => row.children[3].getBoundingClientRect().left);
+      return { cell: Math.round(cell), head: Math.round(head.x) };
+    };
+    const typeCellWidth = () =>
+      explorerRows
+        .first()
+        .evaluate((row) => Math.round(row.children[3].getBoundingClientRect().width));
+
+    const edgesBefore = await columnEdges();
+    assert(
+      Math.abs(edgesBefore.head - edgesBefore.cell) <= 2,
+      `The 유형 heading stands at ${edgesBefore.head} over a column at ${edgesBefore.cell}`,
+    );
+    const typeBefore = await typeCellWidth();
+    // Narrowed rather than widened: 이름 has a 96px floor, and in a window
+    // this size it is already close enough to it that widening 유형 has
+    // almost nowhere to take the space from.
+    const gripBox = await typeGrip.boundingBox();
+    await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(gripBox.x + gripBox.width / 2 - 40, gripBox.y + gripBox.height / 2, {
+      steps: 10,
+    });
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    const typeAfter = await typeCellWidth();
+    assert(
+      typeAfter <= typeBefore - 30,
+      `Dragging the 유형 grip 40px left took it from ${typeBefore} to ${typeAfter}`,
+    );
+    const edgesAfter = await columnEdges();
+    assert(
+      Math.abs(edgesAfter.head - edgesAfter.cell) <= 2,
+      `The heading drifted off its column after a resize (${edgesAfter.head} vs ${edgesAfter.cell})`,
+    );
+    assert(
+      JSON.parse(await page.evaluate(() => localStorage.getItem("pocket-desk-file-columns-v1")))
+        .type === typeAfter,
+      "The resized width was not written down",
+    );
+    // The keyboard drives the same separator, and Home puts it back.
+    await typeGrip.focus();
+    await page.keyboard.press("Shift+ArrowRight");
+    await page.waitForTimeout(200);
+    assert(
+      (await typeCellWidth()) === typeAfter + 32,
+      `Shift+Right moved 유형 from ${typeAfter} to ${await typeCellWidth()}`,
+    );
+    await page.keyboard.press("Home");
+    await page.waitForTimeout(200);
+    assert(
+      (await typeCellWidth()) === typeBefore,
+      `Home did not put 유형 back (${await typeCellWidth()} vs ${typeBefore})`,
+    );
+
+    /*
      * Ctrl+드래그 = 복사. Every drop used to move whatever was held. The
      * modifier is read at the moment of the drop, so it can be pressed after
      * the drag has started, and the cursor's badge follows it.

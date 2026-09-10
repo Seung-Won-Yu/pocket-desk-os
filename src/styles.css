@@ -5633,9 +5633,65 @@ button {
   padding: 0 10px 0 13px;
 }
 
-.file-list-header span + span {
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
-  padding-left: 8px;
+/* Each heading is its own cell: the label, and the grip that sizes it. */
+.file-column-head {
+  align-items: center;
+  display: flex;
+  min-width: 0;
+  position: relative;
+}
+
+.file-column-head > button {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-column-head + .file-column-head::before {
+  background: rgba(255, 255, 255, 0.08);
+  bottom: 4px;
+  content: "";
+  left: -5px;
+  position: absolute;
+  top: 4px;
+  width: 1px;
+}
+
+/*
+ * The grip straddles the boundary rather than sitting inside its own cell, so
+ * the pointer finds it where the line is drawn.
+ */
+.file-column-grip {
+  align-self: stretch;
+  cursor: col-resize;
+  flex: none;
+  margin-right: -7px;
+  position: relative;
+  width: 12px;
+  z-index: 1;
+}
+
+.file-column-grip::after {
+  background: transparent;
+  bottom: 4px;
+  content: "";
+  left: 5px;
+  position: absolute;
+  top: 4px;
+  width: 2px;
+}
+
+.file-column-grip:hover::after,
+.file-column-grip:focus-visible::after,
+.file-column-grip.is-resizing::after {
+  background: var(--active);
+}
+
+.file-column-grip:focus-visible {
+  outline: 2px solid var(--active);
+  outline-offset: -2px;
 }
 
 .file-list {
@@ -9408,21 +9464,28 @@ button {
    * track list drifts as soon as the columns start giving up space.
    */
   .file-list-header {
+    /*
+     * The three trailing widths are the user's now, set from the heading's
+     * own grips. 이름 stays the track that absorbs the pane — widening it is
+     * done by narrowing the others, which is what keeps this list free of the
+     * sideways scroll the header could not follow.
+     */
     grid-template-columns:
-      26px minmax(96px, 1fr) minmax(0, 116px) minmax(0, 106px)
-      minmax(0, 64px);
+      26px minmax(96px, 1fr) minmax(0, var(--col-modified)) minmax(0, var(--col-type))
+      minmax(0, var(--col-size));
     min-width: 0;
     padding-right: 13px;
   }
 
-  .file-list-header > span:first-child {
+  /* 이름 spans the icon column, as it did when the heads were bare spans. */
+  .file-list-header > .file-column-head:first-child {
     grid-column: 1 / 3;
   }
 
   .file-list.file-view-details button {
     grid-template-columns:
-      26px minmax(96px, 1fr) minmax(0, 116px) minmax(0, 106px)
-      minmax(0, 64px);
+      26px minmax(96px, 1fr) minmax(0, var(--col-modified)) minmax(0, var(--col-type))
+      minmax(0, var(--col-size));
     min-width: 0;
   }
 
@@ -9430,8 +9493,14 @@ button {
    * A squeezed cell has to clip rather than wrap: wrapping would grow the row
    * height, and a label stacked one glyph per line is worse than a clipped one.
    */
+  /*
+   * The label clips, not the head: the head holds the grip, which overhangs
+   * its own cell by half its width so the pointer finds it on the line. An
+   * `overflow: hidden` here cut that half away — the box still measured 12px
+   * wide and only the left 5px of it could be pressed.
+   */
   .file-list.file-view-details button > small,
-  .file-list-header > span {
+  .file-list-header > .file-column-head > button {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

@@ -59,6 +59,16 @@ import { VFS_DRAG_MIME } from "../shell/constants";
 import { findVfsContentMatch, type VfsContentMatch } from "../vfs/contentSearch";
 import { getVfsDropEffect, isVfsCopyDrag } from "../vfs/dragEffect";
 import {
+  DEFAULT_FILE_COLUMN_WIDTHS,
+  FILE_COLUMN_KEYS,
+  type FileColumnKey,
+  loadFileColumnWidths,
+  MAX_FILE_COLUMN_WIDTH,
+  MIN_FILE_COLUMN_WIDTH,
+  persistFileColumnWidths,
+  resizeFileColumn,
+} from "../shell/fileColumns";
+import {
   buildVfsFolderTree,
   getFolderTreeKeyAction,
   getVfsChildFolders,
@@ -418,6 +428,13 @@ export default function FilesApp({
    * so you can step into a sibling of the folder you are in without walking
    * back up first.
    */
+  /**
+   * Column widths, kept for the shell rather than for this window: two
+   * Explorer windows showing the same columns at different widths is the kind
+   * of disagreement 폴더 옵션 already decided against.
+   */
+  const [columnWidths, setColumnWidths] = useState(loadFileColumnWidths);
+  const [resizingColumn, setResizingColumn] = useState<FileColumnKey | null>(null);
   const [crumbMenu, setCrumbMenu] = useState<{ id: string; left: number } | null>(null);
   const crumbMenuId = crumbMenu?.id ?? null;
   const setCrumbMenuId = (id: string | null) => {
@@ -929,6 +946,80 @@ export default function FilesApp({
   useEffect(() => {
     setTreeFocusId(currentFolderId);
   }, [currentFolderId]);
+
+  useEffect(() => {
+    persistFileColumnWidths(columnWidths);
+  }, [columnWidths]);
+
+  /**
+   * A pointer drag on a divider. Captured on the divider itself, so the
+   * pointer may leave the heading — and does, every time — without the drag
+   * being dropped halfway across the window.
+   */
+  const beginColumnResize = (event: React.PointerEvent<HTMLElement>, key: FileColumnKey) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = columnWidths[key];
+    const divider = event.currentTarget;
+    divider.setPointerCapture(event.pointerId);
+    setResizingColumn(key);
+    const onMove = (move: PointerEvent) => {
+      setColumnWidths((current) =>
+        resizeFileColumn(current, key, startWidth + (move.clientX - startX)),
+      );
+    };
+    const onUp = () => {
+      divider.releasePointerCapture(event.pointerId);
+      divider.removeEventListener("pointermove", onMove);
+      divider.removeEventListener("pointerup", onUp);
+      divider.removeEventListener("pointercancel", onUp);
+      setResizingColumn(null);
+    };
+    divider.addEventListener("pointermove", onMove);
+    divider.addEventListener("pointerup", onUp);
+    divider.addEventListener("pointercancel", onUp);
+  };
+
+  /**
+   * Double-clicking a divider fits the column to its longest value, as
+   * Windows does. The cells are clipped with an ellipsis, so `scrollWidth`
+   * is the width the text wanted.
+   */
+  const autoFitColumn = (key: FileColumnKey) => {
+    const index = FILE_COLUMN_KEYS.indexOf(key);
+    const list = fileListRef.current;
+    if (index < 0 || !list) return;
+    let widest = 0;
+    list.querySelectorAll<HTMLElement>('button[role="option"]').forEach((row) => {
+      // The icon is the row's first child; the columns follow it.
+      const cell = row.children[index + 1];
+      if (cell instanceof HTMLElement) widest = Math.max(widest, cell.scrollWidth);
+    });
+    if (widest === 0) return;
+    setColumnWidths((current) => resizeFileColumn(current, key, widest + 18));
+  };
+
+  const handleColumnResizeKey = (event: React.KeyboardEvent, key: FileColumnKey) => {
+    const step = event.shiftKey ? 32 : 8;
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.preventDefault();
+      const delta = event.key === "ArrowLeft" ? -step : step;
+      setColumnWidths((current) => resizeFileColumn(current, key, current[key] + delta));
+      return;
+    }
+    if (event.key === "Home") {
+      event.preventDefault();
+      setColumnWidths((current) =>
+        resizeFileColumn(current, key, DEFAULT_FILE_COLUMN_WIDTHS[key]),
+      );
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      autoFitColumn(key);
+    }
+  };
 
   const toggleFolderTreeBranch = (folderId: string) => {
     setExpandedFolderIds((current) => toggleFolderTreeExpansion(current, folderId));
@@ -1647,6 +1738,15 @@ export default function FilesApp({
         hadFocusRef.current = true;
       }}
       ref={filesRootRef}
+      // One set of widths for the heading and every row, so a resize moves
+      // both. 이름 is not here: it is the track that absorbs the pane.
+      style={
+        {
+          "--col-modified": `${columnWidths.modified}px`,
+          "--col-size": `${columnWidths.size}px`,
+          "--col-type": `${columnWidths.type}px`,
+        } as React.CSSProperties
+      }
       // Ctrl+L belongs to the whole window in Explorer, not just the list: it
       // has to work with the search box, the toolbar, or nothing focused.
       onKeyDown={(event) => {
@@ -2484,34 +2584,60 @@ export default function FilesApp({
                */
               <div aria-label="파일 정렬 기준" className="file-list-header" role="group">
                 {FILE_COLUMNS.map(([key, label]) => (
-                  <button
-                    aria-label={`${label} 정렬${
-                      sortKey === key
-                        ? sortDirection === "asc"
-                          ? " (오름차순)"
-                          : " (내림차순)"
-                        : ""
-                    }`}
-                    key={key}
-                    onClick={() => {
-                      if (sortKey === key) {
-                        setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
-                        return;
-                      }
-                      setSortKey(key);
-                      setSortDirection("asc");
-                    }}
-                    type="button"
-                  >
-                    {label}
-                    {sortKey === key && (
-                      <ChevronUp
-                        aria-hidden="true"
-                        className={sortDirection === "asc" ? "" : "is-descending"}
-                        size={13}
+                  <div className="file-column-head" key={key}>
+                    <button
+                      aria-label={`${label} 정렬${
+                        sortKey === key
+                          ? sortDirection === "asc"
+                            ? " (오름차순)"
+                            : " (내림차순)"
+                          : ""
+                      }`}
+                      onClick={() => {
+                        if (sortKey === key) {
+                          setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+                          return;
+                        }
+                        setSortKey(key);
+                        setSortDirection("asc");
+                      }}
+                      type="button"
+                    >
+                      {label}
+                      {sortKey === key && (
+                        <ChevronUp
+                          aria-hidden="true"
+                          className={sortDirection === "asc" ? "" : "is-descending"}
+                          size={13}
+                        />
+                      )}
+                    </button>
+                    {/*
+                     * The divider is the control, not decoration: dragging it
+                     * widens the column to its left, double-clicking fits it
+                     * to its longest value, and the arrows do the same from
+                     * the keyboard.
+                     */}
+                    {key !== "name" && (
+                      <span
+                        aria-label={`${label} 열 너비`}
+                        aria-orientation="vertical"
+                        aria-valuemax={MAX_FILE_COLUMN_WIDTH}
+                        aria-valuemin={MIN_FILE_COLUMN_WIDTH}
+                        aria-valuenow={columnWidths[key]}
+                        className={`file-column-grip${
+                          resizingColumn === key ? " is-resizing" : ""
+                        }`}
+                        data-column={key}
+                        onDoubleClick={() => autoFitColumn(key)}
+                        onKeyDown={(event) => handleColumnResizeKey(event, key)}
+                        onPointerDown={(event) => beginColumnResize(event, key)}
+                        role="separator"
+                        tabIndex={0}
+                        title={`${label} 열 너비 조정 (두 번 클릭하면 내용에 맞춤)`}
                       />
                     )}
-                  </button>
+                  </div>
                 ))}
               </div>
             )}

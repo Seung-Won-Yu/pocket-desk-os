@@ -6,6 +6,14 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **열 너비 조정 (수정한 날짜 · 유형 · 크기).** The three trailing columns were hard-coded at 116 / 106 / 64px, so 유형 read `인터넷 바로 가…` with no way to widen it. Each heading now carries a grip on its own right edge: drag it, double-click it to fit the column to its longest value, or drive it from the keyboard — it is a real `role="separator"` with ArrowLeft/Right (Shift for a bigger step), Home for the default, and Enter to auto-fit. The widths belong to the shell, like 폴더 옵션, and survive a reload.
+
+  Measured at 1440×900: dragging the 유형 grip 120px right took 유형 from 106 to 226 and 이름 from 338 to 218; two ArrowLefts took it to 210, Shift+ArrowRight to 242, Home back to 106, and a double-click fitted it to 124 — the width of 인터넷 바로 가기. After a reload the columns came back where they were left.
+
+  이름 has no grip: it is the track that absorbs the pane, so widening it means narrowing the others. That is deliberate rather than lazy — this list's heading is a sibling of its scroller and cannot follow a horizontal scroll, which is why the columns were made to fit the pane in the first place. Giving 이름 an explicit width would bring back the drift that arrangement exists to prevent.
+
+  Two things the measurement caught that the code looked fine for: wrapping each heading in its own cell broke the `> span:first-child` rule that let 이름 span the icon column, so every label sat one column to the left of the values it named; and clipping the heading with `overflow: hidden` cut away the outer half of the grip, which still measured 12px wide while only its left 5px could be pressed. The smoke now asserts the heading's left edge sits within 2px of its column's, before and after a resize.
+
 - **Ctrl+드래그 = 복사.** Every drop moved, whatever was held. Holding Ctrl (⌘ on a Mac) while dragging a file now copies it, the cursor shows the browser's own **+** badge before the button comes up, and Shift forces a move even with Ctrl down. Measured on the built app: dragging `web-surf.url` onto 사진 plain left 바탕 화면 without it and put it in 사진; the same drag with the modifier held left it on 바탕 화면 **and** put a copy in 사진. Every drop target takes it — a folder row, a 탐색 창 branch, a crumb in the address bar, a 빠른 액세스 pin, the folder background, and the desktop.
 
   The modifier is read at the moment of the event rather than at the start of the drag, so it can be pressed after the drag is already moving and the badge follows. A copy into the folder it came from is the ordinary `- 복사본`, and a copy onto a name the target already has asks 파일 바꾸기 또는 건너뛰기 like any other copy.
