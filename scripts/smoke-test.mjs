@@ -669,7 +669,7 @@ async function runSmoke(baseUrl) {
     // toggle itself.
     await files.getByRole("button", { name: "세부 정보 창" }).click();
     await files.locator(".file-preview").waitFor({ state: "visible" });
-    await explorerSidebar.getByRole("button", { name: "문서", exact: true }).click();
+    await explorerSidebar.getByRole("treeitem", { name: "문서", exact: true }).click();
     assert((await files.locator(".file-list button").count()) > 0, "Documents view is empty");
     assert(
       (await files.locator(".file-list").innerText()).includes("notes.txt"),
@@ -766,7 +766,7 @@ async function runSmoke(baseUrl) {
     );
     await secondExplorer
       .locator("aside")
-      .getByRole("button", { name: "사진", exact: true })
+      .getByRole("treeitem", { name: "사진", exact: true })
       .click();
     assert(
       (await secondExplorer.locator(".file-address").innerText()).includes("사진"),
@@ -817,7 +817,7 @@ async function runSmoke(baseUrl) {
       .waitFor({ state: "visible" });
     await files.getByRole("button", { name: "앞으로" }).click();
     await projectFolder.waitFor({ state: "visible" });
-    await explorerSidebar.getByRole("button", { name: "바탕 화면", exact: true }).click();
+    await explorerSidebar.getByRole("treeitem", { name: "바탕 화면", exact: true }).click();
 
     await files.getByRole("button", { name: "정렬", exact: true }).click();
     const explorerSortMenu = files.getByRole("menu", { name: "파일 정렬" });
@@ -1094,13 +1094,13 @@ async function runSmoke(baseUrl) {
       (await explorerRows.filter({ hasText: "web-surf.url" }).count()) === 1,
       "보내기 moved the original instead of copying it",
     );
-    await explorerSidebar.getByRole("button", { name: "문서", exact: true }).click();
+    await explorerSidebar.getByRole("treeitem", { name: "문서", exact: true }).click();
     await page.waitForTimeout(350);
     assert(
       (await explorerRows.filter({ hasText: "web-surf" }).count()) === 1,
       "The copy 보내기 made never arrived in 문서",
     );
-    await explorerSidebar.getByRole("button", { name: "바탕 화면", exact: true }).click();
+    await explorerSidebar.getByRole("treeitem", { name: "바탕 화면", exact: true }).click();
     await page.waitForTimeout(300);
 
     /*
@@ -1182,11 +1182,11 @@ async function runSmoke(baseUrl) {
       await page.waitForTimeout(120);
     };
     const copyDesktopShortcutInto = async (folder) => {
-      await explorerSidebar.getByRole("button", { name: "바탕 화면", exact: true }).click();
+      await explorerSidebar.getByRole("treeitem", { name: "바탕 화면", exact: true }).click();
       await explorerRows.filter({ hasText: "web-surf.url" }).first().waitFor();
       await explorerRows.filter({ hasText: "web-surf.url" }).first().click();
       await page.keyboard.press("Control+c");
-      await explorerSidebar.getByRole("button", { name: folder, exact: true }).click();
+      await explorerSidebar.getByRole("treeitem", { name: folder, exact: true }).click();
       await page.waitForTimeout(250);
       await focusFileList();
       await page.keyboard.press("Control+v");
@@ -1267,8 +1267,77 @@ async function runSmoke(baseUrl) {
       (await explorerRows.count()) === 0,
       "The conflict checks left rows behind in 다운로드",
     );
-    await explorerSidebar.getByRole("button", { name: "바탕 화면", exact: true }).click();
+    await explorerSidebar.getByRole("treeitem", { name: "바탕 화면", exact: true }).click();
     await page.waitForTimeout(300);
+
+    /*
+     * 탐색 창. The pane was five fixed shortcuts side by side, so a folder you
+     * made never appeared in it and nothing said where the window was. It is
+     * the file system's own shape now — one root with the system folders
+     * under it — and it follows the address bar.
+     */
+    const folderTree = files.locator('[aria-label="탐색 창"]');
+    const treeRows = folderTree.locator('[role="treeitem"]');
+    const readTree = () =>
+      treeRows.evaluateAll((nodes) =>
+        nodes.map(
+          (node) =>
+            `${node.getAttribute("aria-level")}:${node.textContent.trim()}` +
+            `${node.getAttribute("aria-expanded") === "true" ? "[open]" : ""}` +
+            `${node.getAttribute("aria-selected") === "true" ? "*" : ""}`,
+        ),
+      );
+    const tree = await readTree();
+    assert(
+      tree.filter((row) => row.startsWith("1:")).join() === "1:바탕 화면[open]*",
+      `탐색 창 has roots ${JSON.stringify(tree.filter((row) => row.startsWith("1:")))}`,
+    );
+    assert(
+      ["게임", "다운로드", "문서", "사진"].every((name) =>
+        tree.some((row) => row.startsWith(`2:${name}`)),
+      ),
+      `The system folders are not one level under 바탕 화면: ${JSON.stringify(tree)}`,
+    );
+    // 프로젝트 was made inside 문서 earlier in this run. The old pane could
+    // not show it at any depth; this one has it two levels down.
+    assert(
+      tree.some((row) => row.startsWith("3:프로젝트")),
+      `탐색 창 did not reach 문서/프로젝트: ${JSON.stringify(tree)}`,
+    );
+
+    const documentsRow = folderTree.getByRole("treeitem", { name: "문서", exact: true });
+    const projectRow = folderTree.getByRole("treeitem", { name: "프로젝트", exact: true });
+    await documentsRow.locator(".file-tree-twisty").click();
+    await projectRow.waitFor({ state: "detached" });
+    await documentsRow.locator(".file-tree-twisty").click();
+    await projectRow.waitFor();
+
+    // The pane follows the window, and the single tab stop goes with the mark.
+    await projectRow.click();
+    await page.waitForTimeout(300);
+    assert(
+      (await projectRow.getAttribute("aria-selected")) === "true",
+      "탐색 창 did not mark the folder it had just opened",
+    );
+    assert(
+      (await folderTree.locator('[tabindex="0"]').count()) === 1,
+      "탐색 창 offered more than one tab stop",
+    );
+
+    // Left closes a branch and Right opens it again — including a branch the
+    // window is standing inside, which an always-forced pane could not close.
+    await folderTree.locator('[tabindex="0"]').first().focus();
+    await page.keyboard.press("Home");
+    await page.keyboard.press("ArrowLeft");
+    await page.waitForTimeout(250);
+    assert(
+      (await treeRows.count()) === 1,
+      `Left did not collapse 바탕 화면 — ${await treeRows.count()} rows left`,
+    );
+    await page.keyboard.press("ArrowRight");
+    await documentsRow.waitFor();
+    await explorerSidebar.getByRole("treeitem", { name: "바탕 화면", exact: true }).click();
+    await page.waitForTimeout(250);
 
     // Put the note back on show for the steps that follow.
     await readProperties("작업 메모.txt");
@@ -1794,7 +1863,7 @@ async function runSmoke(baseUrl) {
     await explorerFrames
       .nth(1)
       .locator("aside")
-      .getByRole("button", { name: "문서", exact: true })
+      .getByRole("treeitem", { name: "문서", exact: true })
       .click();
     await page.waitForTimeout(300);
     assert(
@@ -1908,7 +1977,7 @@ async function runSmoke(baseUrl) {
       "Settings Sound tab is not functional",
     );
     await page.locator(".taskbar-app", { hasText: "파일 탐색기" }).click();
-    await explorerSidebar.getByRole("button", { name: "문서", exact: true }).click();
+    await explorerSidebar.getByRole("treeitem", { name: "문서", exact: true }).click();
     const fileToTrash = files.locator(".file-list button", { hasText: "프로젝트" });
     const trashedFileName = await fileToTrash.locator("span").innerText();
     await fileToTrash.click();
@@ -1953,7 +2022,7 @@ async function runSmoke(baseUrl) {
     );
 
     await page.locator(".taskbar-app", { hasText: "파일 탐색기" }).click();
-    await explorerSidebar.getByRole("button", { name: "문서", exact: true }).click();
+    await explorerSidebar.getByRole("treeitem", { name: "문서", exact: true }).click();
     const restoredFolder = files.locator(".file-list button", { hasText: trashedFileName });
     await restoredFolder.dblclick();
     await files
@@ -3293,7 +3362,7 @@ async function runSmoke(baseUrl) {
     await pathInput.waitFor({ state: "hidden" });
     await pathExplorer
       .locator("aside")
-      .getByRole("button", { name: "바탕 화면", exact: true })
+      .getByRole("treeitem", { name: "바탕 화면", exact: true })
       .click();
     await page.waitForTimeout(250);
 
@@ -3333,7 +3402,7 @@ async function runSmoke(baseUrl) {
     assert((await explorerTabs.count()) === 2, "새 탭 did not add a tab");
     await tabExplorer
       .locator("aside")
-      .getByRole("button", { name: "문서", exact: true })
+      .getByRole("treeitem", { name: "문서", exact: true })
       .click();
     await page.waitForTimeout(250);
     assert(
@@ -3360,7 +3429,7 @@ async function runSmoke(baseUrl) {
     assert((await explorerTabs.count()) === 3, "Ctrl+T did not add tabs");
     await tabExplorer
       .locator("aside")
-      .getByRole("button", { name: "사진", exact: true })
+      .getByRole("treeitem", { name: "사진", exact: true })
       .click();
     await page.waitForTimeout(250);
     const beforeDrag = await explorerTabs.allInnerTexts();
@@ -3428,7 +3497,7 @@ async function runSmoke(baseUrl) {
     // 폴더를 새 탭에서 열기
     await tabExplorer
       .locator("aside")
-      .getByRole("button", { name: "바탕 화면", exact: true })
+      .getByRole("treeitem", { name: "바탕 화면", exact: true })
       .click();
     await page.waitForTimeout(250);
     await tabExplorer
@@ -3464,7 +3533,7 @@ async function runSmoke(baseUrl) {
      */
     await tabExplorer
       .locator("aside")
-      .getByRole("button", { name: "바탕 화면", exact: true })
+      .getByRole("treeitem", { name: "바탕 화면", exact: true })
       .click();
     await page.waitForTimeout(300);
     const documentRows = tabExplorer.locator(".file-list button");
@@ -3482,7 +3551,7 @@ async function runSmoke(baseUrl) {
 
     await tabExplorer
       .locator("aside")
-      .getByRole("button", { name: "문서", exact: true })
+      .getByRole("treeitem", { name: "문서", exact: true })
       .click();
     await page.waitForTimeout(300);
     const namesBeforeZip = (await documentRows.allInnerTexts()).map(
@@ -3529,7 +3598,7 @@ async function runSmoke(baseUrl) {
      */
     await tabExplorer
       .locator("aside")
-      .getByRole("button", { name: "바탕 화면", exact: true })
+      .getByRole("treeitem", { name: "바탕 화면", exact: true })
       .click();
     await page.waitForTimeout(300);
     await tabExplorer
@@ -3590,7 +3659,7 @@ async function runSmoke(baseUrl) {
     // Whichever tab survived the Ctrl+W pair may be showing another folder.
     await tabExplorer
       .locator("aside")
-      .getByRole("button", { name: "바탕 화면", exact: true })
+      .getByRole("treeitem", { name: "바탕 화면", exact: true })
       .click();
     await tabExplorer
       .locator(".file-list button", { hasText: "문서" })
@@ -3673,7 +3742,7 @@ async function runSmoke(baseUrl) {
     await persistExplorer.waitFor({ state: "visible" });
     await persistExplorer
       .locator("aside")
-      .getByRole("button", { name: "문서", exact: true })
+      .getByRole("treeitem", { name: "문서", exact: true })
       .click();
     await persistExplorer.getByRole("button", { name: "새로 만들기" }).click();
     await page.getByRole("menuitem", { name: /텍스트 문서/ }).click();
@@ -3692,7 +3761,7 @@ async function runSmoke(baseUrl) {
     await reloadedExplorer.waitFor({ state: "visible" });
     await reloadedExplorer
       .locator("aside")
-      .getByRole("button", { name: "문서", exact: true })
+      .getByRole("treeitem", { name: "문서", exact: true })
       .click();
     await page.waitForTimeout(300);
     assert(
@@ -3703,7 +3772,7 @@ async function runSmoke(baseUrl) {
     );
     await reloadedExplorer
       .locator("aside")
-      .getByRole("button", { name: "사진", exact: true })
+      .getByRole("treeitem", { name: "사진", exact: true })
       .click();
     await page.waitForTimeout(300);
     assert(
@@ -3796,7 +3865,7 @@ async function runSmoke(baseUrl) {
     await shotExplorer.waitFor({ state: "visible" });
     await shotExplorer
       .locator("aside")
-      .getByRole("button", { name: "사진", exact: true })
+      .getByRole("treeitem", { name: "사진", exact: true })
       .click();
     const shotRow = shotExplorer.locator(".file-list button", { hasText: "스크린샷 " });
     await shotRow.first().waitFor({ state: "visible" });

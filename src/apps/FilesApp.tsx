@@ -41,6 +41,7 @@ import {
   Upload,
   Wallpaper,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import {
   type ChangeEvent,
@@ -55,6 +56,12 @@ import {
 import type React from "react";
 import AppIconTile from "../components/AppIconTile";
 import { VFS_DRAG_MIME } from "../shell/constants";
+import {
+  buildVfsFolderTree,
+  getFolderTreeKeyAction,
+  getVfsFolderAncestorIds,
+  toggleFolderTreeExpansion,
+} from "../shell/folderTree";
 import { isShellReservedChord } from "../shell/shortcuts";
 import {
   isLocalFolderAccessAvailable,
@@ -134,6 +141,16 @@ export type FilesLaunchRequest = {
   folderId: string;
   id: string;
   windowId: string;
+};
+
+/** The icons Explorer gives the four system folders in its 탐색 창. */
+const FOLDER_TREE_ICONS: Record<string, LucideIcon> = {
+  // Not Monitor: 내 PC sits directly above with that glyph already.
+  [VFS_ROOT_ID]: Folder,
+  [VFS_DOCUMENTS_ID]: FileText,
+  [VFS_PICTURES_ID]: Paintbrush,
+  [VFS_GAMES_ID]: Bomb,
+  [VFS_DOWNLOADS_ID]: Download,
 };
 
 type FilesAppProps = {
@@ -395,6 +412,13 @@ export default function FilesApp({
   const [detailsPaneOpen, setDetailsPaneOpen] = useState(false);
   const [fileContextMenu, setFileContextMenu] = useState<FileContextMenuState | null>(null);
   const [folderSubmenu, setFolderSubmenu] = useState<FileFolderSubmenu | null>(null);
+  /*
+   * Which branches of 탐색 창 are open, and which row holds the tree's single
+   * tab stop. Both belong to this window: two Explorer windows can be looking
+   * at different parts of the same tree, as they can in Windows.
+   */
+  const [expandedFolderIds, setExpandedFolderIds] = useState<string[]>([VFS_ROOT_ID]);
+  const [treeFocusId, setTreeFocusId] = useState<string>(VFS_ROOT_ID);
   const [fileSubmenuOpen, setFileSubmenuOpen] = useState(false);
   const [pendingRenameId, setPendingRenameId] = useState<string | null>(null);
   const [propertiesFileId, setPropertiesFileId] = useState<string | null>(null);
@@ -821,6 +845,69 @@ export default function FilesApp({
     setNavigationHistory((current) => [...current.slice(0, navigationIndex + 1), folderId]);
     setNavigationIndex((current) => current + 1);
     resetTransientState();
+  };
+
+  const folderTreeRows = useMemo(
+    () => buildVfsFolderTree(desktopItems, expandedFolderIds, showHiddenItems),
+    [desktopItems, expandedFolderIds, showHiddenItems],
+  );
+
+  /*
+   * The pane opens onto wherever the window goes — but by writing the
+   * ancestors into the list once, when the folder changes, rather than by
+   * forcing them open on every render. Forcing them made an ancestor of the
+   * current folder impossible to collapse: the twisty closed it and the next
+   * render opened it again.
+   */
+  useEffect(() => {
+    const ancestors = getVfsFolderAncestorIds(desktopItems, currentFolderId);
+    setExpandedFolderIds((current) => {
+      const missing = ancestors.filter((id) => !current.includes(id));
+      return missing.length === 0 ? current : [...current, ...missing];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the entries are
+    // read for the parent chain only; re-running on every file change would
+    // re-open a branch the user has just closed.
+  }, [currentFolderId]);
+
+  // One tab stop for the whole tree, on the current folder when it is on screen.
+  const treeTabStopId =
+    folderTreeRows.find((row) => row.id === treeFocusId)?.id ??
+    folderTreeRows.find((row) => row.id === currentFolderId)?.id ??
+    folderTreeRows[0]?.id ??
+    VFS_ROOT_ID;
+
+  /*
+   * Windows' pane marks where the window is, and the tab stop goes with the
+   * mark: walking the tree with the arrows and then opening a folder must not
+   * leave the tab stop behind on the row you came from.
+   */
+  useEffect(() => {
+    setTreeFocusId(currentFolderId);
+  }, [currentFolderId]);
+
+  const toggleFolderTreeBranch = (folderId: string) => {
+    setExpandedFolderIds((current) => toggleFolderTreeExpansion(current, folderId));
+  };
+
+  const handleFolderTreeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      navigateToFolder(treeTabStopId);
+      return;
+    }
+    const action = getFolderTreeKeyAction(event.key, folderTreeRows, treeTabStopId);
+    if (!action) return;
+    event.preventDefault();
+    if (action.kind === "focus") {
+      setTreeFocusId(action.id);
+      event.currentTarget
+        .querySelector<HTMLElement>(`[data-folder-id="${CSS.escape(action.id)}"]`)
+        ?.focus();
+      return;
+    }
+    toggleFolderTreeBranch(treeTabStopId);
   };
 
   const visitHistory = (nextIndex: number) => {
@@ -1546,41 +1633,73 @@ export default function FilesApp({
       }}
     >
       <aside>
-        <button onClick={() => openApp("thispc")} type="button">
+        <button className="file-tree-root" onClick={() => openApp("thispc")} type="button">
           <Monitor aria-hidden="true" size={16} />내 PC
         </button>
-        {(
-          [
-            [VFS_ROOT_ID, "바탕 화면", Folder],
-            [VFS_DOCUMENTS_ID, "문서", FileText],
-            [VFS_PICTURES_ID, "사진", Paintbrush],
-            [VFS_GAMES_ID, "게임", Bomb],
-            [VFS_DOWNLOADS_ID, "다운로드", Download],
-          ] as const
-        ).map(([folderId, label, Icon]) => (
-          <button
-            className={`${currentFolderId === folderId ? "is-selected" : ""}${
-              dragOverFolderId === folderId ? " is-drop-target" : ""
-            }`}
-            key={folderId}
-            onClick={() => navigateToFolder(folderId)}
-            onDragEnter={() => setDragOverFolderId(folderId)}
-            onDragLeave={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                setDragOverFolderId(null);
-              }
-            }}
-            onDragOver={(event) => {
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "move";
-            }}
-            onDrop={(event) => dropFilesIntoFolder(event, folderId)}
-            type="button"
-          >
-            <Icon aria-hidden="true" size={16} />
-            {label}
-          </button>
-        ))}
+        {/*
+         * 탐색 창. The pane was five fixed shortcuts, so a folder you made
+         * never appeared in it however deep you were standing inside it. It is
+         * the file system's own shape now: 바탕 화면 with 문서, 사진, 게임 and
+         * 다운로드 underneath, which is where they actually live.
+         */}
+        <div
+          aria-label="탐색 창"
+          className="file-tree"
+          onKeyDown={handleFolderTreeKeyDown}
+          role="tree"
+        >
+          {folderTreeRows.map((row) => {
+            const Icon = FOLDER_TREE_ICONS[row.id] ?? Folder;
+            const isCurrent = currentFolderId === row.id;
+            return (
+              <div
+                aria-expanded={row.hasChildren ? row.expanded : undefined}
+                aria-level={row.depth + 1}
+                aria-selected={isCurrent}
+                className={`file-tree-item${isCurrent ? " is-selected" : ""}${
+                  dragOverFolderId === row.id ? " is-drop-target" : ""
+                }`}
+                data-folder-id={row.id}
+                key={row.id}
+                onClick={(event) => {
+                  // The twisty opens the branch; the row itself goes there.
+                  if ((event.target as HTMLElement).closest(".file-tree-twisty")) {
+                    toggleFolderTreeBranch(row.id);
+                    return;
+                  }
+                  navigateToFolder(row.id);
+                }}
+                onDragEnter={() => setDragOverFolderId(row.id)}
+                onDragLeave={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                    setDragOverFolderId(null);
+                  }
+                }}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                }}
+                onDrop={(event) => dropFilesIntoFolder(event, row.id)}
+                onFocus={() => setTreeFocusId(row.id)}
+                role="treeitem"
+                style={{ paddingLeft: `${8 + row.depth * 14}px` }}
+                tabIndex={row.id === treeTabStopId ? 0 : -1}
+              >
+                <span aria-hidden="true" className="file-tree-twisty">
+                  {row.hasChildren ? (
+                    <ChevronRight
+                      className={row.expanded ? "is-open" : ""}
+                      size={14}
+                      strokeWidth={2.4}
+                    />
+                  ) : null}
+                </span>
+                <Icon aria-hidden="true" size={16} />
+                <span className="file-tree-label">{row.name}</span>
+              </div>
+            );
+          })}
+        </div>
         {/* 빠른 액세스: the folders pinned from a folder's own menu. The pins
             live in the shell, so every Explorer window shows the same ones. */}
         {quickAccessFolders.length > 0 && (

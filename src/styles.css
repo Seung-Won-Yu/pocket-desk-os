@@ -5064,6 +5064,73 @@ button {
   opacity: 0.62;
 }
 
+/* 탐색 창: the file system's own shape, indented one level per depth. The
+   twisty holds its column whether or not a row has children, so the labels
+   line up down a branch. */
+.file-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.file-tree-item {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text);
+  cursor: default;
+  display: flex;
+  gap: 6px;
+  min-height: 30px;
+  min-width: 0;
+  padding-right: 8px;
+}
+
+.file-tree-item:hover,
+.file-tree-item:focus-visible {
+  background: var(--control-hover);
+}
+
+.file-tree-item.is-selected {
+  background: var(--control-active, rgba(255, 255, 255, 0.16));
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.file-tree-item.is-drop-target {
+  border-color: var(--active);
+}
+
+.file-tree-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-tree-twisty {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex: none;
+  height: 16px;
+  justify-content: center;
+  width: 16px;
+}
+
+.file-tree-twisty svg {
+  transition: transform 120ms ease-out;
+}
+
+.file-tree-twisty svg.is-open {
+  transform: rotate(90deg);
+}
+
+.file-tree-item:hover .file-tree-twisty {
+  color: var(--text);
+}
+
 .file-backup-actions {
   border-top: 1px solid var(--line);
   display: flex;
