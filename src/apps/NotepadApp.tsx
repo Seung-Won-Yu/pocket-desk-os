@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, FileText, Plus, Search, X } from "lucide-react";
+import { ChevronDown, ChevronUp, FileText, Plus, Replace, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import FileDialog from "../components/FileDialog";
@@ -10,6 +10,11 @@ import { handleMenuKeyboard } from "../shell/keyboardNav";
 import { APP_BAR_HEIGHT } from "../shell/constants";
 import { trapDialogFocus } from "../shell/dialogFocus";
 import { clamp } from "../utils/format";
+import {
+  getSelectedMatchIndex,
+  replaceAllTextMatches,
+  replaceTextMatch,
+} from "../utils/textReplace";
 
 type NoteSaveStatus = "saved" | "dirty" | "saving";
 
@@ -124,6 +129,11 @@ export default function NotepadApp({
   const [editorMenu, setEditorMenu] = useState<NoteEditorMenuState | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
+  /** 바꾸기 shares 찾기's bar: the same query drives both. */
+  const [replaceOpen, setReplaceOpen] = useState(false);
+  const [replaceValue, setReplaceValue] = useState("");
+  /** What 모두 바꾸기 last did, shown in the bar the way Notepad reports it. */
+  const [replacedCount, setReplacedCount] = useState<number | null>(null);
   const [findIndex, setFindIndex] = useState(0);
   const [closePromptOpen, setClosePromptOpen] = useState(false);
   const historyRunRef = useRef<{ at: number; run: NoteEditRun }>({ at: 0, run: null });
@@ -490,15 +500,19 @@ export default function NotepadApp({
     noteEditorRef.current?.focus();
   };
 
-  const openFind = () => {
+  const openFind = (withReplace = false) => {
     setNoteMenu(null);
     setEditorMenu(null);
     setFindOpen(true);
+    if (withReplace) setReplaceOpen(true);
+    // Notepad puts the caret in 찾을 내용 for both, because a replacement
+    // with nothing to find is not a thing you can ask for.
     window.requestAnimationFrame(() => findInputRef.current?.select());
   };
 
   const closeFind = () => {
     setFindOpen(false);
+    setReplaceOpen(false);
     // Focus lands back on the match, where the selection becomes visible again.
     noteEditorRef.current?.focus();
     updateCursorPosition();
@@ -543,8 +557,67 @@ export default function NotepadApp({
     revealFindMatch(findMatches, (from + direction + findMatches.length) % findMatches.length);
   };
 
+  /**
+   * 바꾸기 acts on the occurrence the selection is sitting on — the one you
+   * are looking at — and then moves to the next. With the selection somewhere
+   * else it only finds, which is what Notepad does rather than replacing an
+   * occurrence you cannot see.
+   */
+  const replaceCurrentMatch = () => {
+    if (findMatches.length === 0) return;
+    const editor = noteEditorRef.current;
+    const selected = editor
+      ? getSelectedMatchIndex(findMatches, editor.selectionStart, editor.selectionEnd)
+      : null;
+    if (selected === null) {
+      stepFindMatch(1);
+      return;
+    }
+    const match = findMatches[selected];
+    replaceEditorRange(match.start, match.end, replaceValue);
+    // The matches are a render behind, so the next one is found in the text
+    // this replacement just produced rather than in the text it replaced.
+    const nextText = replaceTextMatch(text, match, replaceValue).text;
+    const remaining = getNoteFindMatches(nextText, findQuery);
+    if (remaining.length === 0) {
+      setFindIndex(0);
+      return;
+    }
+    const after = match.start + replaceValue.length;
+    const nextIndex = remaining.findIndex((entry) => entry.start >= after);
+    const target = remaining[nextIndex === -1 ? 0 : nextIndex];
+    setFindIndex(nextIndex === -1 ? 0 : nextIndex);
+    window.requestAnimationFrame(() => {
+      const current = noteEditorRef.current;
+      if (!current) return;
+      current.setSelectionRange(target.start, target.end);
+      editorSelectionRef.current = { end: target.end, start: target.start };
+      scrollEditorToOffset(current, target.start);
+      updateCursorPosition();
+    });
+  };
+
+  /** Every occurrence in one undo step, and a count of what changed. */
+  const replaceAllMatches = () => {
+    if (findMatches.length === 0) return;
+    const result = replaceAllTextMatches(text, findMatches, replaceValue);
+    if (result.count === 0) return;
+    pushHistory(
+      {
+        selectionEnd: editorSelectionRef.current.end,
+        selectionStart: editorSelectionRef.current.start,
+        text,
+      },
+      null,
+    );
+    setText(result.text);
+    setFindIndex(0);
+    setReplacedCount(result.count);
+  };
+
   const handleFindQueryChange = (value: string) => {
     setFindQuery(value);
+    setReplacedCount(null);
     // `findMatches` is a render behind, so the matches for what was just typed
     // are computed here to move the selection along with the typing.
     const matches = getNoteFindMatches(text, value);
@@ -670,6 +743,10 @@ export default function NotepadApp({
           event.preventDefault();
           event.stopPropagation();
           openFind();
+        } else if (key === "h") {
+          event.preventDefault();
+          event.stopPropagation();
+          openFind(true);
         } else if (key === "z" && !event.shiftKey) {
           event.preventDefault();
           event.stopPropagation();
@@ -784,8 +861,11 @@ export default function NotepadApp({
           >
             다시 실행 <kbd>Ctrl+Y</kbd>
           </button>
-          <button onClick={openFind} role="menuitem" type="button">
+          <button onClick={() => openFind()} role="menuitem" type="button">
             찾기 <kbd>Ctrl+F</kbd>
+          </button>
+          <button onClick={() => openFind(true)} role="menuitem" type="button">
+            바꾸기 <kbd>Ctrl+H</kbd>
           </button>
           <button onClick={selectAllText} role="menuitem" type="button">
             모두 선택 <kbd>Ctrl+A</kbd>
@@ -887,7 +967,11 @@ export default function NotepadApp({
         </button>
       </div>
       {findOpen && (
-        <div aria-label="찾기" className="note-find-bar" role="search">
+        <div
+          aria-label={replaceOpen ? "찾기 및 바꾸기" : "찾기"}
+          className={`note-find-bar${replaceOpen ? " is-replacing" : ""}`}
+          role="search"
+        >
           <label className="note-find-field">
             <Search aria-hidden="true" size={14} />
             <input
@@ -925,9 +1009,65 @@ export default function NotepadApp({
           >
             <ChevronDown aria-hidden="true" size={16} />
           </button>
+          <button
+            aria-label={replaceOpen ? "바꾸기 숨기기" : "바꾸기 표시"}
+            aria-pressed={replaceOpen}
+            onClick={() => setReplaceOpen((current) => !current)}
+            title="바꾸기 (Ctrl+H)"
+            type="button"
+          >
+            <Replace aria-hidden="true" size={15} />
+          </button>
           <button aria-label="찾기 닫기" onClick={closeFind} title="닫기 (Esc)" type="button">
             <X aria-hidden="true" size={15} />
           </button>
+          {replaceOpen && (
+            <div className="note-replace-row">
+              <label className="note-find-field">
+                <Replace aria-hidden="true" size={14} />
+                <input
+                  aria-label="바꿀 내용"
+                  onChange={(event) => {
+                    setReplaceValue(event.target.value);
+                    setReplacedCount(null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      closeFind();
+                      return;
+                    }
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      replaceCurrentMatch();
+                    }
+                  }}
+                  placeholder="바꿀 내용"
+                  type="text"
+                  value={replaceValue}
+                />
+              </label>
+              <span className="note-find-count">
+                {replacedCount === null ? "" : `${replacedCount}개 바꿈`}
+              </span>
+              <button
+                disabled={findMatches.length === 0}
+                onClick={replaceCurrentMatch}
+                type="button"
+              >
+                바꾸기
+              </button>
+              <button
+                disabled={findMatches.length === 0}
+                onClick={replaceAllMatches}
+                type="button"
+              >
+                모두 바꾸기
+              </button>
+            </div>
+          )}
         </div>
       )}
       <div

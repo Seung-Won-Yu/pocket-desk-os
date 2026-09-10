@@ -9311,9 +9311,42 @@ button {
   background: #252525;
   border-bottom: 1px solid var(--line);
   display: flex;
+  /* It is one row taller with 바꾸기 open; as a shrinkable flex child it kept
+     its 38px and pushed that second row out under the editor, which then
+     swallowed the buttons' clicks. */
+  flex: none;
   gap: 6px;
   min-height: 38px;
   padding: 0 7px;
+}
+
+/* 바꾸기 folds a second line into the same bar, under 찾을 내용. */
+.note-find-bar.is-replacing {
+  flex-wrap: wrap;
+  padding-bottom: 6px;
+}
+
+.note-replace-row {
+  align-items: center;
+  display: flex;
+  flex: 1 0 100%;
+  gap: 6px;
+  min-width: 0;
+}
+
+/*
+ * The bar's other buttons are 30px icon squares; these two carry words. The
+ * selector has to out-rank `.note-find-bar button`, not merely differ from
+ * it: at equal specificity the later rule won, both buttons stayed 30px, and
+ * the overflowing label of 바꾸기 handed its own clicks to 모두 바꾸기 —
+ * pressing 바꾸기 once replaced everything.
+ */
+.note-find-bar .note-replace-row button {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  flex: none;
+  padding: 0 10px;
+  white-space: nowrap;
+  width: auto;
 }
 
 .note-find-field {

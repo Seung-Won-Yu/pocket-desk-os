@@ -509,6 +509,77 @@ async function runSmoke(baseUrl) {
       ),
       "Notepad Open dialog did not activate the selected document",
     );
+    /*
+     * 찾기 및 바꾸기. 찾기 could point at every occurrence and do nothing
+     * about any of them. 바꾸기 takes the one the selection is sitting on;
+     * 모두 바꾸기 takes the rest in a single undo step.
+     */
+    const noteEditor = desktopNotepad.getByLabel("메모 내용");
+    const noteTextBefore = await noteEditor.inputValue();
+    await noteEditor.fill("회의 준비\n회의 자료\n발표 회의");
+    await page.keyboard.press("Control+h");
+    const findBar = desktopNotepad.locator(".note-find-bar");
+    await findBar.waitFor({ state: "visible" });
+    assert(
+      (await findBar.getAttribute("aria-label")) === "찾기 및 바꾸기",
+      "Ctrl+H opened 찾기 without 바꾸기",
+    );
+    await desktopNotepad.getByLabel("찾을 내용").fill("회의");
+    await page.waitForTimeout(250);
+    assert(
+      (await findBar.locator(".note-find-count").first().innerText()).trim() === "1/3",
+      `찾기 counted ${(await findBar.locator(".note-find-count").first().innerText()).trim()}`,
+    );
+    await desktopNotepad.getByLabel("바꿀 내용").fill("발표");
+    // Both buttons carry words, so both must be wide enough to take their own
+    // clicks: at 30px each, 바꾸기's overflowing label handed its press to
+    // 모두 바꾸기 and one click replaced everything.
+    const replaceOne = desktopNotepad.getByRole("button", { name: "바꾸기", exact: true });
+    assert(
+      (await replaceOne.boundingBox()).width > 40,
+      "The 바꾸기 button is narrower than its own label",
+    );
+    await replaceOne.click();
+    await page.waitForTimeout(300);
+    assert(
+      (await noteEditor.inputValue()) === "발표 준비\n회의 자료\n발표 회의",
+      `바꾸기 produced ${JSON.stringify(await noteEditor.inputValue())}`,
+    );
+    await desktopNotepad.getByRole("button", { name: "모두 바꾸기" }).click();
+    await page.waitForTimeout(300);
+    assert(
+      (await noteEditor.inputValue()) === "발표 준비\n발표 자료\n발표 발표",
+      `모두 바꾸기 produced ${JSON.stringify(await noteEditor.inputValue())}`,
+    );
+    assert(
+      (await desktopNotepad.locator(".note-replace-row .note-find-count").innerText()).includes(
+        "2개 바꿈",
+      ),
+      "모두 바꾸기 did not say how many it changed",
+    );
+    // One undo takes the whole 모두 바꾸기 back, not one occurrence of it.
+    await noteEditor.click();
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(300);
+    assert(
+      (await noteEditor.inputValue()) === "발표 준비\n회의 자료\n발표 회의",
+      `One undo after 모두 바꾸기 left ${JSON.stringify(await noteEditor.inputValue())}`,
+    );
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(300);
+    assert(
+      (await noteEditor.inputValue()) === "회의 준비\n회의 자료\n발표 회의",
+      "A second undo did not take back the single 바꾸기",
+    );
+    await page.keyboard.press("Control+h");
+    await findBar.waitFor({ state: "visible" });
+    await page.keyboard.press("Escape");
+    await findBar.waitFor({ state: "detached" });
+    // Put the document back as it was found: 메모장 asks before closing a
+    // dirty one, and the window would still be standing over the desktop.
+    await noteEditor.fill(noteTextBefore);
+    await page.waitForTimeout(1000);
+
     await desktopNotepad.getByRole("button", { name: "메모장 닫기" }).click();
 
     await page.keyboard.press("Control+Alt+r");

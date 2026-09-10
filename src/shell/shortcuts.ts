@@ -61,6 +61,13 @@ export const SHELL_SHORTCUTS: ShortcutGroup[] = [
     ],
     title: "파일 탐색기",
   },
+  {
+    items: [
+      { action: "찾기 · 바꾸기", keys: "Ctrl + F / Ctrl + H" },
+      { action: "다음 · 이전 찾기", keys: "F3 / Shift + F3" },
+    ],
+    title: "메모장",
+  },
 ];
 
 /**

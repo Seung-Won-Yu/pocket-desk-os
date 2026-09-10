@@ -6,6 +6,12 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **메모장 바꾸기 (Ctrl+H).** 찾기 could point at every occurrence and do nothing about any of them. The find bar folds out a second line now: 바꿀 내용, 바꾸기, 모두 바꾸기. 바꾸기 takes the occurrence the selection is sitting on — the one you are looking at — and then moves to the next; with the selection somewhere else it only finds, which is what Notepad does rather than replacing something off screen. 모두 바꾸기 takes the rest in one write and says how many it changed.
+
+  Measured on the built app with `회의 준비 / 회의 자료 / 발표 회의` and 회의 → 발표: the bar read 1/3, one 바꾸기 gave `발표 준비 / 회의 자료 / 발표 회의` and 1/2, 모두 바꾸기 finished the job and reported `2개 바꿈`, one Ctrl+Z took the whole 모두 바꾸기 back, and a second took back the single replace. Escape closes both rows.
+
+  Two layout faults the measurement caught, both invisible in the code. The two word buttons kept the bar's 30px icon-button width, because `.note-replace-row button` and `.note-find-bar button` have equal specificity and the icon rule came later in the file — 바꾸기's label overflowed its own box and handed its clicks to 모두 바꾸기, so pressing 바꾸기 once replaced everything. And the bar, a shrinkable flex child with a 38px floor, kept its one-row height when the second row appeared and pushed that row out under the editor, which then swallowed the buttons' presses.
+
 - **열 너비 조정 (수정한 날짜 · 유형 · 크기).** The three trailing columns were hard-coded at 116 / 106 / 64px, so 유형 read `인터넷 바로 가…` with no way to widen it. Each heading now carries a grip on its own right edge: drag it, double-click it to fit the column to its longest value, or drive it from the keyboard — it is a real `role="separator"` with ArrowLeft/Right (Shift for a bigger step), Home for the default, and Enter to auto-fit. The widths belong to the shell, like 폴더 옵션, and survive a reload.
 
   Measured at 1440×900: dragging the 유형 grip 120px right took 유형 from 106 to 226 and 이름 from 338 to 218; two ArrowLefts took it to 210, Shift+ArrowRight to 242, Home back to 106, and a double-click fitted it to 124 — the width of 인터넷 바로 가기. After a reload the columns came back where they were left.
