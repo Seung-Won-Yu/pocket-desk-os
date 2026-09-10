@@ -575,10 +575,22 @@ async function runSmoke(baseUrl) {
     await findBar.waitFor({ state: "visible" });
     await page.keyboard.press("Escape");
     await findBar.waitFor({ state: "detached" });
-    // Put the document back as it was found: 메모장 asks before closing a
-    // dirty one, and the window would still be standing over the desktop.
+    /*
+     * Put the document back as it was found and save it outright: 메모장 asks
+     * before closing a dirty one, and a window left standing here covers the
+     * desktop for every step after it. Ctrl+S rather than a wait on the
+     * autosave, whose 850ms debounce is a coin toss on a slow runner, and the
+     * title is checked afterwards so a failure says so here.
+     */
+    await noteEditor.click();
     await noteEditor.fill(noteTextBefore);
-    await page.waitForTimeout(1000);
+    await page.keyboard.press("Control+s");
+    await page.waitForTimeout(250);
+    const restoredTitle = await desktopNotepad.getAttribute("aria-label");
+    assert(
+      !restoredTitle.startsWith("*"),
+      `메모장 is still dirty after the restore: ${restoredTitle}`,
+    );
 
     await desktopNotepad.getByRole("button", { name: "메모장 닫기" }).click();
 
@@ -1831,6 +1843,10 @@ async function runSmoke(baseUrl) {
       (await jumpNotepad.locator(".window-titlebar").innerText()).includes(firstRecentName),
       "Jump list pick did not open the document in Notepad",
     );
+    // Alt+F4 needs a window the shell already calls active: pressed in the gap
+    // between the jump-list click and the window taking focus it reaches
+    // nobody, which is what a slow runner opened up.
+    await page.locator('article[data-app-id="notepad"].is-active').waitFor();
     await page.keyboard.press("Alt+F4");
     await jumpNotepad.waitFor({ state: "detached" });
 
