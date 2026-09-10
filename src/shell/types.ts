@@ -310,6 +310,8 @@ export type AppContentProps = {
   toggleQuickAccessFolder: (folderId: string) => void;
   openVfsEntry: (item: DesktopItem) => void;
   permanentlyDeleteVfsEntry: (itemId: string) => void;
+  /** Shift+Delete: asks first, then skips the 휴지통 for good. */
+  requestPermanentDelete: (itemIds: string[]) => void;
   renameVfsEntry: (itemId: string, name: string) => void;
   resetDesktopIconLayout: () => void;
   resetWindowLayout: () => void;

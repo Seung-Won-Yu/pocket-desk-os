@@ -58,6 +58,7 @@ import AppIconTile from "../components/AppIconTile";
 import { VFS_DRAG_MIME } from "../shell/constants";
 import { findVfsContentMatch, type VfsContentMatch } from "../vfs/contentSearch";
 import { getVfsDropEffect, isVfsCopyDrag } from "../vfs/dragEffect";
+import { type FileViewMode, getNextFileViewMode } from "./fileViewMode";
 import {
   DEFAULT_FILE_COLUMN_WIDTHS,
   FILE_COLUMN_KEYS,
@@ -135,7 +136,6 @@ import { focusTabAt, getNextTabIndex, handleMenuKeyboard } from "../shell/keyboa
 
 type FileSortDirection = "asc" | "desc";
 type FileSortKey = "name" | "type" | "modified" | "size";
-type FileViewMode = "details" | "list" | "icons";
 
 type FileContextMenuState = {
   /** `null` targets the folder background rather than one entry. */
@@ -178,6 +178,8 @@ type FilesAppProps = {
   createVfsTextFile: (parentId?: string) => DesktopItem;
   deleteVfsEntries: (itemIds: string[]) => void;
   desktopItems: DesktopItem[];
+  /** Shift+Delete: the shell asks, then skips the 휴지통 for good. */
+  requestPermanentDelete: (itemIds: string[]) => void;
   exportVfsZip: () => void;
   /** The shell's file 실행 취소 stack, shared with the desktop. */
   fileRedoLabel: string | null;
@@ -324,6 +326,7 @@ export default function FilesApp({
   createVfsTextFile,
   deleteVfsEntries,
   desktopItems,
+  requestPermanentDelete,
   exportVfsZip,
   fileRedoLabel,
   fileUndoLabel,
@@ -951,6 +954,24 @@ export default function FilesApp({
     persistFileColumnWidths(columnWidths);
   }, [columnWidths]);
 
+  /*
+   * Ctrl+wheel walks the view sizes, as it does in Explorer. Attached by hand
+   * rather than through onWheel: React registers its root wheel listener as
+   * passive, so preventDefault there throws "Unable to preventDefault inside
+   * passive event listener invocation" and the browser zooms the page anyway.
+   */
+  useEffect(() => {
+    const list = fileListRef.current;
+    if (!list) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      setViewMode((current) => getNextFileViewMode(current, event.deltaY));
+    };
+    list.addEventListener("wheel", onWheel, { passive: false });
+    return () => list.removeEventListener("wheel", onWheel);
+  }, []);
+
   /**
    * A pointer drag on a divider. Captured on the divider itself, so the
    * pointer may leave the heading — and does, every time — without the drag
@@ -1514,6 +1535,12 @@ export default function FilesApp({
     }
     if (event.key === "Delete") {
       event.preventDefault();
+      // Shift skips the 휴지통, as in Windows — after the shell has asked.
+      if (event.shiftKey) {
+        const ids = getSelectedCommandIds().filter((itemId) => !isVfsSystemFolderId(itemId));
+        if (ids.length > 0) requestPermanentDelete(ids);
+        return;
+      }
       deleteSelectedFiles();
       return;
     }
@@ -1830,6 +1857,11 @@ export default function FilesApp({
                 }`}
                 data-folder-id={row.id}
                 key={row.id}
+                onAuxClick={(event) => {
+                  if (event.button !== 1) return;
+                  event.preventDefault();
+                  addTab(row.id);
+                }}
                 onClick={(event) => {
                   // The twisty opens the branch; the row itself goes there.
                   if ((event.target as HTMLElement).closest(".file-tree-twisty")) {
@@ -2701,6 +2733,13 @@ export default function FilesApp({
                         data-file-id={file.id}
                         draggable={!isVfsSystemFolderId(file.id)}
                         tabIndex={file.id === (activeFileId ?? visibleFiles[0]?.id) ? 0 : -1}
+                        onAuxClick={(event) => {
+                          // Explorer's middle click opens a folder in a new
+                          // tab; on a file it does nothing, as there.
+                          if (event.button !== 1 || file.item.kind !== "folder") return;
+                          event.preventDefault();
+                          addTab(file.id);
+                        }}
                         onClick={(event) => selectFile(file.id, index, event)}
                         onContextMenu={(event) => showFileContextMenu(event, file.id)}
                         onDoubleClick={() => openFile(file.item)}

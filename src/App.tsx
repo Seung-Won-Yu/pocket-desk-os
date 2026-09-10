@@ -171,6 +171,7 @@ import {
   stepFileUndo,
 } from "./shell/fileUndo";
 import { NameConflictDialog } from "./shell/components/NameConflictDialog";
+import { PermanentDeleteDialog } from "./shell/components/PermanentDeleteDialog";
 import { getVfsDropEffect, isVfsCopyDrag } from "./vfs/dragEffect";
 import {
   findVfsNameConflicts,
@@ -344,6 +345,7 @@ type ContentOps = Pick<
   | "openVfsEntry"
   | "pasteFromClipboard"
   | "permanentlyDeleteVfsEntry"
+  | "requestPermanentDelete"
   | "playSound"
   | "renameVfsEntry"
   | "requestPowerAction"
@@ -531,6 +533,8 @@ export default function App() {
    * than as a captured callback so the answer runs against the operation the
    * shell has now, not the one the render that opened the dialog closed over.
    */
+  /** The ids a Shift+Delete is waiting to be confirmed for. */
+  const [permanentDeleteIds, setPermanentDeleteIds] = useState<string[] | null>(null);
   const [nameConflict, setNameConflict] = useState<{
     conflicts: VfsNameConflict[];
     desktopPlacement?: IconPosition;
@@ -3165,6 +3169,51 @@ export default function App() {
     });
   };
 
+  /**
+   * Shift+Delete. Windows asks first and then skips the 휴지통 entirely, so
+   * this is the one delete with no way back — which is why the question is
+   * the shell's and not one window's: the desktop and every 탐색기 window
+   * reach the same one.
+   */
+  const requestPermanentDelete = (itemIds: string[]) => {
+    const targets = itemIds.filter(
+      (id) => !isVfsSystemFolderId(id) && activeDesktopItems.some((item) => item.id === id),
+    );
+    if (targets.length === 0) return;
+    setPermanentDeleteIds(targets);
+  };
+
+  const destroyVfsEntries = (itemIds: string[]) => {
+    const roots = itemIds.filter(
+      (id) => !isVfsSystemFolderId(id) && activeDesktopItems.some((item) => item.id === id),
+    );
+    if (roots.length === 0) return;
+    const doomed = getVfsDescendantIds(activeDesktopItems, roots);
+    const firstName = activeDesktopItems.find((item) => item.id === roots[0])?.name ?? "";
+    playSound("close");
+    setDesktopItems((current) => current.filter((item) => !doomed.has(item.id)));
+    // Nothing may bring these back, so no step on the stack may claim to.
+    setFileUndo((state) => dropFileUndoSteps(state, doomed));
+    const remaining = activeDesktopItems.filter((item) => !doomed.has(item.id));
+    if (doomed.has(activeNoteId)) {
+      setActiveNoteId(
+        remaining.find((item) => item.kind === "note")?.id ?? VFS_PRIMARY_NOTE_ID,
+      );
+    }
+    if (doomed.has(activeCanvasId)) {
+      setActiveCanvasId(
+        remaining.find((item) => item.kind === "canvas")?.id ?? VFS_PRIMARY_CANVAS_ID,
+      );
+      setActiveCanvasOpenKey((current) => current + 1);
+    }
+    notify({
+      detail: "휴지통을 거치지 않고 지웠습니다.",
+      title:
+        roots.length === 1 ? `${firstName} 영구 삭제됨` : `${roots.length}개 항목 영구 삭제됨`,
+      tone: "success",
+    });
+  };
+
   const permanentlyDeleteVfsEntry = (itemId: string) => {
     const target = trashedItems.find((item) => item.id === itemId);
     if (!target) return;
@@ -4452,7 +4501,9 @@ export default function App() {
           const itemIds = getSelectedDesktopItemIds();
           if (itemIds.length > 0) {
             event.preventDefault();
-            deleteSelectedDesktopItems();
+            // Shift skips the 휴지통, as in Windows — after being asked.
+            if (event.shiftKey) requestPermanentDelete(itemIds);
+            else deleteSelectedDesktopItems();
             return;
           }
         }
@@ -4845,6 +4896,7 @@ export default function App() {
     openVfsEntry,
     pasteFromClipboard,
     permanentlyDeleteVfsEntry,
+    requestPermanentDelete,
     playSound,
     renameVfsEntry,
     requestPowerAction,
@@ -4906,6 +4958,8 @@ export default function App() {
       pasteFromClipboard: (...args) => contentOpsRef.current.pasteFromClipboard(...args),
       permanentlyDeleteVfsEntry: (...args) =>
         contentOpsRef.current.permanentlyDeleteVfsEntry(...args),
+      requestPermanentDelete: (...args) =>
+        contentOpsRef.current.requestPermanentDelete(...args),
       playSound: (...args) => contentOpsRef.current.playSound(...args),
       renameVfsEntry: (...args) => contentOpsRef.current.renameVfsEntry(...args),
       requestPowerAction: (...args) => contentOpsRef.current.requestPowerAction(...args),
@@ -5411,6 +5465,17 @@ export default function App() {
         <ShortcutDialog
           onClose={() => setShortcutDialogOrigin(null)}
           onCreate={createDesktopShortcut}
+        />
+      )}
+
+      {permanentDeleteIds && (
+        <PermanentDeleteDialog
+          items={activeDesktopItems.filter((item) => permanentDeleteIds.includes(item.id))}
+          onCancel={() => setPermanentDeleteIds(null)}
+          onConfirm={() => {
+            destroyVfsEntries(permanentDeleteIds);
+            setPermanentDeleteIds(null);
+          }}
         />
       )}
 

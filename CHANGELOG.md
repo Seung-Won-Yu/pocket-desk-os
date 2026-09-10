@@ -6,6 +6,12 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **탐색기의 손버릇 셋: Ctrl+휠, 가운데 클릭, Shift+Delete.** Ctrl+wheel walks the view sizes — 자세히 → 목록 → 큰 아이콘 on the way up, and it holds at each end rather than wrapping round, as Windows does. A middle click opens a folder in a new tab and does nothing on a file, which is also what Explorer does. Shift+Delete skips the 휴지통 — after the shell has asked, because it is the one delete with no way back.
+
+  The question belongs to the shell rather than to one window: the desktop and every 탐색기 window reach the same delete. 취소 holds the focus, since the other answer cannot be undone. Measured on the built app: the dialog named `"web-surf.url"`, Escape left the file where it was, 완전히 삭제 removed it without the 휴지통's count changing, and Ctrl+Z afterwards did not bring it back — the undo stack drops every step naming a destroyed row.
+
+  Ctrl+wheel had to be attached by hand with `{ passive: false }`. React registers its root wheel listener as passive, so `preventDefault` inside `onWheel` throws `Unable to preventDefault inside passive event listener invocation` and the browser zooms the whole page anyway. The view changed either way, so nothing looked wrong — the smoke's console-error gate is what caught it.
+
 - **Win+1~9로 작업 표시줄 앱, 그리고 바탕 화면 아이콘 표시 끄기.** Win+1…9 addresses the taskbar's buttons from the left, and Win+Shift+N always opens a new window. Measured on the built app: Win+1 launched Edge, Win+1 again sent it to the taskbar, again brought it back; Win+2 launched 파일 탐색기, Win+Shift+2 opened a second one, and Win+2 then walked between the two rather than minimizing either. Win+9 with two buttons on the bar does nothing. An app the catalog does not mark multi-instance — Edge — comes forward on Win+Shift+N instead of opening a second window, which is the catalog's rule, not this shortcut's.
 
   The bar's order now comes from one helper that both the bar and the shortcut read, the way the work area is one function. Two places deriving the same order separately is the shape of bug this project has already paid for once.

@@ -1764,6 +1764,137 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("Delete");
     await explorerRows.filter({ hasText: "새 폴더" }).first().waitFor({ state: "detached" });
 
+    /*
+     * Explorer's hand habits: Ctrl+wheel walks the view sizes, a middle click
+     * opens a folder in a new tab, and Shift+Delete skips the 휴지통 after the
+     * shell has asked.
+     */
+    const habitList = files.locator(".file-list");
+    const habitViewClass = () => habitList.getAttribute("class");
+    await habitList.hover();
+    await page.keyboard.down("Control");
+    await page.mouse.wheel(0, -240);
+    await page.waitForTimeout(250);
+    assert(
+      (await habitViewClass()).includes("file-view-list"),
+      `Ctrl+wheel up gave ${await habitViewClass()}`,
+    );
+    await page.mouse.wheel(0, -240);
+    await page.waitForTimeout(250);
+    assert(
+      (await habitViewClass()).includes("file-view-icons"),
+      `A second notch gave ${await habitViewClass()}`,
+    );
+    await page.mouse.wheel(0, -240);
+    await page.waitForTimeout(250);
+    assert(
+      (await habitViewClass()).includes("file-view-icons"),
+      "Ctrl+wheel wrapped round instead of holding at the largest size",
+    );
+    await page.mouse.wheel(0, 240);
+    await page.mouse.wheel(0, 240);
+    await page.keyboard.up("Control");
+    await page.waitForTimeout(250);
+    assert(
+      (await habitViewClass()).includes("file-view-details"),
+      `Ctrl+wheel down did not come back to 자세히: ${await habitViewClass()}`,
+    );
+
+    const habitTabs = files.locator('[role="tab"]');
+    const tabsBeforeMiddleClick = await habitTabs.count();
+    await explorerRows.filter({ hasText: "문서" }).first().click({ button: "middle" });
+    await page.waitForTimeout(400);
+    assert(
+      (await habitTabs.count()) === tabsBeforeMiddleClick + 1,
+      "A middle click on a folder did not open a tab",
+    );
+    // On a file it does nothing, as in Explorer.
+    await habitTabs.first().click();
+    await page.waitForTimeout(300);
+    await explorerRows.filter({ hasText: "web-surf.url" }).first().click({ button: "middle" });
+    await page.waitForTimeout(300);
+    assert(
+      (await habitTabs.count()) === tabsBeforeMiddleClick + 1,
+      "A middle click on a file opened a tab",
+    );
+    await habitTabs.last().click();
+    await page.waitForTimeout(200);
+    await page.keyboard.press("Control+w");
+    await page.waitForTimeout(300);
+    assert(
+      (await habitTabs.count()) === tabsBeforeMiddleClick,
+      "The tab the middle click opened did not close again",
+    );
+
+    /*
+     * Shift+Delete asks first, and what it takes does not reach the 휴지통.
+     * On its own scratch folder, because this one does not come back.
+     */
+    await habitList.click({ position: { x: 320, y: 320 } });
+    await page.keyboard.press("Control+Shift+KeyN");
+    await explorerRows.filter({ hasText: "새 폴더" }).first().waitFor();
+    // The new folder opens its rename box a frame later; pressing Escape
+    // before it mounts leaves the box up and swallows the next chord.
+    const habitRename = files.locator(".file-inline-rename input");
+    await habitRename.waitFor({ state: "visible" });
+    await page.keyboard.press("Escape");
+    await habitRename.waitFor({ state: "detached" });
+    const binIcon = page.locator(".desktop-icon", { hasText: "휴지통" }).first();
+    const binBefore = await binIcon.getAttribute("aria-label");
+    // By id, not by name: an earlier step deleted a folder of the same name
+    // into the 휴지통, and undoing *that* is correct.
+    const doomedId = await explorerRows
+      .filter({ hasText: "새 폴더" })
+      .first()
+      .getAttribute("data-file-id");
+    await explorerRows.filter({ hasText: "새 폴더" }).first().click();
+    await page.keyboard.press("Shift+Delete");
+    const permanentDialog = page.locator('[aria-labelledby="permanent-delete-title"]');
+    await permanentDialog.waitFor({ state: "visible" });
+    assert(
+      (await permanentDialog.innerText()).includes("새 폴더"),
+      "The permanent-delete question did not name what it would take",
+    );
+    // 취소 holds the focus: the other answer cannot be undone. Waited for
+    // rather than sampled — the dialog claims focus on the next frame.
+    await page
+      .waitForFunction(() => document.activeElement?.textContent?.trim() === "취소", null, {
+        timeout: 4000,
+      })
+      .catch(() => {
+        throw new Error(
+          `The permanent-delete dialog left focus on ${JSON.stringify(
+            document.title,
+          )} instead of 취소`,
+        );
+      });
+    await page.keyboard.press("Escape");
+    await permanentDialog.waitFor({ state: "detached" });
+    await explorerRows.filter({ hasText: "새 폴더" }).first().waitFor();
+
+    // Ask again from the list, not from wherever the dialog left focus.
+    await explorerRows.filter({ hasText: "새 폴더" }).first().click();
+    await page.keyboard.press("Shift+Delete");
+    await permanentDialog.waitFor({ state: "visible" });
+    await permanentDialog.getByRole("button", { name: "완전히 삭제" }).click();
+    await explorerRows.filter({ hasText: "새 폴더" }).first().waitFor({ state: "detached" });
+    assert(
+      (await binIcon.getAttribute("aria-label")) === binBefore,
+      `Shift+Delete still went through the 휴지통: ${binBefore} -> ${await binIcon.getAttribute("aria-label")}`,
+    );
+    // And nothing on the undo stack claims it can bring that back.
+    await explorerRows.first().click();
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(400);
+    assert(
+      (await files.locator(`[data-file-id="${doomedId}"]`).count()) === 0,
+      "실행 취소 resurrected a permanently deleted folder",
+    );
+    // That Ctrl+Z took back the step under it — a real one, from earlier —
+    // so put it back before the next step counts these rows.
+    await page.keyboard.press("Control+y");
+    await page.waitForTimeout(400);
+
     // Put the note back on show for the steps that follow.
     await readProperties("작업 메모.txt");
     await propertiesDialog.getByLabel("숨김").uncheck();
