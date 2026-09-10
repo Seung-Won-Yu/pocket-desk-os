@@ -178,6 +178,18 @@ async function runSmoke(baseUrl) {
   page.setDefaultNavigationTimeout(30000);
   page.setDefaultTimeout(30000);
 
+  /*
+   * A CI runner is several times slower than this laptop, and three failures
+   * in a row now have been races that only open up at that speed. This makes
+   * the speed a knob: SMOKE_CPU_THROTTLE=6 npm run qa:smoke reproduces them
+   * here instead of one push per hypothesis.
+   */
+  const cpuThrottle = Number(process.env.SMOKE_CPU_THROTTLE ?? 1);
+  if (cpuThrottle > 1) {
+    const throttleSession = await page.context().newCDPSession(page);
+    await throttleSession.send("Emulation.setCPUThrottlingRate", { rate: cpuThrottle });
+  }
+
   const consoleErrors = [];
   page.on("console", (message) => {
     if (message.type() === "error") {
@@ -1848,7 +1860,28 @@ async function runSmoke(baseUrl) {
     // nobody, which is what a slow runner opened up.
     await page.locator('article[data-app-id="notepad"].is-active').waitFor();
     await page.keyboard.press("Alt+F4");
-    await jumpNotepad.waitFor({ state: "detached" });
+    try {
+      await jumpNotepad.waitFor({ state: "detached", timeout: 8000 });
+    } catch {
+      // A timeout here says only "still open". Say what it is holding, so a
+      // CI-only failure does not need another round trip to explain itself.
+      const stuck = await page.evaluate(() => {
+        const win = document.querySelector('article[data-app-id="notepad"]');
+        if (!win) return "gone by the time this ran";
+        return JSON.stringify({
+          active: win.classList.contains("is-active"),
+          focus:
+            document.activeElement?.getAttribute("aria-label") ??
+            document.activeElement?.tagName,
+          prompt: Boolean(win.querySelector(".note-close-overlay")),
+          tabs: Array.from(win.querySelectorAll('[role="tab"]')).map((tab) =>
+            (tab.textContent ?? "").trim(),
+          ),
+          title: win.getAttribute("aria-label"),
+        });
+      });
+      assert(false, `Alt+F4 left 메모장 open: ${stuck}`);
+    }
 
     // Desktop focus: like Windows, pressing the bare desktop takes focus off
     // every window (title bar quiet, taskbar button not current) so desktop
