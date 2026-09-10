@@ -3239,14 +3239,48 @@ async function runSmoke(baseUrl) {
       .first();
     await dragSource.waitFor({ state: "visible" });
     const draggedName = (await dragSource.innerText()).split("\n")[0].trim();
-    // Drop clear of the Explorer window, or the window itself takes the drop.
-    const explorerBox = await dragExplorer.boundingBox();
-    await dragSource.dragTo(page.locator(".desktop"), {
-      targetPosition: {
-        x: Math.round((explorerBox?.x ?? 0) + (explorerBox?.width ?? 0) + 120),
-        y: 700,
-      },
+    /*
+     * Clear of the window, and now it has to be: a drop over a window is that
+     * window's business and no longer falls through to the desktop. To the
+     * right used to be clear enough; it is not once the window is wide, so
+     * the point is taken below the window and above the taskbar, and asserted
+     * to be outside it before the drag starts.
+     */
+    /*
+     * Room to drop into. This step used to aim beside the window and land on
+     * it, which worked only because a drop over a window fell through to the
+     * desktop underneath — the bug the window layer now stops. A maximized
+     * window leaves no desktop at all, so it is restored first.
+     */
+    // Win+M, then bring back only the window this drags from: by now several
+    // windows are open and between them they cover every pixel of desktop.
+    await page.keyboard.press("Meta+m");
+    await page.waitForTimeout(500);
+    await page.locator(".taskbar-app", { hasText: "파일 탐색기" }).first().click();
+    await dragExplorer.waitFor({ state: "visible" });
+    await page.waitForTimeout(400);
+    const restoreDragExplorer = dragExplorer.getByRole("button", {
+      name: /이전 크기로 복원/,
     });
+    if ((await restoreDragExplorer.count()) > 0) {
+      await restoreDragExplorer.click();
+      await page.waitForTimeout(400);
+    }
+    const dropPoint = await page.evaluate(() => {
+      const taskbar = document.querySelector(".taskbar")?.getBoundingClientRect();
+      const floor = (taskbar?.top ?? window.innerHeight) - 24;
+      for (let y = floor; y > 120; y -= 40) {
+        for (let x = 40; x < window.innerWidth - 40; x += 80) {
+          const at = document.elementFromPoint(x, y);
+          if (at && !at.closest(".window-frame") && at.closest(".desktop")) {
+            return { x, y };
+          }
+        }
+      }
+      return null;
+    });
+    assert(dropPoint !== null, "No bare desktop left to drop on");
+    await dragSource.dragTo(page.locator(".desktop"), { targetPosition: dropPoint });
     await page
       .locator(".desktop-icon", { hasText: draggedName })
       .first()

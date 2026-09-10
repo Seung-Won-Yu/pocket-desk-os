@@ -40,6 +40,13 @@ export const TASKBAR_POSITION_KEY = "pocket-desk-taskbar-position-v1";
 export const TASKBAR_AUTOHIDE_KEY = "pocket-desk-taskbar-autohide-v1";
 export const TASKBAR_SMALL_KEY = "pocket-desk-taskbar-small-v1";
 export const VFS_DRAG_MIME = "application/x-pocketdesk-vfs";
+/**
+ * One extra, empty entry per app that could open what is being dragged. The
+ * payload itself cannot be read during `dragover` — only the type list can —
+ * so this is how a window knows whether to offer to open the drop before the
+ * button comes up. Lowercase because the drag-and-drop spec lowercases types.
+ */
+export const VFS_DRAG_APP_MIME = "application/x-pocketdesk-app-";
 export const ACTIVE_DESKTOP_KEY = "pocket-desk-active-desktop-v1";
 export const EVENT_LOG_KEY = "pocket-desk-event-log-v1";
 export const START_PINNED_APPS_KEY = "pocket-desk-start-pins-v1";

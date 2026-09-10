@@ -55,7 +55,7 @@ import {
 } from "react";
 import type React from "react";
 import AppIconTile from "../components/AppIconTile";
-import { VFS_DRAG_MIME } from "../shell/constants";
+import { VFS_DRAG_APP_MIME, VFS_DRAG_MIME } from "../shell/constants";
 import { findVfsContentMatch, type VfsContentMatch } from "../vfs/contentSearch";
 import { getVfsDropEffect, isVfsCopyDrag } from "../vfs/dragEffect";
 import { type FileViewMode, getNextFileViewMode } from "./fileViewMode";
@@ -1398,6 +1398,16 @@ export default function FilesApp({
     event.dataTransfer.effectAllowed = "copyMove";
     event.dataTransfer.setData(VFS_DRAG_MIME, JSON.stringify(draggedIds));
     event.dataTransfer.setData("text/plain", draggedIds.join(","));
+    // Which apps could open this, named in the type list so a window can
+    // answer during dragover, where the payload is not readable.
+    for (const appId of new Set(
+      draggedIds
+        .map((itemId) => desktopItems.find((item) => item.id === itemId))
+        .filter((item): item is DesktopItem => Boolean(item) && item?.kind !== "folder")
+        .map((item) => getVfsEntryAssociation(item).appId),
+    )) {
+      event.dataTransfer.setData(`${VFS_DRAG_APP_MIME}${appId}`, "");
+    }
   };
 
   const dropFilesIntoFolder = (event: React.DragEvent, folderId: string) => {

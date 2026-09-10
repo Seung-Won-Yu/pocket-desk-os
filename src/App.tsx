@@ -53,6 +53,7 @@ import {
   TASKBAR_PINNED_APPS_KEY,
   TEXT_SCALE_KEY,
   USER_NAME_KEY,
+  VFS_DRAG_APP_MIME,
   VFS_DRAG_MIME,
   VFS_PRIMARY_CANVAS_ID,
   VFS_PRIMARY_NOTE_ID,
@@ -173,6 +174,7 @@ import {
 import { NameConflictDialog } from "./shell/components/NameConflictDialog";
 import { PermanentDeleteDialog } from "./shell/components/PermanentDeleteDialog";
 import { getVfsDropEffect, isVfsCopyDrag } from "./vfs/dragEffect";
+import { findEntryForAppDrop, readVfsDragPayload } from "./vfs/dropTarget";
 import {
   findVfsNameConflicts,
   type VfsConflictChoice,
@@ -1812,6 +1814,22 @@ export default function App() {
           : item,
       ),
     );
+  };
+
+  /**
+   * A file let go over a window opens there, if that window's app is the one
+   * that would open it. Windows refuses a drop an app cannot take rather than
+   * handing it to something else, and so does this.
+   */
+  const openDroppedEntryInWindow = (payload: string, frame: HTMLElement) => {
+    const target = findEntryForAppDrop(
+      activeDesktopItems,
+      readVfsDragPayload(payload),
+      frame.dataset.appId,
+    );
+    if (!target) return;
+    focusWindow(frame.dataset.windowId ?? "");
+    openVfsEntry(target);
   };
 
   const openVfsEntry = (item: DesktopItem) => {
@@ -5252,6 +5270,41 @@ export default function App() {
         }${peekDesktop ? " is-peeking-desktop" : ""}`}
         aria-label="열린 창"
         data-shared-props={sharedContentPropsGeneration}
+        /*
+         * A file dropped on a window is that window's business. The desktop
+         * underneath used to take it: its own dragover allows the drop
+         * anywhere, so releasing over a 메모장 window moved the file to the
+         * desktop — measured, with the file leaving 문서.
+         */
+        onDragOver={(event) => {
+          if (!event.dataTransfer.types.includes(VFS_DRAG_MIME)) return;
+          const frame = (event.target as HTMLElement).closest<HTMLElement>(".window-frame");
+          if (!frame) return;
+          event.stopPropagation();
+          // The app already claimed it — Explorer moving a file into a folder.
+          if (event.defaultPrevented) return;
+          const appId = frame.dataset.appId ?? "";
+          const opens = event.dataTransfer.types.includes(`${VFS_DRAG_APP_MIME}${appId}`);
+          if (!opens) return;
+          event.preventDefault();
+          /*
+           * "copy", not "link": a dropEffect outside the drag's own
+           * effectAllowed is refused outright — the drop never fires and
+           * nothing says why — and widening effectAllowed to "all" changed
+           * what the desktop's own drops did. The badge is a + rather than a
+           * shortcut arrow; the action is "open here" either way.
+           */
+          event.dataTransfer.dropEffect = "copy";
+        }}
+        onDrop={(event) => {
+          if (!event.dataTransfer.types.includes(VFS_DRAG_MIME)) return;
+          const frame = (event.target as HTMLElement).closest<HTMLElement>(".window-frame");
+          if (!frame) return;
+          event.stopPropagation();
+          if (event.defaultPrevented) return;
+          event.preventDefault();
+          openDroppedEntryInWindow(event.dataTransfer.getData(VFS_DRAG_MIME), frame);
+        }}
       >
         {desktopWindows.map((item) => (
           /*

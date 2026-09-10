@@ -6,6 +6,14 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **창 위에 놓은 파일은 그 창이 연다 — 그리고 바탕 화면으로 흘러내리지 않는다.** Dropping a file onto a 메모장 window used to **move it to the desktop**: the desktop's own dragover allows a drop anywhere on it, and a window is on it, so the file left 문서 and landed under the window nobody aimed at. Measured before and after: `문서` was empty afterwards, and now the file stays.
+
+  A window swallows the drop instead, and opens the file when it is the app that would open it — measured: dropping `새 텍스트 문서.txt` on 메모장 made it the active tab and left the file in 문서; dropping a `.canvas` on 메모장 did nothing at all, as Windows refuses a drop an app cannot take rather than handing it elsewhere. A folder is never handed over: a folder is browsed, not opened into a document window.
+
+  A window can say so _before_ the button comes up because the drag names the apps that could open it in its own type list — the payload is unreadable during `dragover`, the type list is not. The drop effect is `copy`, not `link`: a dropEffect outside the drag's `effectAllowed` is refused outright, the drop event never fires, and nothing says why (measured — that was an hour).
+
+  This turned out to be load-bearing in the suite: the smoke's Explorer→desktop drag aimed _beside_ the window and landed _on_ it, and passed only because of the fall-through. It now clears the desktop first and picks a point no window covers, checked with `elementFromPoint` rather than assumed. The drop choreography for the new behaviour is measured in a browser probe and its decision is unit-tested; it is not in the smoke, because arranging two windows side by side without disturbing the rest of the run cost more than the coverage was worth.
+
 - **탐색기의 손버릇 셋: Ctrl+휠, 가운데 클릭, Shift+Delete.** Ctrl+wheel walks the view sizes — 자세히 → 목록 → 큰 아이콘 on the way up, and it holds at each end rather than wrapping round, as Windows does. A middle click opens a folder in a new tab and does nothing on a file, which is also what Explorer does. Shift+Delete skips the 휴지통 — after the shell has asked, because it is the one delete with no way back.
 
   The question belongs to the shell rather than to one window: the desktop and every 탐색기 window reach the same delete. 취소 holds the focus, since the other answer cannot be undone. Measured on the built app: the dialog named `"web-surf.url"`, Escape left the file where it was, 완전히 삭제 removed it without the 휴지통's count changing, and Ctrl+Z afterwards did not bring it back — the undo stack drops every step naming a destroyed row.
