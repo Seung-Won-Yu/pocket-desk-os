@@ -1411,6 +1411,67 @@ async function runSmoke(baseUrl) {
     await explorerSidebar.getByRole("treeitem", { name: "바탕 화면", exact: true }).click();
     await page.waitForTimeout(250);
 
+    /*
+     * Ctrl+드래그 = 복사. Every drop used to move whatever was held. The
+     * modifier is read at the moment of the drop, so it can be pressed after
+     * the drag has started, and the cursor's badge follows it.
+     *
+     * Driven with the platform's own copy modifier: on macOS a Ctrl+left
+     * press is a secondary click, so Ctrl never reaches the drag there. Both
+     * keys land on the same boolean, which the unit tests pin either way.
+     */
+    const dragFileOnto = async (source, target, modifier) => {
+      const from = await source.boundingBox();
+      const to = await target.boundingBox();
+      if (modifier) await page.keyboard.down(modifier);
+      await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(from.x + from.width / 2 + 8, from.y + from.height / 2 + 8, {
+        steps: 4,
+      });
+      await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 });
+      await page.mouse.move(to.x + to.width / 2 + 1, to.y + to.height / 2, { steps: 2 });
+      await page.mouse.up();
+      if (modifier) await page.keyboard.up(modifier);
+      await page.waitForTimeout(400);
+    };
+
+    const copyDragSource = explorerRows.filter({ hasText: "web-surf.url" }).first();
+    await copyDragSource.waitFor();
+    await dragFileOnto(copyDragSource, explorerRows.filter({ hasText: "사진" }).first(), null);
+    await copyDragSource.waitFor({ state: "detached" });
+    await explorerSidebar.getByRole("treeitem", { name: "사진", exact: true }).click();
+    await page.waitForTimeout(300);
+    const movedShortcut = explorerRows.filter({ hasText: "web-surf.url" }).first();
+    await movedShortcut.waitFor();
+    // Now copy it back to 바탕 화면 with the modifier held: it stays here too.
+    await dragFileOnto(
+      movedShortcut,
+      explorerSidebar.getByRole("treeitem", { name: "바탕 화면", exact: true }),
+      multiSelectModifier,
+    );
+    assert(
+      (await explorerRows.filter({ hasText: "web-surf.url" }).count()) === 1,
+      "A copy drag took the original with it",
+    );
+    await explorerSidebar.getByRole("treeitem", { name: "바탕 화면", exact: true }).click();
+    await page.waitForTimeout(300);
+    assert(
+      (await explorerRows.filter({ hasText: "web-surf.url" }).count()) === 1,
+      "The copy never arrived on 바탕 화면",
+    );
+    // Put it back where the later steps expect it: one copy, on 바탕 화면.
+    await explorerSidebar.getByRole("treeitem", { name: "사진", exact: true }).click();
+    await page.waitForTimeout(250);
+    await explorerRows.filter({ hasText: "web-surf.url" }).first().click();
+    await page.keyboard.press("Delete");
+    await explorerRows
+      .filter({ hasText: "web-surf.url" })
+      .first()
+      .waitFor({ state: "detached" });
+    await explorerSidebar.getByRole("treeitem", { name: "바탕 화면", exact: true }).click();
+    await page.waitForTimeout(250);
+
     // Windows' own chords: Ctrl+Shift+N makes a folder, Alt+Enter opens 속성.
     const rowsBeforeChord = await explorerRows.count();
     await files.locator(".file-list").click({ position: { x: 320, y: 320 } });

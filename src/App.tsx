@@ -164,6 +164,7 @@ import {
   stepFileUndo,
 } from "./shell/fileUndo";
 import { NameConflictDialog } from "./shell/components/NameConflictDialog";
+import { getVfsDropEffect, isVfsCopyDrag } from "./vfs/dragEffect";
 import {
   findVfsNameConflicts,
   type VfsConflictChoice,
@@ -1869,6 +1870,18 @@ export default function App() {
           desktopViewMode,
         )
       : clampIconPosition(event.clientX - 40, event.clientY - 40, desktopViewMode);
+    // Ctrl copies onto the desktop rather than moving, as in Windows — every
+    // entry becomes a copy, including one that already lives here, which is
+    // the ordinary "- 복사본".
+    if (isVfsCopyDrag(event)) {
+      const copied = duplicateVfsEntries(itemIds, {
+        parentId: VFS_ROOT_ID,
+        position,
+        showOnDesktop: true,
+      });
+      setSelectedDesktopIds(copied.map((id) => `item:${id}`));
+      return;
+    }
     if (needsMove.length > 0 && !moveVfsEntries(needsMove, VFS_ROOT_ID, position)) return;
 
     // Entries already in the desktop folder are not moved, only surfaced —
@@ -5022,7 +5035,7 @@ export default function App() {
       onDragOver={(event) => {
         if (!event.dataTransfer.types.includes(VFS_DRAG_MIME)) return;
         event.preventDefault();
-        event.dataTransfer.dropEffect = "move";
+        event.dataTransfer.dropEffect = getVfsDropEffect(event);
       }}
       onDrop={dropEntriesOntoDesktop}
       onPointerCancel={finishDesktopSelection}

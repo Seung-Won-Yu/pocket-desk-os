@@ -57,6 +57,7 @@ import type React from "react";
 import AppIconTile from "../components/AppIconTile";
 import { VFS_DRAG_MIME } from "../shell/constants";
 import { findVfsContentMatch, type VfsContentMatch } from "../vfs/contentSearch";
+import { getVfsDropEffect, isVfsCopyDrag } from "../vfs/dragEffect";
 import {
   buildVfsFolderTree,
   getFolderTreeKeyAction,
@@ -1281,7 +1282,8 @@ export default function FilesApp({
       event.preventDefault();
       return;
     }
-    event.dataTransfer.effectAllowed = "move";
+    // Both, so Ctrl can turn the drag into a copy while it is in flight.
+    event.dataTransfer.effectAllowed = "copyMove";
     event.dataTransfer.setData(VFS_DRAG_MIME, JSON.stringify(draggedIds));
     event.dataTransfer.setData("text/plain", draggedIds.join(","));
   };
@@ -1295,6 +1297,15 @@ export default function FilesApp({
     try {
       const itemIds = JSON.parse(payload);
       if (!Array.isArray(itemIds) || !itemIds.every((itemId) => typeof itemId === "string")) {
+        return;
+      }
+      // Ctrl copies, as in Windows — and a copy into the folder it came from
+      // is the ordinary "- 복사본", which is what duplicate already does.
+      if (isVfsCopyDrag(event)) {
+        if (duplicateVfsEntries(itemIds, { parentId: folderId }).length > 0) {
+          setSelectedIds([]);
+          setActiveFileId(null);
+        }
         return;
       }
       if (moveVfsEntries(itemIds, folderId)) {
@@ -1735,7 +1746,7 @@ export default function FilesApp({
                 }}
                 onDragOver={(event) => {
                   event.preventDefault();
-                  event.dataTransfer.dropEffect = "move";
+                  event.dataTransfer.dropEffect = getVfsDropEffect(event);
                 }}
                 onDrop={(event) => dropFilesIntoFolder(event, row.id)}
                 onFocus={() => setTreeFocusId(row.id)}
@@ -1780,7 +1791,7 @@ export default function FilesApp({
                   }}
                   onDragOver={(event) => {
                     event.preventDefault();
-                    event.dataTransfer.dropEffect = "move";
+                    event.dataTransfer.dropEffect = getVfsDropEffect(event);
                   }}
                   onDrop={(event) => dropFilesIntoFolder(event, folder.id)}
                   type="button"
@@ -2025,7 +2036,10 @@ export default function FilesApp({
                         onClick={() => navigateToFolder(segment.id)}
                         onDragEnter={() => setDragOverFolderId(segment.id)}
                         onDragLeave={() => setDragOverFolderId(null)}
-                        onDragOver={(event) => event.preventDefault()}
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = getVfsDropEffect(event);
+                        }}
                         onDrop={(event) => dropFilesIntoFolder(event, segment.id)}
                         type="button"
                       >
@@ -2517,7 +2531,7 @@ export default function FilesApp({
               }}
               onDragOver={(event) => {
                 event.preventDefault();
-                event.dataTransfer.dropEffect = "move";
+                event.dataTransfer.dropEffect = getVfsDropEffect(event);
               }}
               onDrop={(event) => dropFilesIntoFolder(event, currentFolderId)}
               data-vfs-drop-folder={currentFolderId}
@@ -2576,7 +2590,7 @@ export default function FilesApp({
                           if (file.item.kind !== "folder") return;
                           event.preventDefault();
                           event.stopPropagation();
-                          event.dataTransfer.dropEffect = "move";
+                          event.dataTransfer.dropEffect = getVfsDropEffect(event);
                         }}
                         onDrop={(event) => {
                           if (file.item.kind === "folder") dropFilesIntoFolder(event, file.id);

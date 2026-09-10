@@ -6,6 +6,12 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **Ctrl+드래그 = 복사.** Every drop moved, whatever was held. Holding Ctrl (⌘ on a Mac) while dragging a file now copies it, the cursor shows the browser's own **+** badge before the button comes up, and Shift forces a move even with Ctrl down. Measured on the built app: dragging `web-surf.url` onto 사진 plain left 바탕 화면 without it and put it in 사진; the same drag with the modifier held left it on 바탕 화면 **and** put a copy in 사진. Every drop target takes it — a folder row, a 탐색 창 branch, a crumb in the address bar, a 빠른 액세스 pin, the folder background, and the desktop.
+
+  The modifier is read at the moment of the event rather than at the start of the drag, so it can be pressed after the drag is already moving and the badge follows. A copy into the folder it came from is the ordinary `- 복사본`, and a copy onto a name the target already has asks 파일 바꾸기 또는 건너뛰기 like any other copy.
+
+  Measured with ⌘ rather than Ctrl because on macOS a Ctrl+left press is a secondary click, so Ctrl never reaches the drag there; both keys land on the same boolean, which the unit tests pin either way. The tab strip's own reorder drag is left alone — it is not a file, and it only ever moves.
+
 - **주소 표시줄의 ">" 로 옆 폴더로 (그리고 Ctrl+Shift+N, Alt+Enter).** Windows turns each separator in the address bar into a way sideways: the chevron after 바탕 화면 lists what is inside 바탕 화면, so you reach a sibling of the folder you are in without walking back up first. The crumb that is on the current path carries a check. Measured: standing in 바탕 화면 > 문서, the chevron listed 게임 · 다운로드 · 문서 · 사진, picking 사진 moved the window straight there, and Escape closed the menu without moving anything.
 
   The menu hangs off the address _row_, not off the address bar, and is anchored at the chevron's measured offset — the bar clips its crumbs so a long path does not spill, and that clipped the menu out of sight entirely on the first try (it was in the DOM and readable, and invisible on screen). The smoke asserts the menu's box lies inside its window, which is the thing a text assertion could not have caught.
