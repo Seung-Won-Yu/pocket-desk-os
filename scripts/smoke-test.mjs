@@ -4532,6 +4532,39 @@ async function runSmoke(baseUrl) {
       (await shotPhotos.getAttribute("aria-label"))?.startsWith("스크린샷 "),
       `사진 opened ${await shotPhotos.getAttribute("aria-label")} instead of the screenshot`,
     );
+    /*
+     * 슬라이드 쇼. The viewer could step through pictures and never walk
+     * through them by itself. Driven on a controlled clock — three seconds a
+     * slide is a real pace, and waiting it out twice is not.
+     */
+    const shownPicture = () => shotPhotos.locator(".photos-statusbar span").first().innerText();
+    const slideshowButton = shotPhotos.getByRole("button", {
+      name: "슬라이드 쇼",
+      exact: true,
+    });
+    if (await slideshowButton.isEnabled()) {
+      const firstSlide = (await shownPicture()).trim();
+      await slideshowButton.click();
+      await shotPhotos.getByRole("button", { name: /슬라이드 쇼 중지/ }).waitFor();
+      // Waited for, not fast-forwarded: this page's clock is the real one,
+      // and the tick is the thing under test.
+      await shotPhotos
+        .locator(".photos-statusbar span")
+        .first()
+        .filter({ hasNotText: firstSlide })
+        .waitFor({ timeout: 9000 });
+      const secondSlide = (await shownPicture()).trim();
+      assert(secondSlide !== firstSlide, `슬라이드 쇼 stayed on ${firstSlide} after a tick`);
+      // Escape stops it, and time passing changes nothing after that.
+      await page.keyboard.press("Escape");
+      await slideshowButton.waitFor();
+      await page.waitForTimeout(4000);
+      assert(
+        (await shownPicture()).trim() === secondSlide,
+        "슬라이드 쇼 kept going after Escape",
+      );
+    }
+
     await shotPhotos.getByRole("button", { name: "사진 닫기" }).click();
     await shotPhotos.waitFor({ state: "detached" });
     await page.keyboard.press("Control+Alt+R");

@@ -4,7 +4,9 @@ import {
   ImageOff,
   Images,
   Maximize2,
+  Pause,
   Pencil,
+  Play,
   RotateCcw,
   RotateCw,
   Trash2,
@@ -13,6 +15,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
+import { canRunSlideshow, getNextSlideIndex, SLIDESHOW_INTERVAL_MS } from "./slideshow";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import type { DesktopItem } from "../types";
@@ -84,6 +87,8 @@ export default function PhotosApp({
   const [stageSize, setStageSize] = useState<PhotoSize>({ height: 0, width: 0 });
   const [loadFailed, setLoadFailed] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  /** 슬라이드 쇼: the viewer walking through the pictures by itself. */
+  const [slideshow, setSlideshow] = useState(false);
   const [draftName, setDraftName] = useState("");
 
   const sortedEntries = useMemo(
@@ -244,11 +249,39 @@ export default function PhotosApp({
 
   const goToOffset = (offset: number) => {
     if (total < 2) return;
+    // Stepping by hand takes the show off automatic, as it does in Windows.
+    setSlideshow(false);
     const next = sortedEntries[(currentIndex + offset + total) % total];
     if (!next) return;
     playSound("click");
     setViewingId(next.id);
   };
+
+  /*
+   * One picture every few seconds while the show runs, wrapping at the end
+   * because a show that stops is a sequence. Anything that takes the viewer
+   * somewhere by hand — the arrows, a rename, closing the window — stops it,
+   * so the show never fights the person using it.
+   */
+  useEffect(() => {
+    if (!slideshow) return;
+    if (!canRunSlideshow(total)) {
+      setSlideshow(false);
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setViewingId((current) => {
+        const at = sortedEntries.findIndex((entry) => entry.id === current);
+        const next = sortedEntries[getNextSlideIndex(at < 0 ? 0 : at, sortedEntries.length)];
+        return next?.id ?? current;
+      });
+    }, SLIDESHOW_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [slideshow, sortedEntries, total]);
+
+  useEffect(() => {
+    if (renaming) setSlideshow(false);
+  }, [renaming]);
 
   const openInPaint = () => {
     if (!currentEntry) return;
@@ -326,6 +359,19 @@ export default function PhotosApp({
       event.preventDefault();
       event.stopPropagation();
     };
+
+    // F5 starts the show and Escape stops it, as the Windows viewer does.
+    if (event.key === "F5" && canRunSlideshow(total)) {
+      handled();
+      setSlideshow(true);
+      return;
+    }
+
+    if (event.key === "Escape" && slideshow) {
+      handled();
+      setSlideshow(false);
+      return;
+    }
 
     if (event.key === "ArrowLeft") {
       handled();
@@ -529,6 +575,22 @@ export default function PhotosApp({
           >
             <Pencil aria-hidden="true" size={15} />
             <span>편집</span>
+          </button>
+          <button
+            aria-label={slideshow ? "슬라이드 쇼 중지" : "슬라이드 쇼"}
+            aria-pressed={slideshow}
+            className="photos-command"
+            disabled={!canRunSlideshow(total)}
+            onClick={() => setSlideshow((current) => !current)}
+            title={slideshow ? "슬라이드 쇼 중지 (Esc)" : "슬라이드 쇼 (F5)"}
+            type="button"
+          >
+            {slideshow ? (
+              <Pause aria-hidden="true" size={15} />
+            ) : (
+              <Play aria-hidden="true" size={15} />
+            )}
+            <span>{slideshow ? "중지" : "슬라이드 쇼"}</span>
           </button>
           <button
             aria-label="이름 바꾸기"

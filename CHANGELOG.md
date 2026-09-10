@@ -6,6 +6,10 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **사진 슬라이드 쇼 (F5).** The viewer could step through pictures and never walk through them by itself. One picture every three seconds, wrapping at the end — a show that stops at the last slide is a sequence. Escape stops it, so does the toolbar's 중지, and so does anything that moves the viewer by hand: an arrow key, a rename. The button is disabled with fewer than two pictures rather than looping one image forever.
+
+  Measured on a controlled clock: 3.2s forward moved from `sketch.canvas` to `sketch - 복사본.canvas`, another 3.2s wrapped back, Escape held it there through 6.4s more, and an arrow press took a running show off automatic.
+
 - **창 위에 놓은 파일은 그 창이 연다 — 그리고 바탕 화면으로 흘러내리지 않는다.** Dropping a file onto a 메모장 window used to **move it to the desktop**: the desktop's own dragover allows a drop anywhere on it, and a window is on it, so the file left 문서 and landed under the window nobody aimed at. Measured before and after: `문서` was empty afterwards, and now the file stays.
 
   A window swallows the drop instead, and opens the file when it is the app that would open it — measured: dropping `새 텍스트 문서.txt` on 메모장 made it the active tab and left the file in 문서; dropping a `.canvas` on 메모장 did nothing at all, as Windows refuses a drop an app cannot take rather than handing it elsewhere. A folder is never handed over: a folder is browsed, not opened into a document window.
