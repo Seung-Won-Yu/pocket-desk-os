@@ -1366,6 +1366,76 @@ async function runSmoke(baseUrl) {
     await explorerSidebar.getByRole("treeitem", { name: "바탕 화면", exact: true }).click();
     await page.waitForTimeout(250);
 
+    /*
+     * 주소 표시줄의 ">" — Windows turns each separator into a way sideways.
+     * The address bar clips its crumbs so a long path does not spill, which
+     * also clipped this menu out of sight; it hangs off the row instead.
+     */
+    const crumbBar = files.locator(".file-address");
+    await explorerRows.filter({ hasText: "문서" }).first().dblclick();
+    await page.waitForTimeout(300);
+    await crumbBar.getByRole("button", { name: "바탕 화면 하위 폴더" }).click();
+    const crumbMenu = files.locator(".file-breadcrumb-menu");
+    await crumbMenu.waitFor({ state: "visible" });
+    const crumbNames = await crumbMenu.getByRole("menuitem").allInnerTexts();
+    assert(
+      ["게임", "다운로드", "문서", "사진"].every((name) => crumbNames.includes(name)),
+      `The crumb menu listed ${JSON.stringify(crumbNames)}`,
+    );
+    const menuBox = await crumbMenu.boundingBox();
+    const windowBox = await files.boundingBox();
+    assert(
+      menuBox.width > 0 &&
+        menuBox.x >= windowBox.x &&
+        menuBox.x + menuBox.width <= windowBox.x + windowBox.width,
+      `The crumb menu is not inside its window (${JSON.stringify(menuBox)})`,
+    );
+    // Escape closes it and goes nowhere.
+    await page.keyboard.press("Escape");
+    await crumbMenu.waitFor({ state: "detached" });
+    assert(
+      (await crumbBar.innerText()).includes("문서"),
+      "Escape on the crumb menu moved the window",
+    );
+    // Picking a neighbour goes there without walking back up first.
+    await crumbBar.getByRole("button", { name: "바탕 화면 하위 폴더" }).click();
+    await crumbMenu.waitFor({ state: "visible" });
+    await crumbMenu.getByRole("menuitem", { name: "사진", exact: true }).click();
+    await crumbMenu.waitFor({ state: "detached" });
+    await page.waitForTimeout(300);
+    assert(
+      (await crumbBar.innerText()).includes("사진") &&
+        !(await crumbBar.innerText()).includes("문서"),
+      `The crumb menu did not move the window: ${(await crumbBar.innerText()).replace(/\n/g, " > ")}`,
+    );
+    await explorerSidebar.getByRole("treeitem", { name: "바탕 화면", exact: true }).click();
+    await page.waitForTimeout(250);
+
+    // Windows' own chords: Ctrl+Shift+N makes a folder, Alt+Enter opens 속성.
+    const rowsBeforeChord = await explorerRows.count();
+    await files.locator(".file-list").click({ position: { x: 320, y: 320 } });
+    await page.keyboard.press("Control+Shift+KeyN");
+    await page.waitForTimeout(500);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    assert(
+      (await explorerRows.count()) === rowsBeforeChord + 1,
+      `Ctrl+Shift+N did not make a folder (${rowsBeforeChord} -> ${await explorerRows.count()})`,
+    );
+    await explorerRows.filter({ hasText: "새 폴더" }).first().click();
+    await page.keyboard.press("Alt+Enter");
+    const chordProperties = files.locator(".file-properties-dialog");
+    await chordProperties.waitFor({ state: "visible" });
+    assert(
+      (await chordProperties.innerText()).includes("새 폴더"),
+      "Alt+Enter opened the properties of something else",
+    );
+    await page.keyboard.press("Escape");
+    await chordProperties.waitFor({ state: "detached" });
+    await explorerRows.filter({ hasText: "새 폴더" }).first().click();
+    await page.keyboard.press("Delete");
+    await explorerRows.filter({ hasText: "새 폴더" }).first().waitFor({ state: "detached" });
+
     // Put the note back on show for the steps that follow.
     await readProperties("작업 메모.txt");
     await propertiesDialog.getByLabel("숨김").uncheck();

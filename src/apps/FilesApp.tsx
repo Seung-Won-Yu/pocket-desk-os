@@ -60,6 +60,7 @@ import { findVfsContentMatch, type VfsContentMatch } from "../vfs/contentSearch"
 import {
   buildVfsFolderTree,
   getFolderTreeKeyAction,
+  getVfsChildFolders,
   getVfsFolderAncestorIds,
   toggleFolderTreeExpansion,
 } from "../shell/folderTree";
@@ -341,6 +342,8 @@ export default function FilesApp({
   const fileContextMenuRef = useRef<HTMLDivElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const newControlRef = useRef<HTMLDivElement | null>(null);
+  const crumbMenuRef = useRef<HTMLDivElement | null>(null);
+  const addressRowRef = useRef<HTMLDivElement | null>(null);
   /**
    * "the blur that follows has nothing left to commit" — set by Escape, which
    * throws the edit away, and by Enter, which already committed it. Enter used
@@ -408,6 +411,17 @@ export default function FilesApp({
   const [sortOpen, setSortOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
+  /**
+   * Which crumb's ">" is showing its folder's neighbours. Windows' address bar
+   * turns each separator into a way sideways: 문서 > opens what is inside 문서,
+   * so you can step into a sibling of the folder you are in without walking
+   * back up first.
+   */
+  const [crumbMenu, setCrumbMenu] = useState<{ id: string; left: number } | null>(null);
+  const crumbMenuId = crumbMenu?.id ?? null;
+  const setCrumbMenuId = (id: string | null) => {
+    if (id === null) setCrumbMenu(null);
+  };
   // Off by default, like the Windows preview pane: it costs 248px of a 900px
   // window, which is width the file list needs more than the summary does.
   const [detailsPaneOpen, setDetailsPaneOpen] = useState(false);
@@ -690,19 +704,21 @@ export default function FilesApp({
   }, [groupKey]);
 
   useEffect(() => {
-    if (!sortOpen && !newOpen && !optionsOpen) return;
+    if (!sortOpen && !newOpen && !optionsOpen && !crumbMenuId) return;
 
     const closeOnOutsidePointer = (event: Event) => {
       if (!(event.target instanceof Node)) return;
       if (!sortControlRef.current?.contains(event.target)) setSortOpen(false);
       if (!newControlRef.current?.contains(event.target)) setNewOpen(false);
       if (!optionsControlRef.current?.contains(event.target)) setOptionsOpen(false);
+      if (!crumbMenuRef.current?.contains(event.target)) setCrumbMenuId(null);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setNewOpen(false);
       setSortOpen(false);
       setOptionsOpen(false);
+      setCrumbMenuId(null);
     };
 
     window.addEventListener("pointerdown", closeOnOutsidePointer);
@@ -711,7 +727,7 @@ export default function FilesApp({
       window.removeEventListener("pointerdown", closeOnOutsidePointer);
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [newOpen, optionsOpen, sortOpen]);
+  }, [crumbMenuId, newOpen, optionsOpen, sortOpen]);
 
   useEffect(() => {
     if (!fileContextMenu && !propertiesFileId) return;
@@ -1366,6 +1382,14 @@ export default function FilesApp({
       navigateUp();
       return;
     }
+    // Windows' 속성 chord. Opens the dialog for whatever is selected.
+    if (event.altKey && event.key === "Enter") {
+      const [target] = getSelectedCommandIds();
+      if (!target) return;
+      event.preventDefault();
+      openFileProperties(target);
+      return;
+    }
     // Windows takes Backspace as "up one level" too, whenever the list has focus
     // and no rename box is open — the text-field guard above already returned.
     if (event.key === "Backspace") {
@@ -1644,6 +1668,13 @@ export default function FilesApp({
           else closeWindow(windowId);
           return;
         }
+        // Windows' 새 폴더 chord. It belongs to the window, like Ctrl+L, so
+        // it works with the toolbar or the search box focused too.
+        if (key === "n" && event.shiftKey) {
+          event.preventDefault();
+          createFolder();
+          return;
+        }
         // Explorer's 실행 취소 is the shell's, not this window's: undoing here
         // takes back a rename made on the desktop just the same.
         if (key === "z" && !event.shiftKey) {
@@ -1900,7 +1931,7 @@ export default function FilesApp({
           </button>
         </div>
         <div className="file-explorer-top">
-          <div className="file-address-row">
+          <div className="file-address-row" ref={addressRowRef}>
             <div aria-label="탐색" className="file-nav-controls" role="group">
               <button
                 aria-label="뒤로"
@@ -1978,23 +2009,62 @@ export default function FilesApp({
                 }
                 title="두 번 클릭하거나 Ctrl+L을 눌러 경로를 입력합니다"
               >
-                {folderPath.map((segment, index) => (
-                  <div className="file-breadcrumb" key={segment.id}>
-                    {index > 0 && <ChevronRight aria-hidden="true" size={14} />}
-                    <button
-                      aria-current={segment.id === currentFolderId ? "location" : undefined}
-                      onClick={() => navigateToFolder(segment.id)}
-                      onDragEnter={() => setDragOverFolderId(segment.id)}
-                      onDragLeave={() => setDragOverFolderId(null)}
-                      onDragOver={(event) => event.preventDefault()}
-                      onDrop={(event) => dropFilesIntoFolder(event, segment.id)}
-                      type="button"
-                    >
-                      {index === 0 && <House aria-hidden="true" size={15} />}
-                      <span>{segment.name}</span>
-                    </button>
-                  </div>
-                ))}
+                {folderPath.map((segment, index) => {
+                  // The ">" after a crumb belongs to that crumb: it opens what
+                  // is inside it, which is how you reach a sibling of the
+                  // folder you are in without walking back up first.
+                  const branches = getVfsChildFolders(
+                    desktopItems,
+                    segment.id,
+                    showHiddenItems,
+                  );
+                  return (
+                    <div className="file-breadcrumb" key={segment.id}>
+                      <button
+                        aria-current={segment.id === currentFolderId ? "location" : undefined}
+                        onClick={() => navigateToFolder(segment.id)}
+                        onDragEnter={() => setDragOverFolderId(segment.id)}
+                        onDragLeave={() => setDragOverFolderId(null)}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={(event) => dropFilesIntoFolder(event, segment.id)}
+                        type="button"
+                      >
+                        {index === 0 && <House aria-hidden="true" size={15} />}
+                        <span>{segment.name}</span>
+                      </button>
+                      {branches.length > 0 && (
+                        <button
+                          aria-expanded={crumbMenuId === segment.id}
+                          aria-haspopup="menu"
+                          aria-label={`${segment.name} 하위 폴더`}
+                          className="file-breadcrumb-branch"
+                          onClick={(event) => {
+                            /*
+                             * The address bar clips its crumbs so a long path
+                             * does not spill, which also clipped this menu out
+                             * of sight. It is rendered beside the bar instead,
+                             * at the offset measured here.
+                             */
+                            const row = addressRowRef.current?.getBoundingClientRect();
+                            const button = event.currentTarget.getBoundingClientRect();
+                            setCrumbMenu((current) =>
+                              current?.id === segment.id
+                                ? null
+                                : { id: segment.id, left: button.left - (row?.left ?? 0) },
+                            );
+                          }}
+                          type="button"
+                        >
+                          <ChevronRight
+                            aria-hidden="true"
+                            className={crumbMenuId === segment.id ? "is-open" : ""}
+                            size={14}
+                          />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
                 {/* The empty stretch of a Windows address bar is where you click
                   to type a path; a lone breadcrumb row left nowhere to aim. */}
                 <button
@@ -2006,6 +2076,46 @@ export default function FilesApp({
                   title="경로 입력 (Ctrl+L)"
                   type="button"
                 />
+              </div>
+            )}
+            {/*
+             * Outside the address bar, which clips its crumbs so a long path
+             * does not spill. Anchored to the chevron that opened it.
+             */}
+            {crumbMenu && (
+              <div
+                aria-label={`${
+                  folderPath.find((segment) => segment.id === crumbMenu.id)?.name ?? ""
+                } 하위 폴더`}
+                className="file-command-menu file-breadcrumb-menu"
+                onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+                ref={crumbMenuRef}
+                role="menu"
+                style={{ left: `${crumbMenu.left}px` }}
+              >
+                {getVfsChildFolders(desktopItems, crumbMenu.id, showHiddenItems).map(
+                  (branch) => {
+                    const onPath = folderPath.some((segment) => segment.id === branch.id);
+                    return (
+                      <button
+                        key={branch.id}
+                        onClick={() => {
+                          setCrumbMenu(null);
+                          navigateToFolder(branch.id);
+                        }}
+                        role="menuitem"
+                        type="button"
+                      >
+                        {onPath ? (
+                          <Check aria-hidden="true" size={15} />
+                        ) : (
+                          <Folder aria-hidden="true" size={15} />
+                        )}
+                        {branch.name}
+                      </button>
+                    );
+                  },
+                )}
               </div>
             )}
             <label className="file-search">

@@ -6,6 +6,12 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **주소 표시줄의 ">" 로 옆 폴더로 (그리고 Ctrl+Shift+N, Alt+Enter).** Windows turns each separator in the address bar into a way sideways: the chevron after 바탕 화면 lists what is inside 바탕 화면, so you reach a sibling of the folder you are in without walking back up first. The crumb that is on the current path carries a check. Measured: standing in 바탕 화면 > 문서, the chevron listed 게임 · 다운로드 · 문서 · 사진, picking 사진 moved the window straight there, and Escape closed the menu without moving anything.
+
+  The menu hangs off the address _row_, not off the address bar, and is anchored at the chevron's measured offset — the bar clips its crumbs so a long path does not spill, and that clipped the menu out of sight entirely on the first try (it was in the DOM and readable, and invisible on screen). The smoke asserts the menu's box lies inside its window, which is the thing a text assertion could not have caught.
+
+  Two chords Windows has and this did not: **Ctrl+Shift+N** makes a folder in the current folder (measured 5 rows → 6), and **Alt+Enter** opens 속성 for the selection. Both are in 설정 → 키보드 단축키 now, which reads from the same list the shell listens to.
+
 - **파일 내용 검색 (탐색기, 시작 메뉴).** Windows Search reads an indexed text file, not only its name. Typing 둘째 into Explorer's box now finds `스모크.txt`, whose name contains no such word, and the row says why: the line the word was found on, under the name, with the word marked. The status bar reads 하위 폴더와 파일 내용까지 검색. 시작 메뉴 finds it too and names the source — `일치: 파일 내용 — 다음 주 화요일 회의 준비물 정리`.
 
   Measured on the built app: writing `echo 다음 주 화요일 회의 준비물 정리 > 할일.txt` in 명령 프롬프트 and then searching 회의 returned that one row with the snippet `다음 주 화요일 <mark>회의</mark> 준비물 정리`, and the same word found it from the Start menu. A name match still outranks a content match (content scores 40 against the lowest name score of 64), so typing a file's name never buries it under files that merely mention it.

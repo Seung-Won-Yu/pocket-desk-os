@@ -5369,6 +5369,8 @@ button {
   display: grid;
   gap: 7px;
   grid-template-columns: auto minmax(0, 1fr) minmax(180px, 0.42fr);
+  /* The crumb dropdown hangs off this row, not off the clipped address bar. */
+  position: relative;
 }
 
 .file-nav-controls {
@@ -11027,6 +11029,56 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The ">" after a crumb is a way sideways: it lists that folder's own
+   subfolders, the way Windows' address bar does. */
+.file-breadcrumb {
+  position: relative;
+}
+
+.file-breadcrumb-branch {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  padding: 0 1px;
+}
+
+.file-breadcrumb-branch:hover,
+.file-breadcrumb-branch[aria-expanded="true"] {
+  color: var(--text);
+}
+
+.file-breadcrumb-branch svg {
+  transition: transform 120ms ease-out;
+}
+
+.file-breadcrumb-branch svg.is-open {
+  transform: rotate(90deg);
+}
+
+/* Outside .file-command-strip, so it does not inherit that strip's button
+   layout — the rows need their own box here. */
+.file-breadcrumb-menu button {
+  align-items: center;
+  border-radius: 4px;
+  display: flex;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 9px;
+  text-align: left;
+}
+
+.file-breadcrumb-menu {
+  left: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  right: auto;
+  top: calc(100% + 4px);
+  width: 190px;
+  z-index: 9;
 }
 
 /* Why a row matched when its name does not say so: the line the query was
