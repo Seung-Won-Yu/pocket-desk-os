@@ -535,6 +535,18 @@ button {
   text-align: left;
 }
 
+/*
+ * "실행 취소 — 이름 바꾸기" is longer than any other row and wrapped onto two
+ * lines, which pushed a fixed-height desktop row's text out of the button.
+ * One line, clipped at the edge, is what Windows does with a long operation
+ * name.
+ */
+.desktop-context-menu button.menu-undo-item,
+.file-context-menu button.menu-undo-item {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 .desktop-menu-row {
   position: relative;
 }
@@ -5828,7 +5840,8 @@ button {
   gap: 3px;
   padding: 6px;
   position: fixed;
-  width: 204px;
+  /* Matches the desktop background menu, so the same rows read the same. */
+  width: 220px;
   z-index: 9800;
 }
 

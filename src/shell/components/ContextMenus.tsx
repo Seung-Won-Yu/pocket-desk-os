@@ -29,9 +29,11 @@ import {
   Pencil,
   Pin,
   PinOff,
+  Redo2,
   RefreshCw,
   Scissors,
   Trash2,
+  Undo2,
   type LucideIcon,
   Wallpaper,
   X,
@@ -48,11 +50,15 @@ export function DesktopContextMenu({
   onCreateNote,
   onCreateShortcut,
   onPaste,
+  onRedo,
   onRefresh,
   onSort,
   onToggleGrid,
+  onUndo,
   onViewChange,
   pasteEnabled,
+  redoLabel,
+  undoLabel,
   x,
   y,
 }: {
@@ -64,11 +70,15 @@ export function DesktopContextMenu({
   onCreateNote: () => void;
   onCreateShortcut: () => void;
   onPaste: () => void;
+  onRedo: () => void;
   onRefresh: () => void;
   onSort: (sortKey: DesktopSortKey) => void;
   onToggleGrid: () => void;
+  onUndo: () => void;
   onViewChange: (viewMode: DesktopViewMode) => void;
   pasteEnabled: boolean;
+  redoLabel: string | null;
+  undoLabel: string | null;
   x: number;
   y: number;
 }) {
@@ -203,6 +213,30 @@ export function DesktopContextMenu({
         <ClipboardPaste aria-hidden="true" size={16} />
         붙여넣기
       </button>
+      {/* Windows names the operation in the menu, so you know what comes back. */}
+      <button
+        className="menu-undo-item"
+        disabled={!undoLabel}
+        onClick={onUndo}
+        onMouseEnter={() => setSubmenu(null)}
+        role="menuitem"
+        type="button"
+      >
+        <Undo2 aria-hidden="true" size={16} />
+        {undoLabel ? `실행 취소 — ${undoLabel}` : "실행 취소"}
+      </button>
+      {redoLabel && (
+        <button
+          className="menu-undo-item"
+          onClick={onRedo}
+          onMouseEnter={() => setSubmenu(null)}
+          role="menuitem"
+          type="button"
+        >
+          <Redo2 aria-hidden="true" size={16} />
+          {`다시 실행 — ${redoLabel}`}
+        </button>
+      )}
       <div className="desktop-menu-row" onMouseEnter={() => setSubmenu("new")}>
         <button
           aria-expanded={submenu === "new"}

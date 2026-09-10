@@ -29,6 +29,7 @@ import {
   Paintbrush,
   Pencil,
   Plus,
+  Redo2,
   RefreshCw,
   Scissors,
   Search,
@@ -36,6 +37,7 @@ import {
   SquareTerminal,
   Star,
   Trash2,
+  Undo2,
   Upload,
   Wallpaper,
   X,
@@ -144,9 +146,13 @@ type FilesAppProps = {
   quickAccessIds: string[];
   toggleQuickAccessFolder: (folderId: string) => void;
   createVfsTextFile: (parentId?: string) => DesktopItem;
-  deleteVfsEntry: (itemId: string) => void;
+  deleteVfsEntries: (itemIds: string[]) => void;
   desktopItems: DesktopItem[];
   exportVfsZip: () => void;
+  /** The shell's file 실행 취소 stack, shared with the desktop. */
+  fileRedoLabel: string | null;
+  fileUndoLabel: string | null;
+  undoFileAction: (direction: "redo" | "undo") => boolean;
   filesLaunchRequest: FilesLaunchRequest | null;
   importVfsZip: (file: File) => Promise<void>;
   duplicateVfsEntries: (itemIds: string[], options?: VfsDuplicateOptions) => string[];
@@ -286,9 +292,12 @@ export default function FilesApp({
   createVfsFolder,
   onImportLocalEntries,
   createVfsTextFile,
-  deleteVfsEntry,
+  deleteVfsEntries,
   desktopItems,
   exportVfsZip,
+  fileRedoLabel,
+  fileUndoLabel,
+  undoFileAction,
   filesLaunchRequest,
   importVfsZip,
   duplicateVfsEntries,
@@ -314,7 +323,13 @@ export default function FilesApp({
   const fileContextMenuRef = useRef<HTMLDivElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const newControlRef = useRef<HTMLDivElement | null>(null);
-  const cancelRenameRef = useRef(false);
+  /**
+   * "the blur that follows has nothing left to commit" — set by Escape, which
+   * throws the edit away, and by Enter, which already committed it. Enter used
+   * to leave it clear, so submitting renamed the file and the unmount's blur
+   * renamed it again: one keystroke, two 이름 변경됨 toasts.
+   */
+  const skipBlurCommitRef = useRef(false);
   const propertiesConfirmRef = useRef<HTMLButtonElement | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const addressInputRef = useRef<HTMLInputElement | null>(null);
@@ -698,7 +713,7 @@ export default function FilesApp({
 
   useEffect(() => {
     if (!renaming) return;
-    cancelRenameRef.current = false;
+    skipBlurCommitRef.current = false;
     const input = renameInputRef.current;
     if (!input) return;
     /*
@@ -1109,8 +1124,8 @@ export default function FilesApp({
   const submitRename = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selectedFile || isVfsSystemFolderId(selectedFile.id)) return;
-    cancelRenameRef.current = false;
     if (!commitRename(selectedFile.id, draftName)) return;
+    skipBlurCommitRef.current = true;
     setRenaming(false);
     focusFileList();
   };
@@ -1118,7 +1133,7 @@ export default function FilesApp({
   const deleteSelectedFiles = () => {
     const ids = getSelectedCommandIds().filter((itemId) => !isVfsSystemFolderId(itemId));
     if (ids.length === 0) return;
-    ids.forEach(deleteVfsEntry);
+    deleteVfsEntries(ids);
     setRenaming(false);
     setFileContextMenu(null);
     setPropertiesFileId(null);
@@ -1513,6 +1528,20 @@ export default function FilesApp({
           // Windows closes the window when the last tab goes.
           if (tabs.length > 1) closeTab(activeTabId);
           else closeWindow(windowId);
+          return;
+        }
+        // Explorer's 실행 취소 is the shell's, not this window's: undoing here
+        // takes back a rename made on the desktop just the same.
+        if (key === "z" && !event.shiftKey) {
+          if (!fileUndoLabel) return;
+          event.preventDefault();
+          undoFileAction("undo");
+          return;
+        }
+        if ((key === "z" && event.shiftKey) || key === "y") {
+          if (!fileRedoLabel) return;
+          event.preventDefault();
+          undoFileAction("redo");
         }
       }}
     >
@@ -2332,7 +2361,7 @@ export default function FilesApp({
                             aria-label="파일 이름"
                             onBlur={() => {
                               if (
-                                !cancelRenameRef.current &&
+                                !skipBlurCommitRef.current &&
                                 !commitRename(file.id, draftName)
                               ) {
                                 // The name was refused: keep editing rather than
@@ -2341,7 +2370,7 @@ export default function FilesApp({
                                 renameInputRef.current?.focus();
                                 return;
                               }
-                              cancelRenameRef.current = false;
+                              skipBlurCommitRef.current = false;
                               setRenaming(false);
                             }}
                             onChange={(event) => setDraftName(event.target.value)}
@@ -2350,7 +2379,7 @@ export default function FilesApp({
                               if (event.key !== "Escape") return;
                               event.preventDefault();
                               event.stopPropagation();
-                              cancelRenameRef.current = true;
+                              skipBlurCommitRef.current = true;
                               setDraftName(file.name);
                               setRenaming(false);
                               focusFileList();
@@ -2838,6 +2867,36 @@ export default function FilesApp({
             <ClipboardPaste aria-hidden="true" size={16} />
             붙여넣기
           </button>
+          {/* Explorer names the operation, so the menu says what comes back. */}
+          <button
+            className="menu-undo-item"
+            disabled={!fileUndoLabel}
+            onClick={() => {
+              setFileContextMenu(null);
+              undoFileAction("undo");
+            }}
+            onMouseEnter={() => setFolderSubmenu(null)}
+            role="menuitem"
+            type="button"
+          >
+            <Undo2 aria-hidden="true" size={16} />
+            {fileUndoLabel ? `실행 취소 — ${fileUndoLabel}` : "실행 취소"}
+          </button>
+          {fileRedoLabel && (
+            <button
+              className="menu-undo-item"
+              onClick={() => {
+                setFileContextMenu(null);
+                undoFileAction("redo");
+              }}
+              onMouseEnter={() => setFolderSubmenu(null)}
+              role="menuitem"
+              type="button"
+            >
+              <Redo2 aria-hidden="true" size={16} />
+              {`다시 실행 — ${fileRedoLabel}`}
+            </button>
+          )}
           <div className="desktop-menu-row" onMouseEnter={() => setFolderSubmenu("new")}>
             <button
               aria-expanded={folderSubmenu === "new"}

@@ -154,6 +154,16 @@ import {
   persistShowHiddenItems,
 } from "./shell/folderOptions";
 import {
+  applyFileUndoSide,
+  createFileUndoStep,
+  dropFileUndoSteps,
+  EMPTY_FILE_UNDO_STATE,
+  getFileRedoLabel,
+  getFileUndoLabel,
+  pushFileUndoStep,
+  stepFileUndo,
+} from "./shell/fileUndo";
+import {
   getNightLightAlpha,
   loadNightLight,
   loadNightLightStrength,
@@ -300,7 +310,9 @@ type ContentOps = Pick<
   | "createVfsFolder"
   | "createVfsShortcut"
   | "createVfsTextFile"
+  | "deleteVfsEntries"
   | "deleteVfsEntry"
+  | "undoFileAction"
   | "duplicateVfsEntries"
   | "emptyRecycleBin"
   | "exportVfsZip"
@@ -495,6 +507,20 @@ export default function App() {
     return Number.isFinite(stored) && stored >= 30 && stored <= 100 ? stored : 100;
   });
   const [desktopItems, setDesktopItems] = useState<DesktopItem[]>([]);
+  /**
+   * 실행 취소 for the files, shared by the desktop and every 파일 탐색기 window
+   * the way Windows shares one stack across the shell.
+   */
+  const [fileUndo, setFileUndo] = useState(EMPTY_FILE_UNDO_STATE);
+  /*
+   * The list as the last write left it. The persistence ref below cannot be
+   * reused: it holds the *previous* list on purpose, to tell a geometry-only
+   * change from a structural one, and writing the new list into it early
+   * would make every structural write look like an icon nudge and take the
+   * debounce path.
+   */
+  const vfsMutationRef = useRef(desktopItems);
+  vfsMutationRef.current = desktopItems;
   const [vfsReady, setVfsReady] = useState(false);
 
   /*
@@ -1814,7 +1840,6 @@ export default function App() {
     const needsMove = itemIds.filter((id) =>
       activeDesktopItems.some((item) => item.id === id && item.parentId !== VFS_ROOT_ID),
     );
-    if (needsMove.length > 0 && !moveVfsEntries(needsMove, VFS_ROOT_ID)) return;
 
     // The one placement path that skipped the grid: with 그리드 맞춤 on, a file
     // dropped out of Explorer landed wherever the pointer was while every other
@@ -1825,12 +1850,18 @@ export default function App() {
           desktopViewMode,
         )
       : clampIconPosition(event.clientX - 40, event.clientY - 40, desktopViewMode);
-    // moveVfsEntries clears showOnDesktop, so a desktop drop has to restore it.
-    setDesktopItems((current) =>
-      current.map((item) =>
-        itemIds.includes(item.id) ? { ...item, showOnDesktop: true, ...position } : item,
-      ),
-    );
+    if (needsMove.length > 0 && !moveVfsEntries(needsMove, VFS_ROOT_ID, position)) return;
+
+    // Entries already in the desktop folder are not moved, only surfaced —
+    // an icon finding its spot, which Windows does not put on the undo stack.
+    const surfaced = itemIds.filter((id) => !needsMove.includes(id));
+    if (surfaced.length > 0) {
+      setDesktopItems((current) =>
+        current.map((item) =>
+          surfaced.includes(item.id) ? { ...item, showOnDesktop: true, ...position } : item,
+        ),
+      );
+    }
     setSelectedDesktopIds(itemIds.map((id) => `item:${id}`));
   };
 
@@ -1877,7 +1908,7 @@ export default function App() {
       ...position,
     };
 
-    setDesktopItems((current) => [...current, item]);
+    mutateVfsItems("새로 만들기", (current) => [...current, item]);
     setDesktopMenu(null);
     setDesktopIconMenu(null);
     setSelectedDesktopIds([`item:${item.id}`]);
@@ -1895,6 +1926,71 @@ export default function App() {
   const activeDesktopItems = useMemo(() => {
     return desktopItems.filter((item) => !item.trashed);
   }, [desktopItems]);
+
+  /**
+   * The one door every undoable file operation goes through. It diffs the list
+   * before and after and hands the difference to the undo stack, so a new file
+   * operation gets 실행 취소 by going through here rather than by carrying its
+   * own hand-written inverse. Operations Windows does not undo — an icon
+   * dragged across the desktop, an app saving its own document, a permanent
+   * delete — keep calling setDesktopItems directly.
+   */
+  const mutateVfsItems = (label: string, updater: (items: DesktopItem[]) => DesktopItem[]) => {
+    const before = vfsMutationRef.current;
+    const after = updater(before);
+    if (after === before) return before;
+    const step = createFileUndoStep(label, before, after);
+    // The ref, not the render value, is what the next call in the same tick
+    // reads — two operations in one event would otherwise both start from the
+    // pre-event list and the second would throw the first away.
+    vfsMutationRef.current = after;
+    setDesktopItems(after);
+    setFileUndo((state) => pushFileUndoStep(state, step));
+    return after;
+  };
+
+  const undoFileAction = (direction: "redo" | "undo") => {
+    const moved = stepFileUndo(fileUndo, direction);
+    if (!moved) {
+      playSound("error");
+      return false;
+    }
+    const next = applyFileUndoSide(
+      vfsMutationRef.current,
+      moved.step,
+      direction === "undo" ? "before" : "after",
+    );
+    vfsMutationRef.current = next;
+    setDesktopItems(next);
+    setFileUndo(moved.state);
+    // 실행 취소 can take back the very file an app has open. Point the app at
+    // something that still exists, or its next autosave writes the row back.
+    if (!next.some((item) => item.id === activeNoteId)) {
+      setActiveNoteId(
+        next.find((item) => item.kind === "note" && !item.trashed)?.id ?? VFS_PRIMARY_NOTE_ID,
+      );
+    }
+    if (!next.some((item) => item.id === activeCanvasId)) {
+      setActiveCanvasId(
+        next.find((item) => item.kind === "canvas" && !item.trashed)?.id ??
+          VFS_PRIMARY_CANVAS_ID,
+      );
+      setActiveCanvasOpenKey((current) => current + 1);
+    }
+    playSound("success");
+    notify({
+      detail:
+        direction === "undo"
+          ? "마지막 파일 작업을 되돌렸습니다."
+          : "되돌린 파일 작업을 다시 실행했습니다.",
+      title: `${direction === "undo" ? "실행 취소" : "다시 실행"} — ${moved.step.label}`,
+      tone: "success",
+    });
+    return true;
+  };
+
+  const fileUndoLabel = getFileUndoLabel(fileUndo);
+  const fileRedoLabel = getFileRedoLabel(fileUndo);
   const customWallpaperImage = useMemo(
     () => resolveCustomWallpaper(activeDesktopItems, customWallpaperItemId),
     [activeDesktopItems, customWallpaperItemId],
@@ -1923,7 +2019,7 @@ export default function App() {
       y: 0,
     };
 
-    setDesktopItems((current) => [...current, item]);
+    mutateVfsItems("새로 만들기", (current) => [...current, item]);
     playSound("success");
     notify({
       detail: "현재 위치에 새 폴더를 만들었습니다.",
@@ -1948,7 +2044,7 @@ export default function App() {
       y: 0,
     };
 
-    setDesktopItems((current) => [...current, item]);
+    mutateVfsItems("새로 만들기", (current) => [...current, item]);
     playSound("success");
     notify({
       detail: "이름을 정한 뒤 메모장에서 바로 열 수 있습니다.",
@@ -1973,7 +2069,7 @@ export default function App() {
     );
     const copiedRootIds = sourceIds.map((sourceId) => idMap.get(sourceId)!);
 
-    setDesktopItems((current) => {
+    mutateVfsItems("복사", (current) => {
       const existingNamesByParent = new Map<string, Set<string>>();
       const getExistingNames = (parentId: string) => {
         const existing = existingNamesByParent.get(parentId);
@@ -2060,7 +2156,16 @@ export default function App() {
     return copiedRootIds;
   };
 
-  const moveVfsEntries = (itemIds: string[], parentId: string) => {
+  /**
+   * `desktopPlacement` folds "and give it an icon here" into the same write, so
+   * a drop onto the desktop is one 이동 for 실행 취소 instead of a move followed
+   * by a separate patch the redo would not know about.
+   */
+  const moveVfsEntries = (
+    itemIds: string[],
+    parentId: string,
+    desktopPlacement?: IconPosition,
+  ) => {
     const roots = getVfsTopLevelIds(activeDesktopItems, itemIds);
     if (!canMoveVfsEntries(activeDesktopItems, roots, parentId)) {
       playSound("error");
@@ -2094,15 +2199,16 @@ export default function App() {
     });
 
     const now = Date.now();
-    setDesktopItems((current) =>
+    mutateVfsItems("이동", (current) =>
       current.map((item) =>
         moving.includes(item.id)
           ? {
               ...item,
               name: nextNames.get(item.id) ?? item.name,
               parentId,
-              showOnDesktop: false,
+              showOnDesktop: Boolean(desktopPlacement),
               updatedAt: now,
+              ...(desktopPlacement ?? {}),
             }
           : item,
       ),
@@ -2486,7 +2592,7 @@ export default function App() {
     if (nextName === target.name) return;
 
     playSound("success");
-    setDesktopItems((current) =>
+    mutateVfsItems("이름 바꾸기", (current) =>
       current.map((item) =>
         item.id === itemId ? { ...item, name: nextName, updatedAt: Date.now() } : item,
       ),
@@ -2527,25 +2633,40 @@ export default function App() {
     }
   };
 
-  const deleteVfsEntry = (itemId: string) => {
-    const target = activeDesktopItems.find((item) => item.id === itemId);
-    if (!target || isVfsSystemFolderId(itemId)) return;
+  /**
+   * One step for one action: selecting three files and pressing Delete has to
+   * come back with one Ctrl+Z, so the whole selection moves in a single write
+   * rather than one per file.
+   */
+  const deleteVfsEntries = (itemIds: string[]) => {
+    const roots = itemIds.filter(
+      (id) => !isVfsSystemFolderId(id) && activeDesktopItems.some((item) => item.id === id),
+    );
+    if (roots.length === 0) return;
 
     playSound("close");
     const now = Date.now();
-    const deletedIds = getVfsDescendantIds(activeDesktopItems, [itemId]);
+    // A child of two selected folders belongs to the first root that claims it,
+    // so 휴지통 restores the tree under the folder it was actually inside.
+    const trashedRootById = new Map<string, string>();
+    roots.forEach((rootId) => {
+      getVfsDescendantIds(activeDesktopItems, [rootId]).forEach((id) => {
+        if (!trashedRootById.has(id)) trashedRootById.set(id, rootId);
+      });
+    });
+    const deletedIds = new Set(trashedRootById.keys());
     const remaining = activeDesktopItems.filter((item) => !deletedIds.has(item.id));
-    setDesktopItems((current) =>
+    mutateVfsItems("삭제", (current) =>
       current.map((item) =>
         deletedIds.has(item.id)
           ? {
               ...item,
-              restoreParentId: item.id === itemId ? item.parentId : item.restoreParentId,
+              restoreParentId: roots.includes(item.id) ? item.parentId : item.restoreParentId,
               restoreShowOnDesktop: item.showOnDesktop,
               showOnDesktop: false,
               trashed: true,
               trashedAt: now,
-              trashedRootId: itemId,
+              trashedRootId: trashedRootById.get(item.id),
               updatedAt: now,
             }
           : item,
@@ -2564,12 +2685,18 @@ export default function App() {
       setActiveCanvasOpenKey((current) => current + 1);
     }
 
+    const firstName = activeDesktopItems.find((item) => item.id === roots[0])?.name ?? "";
     notify({
       detail: "휴지통에서 복원하거나 영구 삭제할 수 있습니다.",
-      title: `${target.name} 휴지통으로 이동`,
+      title:
+        roots.length === 1
+          ? `${firstName} 휴지통으로 이동`
+          : `${roots.length}개 항목 휴지통으로 이동`,
       tone: "success",
     });
   };
+
+  const deleteVfsEntry = (itemId: string) => deleteVfsEntries([itemId]);
 
   const desktopSelectionAnchorRef = useRef<string | null>(null);
 
@@ -2783,13 +2910,19 @@ export default function App() {
 
     if (clipboard.mode === "cut") {
       const movedIds = clipboard.itemIds;
-      if (!moveVfsEntries(movedIds, VFS_ROOT_ID)) return;
-      // moveVfsEntries clears showOnDesktop; a desktop paste has to put it back.
-      setDesktopItems((current) =>
-        current.map((item) =>
-          movedIds.includes(item.id) ? { ...item, showOnDesktop: true, ...position } : item,
-        ),
+      const alreadyHere = movedIds.filter((id) =>
+        activeDesktopItems.some((item) => item.id === id && item.parentId === VFS_ROOT_ID),
       );
+      if (!moveVfsEntries(movedIds, VFS_ROOT_ID, position)) return;
+      if (alreadyHere.length > 0) {
+        setDesktopItems((current) =>
+          current.map((item) =>
+            alreadyHere.includes(item.id)
+              ? { ...item, showOnDesktop: true, ...position }
+              : item,
+          ),
+        );
+      }
       setSelectedDesktopIds(movedIds.map((id) => `item:${id}`));
       setClipboard({ itemIds: [], mode: "copy" });
     } else {
@@ -2807,7 +2940,7 @@ export default function App() {
 
   const deleteSelectedDesktopItems = (fallbackItemId?: string) => {
     const itemIds = getSelectedDesktopItemIds(fallbackItemId);
-    itemIds.forEach(deleteVfsEntry);
+    deleteVfsEntries(itemIds);
     setSelectedDesktopIds([]);
     setDesktopIconMenu(null);
     setDesktopRenamingItemId(null);
@@ -2845,7 +2978,7 @@ export default function App() {
     );
     const now = Date.now();
     playSound("success");
-    setDesktopItems((current) =>
+    mutateVfsItems("복원", (current) =>
       current.map((item) =>
         restoredIds.has(item.id)
           ? {
@@ -2883,6 +3016,7 @@ export default function App() {
     );
     playSound("close");
     setDesktopItems((current) => current.filter((item) => !deletedIds.has(item.id)));
+    setFileUndo((state) => dropFileUndoSteps(state, deletedIds));
     notify({
       detail: "이 항목을 완전히 삭제했습니다.",
       title: `${target.name} 영구 삭제됨`,
@@ -2900,8 +3034,10 @@ export default function App() {
     }
 
     const deletedCount = trashedItems.length;
+    const emptiedIds = trashedItems.map((item) => item.id);
     playSound("close");
     setDesktopItems((current) => current.filter((item) => !item.trashed));
+    setFileUndo((state) => dropFileUndoSteps(state, emptiedIds));
     notify({
       detail: `${deletedCount}개 항목을 완전히 삭제했습니다.`,
       title: "휴지통 비움",
@@ -3069,7 +3205,7 @@ export default function App() {
       updatedAt: now,
       ...position,
     };
-    setDesktopItems((current) => [...current, item]);
+    mutateVfsItems("새로 만들기", (current) => [...current, item]);
     setShortcutDialogOrigin(null);
     setSelectedDesktopIds([`item:${item.id}`]);
     playSound("success");
@@ -3101,7 +3237,7 @@ export default function App() {
       x: 0,
       y: 0,
     };
-    setDesktopItems((current) => [...current, item]);
+    mutateVfsItems("새로 만들기", (current) => [...current, item]);
     return item;
   };
 
@@ -4105,6 +4241,19 @@ export default function App() {
             selectAllDesktopItems();
             return;
           }
+          // 실행 취소 addresses the shell's file stack here, the way Windows
+          // gives Ctrl+Z on the desktop to the last file operation. A window
+          // with its own undo — 메모장, 그림판 — never reaches this branch.
+          if (key === "z" && !event.shiftKey && fileUndoLabel) {
+            event.preventDefault();
+            undoFileAction("undo");
+            return;
+          }
+          if (((key === "z" && event.shiftKey) || key === "y") && fileRedoLabel) {
+            event.preventDefault();
+            undoFileAction("redo");
+            return;
+          }
         }
         if (event.key === "Delete") {
           const itemIds = getSelectedDesktopItemIds();
@@ -4469,8 +4618,10 @@ export default function App() {
     createVfsFolder,
     createVfsShortcut,
     createVfsTextFile,
+    deleteVfsEntries,
     deleteVfsEntry,
     duplicateVfsEntries,
+    undoFileAction,
     emptyRecycleBin,
     exportVfsZip,
     focusWindow,
@@ -4527,7 +4678,9 @@ export default function App() {
       createVfsFolder: (...args) => contentOpsRef.current.createVfsFolder(...args),
       createVfsShortcut: (...args) => contentOpsRef.current.createVfsShortcut(...args),
       createVfsTextFile: (...args) => contentOpsRef.current.createVfsTextFile(...args),
+      deleteVfsEntries: (...args) => contentOpsRef.current.deleteVfsEntries(...args),
       deleteVfsEntry: (...args) => contentOpsRef.current.deleteVfsEntry(...args),
+      undoFileAction: (...args) => contentOpsRef.current.undoFileAction(...args),
       duplicateVfsEntries: (...args) => contentOpsRef.current.duplicateVfsEntries(...args),
       emptyRecycleBin: (...args) => contentOpsRef.current.emptyRecycleBin(...args),
       exportVfsZip: (...args) => contentOpsRef.current.exportVfsZip(...args),
@@ -4628,6 +4781,8 @@ export default function App() {
       clock24h,
       clockAlarms,
       clockTimer,
+      fileRedoLabel,
+      fileUndoLabel,
       stickyNotes,
       quickAccessIds,
       focusAssist,
@@ -4671,6 +4826,8 @@ export default function App() {
       activeNoteId,
       browserLaunchRequest,
       canvasEntries,
+      fileRedoLabel,
+      fileUndoLabel,
       clipboard,
       clock24h,
       clockAlarms,
@@ -5074,11 +5231,21 @@ export default function App() {
             setDesktopMenu(null);
           }}
           onPaste={pasteDesktopItems}
+          onRedo={() => {
+            setDesktopMenu(null);
+            undoFileAction("redo");
+          }}
           onRefresh={refreshDesktop}
           onSort={arrangeDesktopIcons}
           onToggleGrid={toggleDesktopGrid}
+          onUndo={() => {
+            setDesktopMenu(null);
+            undoFileAction("undo");
+          }}
           onViewChange={changeDesktopView}
           pasteEnabled={clipboard.itemIds.length > 0}
+          redoLabel={fileRedoLabel}
+          undoLabel={fileUndoLabel}
           x={desktopMenu.x}
           y={desktopMenu.y}
         />

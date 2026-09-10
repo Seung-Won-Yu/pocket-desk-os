@@ -51,6 +51,7 @@ export const SHELL_SHORTCUTS: ShortcutGroup[] = [
     items: [
       { action: "경로 입력", keys: "Ctrl + L" },
       { action: "모두 선택 · 복사 · 잘라내기 · 붙여넣기", keys: "Ctrl + A / C / X / V" },
+      { action: "파일 작업 실행 취소 · 다시 실행", keys: "Ctrl + Z / Ctrl + Y" },
       { action: "이름 바꾸기", keys: "F2" },
       { action: "뒤로 · 앞으로 · 위로", keys: "Alt + ←/→/↑" },
       { action: "새 탭 · 탭 닫기", keys: "Ctrl + T / W" },

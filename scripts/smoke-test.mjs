@@ -379,7 +379,7 @@ async function runSmoke(baseUrl) {
       clientX: 760,
       clientY: 420,
     });
-    await desktopMenu.getByRole("menuitem", { name: "새로 만들기" }).hover();
+    await desktopMenu.getByRole("menuitem", { exact: true, name: "새로 만들기" }).hover();
     const desktopShortcutMenu = page.getByRole("menu", { name: "새로 만들기" });
     await desktopShortcutMenu.waitFor({ state: "visible" });
     await desktopShortcutMenu.getByRole("menuitem", { name: "인터넷 바로 가기" }).click();
@@ -420,7 +420,7 @@ async function runSmoke(baseUrl) {
       clientX: 720,
       clientY: 180,
     });
-    await desktopMenu.getByRole("menuitem", { name: "새로 만들기" }).hover();
+    await desktopMenu.getByRole("menuitem", { exact: true, name: "새로 만들기" }).hover();
     const desktopNewMenu = page.getByRole("menu", { name: "새로 만들기" });
     await desktopNewMenu.waitFor({ state: "visible" });
     await desktopNewMenu.getByRole("menuitem", { name: "텍스트 문서" }).click();
@@ -1102,6 +1102,75 @@ async function runSmoke(baseUrl) {
     );
     await explorerSidebar.getByRole("button", { name: "바탕 화면", exact: true }).click();
     await page.waitForTimeout(300);
+
+    /*
+     * 실행 취소. The stack belongs to the shell, so a rename made in Explorer
+     * comes back through the same Ctrl+Z the desktop uses. Pressing Enter on
+     * the rename box used to commit twice — the submit, and then the unmount's
+     * blur — so how many toasts one rename raises is part of the claim.
+     */
+    const renameTarget = explorerRows.filter({ hasText: "web-surf.url" }).first();
+    await renameTarget.click({ button: "right" });
+    await fileContextMenu.getByRole("menuitem", { name: "이름 바꾸기", exact: true }).click();
+    const renameBox = files.locator(".file-inline-rename input");
+    await renameBox.waitFor({ state: "visible" });
+    await renameBox.fill("발표자료.url");
+    await renameBox.press("Enter");
+    await explorerRows.filter({ hasText: "발표자료.url" }).first().waitFor();
+    const renameToasts = (await page.locator(".toast").allInnerTexts()).filter((toast) =>
+      toast.includes("이름 변경됨"),
+    );
+    assert(
+      renameToasts.length === 1,
+      `One rename raised ${renameToasts.length} 이름 변경됨 toast(s)`,
+    );
+
+    const folderMenu = files.locator('[aria-label="폴더 메뉴"]');
+    const readUndoRow = async () => {
+      await files
+        .locator(".file-list")
+        .click({ button: "right", position: { x: 300, y: 300 } });
+      await folderMenu.waitFor({ state: "visible" });
+      const row = folderMenu.locator(".menu-undo-item").first();
+      const text = (await row.innerText()).trim();
+      const box = await row.boundingBox();
+      await page.keyboard.press("Escape");
+      await folderMenu.waitFor({ state: "hidden" });
+      return { box, text };
+    };
+    const afterRenameRow = await readUndoRow();
+    assert(
+      afterRenameRow.text === "실행 취소 — 이름 바꾸기",
+      `The Explorer menu offered "${afterRenameRow.text}"`,
+    );
+    // One line. The label is the longest row in the menu and used to wrap,
+    // which pushed its own text out of a fixed-height desktop row.
+    assert(
+      afterRenameRow.box.height <= 40,
+      `The 실행 취소 row stood ${afterRenameRow.box.height}px tall, so the label wrapped`,
+    );
+
+    await explorerRows.first().click();
+    await page.keyboard.press("Control+z");
+    await explorerRows.filter({ hasText: "web-surf.url" }).first().waitFor();
+    assert(
+      (await explorerRows.filter({ hasText: "발표자료.url" }).count()) === 0,
+      "실행 취소 left the new name on the row",
+    );
+    await page.keyboard.press("Control+y");
+    await explorerRows.filter({ hasText: "발표자료.url" }).first().waitFor();
+    await page.keyboard.press("Control+z");
+    await explorerRows.filter({ hasText: "web-surf.url" }).first().waitFor();
+
+    // 삭제 comes back too, and the row returns out of the 휴지통 whole.
+    await explorerRows.filter({ hasText: "web-surf.url" }).first().click();
+    await page.keyboard.press("Delete");
+    await explorerRows
+      .filter({ hasText: "web-surf.url" })
+      .first()
+      .waitFor({ state: "detached" });
+    await page.keyboard.press("Control+z");
+    await explorerRows.filter({ hasText: "web-surf.url" }).first().waitFor();
 
     // Put the note back on show for the steps that follow.
     await readProperties("작업 메모.txt");
@@ -1802,6 +1871,18 @@ async function runSmoke(baseUrl) {
     assert(
       (await recycle.innerText()).includes("휴지통이 비어 있습니다"),
       "Recycle Bin did not empty",
+    );
+
+    /*
+     * A permanent delete has no 실행 취소 in Windows, and neither does this:
+     * every step that named one of the destroyed rows leaves the stack rather
+     * than standing ready to resurrect a file the user threw away on purpose.
+     */
+    await page.locator(".taskbar-app", { hasText: "파일 탐색기" }).click();
+    const undoAfterEmpty = await readUndoRow();
+    assert(
+      !undoAfterEmpty.text.includes("삭제"),
+      `휴지통 비우기 left "${undoAfterEmpty.text}" on the undo stack`,
     );
 
     const initialTaskbar = await page

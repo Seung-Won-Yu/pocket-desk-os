@@ -230,7 +230,13 @@ export type AppContentProps = {
   updateStickyNotes: (update: (store: StickyNoteStore) => StickyNoteStore) => void;
   updateClockAlarms: (alarms: ClockAlarm[]) => void;
   updateClockTimer: (timer: ClockTimer) => void;
+  /** One 실행 취소 step for the whole selection, not one per file. */
+  deleteVfsEntries: (itemIds: string[]) => void;
   deleteVfsEntry: (itemId: string) => void;
+  /** The shell's file 실행 취소 stack — the desktop and Explorer share it. */
+  fileRedoLabel: string | null;
+  fileUndoLabel: string | null;
+  undoFileAction: (direction: "redo" | "undo") => boolean;
   emptyRecycleBin: () => void;
   exportVfsZip: () => void;
   filesLaunchRequest: FilesLaunchRequest | null;
