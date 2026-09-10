@@ -193,7 +193,8 @@ type FilesAppProps = {
   openApp: (appId: AppId) => void;
   openNewAppWindow: (appId: AppId) => string;
   openVfsEntry: (item: DesktopItem) => void;
-  renameVfsEntry: (itemId: string, name: string) => void;
+  /** False when the shell refused the name, so the box can stay open. */
+  renameVfsEntry: (itemId: string, name: string) => boolean;
   /** 폴더 옵션, owned by the shell so the desktop agrees with every window. */
   showFileExtensions: boolean;
   setShowFileExtensions: (show: boolean) => void;
@@ -1357,10 +1358,16 @@ export default function FilesApp({
       return false;
     }
     const target = files.find((file) => file.id === fileId);
-    renameVfsEntry(
-      fileId,
-      target ? applyVfsRenameInput(target.item, name, showFileExtensions) : name,
-    );
+    // False means the shell refused it — a name the folder already has. Keep
+    // editing rather than closing the box over a rename that did not happen.
+    if (
+      !renameVfsEntry(
+        fileId,
+        target ? applyVfsRenameInput(target.item, name, showFileExtensions) : name,
+      )
+    ) {
+      return false;
+    }
     return true;
   };
 

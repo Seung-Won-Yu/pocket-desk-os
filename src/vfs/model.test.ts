@@ -2,17 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { appMetadata } from "../apps/metadata";
 import type { DesktopItem } from "../types";
 import {
-  VFS_DOCUMENTS_ID,
-  VFS_DOWNLOADS_ID,
-  VFS_GAMES_ID,
-  VFS_PICTURES_ID,
-  VFS_ROOT_ID,
-  VFS_SYSTEM_FOLDER_IDS,
   applyVfsRenameInput,
   canMoveVfsEntries,
   createVfsEntryAssociation,
   createVfsSystemFolders,
-  sanitizeVfsFileName,
   formatDesktopItemTime,
   getDefaultVfsEntryName,
   getUniqueCanvasItemName,
@@ -31,10 +24,18 @@ import {
   getVfsNameParts,
   getVfsShortcutTarget,
   getVfsTopLevelIds,
+  isVfsRenameNameTaken,
   isVfsSystemFolderId,
   MAX_VFS_NAME_LENGTH,
   normalizeVfsEntryName,
+  sanitizeVfsFileName,
   truncateVfsName,
+  VFS_DOCUMENTS_ID,
+  VFS_DOWNLOADS_ID,
+  VFS_GAMES_ID,
+  VFS_PICTURES_ID,
+  VFS_ROOT_ID,
+  VFS_SYSTEM_FOLDER_IDS,
 } from "./model";
 
 function makeItem(overrides: Partial<DesktopItem> & { id: string }): DesktopItem {
@@ -355,6 +356,37 @@ describe("getUniqueVfsEntryName", () => {
     const result = getUniqueVfsEntryName([], "folder-a", longName);
     expect(result).toHaveLength(48);
     expect(result).toBe("가".repeat(48));
+  });
+});
+
+describe("isVfsRenameNameTaken", () => {
+  const items = [
+    makeNote("a", "folder-a", "메모.txt"),
+    makeNote("b", "folder-a", "보고서.txt"),
+    makeNote("c", "folder-b", "메모.txt"),
+    makeNote("d", "folder-a", "버린 것.txt"),
+  ].map((item) => (item.id === "d" ? { ...item, trashed: true } : item));
+
+  it("refuses a name a sibling already has", () => {
+    expect(isVfsRenameNameTaken(items, "a", "보고서.txt")).toBe(true);
+  });
+
+  it("allows a name only another folder has", () => {
+    expect(isVfsRenameNameTaken(items, "b", "메모.txt")).toBe(true);
+    expect(isVfsRenameNameTaken(items, "c", "보고서.txt")).toBe(false);
+  });
+
+  it("allows renaming an entry to what it is already called", () => {
+    expect(isVfsRenameNameTaken(items, "a", "메모.txt")).toBe(false);
+  });
+
+  it("ignores a trashed sibling", () => {
+    expect(isVfsRenameNameTaken(items, "a", "버린 것.txt")).toBe(false);
+  });
+
+  it("says nothing about an empty name or an id that names nothing", () => {
+    expect(isVfsRenameNameTaken(items, "a", "   ")).toBe(false);
+    expect(isVfsRenameNameTaken(items, "gone", "메모.txt")).toBe(false);
   });
 });
 

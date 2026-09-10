@@ -37,7 +37,7 @@ type TerminalAppProps = {
   openWindows: OpenWindowInfo[];
   userName: string;
   playSound: (effect: SoundEffectName) => void;
-  renameVfsEntry: (itemId: string, name: string) => void;
+  renameVfsEntry: (itemId: string, name: string) => boolean;
   saveNoteAs: (
     parentId: string,
     name: string,

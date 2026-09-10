@@ -273,6 +273,7 @@ import {
   canMoveVfsEntries,
   getUniqueCanvasItemName,
   getUniqueRenamedVfsItemName,
+  isVfsRenameNameTaken,
   getUniqueTextFileName,
   getUniqueVfsCopyName,
   getUniqueVfsEntryName,
@@ -2768,10 +2769,25 @@ export default function App() {
 
   const renameVfsEntry = (itemId: string, name: string) => {
     const target = activeDesktopItems.find((item) => item.id === itemId);
-    if (!target || isVfsSystemFolderId(itemId)) return;
+    if (!target || isVfsSystemFolderId(itemId)) return false;
+
+    /*
+     * Windows refuses a name the folder already has instead of picking one
+     * for you. This quietly renamed `새 텍스트 문서.txt` to `web-surf 2.url`
+     * when you typed `web-surf.url` — a name nobody asked for, and no way to
+     * tell it had happened except by reading the row afterwards.
+     */
+    if (isVfsRenameNameTaken(activeDesktopItems, itemId, name)) {
+      playSound("error");
+      notify({
+        detail: "다른 이름을 입력하세요.",
+        title: "이 위치에 같은 이름의 항목이 이미 있습니다",
+      });
+      return false;
+    }
 
     const nextName = getUniqueRenamedVfsItemName(activeDesktopItems, itemId, name);
-    if (nextName === target.name) return;
+    if (nextName === target.name) return true;
 
     playSound("success");
     mutateVfsItems("이름 바꾸기", (current) =>
@@ -2784,6 +2800,7 @@ export default function App() {
       title: `${nextName} 이름 변경됨`,
       tone: "success",
     });
+    return true;
   };
 
   /**
@@ -2951,12 +2968,19 @@ export default function App() {
     if (!desktopRenamingItemId) return;
     desktopRenameGuardRef.current = true;
     const renaming = activeDesktopItems.find((item) => item.id === desktopRenamingItemId);
-    renameVfsEntry(
-      desktopRenamingItemId,
-      renaming
-        ? applyVfsRenameInput(renaming, desktopRenameDraft, showFileExtensions)
-        : desktopRenameDraft,
-    );
+    // Refused — a name the desktop already has. Keep the box open with what
+    // was typed, the way Explorer's own inline rename does.
+    if (
+      !renameVfsEntry(
+        desktopRenamingItemId,
+        renaming
+          ? applyVfsRenameInput(renaming, desktopRenameDraft, showFileExtensions)
+          : desktopRenameDraft,
+      )
+    ) {
+      desktopRenameGuardRef.current = false;
+      return;
+    }
     setDesktopRenamingItemId(null);
     window.requestAnimationFrame(() => {
       desktopRenameGuardRef.current = false;

@@ -6,6 +6,10 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **이미 있는 이름으로 바꾸면 거절한다.** Renaming a file to a name its folder already had quietly produced something else: typing `web-surf.url` over `새 텍스트 문서.txt` gave `web-surf 2.url` — a name nobody asked for, with nothing to say it had happened except reading the row afterwards. Windows refuses instead, and so does this: 이 위치에 같은 이름의 항목이 이미 있습니다, the box stays open with what was typed still in it, and a free name goes through from that same box. Measured before and after: `web-surf 2.url` → refused, box open holding `web-surf.url`, then `자유로운 이름.txt` accepted.
+
+  The same rule on the desktop, from the same check. A copy or a move onto a taken name still asks 파일 바꾸기 또는 건너뛰기 — there the other file is a real alternative, and here there is nothing to choose between.
+
 - **사진 슬라이드 쇼 (F5).** The viewer could step through pictures and never walk through them by itself. One picture every three seconds, wrapping at the end — a show that stops at the last slide is a sequence. Escape stops it, so does the toolbar's 중지, and so does anything that moves the viewer by hand: an arrow key, a rename. The button is disabled with fewer than two pictures rather than looping one image forever.
 
   Measured on a controlled clock: 3.2s forward moved from `sketch.canvas` to `sketch - 복사본.canvas`, another 3.2s wrapped back, Escape held it there through 6.4s more, and an arrow press took a running show off automatic.

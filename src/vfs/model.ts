@@ -196,6 +196,26 @@ export function applyVfsRenameInput(item: DesktopItem, input: string, showExtens
   return input.toLowerCase().endsWith(extension.toLowerCase()) ? input : `${input}${extension}`;
 }
 
+/**
+ * Whether a rename would land on a name the folder already has. Windows
+ * refuses that outright — "이 위치에 같은 이름의 파일이 이미 있습니다" — and
+ * leaves the box open with the text still in it, rather than deciding on a
+ * "(2)" nobody asked for.
+ */
+export function isVfsRenameNameTaken(items: DesktopItem[], itemId: string, name: string) {
+  const target = items.find((item) => item.id === itemId);
+  if (!target) return false;
+  const requested = normalizeVfsEntryName(name);
+  if (!requested || requested === target.name) return false;
+  return items.some(
+    (item) =>
+      item.id !== itemId &&
+      !item.trashed &&
+      item.parentId === (target.parentId ?? VFS_ROOT_ID) &&
+      item.name === requested,
+  );
+}
+
 export function getUniqueRenamedVfsItemName(
   items: DesktopItem[],
   itemId: string,

@@ -312,7 +312,8 @@ export type AppContentProps = {
   permanentlyDeleteVfsEntry: (itemId: string) => void;
   /** Shift+Delete: asks first, then skips the 휴지통 for good. */
   requestPermanentDelete: (itemIds: string[]) => void;
-  renameVfsEntry: (itemId: string, name: string) => void;
+  /** False when the name is refused, so the caller can keep the box open. */
+  renameVfsEntry: (itemId: string, name: string) => boolean;
   resetDesktopIconLayout: () => void;
   resetWindowLayout: () => void;
   restoreVfsEntry: (itemId: string) => void;

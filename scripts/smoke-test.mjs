@@ -1765,6 +1765,44 @@ async function runSmoke(baseUrl) {
     await explorerRows.filter({ hasText: "새 폴더" }).first().waitFor({ state: "detached" });
 
     /*
+     * A rename onto a name the folder already has is refused, as Windows
+     * refuses it. This quietly invented "web-surf 2.url" for a file renamed
+     * to "web-surf.url" — a name nobody asked for, and nothing said so.
+     */
+    await files.getByRole("button", { name: "새로 만들기" }).first().click();
+    await files.getByRole("menuitem", { name: "텍스트 문서", exact: true }).click();
+    const clashRow = explorerRows.filter({ hasText: "새 텍스트 문서" }).first();
+    await clashRow.waitFor();
+    const clashBox = files.locator(".file-inline-rename input");
+    await clashBox.waitFor({ state: "visible" });
+    await clashBox.fill("web-surf.url");
+    await clashBox.press("Enter");
+    await page.waitForTimeout(400);
+    assert(
+      (await explorerRows.filter({ hasText: "web-surf 2" }).count()) === 0,
+      "The rename invented a name of its own",
+    );
+    assert(
+      (await clashBox.count()) === 1 && (await clashBox.inputValue()) === "web-surf.url",
+      "The refused rename closed its own box and threw the text away",
+    );
+    assert(
+      (await page.locator(".toast", { hasText: "같은 이름의 항목이 이미 있습니다" }).count()) >
+        0,
+      "Nothing said why the rename was refused",
+    );
+    // A free name still goes through, from the same box.
+    await clashBox.fill("이름 충돌 검사.txt");
+    await clashBox.press("Enter");
+    await explorerRows.filter({ hasText: "이름 충돌 검사.txt" }).first().waitFor();
+    await explorerRows.filter({ hasText: "이름 충돌 검사.txt" }).first().click();
+    await page.keyboard.press("Delete");
+    await explorerRows
+      .filter({ hasText: "이름 충돌 검사.txt" })
+      .first()
+      .waitFor({ state: "detached" });
+
+    /*
      * Explorer's hand habits: Ctrl+wheel walks the view sizes, a middle click
      * opens a folder in a new tab, and Shift+Delete skips the 휴지통 after the
      * shell has asked.
