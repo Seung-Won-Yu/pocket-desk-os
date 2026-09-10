@@ -56,6 +56,7 @@ import {
 import type React from "react";
 import AppIconTile from "../components/AppIconTile";
 import { VFS_DRAG_MIME } from "../shell/constants";
+import { findVfsContentMatch, type VfsContentMatch } from "../vfs/contentSearch";
 import {
   buildVfsFolderTree,
   getFolderTreeKeyAction,
@@ -522,14 +523,40 @@ export default function FilesApp({
       current.map((tab) => (tab.id === activeTabId ? { ...tab, query: value } : tab)),
     );
   };
+  /*
+   * The name, what the row says about itself — and, as Windows Search does
+   * with an indexed text file, what is written inside it. A memo could hold
+   * the word you were looking for and never come up.
+   */
   const filteredFiles = useMemo(() => {
     const normalizedQuery = normalizeSearchText(fileQuery);
-    if (!normalizedQuery) return files;
-    return files.filter((file) =>
-      [file.name, file.item.name, file.type, file.detail, file.association.appTitle]
-        .map(normalizeSearchText)
-        .some((field) => field.includes(normalizedQuery)),
-    );
+    // Both branches carry the same shape, so a row is one type whether or not
+    // anything was searched for.
+    if (!normalizedQuery) {
+      return files.map((file) => ({ ...file, contentMatch: null as VfsContentMatch | null }));
+    }
+    return files
+      .map((file) => {
+        /*
+         * `detail` is deliberately not here. For a note it *is* the file's
+         * text, so the box was already searching inside notes — by accident,
+         * with no way to see why a row matched — and for every other kind it
+         * is a canned sentence, so searching 폴더 returned every folder. The
+         * content is searched on purpose below instead.
+         */
+        const named = [file.name, file.item.name, file.type, file.association.appTitle]
+          .map(normalizeSearchText)
+          .some((field) => field.includes(normalizedQuery));
+        // The snippet is built only for a row the name did not already
+        // explain, so a plain name search costs nothing extra.
+        const contentMatch = named ? null : findVfsContentMatch(file.item, fileQuery);
+        if (!named && !contentMatch) return null;
+        return { ...file, contentMatch };
+      })
+      .filter(
+        (file): file is (typeof files)[number] & { contentMatch: VfsContentMatch | null } =>
+          Boolean(file),
+      );
   }, [fileQuery, files]);
   const visibleFiles = useMemo(() => {
     const direction = sortDirection === "asc" ? 1 : -1;
@@ -2467,6 +2494,22 @@ export default function FilesApp({
                           {file.location && (
                             <em className="file-row-location">{file.location}</em>
                           )}
+                          {/* Why this row matched, when the name does not say:
+                              the line the query was found on, inside the file. */}
+                          {file.contentMatch && (
+                            <em className="file-row-snippet">
+                              {file.contentMatch.snippet.slice(0, file.contentMatch.matchStart)}
+                              <mark>
+                                {file.contentMatch.snippet.slice(
+                                  file.contentMatch.matchStart,
+                                  file.contentMatch.matchStart + file.contentMatch.matchLength,
+                                )}
+                              </mark>
+                              {file.contentMatch.snippet.slice(
+                                file.contentMatch.matchStart + file.contentMatch.matchLength,
+                              )}
+                            </em>
+                          )}
                         </span>
                         <small>{file.modified}</small>
                         <small>{file.type}</small>
@@ -2609,7 +2652,7 @@ export default function FilesApp({
         <div className="file-statusbar" onContextMenu={(event) => event.preventDefault()}>
           <span>
             {visibleFiles.length}개 항목
-            {fileQuery ? " · 하위 폴더까지 검색" : ""}
+            {fileQuery ? " · 하위 폴더와 파일 내용까지 검색" : ""}
           </span>
           <span>
             {selectedIds.length > 0

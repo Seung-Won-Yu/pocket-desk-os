@@ -1,5 +1,6 @@
 import { type AppId, type DesktopItem, type ThemeName } from "../types";
 import { normalizeSearchText } from "../utils/format";
+import { findVfsContentMatch } from "../vfs/contentSearch";
 import {
   VFS_ROOT_ID,
   getVfsEntryAssociation,
@@ -51,6 +52,12 @@ export function getLocalDateKey(date: Date) {
     String(date.getDate()).padStart(2, "0"),
   ].join("-");
 }
+
+/**
+ * Below `rankSearchCandidate`'s lowest name score (64), so a file whose name
+ * matches always comes first.
+ */
+export const VFS_CONTENT_MATCH_SCORE = 40;
 
 export function buildStartSearchResults(
   query: string,
@@ -123,7 +130,15 @@ export function buildStartSearchResults(
         ...pathSegments.slice(1).map((segment) => segment.name),
         ...(onDesktop ? ["desktop", "바탕화면"] : []),
       ]);
-      if (!rank) {
+      /*
+       * What is written inside the file, the way Windows Search reads an
+       * indexed text file. Ranked below every name match — a file whose name
+       * you typed is what you meant; one that merely mentions the word is a
+       * second thought — and the matched line stands in for the match label,
+       * so the result says where in the file it came from.
+       */
+      const contentMatch = rank ? null : findVfsContentMatch(item, query);
+      if (!rank && !contentMatch) {
         return null;
       }
 
@@ -133,8 +148,8 @@ export function buildStartSearchResults(
         id: `desktop-${item.id}`,
         item,
         kind: "desktopItem",
-        matchLabel: rank.matchLabel,
-        score: rank.score,
+        matchLabel: rank ? rank.matchLabel : `파일 내용 — ${contentMatch!.snippet}`,
+        score: rank ? rank.score : VFS_CONTENT_MATCH_SCORE,
         sourceLabel: item.kind === "folder" ? "폴더" : "파일",
         subtitle: `${association.typeLabel} · ${pathSegments
           .map((segment) => segment.name)

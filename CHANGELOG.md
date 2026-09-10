@@ -6,6 +6,14 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **파일 내용 검색 (탐색기, 시작 메뉴).** Windows Search reads an indexed text file, not only its name. Typing 둘째 into Explorer's box now finds `스모크.txt`, whose name contains no such word, and the row says why: the line the word was found on, under the name, with the word marked. The status bar reads 하위 폴더와 파일 내용까지 검색. 시작 메뉴 finds it too and names the source — `일치: 파일 내용 — 다음 주 화요일 회의 준비물 정리`.
+
+  Measured on the built app: writing `echo 다음 주 화요일 회의 준비물 정리 > 할일.txt` in 명령 프롬프트 and then searching 회의 returned that one row with the snippet `다음 주 화요일 <mark>회의</mark> 준비물 정리`, and the same word found it from the Start menu. A name match still outranks a content match (content scores 40 against the lowest name score of 64), so typing a file's name never buries it under files that merely mention it.
+
+  Only what is honestly text is read: a note's text and where a shortcut points. A drawing's content is a data URL and a `.zip` is base64 — scanning either would match on the encoding rather than on anything a person wrote. Each file is read to a 20,000-character cap, so a folder of long notes cannot lock the keystroke that typed the query, and the snippet's whitespace is collapsed _before_ the search so the marked characters are the ones actually shown.
+
+  Explorer had in fact been searching inside notes already — by accident. Its match fields included the row's 세부 정보 line, and for a note that line **is** the file's text; for everything else it is a canned sentence, so searching 하위 폴더를 보관 returned every folder in the tree. The description is out of the match fields now and the content is searched on purpose, which is what makes the snippet possible.
+
 - **탐색 창 폴더 트리.** Explorer's navigation pane was five fixed shortcuts side by side, so a folder you made yourself never appeared in it however deep you were standing inside it, and nothing in the pane said where the window was. It is the file system's own shape now: 바탕 화면 as the one root — because it is the one root; 문서, 사진, 게임 and 다운로드 are its children and Windows shows them that way — with a twisty on every branch that has one. Measured on the built app: making a folder inside 문서 gave 문서 a twisty (`aria-expanded="false"`), opening it put the folder at level 3, and double-clicking into it marked that row `aria-selected` and left the pane's single tab stop on it.
 
   It is a real `role="tree"`: one tab stop for the whole pane, Up/Down along the rows on screen, Right to open a closed branch then step into it, Left to close an open one then step out to the parent, Home/End to the ends, Enter to go there. The twisty is `aria-hidden` and clicked with the pointer — the treeitem itself is what the keyboard drives, so there is no interactive control nested inside one.

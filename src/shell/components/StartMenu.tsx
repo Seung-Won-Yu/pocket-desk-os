@@ -257,7 +257,7 @@ export function StartMenu({
           <div className="start-empty-state">
             <Search aria-hidden="true" size={22} />
             <strong>검색 결과가 없습니다</strong>
-            <small>앱 이름, 한글 별칭, 바탕화면 폴더나 메모 이름으로 찾아보세요.</small>
+            <small>앱 이름, 한글 별칭, 폴더나 파일 이름, 메모 안의 글로 찾아보세요.</small>
           </div>
         )
       ) : (

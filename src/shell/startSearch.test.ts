@@ -43,6 +43,49 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe("buildStartSearchResults, inside the files", () => {
+  const memo = createDesktopItem({
+    content: "다음 주 회의 준비물 정리",
+    id: "memo",
+    name: "할 일.txt",
+  });
+  const drawing = createDesktopItem({
+    content: "data:image/png;base64,QUJD회의",
+    id: "sketch",
+    kind: "canvas",
+    name: "그림.canvas",
+  });
+
+  it("finds a file by a word written inside it", () => {
+    const results = buildStartSearchResults("회의", [memo], appsWithIds([]));
+    expect(results.map((result) => result.title)).toEqual(["할 일.txt"]);
+    expect(results[0].matchLabel).toBe("파일 내용 — 다음 주 회의 준비물 정리");
+  });
+
+  it("puts a name match above a content match", () => {
+    const named = createDesktopItem({ content: "", id: "named", name: "회의록.txt" });
+    const results = buildStartSearchResults("회의", [memo, named], appsWithIds([]));
+    expect(results.map((result) => result.title)).toEqual(["회의록.txt", "할 일.txt"]);
+  });
+
+  it("keeps the name as the match label when the name already matched", () => {
+    const both = createDesktopItem({ content: "회의 준비", id: "both", name: "회의록.txt" });
+    expect(buildStartSearchResults("회의", [both], appsWithIds([]))[0].matchLabel).toBe(
+      "회의록.txt",
+    );
+  });
+
+  it("does not read a drawing's data URL as text", () => {
+    expect(buildStartSearchResults("회의", [drawing], appsWithIds([]))).toEqual([]);
+  });
+
+  it("leaves a trashed file out", () => {
+    expect(
+      buildStartSearchResults("회의", [{ ...memo, trashed: true }], appsWithIds([])),
+    ).toEqual([]);
+  });
+});
+
 describe("rankSearchCandidate", () => {
   it("returns null when no field matches", () => {
     expect(rankSearchCandidate("zzz", ["alpha", "beta"])).toBeNull();

@@ -11029,6 +11029,24 @@ button {
   white-space: nowrap;
 }
 
+/* Why a row matched when its name does not say so: the line the query was
+   found on, inside the file. */
+.file-row-snippet {
+  color: var(--muted);
+  display: block;
+  font-size: 0.68rem;
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-row-snippet mark {
+  background: color-mix(in srgb, var(--active) 42%, transparent);
+  border-radius: 2px;
+  color: var(--text);
+}
+
 /* Explorer tabs: one per place, each with its own history. The tab element is
    the control now, so it needs a control's cursor and no text selection. */
 .file-tab,

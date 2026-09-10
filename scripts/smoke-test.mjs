@@ -120,6 +120,33 @@ async function unlockPocketDesk(page) {
  * Types one line into the Command Prompt and returns only the output that line
  * produced, so each assertion reads the fresh result instead of the whole buffer.
  */
+/**
+ * A box read twice in a row with the same numbers. A window measured while it
+ * is still animating open reports a rect that is nobody's final answer — CI is
+ * slow enough for that to matter, and it has now cost two runs: a maximized
+ * window measured mid-animation, and a touch drag whose "before" was taken
+ * before the window had settled (Δy=-24 for a drag of +80).
+ */
+async function settledBoxOf(page, locator, attempts = 40) {
+  let previous = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const box = await locator.boundingBox();
+    if (
+      previous &&
+      box &&
+      previous.x === box.x &&
+      previous.y === box.y &&
+      previous.width === box.width &&
+      previous.height === box.height
+    ) {
+      return box;
+    }
+    previous = box;
+    await page.waitForTimeout(50);
+  }
+  return previous;
+}
+
 async function runTerminalCommand(terminal, command) {
   const lines = terminal.locator(".terminal-line");
   const lineCountBefore = await lines.count();
@@ -2180,6 +2207,68 @@ async function runSmoke(baseUrl) {
     );
     await terminal.getByLabel("명령 입력").fill("");
 
+    /*
+     * 파일 내용 검색. 스모크.txt holds "둘째 줄" and its name does not, so a
+     * box that only reads names cannot find it. Explorer's did search notes
+     * before this — by accident, through the description field, which for a
+     * note *is* its text — with nothing on the row to say why it matched.
+     */
+    await page.keyboard.press("Meta+e");
+    const searchExplorer = page
+      .locator(".window-frame", { has: page.locator(".files-app") })
+      .first();
+    await searchExplorer.waitFor({ state: "visible" });
+    await page.waitForTimeout(400);
+    const searchRows = searchExplorer.locator('.file-list button[role="option"]');
+    await searchExplorer.getByLabel("파일 검색").fill("둘째");
+    await searchRows.filter({ hasText: "스모크.txt" }).first().waitFor();
+    assert(
+      (await searchRows.count()) === 1,
+      `내용 검색 for 둘째 returned ${await searchRows.count()} rows`,
+    );
+    const snippet = searchExplorer.locator(".file-row-snippet").first();
+    await snippet.waitFor();
+    assert(
+      (await snippet.innerText()).includes("둘째 줄"),
+      `The row did not show the line it matched on: ${await snippet.innerText()}`,
+    );
+    assert(
+      (await snippet.locator("mark").innerText()) === "둘째",
+      "The matched word was not marked inside the snippet",
+    );
+    assert(
+      (await searchExplorer.locator(".file-statusbar").innerText()).includes(
+        "파일 내용까지 검색",
+      ),
+      "The status bar did not say the search went inside the files",
+    );
+    // A canned description is not content: this phrase is every folder's own
+    // 세부 정보 line, and it used to answer the search through the same field
+    // the note's text came from.
+    await searchExplorer.getByLabel("파일 검색").fill("하위 폴더를 보관");
+    await page.waitForTimeout(400);
+    assert(
+      (await searchRows.count()) === 0,
+      `A folder's own description still answers the search (${await searchRows.count()} rows)`,
+    );
+    await searchExplorer.locator(".window-titlebar").click();
+    await page.keyboard.press("Alt+F4");
+    await searchExplorer.waitFor({ state: "detached" });
+
+    // 시작 메뉴 finds it by the same word, and says where the match came from.
+    await page.getByRole("button", { name: "시작 메뉴" }).click();
+    await page.getByLabel("앱과 바탕화면 항목 검색").fill("둘째");
+    const contentResult = page.locator(".start-result-list button", { hasText: "스모크.txt" });
+    await contentResult.waitFor();
+    assert(
+      (await contentResult.innerText()).includes("일치: 파일 내용 — "),
+      `시작 메뉴 did not name the match source: ${(await contentResult.innerText()).replace(/\n/g, " | ")}`,
+    );
+    await page.keyboard.press("Escape");
+    // Not the taskbar button: pressing an active app's button minimizes it,
+    // the way Windows does, and the next command would have nowhere to land.
+    await terminal.getByLabel("명령 입력").click();
+
     const unknownOutput = await runTerminalCommand(terminal, "frobnicate");
     assert(unknownOutput.includes("frobnicate"), "Unknown command was not reported");
     assert(
@@ -3648,9 +3737,9 @@ async function runSmoke(baseUrl) {
     );
     assert(
       (await tabExplorer.locator(".file-statusbar span").first().innerText()).includes(
-        "하위 폴더까지 검색",
+        "하위 폴더와 파일 내용까지 검색",
       ),
-      "The status bar did not say the search went into subfolders",
+      "The status bar did not say the search went into subfolders and file contents",
     );
     await explorerSearch.fill("");
     await page.waitForTimeout(300);
@@ -4029,25 +4118,7 @@ async function runSmoke(baseUrl) {
      * wrong — CI once read a "maximized" window as 1193.82x807.70 at x=77.09.
      * Read until two reads in a row agree instead of guessing at a delay.
      */
-    const settledBox = async (locator, attempts = 40) => {
-      let previous = null;
-      for (let attempt = 0; attempt < attempts; attempt += 1) {
-        const box = await locator.boundingBox();
-        if (
-          previous &&
-          box &&
-          previous.x === box.x &&
-          previous.y === box.y &&
-          previous.width === box.width &&
-          previous.height === box.height
-        ) {
-          return box;
-        }
-        previous = box;
-        await page.waitForTimeout(50);
-      }
-      return previous;
-    };
+    const settledBox = (locator, attempts = 40) => settledBoxOf(page, locator, attempts);
     const barBox = () => settledBox(page.locator(".taskbar"));
     const dismissSnapAssist = async () => {
       const assist = page.locator(".snap-assist");
@@ -4782,15 +4853,17 @@ async function runSmoke(baseUrl) {
     await touchPage.locator(".start-result-list button").first().tap();
     const touchNotepad = touchPage.locator('article[data-app-id="notepad"]');
     await touchNotepad.waitFor({ state: "visible" });
-    const touchBefore = await touchNotepad.boundingBox();
-    const touchBar = await touchNotepad.locator(".window-titlebar").boundingBox();
+    // Settled, not merely present: the open animation was still running when
+    // this was read on CI, so the "before" was a rect the window never held.
+    const touchBefore = await settledBoxOf(touchPage, touchNotepad);
+    const touchBar = await settledBoxOf(touchPage, touchNotepad.locator(".window-titlebar"));
     await touchDrag(
       touchBar.x + touchBar.width / 2,
       touchBar.y + 10,
       touchBar.x + touchBar.width / 2 - 50,
       touchBar.y + 90,
     );
-    const touchAfter = await touchNotepad.boundingBox();
+    const touchAfter = await settledBoxOf(touchPage, touchNotepad);
     assert(
       Math.abs(touchAfter.y - touchBefore.y) > 40,
       `Touch drag did not move the window (Δy=${Math.round(touchAfter.y - touchBefore.y)})`,
@@ -4805,7 +4878,7 @@ async function runSmoke(baseUrl) {
     await touchPage.locator(".desktop-context-menu").waitFor({ state: "visible" });
     await touchPage.keyboard.press("Escape");
     const touchIcon = touchPage.locator(".desktop-icon", { hasText: "내 PC" }).first();
-    const touchIconBox = await touchIcon.boundingBox();
+    const touchIconBox = await settledBoxOf(touchPage, touchIcon);
     await touchLongPress(
       touchIconBox.x + touchIconBox.width / 2,
       touchIconBox.y + touchIconBox.height / 2,
@@ -4817,7 +4890,7 @@ async function runSmoke(baseUrl) {
     await touchPage.getByRole("button", { name: "빠른 설정 열기" }).tap();
     const touchVolume = touchPage.getByRole("slider", { name: "볼륨" });
     await touchVolume.waitFor({ state: "visible" });
-    const touchVolumeBox = await touchVolume.boundingBox();
+    const touchVolumeBox = await settledBoxOf(touchPage, touchVolume);
     const volumeBefore = await touchVolume.inputValue();
     await touchDrag(
       touchVolumeBox.x + touchVolumeBox.width * 0.7,
