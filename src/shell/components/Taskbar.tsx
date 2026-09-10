@@ -3,6 +3,7 @@ import { WindowThumbnail } from "./WindowThumbnail";
 import { type AppId, type DesktopItem } from "../../types";
 import { clamp } from "../../utils/format";
 import { NOTIFICATIONS_READ_KEY } from "../constants";
+import { getTaskbarAppOrder } from "../taskbarOrder";
 import { getApp } from "../appCatalog";
 import { getVfsEntryAssociation } from "../../vfs/model";
 import { formatWindowTitle } from "../windowTitle";
@@ -220,28 +221,19 @@ export function Taskbar({
     centreOpenChangeRef.current(trayPanel === "notifications");
   }, [trayPanel]);
   const availableAppIds = new Set(availableApps.map((app) => app.id));
-  const pinnedApps = pinnedAppIds
-    .filter((appId) => availableAppIds.has(appId))
-    .map((appId) => getApp(appId));
-  const unpinnedAppIds = [
-    ...new Set(
-      windows.filter((item) => !pinnedAppIds.includes(item.appId)).map((item) => item.appId),
-    ),
-  ];
   // Windows rearranges pinned taskbar buttons by dragging one onto another.
   const [clockMenu, setClockMenu] = useState<{ x: number; y: number } | null>(null);
   const [draggingAppId, setDraggingAppId] = useState<AppId | null>(null);
   const [appDropTargetId, setAppDropTargetId] = useState<AppId | null>(null);
-  const taskbarApps = [
-    ...pinnedApps.map((app) => ({
-      app,
-      windows: windows.filter((item) => item.appId === app.id),
-    })),
-    ...unpinnedAppIds.map((appId) => ({
-      app: getApp(appId),
-      windows: windows.filter((item) => item.appId === appId),
-    })),
-  ];
+  // The same order Win+1…9 counts along, from the same helper.
+  const taskbarApps = getTaskbarAppOrder(
+    pinnedAppIds,
+    availableAppIds,
+    windows.map((item) => item.appId),
+  ).map((appId) => ({
+    app: getApp(appId),
+    windows: windows.filter((item) => item.appId === appId),
+  }));
 
   /*
    * The roving stop has to name a button that is still on the bar. Closing the

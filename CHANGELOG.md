@@ -6,6 +6,16 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **Win+1~9로 작업 표시줄 앱, 그리고 바탕 화면 아이콘 표시 끄기.** Win+1…9 addresses the taskbar's buttons from the left, and Win+Shift+N always opens a new window. Measured on the built app: Win+1 launched Edge, Win+1 again sent it to the taskbar, again brought it back; Win+2 launched 파일 탐색기, Win+Shift+2 opened a second one, and Win+2 then walked between the two rather than minimizing either. Win+9 with two buttons on the bar does nothing. An app the catalog does not mark multi-instance — Edge — comes forward on Win+Shift+N instead of opening a second window, which is the catalog's rule, not this shortcut's.
+
+  The bar's order now comes from one helper that both the bar and the shortcut read, the way the work area is one function. Two places deriving the same order separately is the shape of bug this project has already paid for once.
+
+  The digit is read off the **physical** key rather than the character: with Shift held, 1 reports `!` on a US layout, so the first version of Win+Shift+N matched nothing and silently did nothing at all.
+
+- **바탕 화면 아이콘 표시 (바탕 화면 우클릭 → 보기).** Windows' own toggle, and it takes the icon field out rather than dimming it: an icon nobody can see must not still answer Tab, the arrows, or a rubber-band selection, and any selection it was holding is dropped. The desktop's own menu — which the bare desktop still opens — is the way back, and the setting survives a reload. Measured: 2 icons on screen → 0 → 2.
+
+  The submenu's two longest rows wrapped onto two lines at its 190px width, inside a button with a fixed 34px height, so the labels ran into each other. The submenu is 218px now and a row that has to wrap grows instead of spilling.
+
 - **편집한 적 없는 문서를 저장할지 묻던 것.** 메모장's editor text catches up with a newly opened document one commit _after_ that document becomes the active one. In that gap the old text was compared against the new file's content, which reads as unsaved changes — so the close guard registered, and closing the window right then refused and asked to save a document nobody had typed into. Opening a file from the taskbar's 점프 리스트 into an already-open 메모장 and closing it in the same instant is enough to land there.
 
   Caught on CI, which is several times slower than this laptop and had failed three runs in a row with nothing but "a 메모장 window would not close". Making the failure report what the window held said it outright: `{"prompt":true,"title":"작업 메모 - 복사본.txt - 메모장","tabs":[…5 documents…]}` — the save prompt was up over a clean title. The dirty check now requires that the editor's text belongs to the document being asked about.

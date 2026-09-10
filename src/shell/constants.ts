@@ -54,6 +54,7 @@ export const NOTIFICATION_HISTORY_LIMIT = 12;
 export const VIRTUAL_DESKTOPS_KEY = "pocket-desk-virtual-desktops-v1";
 export const USER_NAME_KEY = "pocket-desk-user-name-v1";
 export const CLOCK_24H_KEY = "pocket-desk-clock-24h-v1";
+export const DESKTOP_ICONS_KEY = "pocket-desk-desktop-icons-v1";
 export const TEXT_SCALE_KEY = "pocket-desk-text-scale-v1";
 export const FOCUS_ASSIST_KEY = "pocket-desk-focus-assist-v1";
 export const CLOCK_ALARMS_KEY = "pocket-desk-clock-alarms-v1";

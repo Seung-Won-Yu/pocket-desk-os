@@ -1,3 +1,4 @@
+import { getTaskbarNumberKey } from "./taskbarOrder";
 /**
  * The keyboard the shell actually listens for. One list, so 설정 shows exactly
  * what App.tsx handles rather than a hand-copied menu that drifts.
@@ -17,6 +18,8 @@ export const SHELL_SHORTCUTS: ShortcutGroup[] = [
       { action: "화면 캡처 도구", keys: "Win + Shift + S" },
       { action: "화면 잠금", keys: "Win + L" },
       { action: "작업 관리자", keys: "Ctrl + Shift + Esc" },
+      { action: "작업 표시줄 n번째 앱 (없으면 실행, 여러 창이면 차례로)", keys: "Win + 1~9" },
+      { action: "작업 표시줄 n번째 앱의 새 창", keys: "Win + Shift + 1~9" },
     ],
     title: "셸",
   },
@@ -80,6 +83,7 @@ export const SHELL_SHORTCUTS: ShortcutGroup[] = [
  */
 export function isShellReservedChord(event: {
   altKey: boolean;
+  code?: string;
   ctrlKey: boolean;
   key: string;
   metaKey: boolean;
@@ -92,6 +96,9 @@ export function isShellReservedChord(event: {
   const key = event.key.toLowerCase();
   if (event.key === "Tab") return true;
   if (event.key.startsWith("Arrow")) return true;
+  // Win+1…9 addresses the taskbar, so an app must not take the digit either.
+  // Read off the physical key: Shift turns 1 into "!".
+  if (getTaskbarNumberKey(event) !== null) return true;
   if (event.shiftKey) return key === "s";
   return ["d", "e", "i", "l", "m", "z"].includes(key);
 }

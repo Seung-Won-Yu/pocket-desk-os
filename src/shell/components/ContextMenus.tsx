@@ -43,6 +43,7 @@ import { handleMenuKeyboard } from "../keyboardNav";
 
 export function DesktopContextMenu({
   alignToGrid,
+  showIcons,
   currentSort,
   currentView,
   onChangeWallpaper,
@@ -54,6 +55,7 @@ export function DesktopContextMenu({
   onRefresh,
   onSort,
   onToggleGrid,
+  onToggleIcons,
   onUndo,
   onViewChange,
   pasteEnabled,
@@ -64,6 +66,7 @@ export function DesktopContextMenu({
 }: {
   alignToGrid: boolean;
   currentSort: DesktopSortKey;
+  showIcons: boolean;
   currentView: DesktopViewMode;
   onChangeWallpaper: () => void;
   onCreateFolder: () => void;
@@ -74,6 +77,7 @@ export function DesktopContextMenu({
   onRefresh: () => void;
   onSort: (sortKey: DesktopSortKey) => void;
   onToggleGrid: () => void;
+  onToggleIcons: () => void;
   onUndo: () => void;
   onViewChange: (viewMode: DesktopViewMode) => void;
   pasteEnabled: boolean;
@@ -149,6 +153,17 @@ export function DesktopContextMenu({
             >
               {alignToGrid ? <Check aria-hidden="true" size={15} /> : <span />}
               아이콘을 그리드에 맞춤
+            </button>
+            {/* Windows' own way back is this menu, which the bare desktop
+                still opens with the icons hidden. */}
+            <button
+              aria-checked={showIcons}
+              onClick={onToggleIcons}
+              role="menuitemcheckbox"
+              type="button"
+            >
+              {showIcons ? <Check aria-hidden="true" size={15} /> : <span />}
+              바탕 화면 아이콘 표시
             </button>
           </div>
         )}

@@ -299,6 +299,111 @@ async function runSmoke(baseUrl) {
       "Pinned taskbar app appeared active without an open window",
     );
 
+    /*
+     * 바탕 화면 아이콘 표시. Off takes the field out rather than dimming it:
+     * an icon nobody can see must not answer Tab or a rubber-band selection,
+     * and the desktop's own menu — which the bare desktop still opens — is
+     * the way back.
+     */
+    const visibleIcons = page.locator(".desktop-icon:visible");
+    const iconsBefore = await visibleIcons.count();
+    assert(iconsBefore > 0, "The desktop had no icons to hide");
+    const toggleDesktopIcons = async () => {
+      // Dispatched rather than clicked: a window may be standing over the
+      // desktop by now, and the menu is the subject here, not hit testing.
+      await page.locator(".desktop").dispatchEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        // Bottom right, clear of the cascade a window opens into: the
+        // submenu has to be reachable, not merely open.
+        clientX: 1150,
+        clientY: 700,
+      });
+      const iconsMenu = page.locator(".desktop-context-menu").first();
+      await iconsMenu.waitFor({ state: "visible" });
+      await iconsMenu.getByRole("menuitem", { exact: true, name: "보기" }).hover();
+      await page.getByRole("menuitemcheckbox", { name: "바탕 화면 아이콘 표시" }).click();
+      await page.waitForTimeout(300);
+    };
+    await toggleDesktopIcons();
+    assert(
+      (await visibleIcons.count()) === 0,
+      `바탕 화면 아이콘 표시 off left ${await visibleIcons.count()} icons on screen`,
+    );
+    assert(
+      (await page.evaluate(() => localStorage.getItem("pocket-desk-desktop-icons-v1"))) ===
+        "off",
+      "The desktop-icons preference was not written down",
+    );
+    await toggleDesktopIcons();
+    assert((await visibleIcons.count()) === iconsBefore, "The icons did not come back");
+
+    /*
+     * Win+1…9 addresses the taskbar's buttons from the left, off the same
+     * order the bar is built from. Windows launches an app that is not
+     * running, sends its own single window to the taskbar when it is already
+     * in front, and walks along several.
+     */
+    const numberedTaskbarOrder = await page
+      .locator(".taskbar-app")
+      .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label")));
+    const explorerSlot =
+      numberedTaskbarOrder.findIndex((label) => label?.includes("파일 탐색기")) + 1;
+    assert(
+      explorerSlot > 0,
+      `파일 탐색기 is not on the bar: ${JSON.stringify(numberedTaskbarOrder)}`,
+    );
+    const numberedExplorers = page.locator('article[data-app-id="files"]');
+    assert((await numberedExplorers.count()) === 0, "An Explorer window was already open");
+
+    await page.keyboard.press(`Meta+${explorerSlot}`);
+    await numberedExplorers.first().waitFor({ state: "visible" });
+    await page.keyboard.press(`Meta+${explorerSlot}`);
+    await page
+      .locator('article[data-app-id="files"].is-minimized')
+      .first()
+      .waitFor({ state: "attached" });
+    await page.keyboard.press(`Meta+${explorerSlot}`);
+    await page
+      .locator('article[data-app-id="files"].is-minimized')
+      .first()
+      .waitFor({ state: "detached" });
+
+    // Win+Shift+N is always a new window. The digit has to be read off the
+    // physical key: with Shift held, 1 reports "!" and 2 reports "@".
+    await page.keyboard.press(`Meta+Shift+${explorerSlot}`);
+    await page.waitForTimeout(500);
+    assert(
+      (await numberedExplorers.count()) === 2,
+      `Win+Shift+${explorerSlot} left ${await numberedExplorers.count()} Explorer window(s)`,
+    );
+    // With two, the same chord walks along them instead of minimizing.
+    const frontmost = () =>
+      page
+        .locator('article[data-app-id="files"]')
+        .evaluateAll((frames) =>
+          frames.findIndex((frame) => frame.classList.contains("is-active")),
+        );
+    const beforeCycle = await frontmost();
+    await page.keyboard.press(`Meta+${explorerSlot}`);
+    await page.waitForTimeout(400);
+    assert(
+      (await frontmost()) !== beforeCycle && (await numberedExplorers.count()) === 2,
+      "Win+N did not walk along the two windows",
+    );
+    await page.keyboard.press("Alt+F4");
+    await page.waitForTimeout(300);
+    await page.keyboard.press("Alt+F4");
+    await numberedExplorers.first().waitFor({ state: "detached" });
+    // Past the last button the chord does nothing at all.
+    const windowsBeforeNine = await page.locator(".window-frame").count();
+    await page.keyboard.press("Meta+9");
+    await page.waitForTimeout(400);
+    assert(
+      (await page.locator(".window-frame").count()) === windowsBeforeNine,
+      "Win+9 opened something with fewer than nine buttons on the bar",
+    );
+
     await page.mouse.move(900, 180);
     await page.mouse.down();
     await page.mouse.move(380, 520, { steps: 10 });

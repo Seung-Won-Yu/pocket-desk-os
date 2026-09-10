@@ -281,6 +281,12 @@ button {
   z-index: 1;
 }
 
+/* 바탕 화면 아이콘 표시 off. The element carries `hidden`, which a positioned
+   block would otherwise ignore. */
+.desktop-icons[hidden] {
+  display: none;
+}
+
 .desktop-icon {
   align-items: center;
   background: transparent;
@@ -529,8 +535,9 @@ button {
   color: var(--text);
   display: flex;
   gap: 10px;
-  height: 34px;
   justify-content: flex-start;
+  /* A row that has to wrap grows instead of spilling out of its own box. */
+  min-height: 34px;
   padding: 0 10px;
   text-align: left;
 }
@@ -581,7 +588,9 @@ button {
   padding: 6px;
   position: absolute;
   top: -6px;
-  width: 190px;
+  /* 바탕 화면 아이콘 표시 is the longest row here and wrapped at 190px, which
+     a fixed-height button has nowhere to put. */
+  width: 218px;
   z-index: 2;
 }
 

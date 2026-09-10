@@ -4,6 +4,7 @@ import {
   CLOCK_24H_KEY,
   DEFAULT_APPS_KEY,
   DEFAULT_USER_NAME,
+  DESKTOP_ICONS_KEY,
   FOCUS_ASSIST_KEY,
   TEXT_SCALE_KEY,
   USER_NAME_KEY,
@@ -66,6 +67,27 @@ export function loadFocusAssist() {
     return localStorage.getItem(FOCUS_ASSIST_KEY) === "on";
   } catch {
     return false;
+  }
+}
+
+/**
+ * 바탕 화면 아이콘 표시 — Windows' own 보기 toggle. Defaults to on, and reads
+ * `!== "off"` so a browser that hands back nothing still shows the desktop
+ * rather than an empty one.
+ */
+export function loadShowDesktopIcons() {
+  try {
+    return localStorage.getItem(DESKTOP_ICONS_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+export function persistShowDesktopIcons(show: boolean) {
+  try {
+    localStorage.setItem(DESKTOP_ICONS_KEY, show ? "on" : "off");
+  } catch {
+    // A blocked storage must not stop the icons from hiding.
   }
 }
 

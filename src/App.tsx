@@ -128,14 +128,16 @@ import {
 import { SnapAssist } from "./shell/components/SnapAssist";
 import { TaskView } from "./shell/components/TaskView";
 import {
-  type DefaultAppMap,
-  type TextScale,
   loadClock24h,
   loadDefaultApps,
   loadFocusAssist,
+  loadShowDesktopIcons,
   loadTextScale,
   loadUserName,
   persistDefaultApps,
+  persistShowDesktopIcons,
+  type DefaultAppMap,
+  type TextScale,
 } from "./shell/preferences";
 import {
   type TaskbarPosition,
@@ -147,6 +149,11 @@ import {
   persistSmallTaskbarButtons,
   persistTaskbarPosition,
 } from "./shell/taskbarPosition";
+import {
+  getTaskbarAppForNumberKey,
+  getTaskbarAppOrder,
+  getTaskbarNumberAction,
+} from "./shell/taskbarOrder";
 import {
   loadShowFileExtensions,
   loadShowHiddenItems,
@@ -638,6 +645,8 @@ export default function App() {
   const [clipboard, setClipboard] = useState<SystemClipboard>({ itemIds: [], mode: "copy" });
   const [userName, setUserName] = useState(() => loadUserName());
   const [clock24h, setClock24h] = useState(() => loadClock24h());
+  /** 바탕 화면 아이콘 표시 — Windows' 보기 toggle, remembered like the rest. */
+  const [showDesktopIcons, setShowDesktopIcons] = useState(() => loadShowDesktopIcons());
   const [defaultApps, setDefaultApps] = useState<DefaultAppMap>(() => loadDefaultApps());
   const [desktopRenamingItemId, setDesktopRenamingItemId] = useState<string | null>(null);
   const [desktopRenameDraft, setDesktopRenameDraft] = useState("");
@@ -822,6 +831,12 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(TASKBAR_PINNED_APPS_KEY, JSON.stringify(pinnedAppIds));
   }, [pinnedAppIds]);
+
+  useEffect(() => {
+    persistShowDesktopIcons(showDesktopIcons);
+    // A selection nobody can see is a selection Delete would still act on.
+    if (!showDesktopIcons) setSelectedDesktopIds([]);
+  }, [showDesktopIcons]);
 
   /*
    * Dragging fires ~60 pointermoves a second and every one used to run a
@@ -3982,6 +3997,16 @@ export default function App() {
     [activeDesktopIndex, windows],
   );
   const activeWindowId = resolveActiveWindowId(desktopWindows, desktopFocusZ);
+  /** The bar's own left-to-right order, which Win+1…9 counts along. */
+  const taskbarAppOrder = useMemo(
+    () =>
+      getTaskbarAppOrder(
+        pinnedAppIds,
+        availableApps.map((app) => app.id),
+        desktopWindows.map((item) => item.appId),
+      ),
+    [availableApps, desktopWindows, pinnedAppIds],
+  );
 
   useEffect(() => {
     // Remembered for 캡처 도구: the tool's own window is never the subject.
@@ -4276,6 +4301,29 @@ export default function App() {
         if (event.shiftKey && key === "s") {
           event.preventDefault();
           openApp("snip");
+          return;
+        }
+        /*
+         * Win+1…9 addresses the taskbar's buttons from the left, off the same
+         * order the bar itself is built from. Windows launches an app that is
+         * not running, sends its own single window to the taskbar when it is
+         * already in front, and walks along several; Win+Shift+N always opens
+         * a new one.
+         */
+        const numberedAppId = getTaskbarAppForNumberKey(taskbarAppOrder, event);
+        if (numberedAppId) {
+          event.preventDefault();
+          if (event.shiftKey) {
+            openNewAppWindow(numberedAppId);
+            return;
+          }
+          const appWindows = desktopWindows
+            .filter((item) => item.appId === numberedAppId)
+            .map((item) => item.id);
+          const action = getTaskbarNumberAction(appWindows, activeWindowId ?? null);
+          if (action.kind === "launch") openApp(numberedAppId);
+          else if (action.kind === "minimize") minimizeWindow(action.windowId);
+          else focusWindow(action.windowId);
           return;
         }
         if (key === "e") {
@@ -5050,9 +5098,16 @@ export default function App() {
         } as WallpaperCssVars
       }
     >
+      {/*
+       * 바탕 화면 아이콘 표시 off takes the field out entirely rather than
+       * hiding it: an icon nobody can see must not still answer Tab, the
+       * arrows or a rubber-band selection. The desktop's own menu is the way
+       * back, and the bare desktop still opens it.
+       */}
       <section
         aria-label="바탕화면 바로가기"
         className="desktop-icons"
+        hidden={!showDesktopIcons}
         onKeyDown={(event) => {
           if (!DESKTOP_ICON_NAV_KEYS.includes(event.key)) return;
           /*
@@ -5396,6 +5451,10 @@ export default function App() {
           onRefresh={refreshDesktop}
           onSort={arrangeDesktopIcons}
           onToggleGrid={toggleDesktopGrid}
+          onToggleIcons={() => {
+            setDesktopMenu(null);
+            setShowDesktopIcons((current) => !current);
+          }}
           onUndo={() => {
             setDesktopMenu(null);
             undoFileAction("undo");
@@ -5403,6 +5462,7 @@ export default function App() {
           onViewChange={changeDesktopView}
           pasteEnabled={clipboard.itemIds.length > 0}
           redoLabel={fileRedoLabel}
+          showIcons={showDesktopIcons}
           undoLabel={fileUndoLabel}
           x={desktopMenu.x}
           y={desktopMenu.y}
