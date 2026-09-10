@@ -2,6 +2,7 @@ import { ChevronDown, ChevronUp, FileText, Plus, Replace, Search, X } from "luci
 import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import FileDialog from "../components/FileDialog";
+import { hasUnsavedNoteChanges } from "./noteDocument";
 import type { DesktopItem, ToastInput } from "../types";
 import { focusTabAt, getNextTabIndex } from "../shell/keyboardNav";
 import { isShellReservedChord } from "../shell/shortcuts";
@@ -99,6 +100,11 @@ export default function NotepadApp({
   const findInputRef = useRef<HTMLInputElement | null>(null);
   const closeSaveRef = useRef<HTMLButtonElement | null>(null);
   const [text, setText] = useState(activeNote?.content ?? "");
+  /**
+   * Which document `text` belongs to. State, not a ref: it has to be part of
+   * the same render as the text so nothing can read one without the other.
+   */
+  const [loadedNoteId, setLoadedNoteId] = useState(activeNote?.id ?? "");
   const [saveStatus, setSaveStatus] = useState<NoteSaveStatus>("saved");
   const [noteMenu, setNoteMenu] = useState<"file" | "edit" | "view" | null>(null);
 
@@ -141,7 +147,7 @@ export default function NotepadApp({
   const finalSaveRef = useRef({ content: "", noteId: "", text: "" });
   const skipFinalSaveRef = useRef(false);
   const saveNoteContentRef = useRef(saveNoteContent);
-  const hasUnsavedChanges = Boolean(activeNote) && text !== (activeNote?.content ?? "");
+  const hasUnsavedChanges = hasUnsavedNoteChanges(activeNote, loadedNoteId, text);
   const findMatches = useMemo(() => getNoteFindMatches(text, findQuery), [findQuery, text]);
   const findPosition =
     findMatches.length === 0 ? 0 : Math.min(findIndex, findMatches.length - 1) + 1;
@@ -173,6 +179,7 @@ export default function NotepadApp({
     };
 
     setText(activeNote?.content ?? "");
+    setLoadedNoteId(activeNote?.id ?? "");
     setSaveStatus("saved");
     // `text` is what is being flushed, not what this effect reacts to; listing
     // it would reload the document on every keystroke.

@@ -6,6 +6,12 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **편집한 적 없는 문서를 저장할지 묻던 것.** 메모장's editor text catches up with a newly opened document one commit _after_ that document becomes the active one. In that gap the old text was compared against the new file's content, which reads as unsaved changes — so the close guard registered, and closing the window right then refused and asked to save a document nobody had typed into. Opening a file from the taskbar's 점프 리스트 into an already-open 메모장 and closing it in the same instant is enough to land there.
+
+  Caught on CI, which is several times slower than this laptop and had failed three runs in a row with nothing but "a 메모장 window would not close". Making the failure report what the window held said it outright: `{"prompt":true,"title":"작업 메모 - 복사본.txt - 메모장","tabs":[…5 documents…]}` — the save prompt was up over a clean title. The dirty check now requires that the editor's text belongs to the document being asked about.
+
+  The smoke can be slowed down to that speed on purpose from now on: `SMOKE_CPU_THROTTLE=6 npm run qa:smoke`. Measured — the suite passes at 4× and, at 10×, fails somewhere else entirely, which is the honest reading of how far that knob goes.
+
 - **메모장 바꾸기 (Ctrl+H).** 찾기 could point at every occurrence and do nothing about any of them. The find bar folds out a second line now: 바꿀 내용, 바꾸기, 모두 바꾸기. 바꾸기 takes the occurrence the selection is sitting on — the one you are looking at — and then moves to the next; with the selection somewhere else it only finds, which is what Notepad does rather than replacing something off screen. 모두 바꾸기 takes the rest in one write and says how many it changed.
 
   Measured on the built app with `회의 준비 / 회의 자료 / 발표 회의` and 회의 → 발표: the bar read 1/3, one 바꾸기 gave `발표 준비 / 회의 자료 / 발표 회의` and 1/2, 모두 바꾸기 finished the job and reported `2개 바꿈`, one Ctrl+Z took the whole 모두 바꾸기 back, and a second took back the single replace. Escape closes both rows.
