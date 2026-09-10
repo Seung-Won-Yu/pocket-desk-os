@@ -1172,6 +1172,104 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("Control+z");
     await explorerRows.filter({ hasText: "web-surf.url" }).first().waitFor();
 
+    /*
+     * 파일 바꾸기 또는 건너뛰기. The shell used to answer this by itself: every
+     * copy went through the copy-namer, so a file landing in a folder that did
+     * not have the name still arrived as "- 복사본".
+     */
+    const focusFileList = async () => {
+      await files.locator(".file-list").click({ position: { x: 320, y: 320 } });
+      await page.waitForTimeout(120);
+    };
+    const copyDesktopShortcutInto = async (folder) => {
+      await explorerSidebar.getByRole("button", { name: "바탕 화면", exact: true }).click();
+      await explorerRows.filter({ hasText: "web-surf.url" }).first().waitFor();
+      await explorerRows.filter({ hasText: "web-surf.url" }).first().click();
+      await page.keyboard.press("Control+c");
+      await explorerSidebar.getByRole("button", { name: folder, exact: true }).click();
+      await page.waitForTimeout(250);
+      await focusFileList();
+      await page.keyboard.press("Control+v");
+    };
+    const conflictDialog = page.locator(".name-conflict-dialog");
+
+    await copyDesktopShortcutInto("다운로드");
+    await explorerRows.filter({ hasText: "web-surf.url" }).first().waitFor();
+    assert(
+      (await conflictDialog.count()) === 0,
+      "A copy into a folder with no such name still asked about a conflict",
+    );
+    assert(
+      (await explorerRows.filter({ hasText: "복사본" }).count()) === 0,
+      "A copy into an empty folder was renamed - 복사본 with nothing to collide with",
+    );
+
+    await copyDesktopShortcutInto("다운로드");
+    await conflictDialog.waitFor({ state: "visible" });
+    const conflictText = (await conflictDialog.innerText()).replace(/\s+/g, " ");
+    assert(
+      conflictText.includes("다운로드 폴더에 이미") && conflictText.includes("web-surf.url"),
+      `파일 바꾸기 또는 건너뛰기 said: ${conflictText}`,
+    );
+    // Focus is on the dialog, not on a choice: every answer is one keystroke
+    // away and one of them writes over a file.
+    assert(
+      await page.evaluate(() =>
+        document.activeElement?.classList.contains("name-conflict-dialog"),
+      ),
+      "The conflict dialog put focus on one of its answers",
+    );
+    await conflictDialog.getByRole("button", { name: /건너뛰기/ }).click();
+    await conflictDialog.waitFor({ state: "hidden" });
+    await page.waitForTimeout(250);
+    assert(
+      (await explorerRows.count()) === 1,
+      `건너뛰기 still copied — 다운로드 holds ${await explorerRows.count()} rows`,
+    );
+
+    await copyDesktopShortcutInto("다운로드");
+    await conflictDialog.waitFor({ state: "visible" });
+    await conflictDialog.getByRole("button", { name: "두 파일 모두 유지" }).click();
+    await explorerRows.filter({ hasText: "web-surf - 복사본.url" }).first().waitFor();
+
+    // 바꾸기 writes over the row already there rather than adding one, and
+    // 실행 취소 brings the row it wrote over back — with its own id.
+    const rowIdOf = (name) =>
+      explorerRows.filter({ hasText: name }).first().getAttribute("data-file-id");
+    const replacedRowId = await rowIdOf("web-surf.url");
+    await copyDesktopShortcutInto("다운로드");
+    await conflictDialog.waitFor({ state: "visible" });
+    await conflictDialog.getByRole("button", { name: "대상 폴더의 파일 바꾸기" }).click();
+    await conflictDialog.waitFor({ state: "hidden" });
+    await page.waitForTimeout(250);
+    assert(
+      (await explorerRows.count()) === 2,
+      `바꾸기 added a row instead of replacing one — 다운로드 holds ${await explorerRows.count()}`,
+    );
+    assert(
+      (await rowIdOf("web-surf.url")) !== replacedRowId,
+      "바꾸기 left the row that was supposed to be written over",
+    );
+    await explorerRows.first().click();
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(400);
+    assert(
+      (await rowIdOf("web-surf.url")) === replacedRowId,
+      "실행 취소 did not bring back the row 바꾸기 wrote over",
+    );
+
+    // Leave 다운로드 as it was found.
+    await focusFileList();
+    await page.keyboard.press("Control+a");
+    await page.keyboard.press("Delete");
+    await page.waitForTimeout(350);
+    assert(
+      (await explorerRows.count()) === 0,
+      "The conflict checks left rows behind in 다운로드",
+    );
+    await explorerSidebar.getByRole("button", { name: "바탕 화면", exact: true }).click();
+    await page.waitForTimeout(300);
+
     // Put the note back on show for the steps that follow.
     await readProperties("작업 메모.txt");
     await propertiesDialog.getByLabel("숨김").uncheck();

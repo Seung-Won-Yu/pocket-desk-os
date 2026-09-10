@@ -3002,6 +3002,58 @@ button {
   justify-content: flex-end;
 }
 
+/* 파일 바꾸기 또는 건너뛰기 — the three answers Windows offers, as rows. */
+.name-conflict-dialog {
+  width: 480px;
+}
+
+.name-conflict-summary {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.name-conflict-choices {
+  display: grid;
+  gap: 8px;
+}
+
+.name-conflict-dialog .name-conflict-choice {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: var(--text);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 12px 14px;
+  text-align: left;
+}
+
+.name-conflict-dialog .name-conflict-choice:hover,
+.name-conflict-dialog .name-conflict-choice:focus-visible {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: color-mix(in srgb, var(--active) 60%, transparent);
+}
+
+.name-conflict-choice span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.name-conflict-choice strong {
+  font-size: 0.94rem;
+  font-weight: 700;
+}
+
+.name-conflict-choice small {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .run-actions button {
   font-weight: 700;
   min-height: 34px;

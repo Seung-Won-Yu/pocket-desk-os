@@ -163,6 +163,12 @@ import {
   pushFileUndoStep,
   stepFileUndo,
 } from "./shell/fileUndo";
+import { NameConflictDialog } from "./shell/components/NameConflictDialog";
+import {
+  findVfsNameConflicts,
+  type VfsConflictChoice,
+  type VfsNameConflict,
+} from "./vfs/nameConflicts";
 import {
   getNightLightAlpha,
   loadNightLight,
@@ -512,6 +518,19 @@ export default function App() {
    * the way Windows shares one stack across the shell.
    */
   const [fileUndo, setFileUndo] = useState(EMPTY_FILE_UNDO_STATE);
+  /**
+   * The copy or move waiting on 파일 바꾸기 또는 건너뛰기. Held as data rather
+   * than as a captured callback so the answer runs against the operation the
+   * shell has now, not the one the render that opened the dialog closed over.
+   */
+  const [nameConflict, setNameConflict] = useState<{
+    conflicts: VfsNameConflict[];
+    desktopPlacement?: IconPosition;
+    itemIds: string[];
+    mode: "copy" | "move";
+    options?: VfsDuplicateOptions;
+    targetParentId: string;
+  } | null>(null);
   /*
    * The list as the last write left it. The persistence ref below cannot be
    * reused: it holds the *previous* list on purpose, to tell a geometry-only
@@ -1989,6 +2008,28 @@ export default function App() {
     return true;
   };
 
+  /**
+   * Runs the copy or move that 파일 바꾸기 또는 건너뛰기 was holding, with the
+   * answer. A cut that was waiting on the dialog clears the clipboard here
+   * rather than in the paste, which had already returned by then.
+   */
+  const resolveNameConflict = (choice: VfsConflictChoice) => {
+    const pending = nameConflict;
+    setNameConflict(null);
+    if (!pending) return;
+    if (pending.mode === "move") {
+      const moved = moveVfsEntries(
+        pending.itemIds,
+        pending.targetParentId,
+        pending.desktopPlacement,
+        choice,
+      );
+      if (moved && clipboard.mode === "cut") setClipboard({ itemIds: [], mode: "copy" });
+      return;
+    }
+    duplicateVfsEntries(pending.itemIds, { ...pending.options, conflict: choice });
+  };
+
   const fileUndoLabel = getFileUndoLabel(fileUndo);
   const fileRedoLabel = getFileRedoLabel(fileUndo);
   const customWallpaperImage = useMemo(
@@ -2055,10 +2096,47 @@ export default function App() {
   };
 
   const duplicateVfsEntries = (itemIds: string[], options?: VfsDuplicateOptions) => {
-    const sourceIds = getVfsTopLevelIds(activeDesktopItems, itemIds).filter(
+    const requestedIds = getVfsTopLevelIds(activeDesktopItems, itemIds).filter(
       (id) => activeDesktopItems.some((item) => item.id === id) && !isVfsSystemFolderId(id),
     );
-    if (sourceIds.length === 0) return [];
+    if (requestedIds.length === 0) return [];
+
+    const targetParentId = options?.parentId;
+    const conflicts =
+      targetParentId === undefined
+        ? []
+        : findVfsNameConflicts(activeDesktopItems, requestedIds, targetParentId);
+    if (conflicts.length > 0 && !options?.conflict) {
+      setNameConflict({
+        conflicts,
+        itemIds,
+        mode: "copy",
+        options,
+        targetParentId: targetParentId!,
+      });
+      return [];
+    }
+    const choice = options?.conflict ?? "keepBoth";
+    const conflictingIds = new Set(conflicts.map((entry) => entry.sourceId));
+    const sourceIds =
+      choice === "skip" ? requestedIds.filter((id) => !conflictingIds.has(id)) : requestedIds;
+    if (sourceIds.length === 0) {
+      notify({
+        detail: "이미 같은 이름이 있어 그대로 두었습니다.",
+        title: `${conflicts.length}개 항목 건너뜀`,
+        tone: "success",
+      });
+      return [];
+    }
+    // 바꾸기 takes the rows already there out of the way — with their trees, so
+    // replacing a folder does not leave its children orphaned.
+    const replacedIds =
+      choice === "replace"
+        ? getVfsDescendantIds(
+            activeDesktopItems,
+            conflicts.map((entry) => entry.existingId),
+          )
+        : new Set<string>();
 
     const treeIds = getVfsDescendantIds(activeDesktopItems, sourceIds);
     const idMap = new Map(
@@ -2069,7 +2147,8 @@ export default function App() {
     );
     const copiedRootIds = sourceIds.map((sourceId) => idMap.get(sourceId)!);
 
-    mutateVfsItems("복사", (current) => {
+    mutateVfsItems("복사", (currentBeforeReplace) => {
+      const current = currentBeforeReplace.filter((item) => !replacedIds.has(item.id));
       const existingNamesByParent = new Map<string, Set<string>>();
       const getExistingNames = (parentId: string) => {
         const existing = existingNamesByParent.get(parentId);
@@ -2102,9 +2181,14 @@ export default function App() {
           ? (options?.parentId ?? source.parentId)
           : (idMap.get(source.parentId) ?? options?.parentId ?? source.parentId);
         const existingNames = getExistingNames(parentId);
-        const name = isRootCopy
-          ? getUniqueVfsCopyName(existingNames, source.name)
-          : source.name;
+        // A copy into a folder that does not have the name keeps the name, the
+        // way Windows does. This called the copy-namer unconditionally, so
+        // copying 문서/notes.txt into 사진 produced notes - 복사본.txt in a
+        // folder that had no notes.txt at all.
+        const name =
+          isRootCopy && existingNames.has(source.name)
+            ? getUniqueVfsCopyName(existingNames, source.name)
+            : source.name;
         existingNames.add(name);
         const preferredPosition =
           isRootCopy && options?.showOnDesktop && options.position
@@ -2148,8 +2232,14 @@ export default function App() {
     playSound("success");
     if (!options?.silent) {
       notify({
-        detail: "선택한 항목의 복사본을 만들었습니다.",
-        title: `${sourceIds.length}개 항목 붙여넣기 완료`,
+        detail:
+          choice === "replace" && conflicts.length > 0
+            ? `있던 항목 ${conflicts.length}개를 새 항목으로 바꿨습니다.`
+            : "선택한 항목의 복사본을 만들었습니다.",
+        title:
+          choice === "skip" && conflicts.length > 0
+            ? `${sourceIds.length}개 붙여넣기 완료 · ${conflicts.length}개 건너뜀`
+            : `${sourceIds.length}개 항목 붙여넣기 완료`,
         tone: "success",
       });
     }
@@ -2165,6 +2255,7 @@ export default function App() {
     itemIds: string[],
     parentId: string,
     desktopPlacement?: IconPosition,
+    conflict?: VfsConflictChoice,
   ) => {
     const roots = getVfsTopLevelIds(activeDesktopItems, itemIds);
     if (!canMoveVfsEntries(activeDesktopItems, roots, parentId)) {
@@ -2176,15 +2267,51 @@ export default function App() {
       return false;
     }
 
-    const moving = roots.filter((id) => {
+    const requested = roots.filter((id) => {
       const item = activeDesktopItems.find((entry) => entry.id === id);
       return item && item.parentId !== parentId;
     });
-    if (moving.length === 0) return false;
+    if (requested.length === 0) return false;
+
+    const conflicts = findVfsNameConflicts(activeDesktopItems, requested, parentId);
+    if (conflicts.length > 0 && !conflict) {
+      setNameConflict({
+        conflicts,
+        desktopPlacement,
+        itemIds,
+        mode: "move",
+        targetParentId: parentId,
+      });
+      return false;
+    }
+    const choice = conflict ?? "keepBoth";
+    const conflictingIds = new Set(conflicts.map((entry) => entry.sourceId));
+    const moving =
+      choice === "skip" ? requested.filter((id) => !conflictingIds.has(id)) : requested;
+    if (moving.length === 0) {
+      notify({
+        detail: "이미 같은 이름이 있어 그대로 두었습니다.",
+        title: `${conflicts.length}개 항목 건너뜀`,
+        tone: "success",
+      });
+      return false;
+    }
+    const replacedIds =
+      choice === "replace"
+        ? getVfsDescendantIds(
+            activeDesktopItems,
+            conflicts.map((entry) => entry.existingId),
+          )
+        : new Set<string>();
 
     const existingNames = new Set(
       activeDesktopItems
-        .filter((item) => item.parentId === parentId && !moving.includes(item.id))
+        .filter(
+          (item) =>
+            item.parentId === parentId &&
+            !moving.includes(item.id) &&
+            !replacedIds.has(item.id),
+        )
         .map((item) => item.name),
     );
     const nextNames = new Map<string, string>();
@@ -2200,22 +2327,27 @@ export default function App() {
 
     const now = Date.now();
     mutateVfsItems("이동", (current) =>
-      current.map((item) =>
-        moving.includes(item.id)
-          ? {
-              ...item,
-              name: nextNames.get(item.id) ?? item.name,
-              parentId,
-              showOnDesktop: Boolean(desktopPlacement),
-              updatedAt: now,
-              ...(desktopPlacement ?? {}),
-            }
-          : item,
-      ),
+      current
+        .filter((item) => !replacedIds.has(item.id))
+        .map((item) =>
+          moving.includes(item.id)
+            ? {
+                ...item,
+                name: nextNames.get(item.id) ?? item.name,
+                parentId,
+                showOnDesktop: Boolean(desktopPlacement),
+                updatedAt: now,
+                ...(desktopPlacement ?? {}),
+              }
+            : item,
+        ),
     );
     playSound("success");
     notify({
-      detail: "선택한 항목을 새 위치로 옮겼습니다.",
+      detail:
+        choice === "replace" && conflicts.length > 0
+          ? `있던 항목 ${conflicts.length}개를 새 항목으로 바꿨습니다.`
+          : "선택한 항목을 새 위치로 옮겼습니다.",
       title: `${moving.length}개 항목 이동됨`,
       tone: "success",
     });
@@ -5211,6 +5343,19 @@ export default function App() {
         <ShortcutDialog
           onClose={() => setShortcutDialogOrigin(null)}
           onCreate={createDesktopShortcut}
+        />
+      )}
+
+      {nameConflict && (
+        <NameConflictDialog
+          conflicts={nameConflict.conflicts}
+          mode={nameConflict.mode}
+          onCancel={() => setNameConflict(null)}
+          onChoose={resolveNameConflict}
+          targetName={
+            desktopItems.find((item) => item.id === nameConflict.targetParentId)?.name ??
+            "바탕 화면"
+          }
         />
       )}
 

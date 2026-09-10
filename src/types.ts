@@ -72,6 +72,12 @@ export type SystemClipboard = {
 };
 
 export type VfsDuplicateOptions = {
+  /**
+   * The answer to 파일 바꾸기 또는 건너뛰기. Left unset, a copy that would land
+   * on a name already taken in the target folder opens the dialog instead of
+   * choosing for the user.
+   */
+  conflict?: "keepBoth" | "replace" | "skip";
   parentId?: string;
   /**
    * The caller reports the outcome itself. 보내기 names the folder it copied

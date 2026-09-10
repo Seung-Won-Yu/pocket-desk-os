@@ -18,11 +18,19 @@ type TerminalAppProps = {
   terminalLaunchRequest: TerminalLaunchRequest | null;
   consumeLaunchRequest: (requestId: string) => void;
   closeWindow: (windowId: string) => void;
-  deleteVfsEntry: (itemId: string) => void;
+  deleteVfsEntries: (itemIds: string[]) => void;
   desktopItems: DesktopItem[];
-  duplicateVfsEntries: (itemIds: string[], options?: { parentId?: string }) => string[];
+  duplicateVfsEntries: (
+    itemIds: string[],
+    options?: { conflict?: "keepBoth" | "replace" | "skip"; parentId?: string },
+  ) => string[];
   createVfsFolder: (parentId?: string, name?: string) => DesktopItem;
-  moveVfsEntries: (itemIds: string[], parentId: string) => boolean;
+  moveVfsEntries: (
+    itemIds: string[],
+    parentId: string,
+    desktopPlacement?: { x: number; y: number },
+    conflict?: "keepBoth" | "replace" | "skip",
+  ) => boolean;
   openApp: (appId: AppId) => void;
   requestPowerAction: (action: "lock" | "off" | "restart") => void;
   openVfsEntry: (item: DesktopItem) => void;
@@ -60,7 +68,7 @@ export default function TerminalApp({
   reportDocument,
   closeWindow,
   createVfsFolder,
-  deleteVfsEntry,
+  deleteVfsEntries,
   desktopItems,
   duplicateVfsEntries,
   moveVfsEntries,
@@ -145,10 +153,16 @@ export default function TerminalApp({
           cleared = true;
           break;
         case "copy":
-          duplicateVfsEntries(effect.itemIds, { parentId: effect.parentId });
+          // A batch file must not stop on a dialog, so the shell keeps both
+          // files the way `copy` without /Y leaves the original alone here.
+          duplicateVfsEntries(effect.itemIds, {
+            conflict: "keepBoth",
+            parentId: effect.parentId,
+          });
           break;
         case "delete":
-          effect.itemIds.forEach(deleteVfsEntry);
+          // `del *.txt` is one command, so it is one 실행 취소 step.
+          deleteVfsEntries(effect.itemIds);
           break;
         case "exit":
           closeWindow(windowId);
@@ -170,7 +184,7 @@ export default function TerminalApp({
           createVfsFolder(effect.parentId, effect.name);
           break;
         case "move":
-          moveVfsEntries(effect.itemIds, effect.parentId);
+          moveVfsEntries(effect.itemIds, effect.parentId, undefined, "keepBoth");
           break;
         case "open": {
           const entry = desktopItems.find((item) => item.id === effect.itemId);

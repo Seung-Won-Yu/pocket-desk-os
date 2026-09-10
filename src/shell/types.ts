@@ -21,6 +21,7 @@ import { type ComponentType } from "react";
 import { type LucideIcon } from "lucide-react";
 import { type DefaultAppMap, type TextScale } from "./preferences";
 import { type TaskbarPosition } from "./taskbarPosition";
+import { type VfsConflictChoice } from "../vfs/nameConflicts";
 import { type ClockAlarm, type ClockTimer } from "./clock";
 import { type StickyNoteStore } from "./stickyNotes";
 import { type ScreenshotMode } from "./screenshotTypes";
@@ -258,7 +259,16 @@ export type AppContentProps = {
   /** Opens 명령 프롬프트 already sitting in this folder. */
   openTerminalAtFolder: (folderId: string) => void;
   importVfsZip: (file: File) => Promise<void>;
-  moveVfsEntries: (itemIds: string[], parentId: string) => boolean;
+  /**
+   * `conflict` answers 파일 바꾸기 또는 건너뛰기 up front. Left unset, a move
+   * onto a name already taken opens the dialog and reports false.
+   */
+  moveVfsEntries: (
+    itemIds: string[],
+    parentId: string,
+    desktopPlacement?: IconPosition,
+    conflict?: VfsConflictChoice,
+  ) => boolean;
   openApp: (appId: AppId) => void;
   /** The Start menu's power actions, for the terminal's shutdown command. */
   requestPowerAction: (action: "lock" | "off" | "restart" | "sleep") => void;
