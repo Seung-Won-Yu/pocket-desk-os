@@ -5188,11 +5188,70 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("Meta+Shift+S");
     const snip = page.locator('article[data-app-id="snip"]');
     await snip.waitFor({ state: "visible" });
+    /*
+     * 사각형 캡처 is what the tool opens on, as Windows' does: a crosshair over
+     * everything, and the picture is the band that was dragged. Escape and a
+     * press that never became a drag both come back with nothing.
+     */
+    assert(
+      (await snip.getByLabel("캡처 모드").inputValue()) === "region",
+      `캡처 도구 opened on ${await snip.getByLabel("캡처 모드").inputValue()}`,
+    );
+    await snip.getByRole("button", { name: "새 캡처" }).click();
+    const regionOverlay = page.locator(".region-capture-overlay");
+    await regionOverlay.waitFor({ state: "visible" });
+    await page.keyboard.press("Escape");
+    await regionOverlay.waitFor({ state: "detached" });
+    assert(
+      (await snip.getByRole("status").innerText()).includes("영역을 고르지 않아"),
+      `Escape over the crosshair said: ${await snip.getByRole("status").innerText()}`,
+    );
+
+    await snip.getByRole("button", { name: "새 캡처" }).click();
+    await regionOverlay.waitFor({ state: "visible" });
+    await page.mouse.move(280, 180);
+    await page.mouse.down();
+    await page.mouse.move(600, 420, { steps: 10 });
+    await page.waitForTimeout(150);
+    const regionBandBox = await page.locator(".region-capture-band").boundingBox();
+    assert(
+      regionBandBox && Math.round(regionBandBox.width) === 320,
+      `The crosshair's band is ${JSON.stringify(regionBandBox)}`,
+    );
+    await page.mouse.up();
+    await regionOverlay.waitFor({ state: "detached" });
+    await snip.locator(".snip-preview").waitFor({ state: "visible", timeout: 20000 });
+    const regionShot = await snip
+      .locator(".snip-preview")
+      .evaluate((image) => ({ height: image.naturalHeight, width: image.naturalWidth }));
+    assert(
+      regionShot.width === 320 && regionShot.height === 240,
+      `사각형 캡처 saved ${regionShot.width}×${regionShot.height}, not the 320×240 that was dragged`,
+    );
+
+    await snip.getByLabel("캡처 모드").selectOption("screen");
     await snip.getByRole("button", { name: "새 캡처" }).click();
     await snip.locator(".snip-preview").waitFor({ state: "visible", timeout: 15000 });
+    // The region shot is still on screen while this one is drawn, so the wait
+    // is for the picture to become the whole screen, not merely for a picture.
+    let screenShotSize = regionShot;
+    for (
+      let attempt = 0;
+      attempt < 40 && screenShotSize.width === regionShot.width;
+      attempt += 1
+    ) {
+      await page.waitForTimeout(400);
+      screenShotSize = await snip
+        .locator(".snip-preview")
+        .evaluate((image) => ({ height: image.naturalHeight, width: image.naturalWidth }));
+    }
+    assert(
+      screenShotSize.width > regionShot.width,
+      `전체 화면 capture stayed at ${screenShotSize.width}×${screenShotSize.height}; status: ${await snip.getByRole("status").innerText()}; toasts: ${(await page.locator(".toast").allInnerTexts()).join(" / ").replace(/\n/g, " ")}`,
+    );
     assert(
       (await snip.getByRole("status").innerText()).includes("사진 폴더에 저장됨"),
-      "Capture tool did not report the saved capture",
+      `Capture tool did not report the saved capture: ${await snip.getByRole("status").innerText()}`,
     );
     // 활성 창 with no delay: the tool must picture the window you were on, not
     // refuse because clicking 새 캡처 made the tool itself active. (With only

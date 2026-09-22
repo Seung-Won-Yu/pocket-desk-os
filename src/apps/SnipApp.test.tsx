@@ -56,6 +56,8 @@ describe("SnipApp", () => {
         openVfsEntry={vi.fn()}
       />,
     );
+    // The tool opens on 사각형 now; the delay is about the countdown, not the mode.
+    fireEvent.change(screen.getByLabelText("캡처 모드"), { target: { value: "screen" } });
     fireEvent.change(screen.getByLabelText("캡처 지연"), { target: { value: "3" } });
     fireEvent.click(screen.getByRole("button", { name: "새 캡처" }));
     expect(screen.getByRole("status").textContent).toContain("3초 후");

@@ -6,6 +6,12 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **캡처 도구 사각형 캡처.** The tool could picture the whole screen or one window and nothing in between, where Windows' 캡처 도구 opens on a rectangle. 새 캡처 now puts a crosshair over everything, and the picture is the band that was dragged: measured, a 320×240 drag saved a 320×240 PNG. Escape cancels, and a press that never became a drag cancels too — both say 영역을 고르지 않아 캡처하지 않았습니다 rather than saving an empty picture.
+
+  The band is dragged before the picture is taken, so nothing that was on screen during the selection reaches the capture, and the crop is scaled from CSS pixels into the picture's own — a 2× screen crops where the band actually was.
+
+  Two things had to be fixed to get there. The desktop underneath was taking the pointer for its own selection band: measured, the crosshair's band froze at 2×2 and the drag never ended. And the capture carried a 400ms guard meant for PrintScreen's keydown/keyup double delivery — it silently refused 캡처 도구's own button, which then said 캡처에 실패했습니다 with nothing to explain it. The guard now lives on the key path, where the double delivery is.
+
 - **시작 메뉴 항목 메뉴.** A tile's right-click menu had exactly one command — 시작 화면에서 제거 — and it said that whether the tile was pinned or listed under 모든 앱, where the honest answer is 시작 화면에 고정. It never mentioned the taskbar, which is where Windows pins from.
 
   The menu now answers the three questions Windows' does: 열기, whether it is on 시작, whether it is on 작업 표시줄. Measured: a pinned tile offers 열기 / 시작 화면에서 제거 / 작업 표시줄에 고정; 작업 표시줄에 고정 put 계산기 on the bar and the same menu then read 작업 표시줄에서 제거, which took it back off; a row under 모든 앱 offers 시작 화면에 고정 instead. A tile folder still offers only 그룹 해제 — the one thing a folder can do.

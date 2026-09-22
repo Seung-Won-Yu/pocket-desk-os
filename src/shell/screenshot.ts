@@ -388,3 +388,31 @@ export async function captureElementToPng(
   context.drawImage(image, 0, 0, width, height);
   return { dataUrl: canvas.toDataURL("image/png"), height, width };
 }
+
+/**
+ * Cuts a rectangle out of a finished capture, for 사각형 캡처. The crop is in
+ * the picture's own pixels — the caller scales the band it measured on screen.
+ */
+export async function cropCaptureDataUrl(
+  dataUrl: string,
+  rect: { height: number; left: number; top: number; width: number },
+) {
+  const image = await loadCaptureImage(dataUrl);
+  const canvas = document.createElement("canvas");
+  canvas.width = rect.width;
+  canvas.height = rect.height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("스크린샷을 자를 수 없습니다.");
+  context.drawImage(
+    image,
+    rect.left,
+    rect.top,
+    rect.width,
+    rect.height,
+    0,
+    0,
+    rect.width,
+    rect.height,
+  );
+  return { dataUrl: canvas.toDataURL("image/png"), height: rect.height, width: rect.width };
+}

@@ -210,6 +210,13 @@ import {
   persistNightLightStrength,
 } from "./shell/nightLight";
 import { getNeighbourByPosition, handleMenuKeyboard } from "./shell/keyboardNav";
+import {
+  getRegionCropRect,
+  getRegionSelectionBounds,
+  isRegionSelectionUsable,
+  type RegionBounds,
+  type RegionPoint,
+} from "./shell/screenshotRegion";
 import { type AppContentProps, type WindowDocumentRef } from "./shell/types";
 import { formatWindowTitle } from "./shell/windowTitle";
 import {
@@ -310,6 +317,7 @@ import {
   isVfsSystemFolderId,
   formatDesktopItemTime,
 } from "./vfs/model";
+import { cropCaptureDataUrl } from "./shell/screenshot";
 import { getSnapshotContentBytes, MAX_CONTENT_BYTES, persistVfsEntries } from "./vfs/storage";
 import {
   getWallpaperStyle,
@@ -701,6 +709,13 @@ export default function App() {
   const [clipboardPanelOpen, setClipboardPanelOpen] = useState(false);
   /** 이모지 패널 (Win+. / Win+;). */
   const [emojiPanelOpen, setEmojiPanelOpen] = useState(false);
+  /** 사각형 캡처: the crosshair overlay and the band being dragged on it. */
+  const [regionCapture, setRegionCapture] = useState<{
+    current: RegionPoint;
+    dragging: boolean;
+    start: RegionPoint;
+  } | null>(null);
+  const regionCaptureResolveRef = useRef<((bounds: RegionBounds | null) => void) | null>(null);
   const [emojiQuery, setEmojiQuery] = useState("");
   const [recentEmoji, setRecentEmoji] = useState<string[]>(() => loadRecentEmoji());
   /**
@@ -2671,12 +2686,52 @@ export default function App() {
     return true;
   };
 
-  const captureScreenshot = async (mode: ScreenshotMode): Promise<DesktopItem | null> => {
-    // Windows delivers PrintScreen as keyup in some browsers and as both in
-    // others; one press is one picture.
+  /**
+   * PrintScreen arrives as keydown in some browsers, keyup in others and both
+   * in a few, so the key path takes one picture per press. The guard lives
+   * here rather than inside the capture: 캡처 도구's own button is a deliberate
+   * press, and a capture refused there said "캡처에 실패했습니다" with nothing
+   * to explain it — measured in the smoke, where the tool's second capture
+   * after a 사각형 one was silently dropped.
+   */
+  const capturePrintScreen = (mode: ScreenshotMode) => {
     const now = Date.now();
-    if (now - lastScreenshotAtRef.current < 400) return null;
+    if (now - lastScreenshotAtRef.current < 400) return;
     lastScreenshotAtRef.current = now;
+    void captureScreenshot(mode);
+  };
+
+  /**
+   * 사각형 캡처: the shell puts a crosshair over everything and waits for a
+   * band. Escape or a click without a drag answers with nothing, and the tool
+   * says so rather than saving an empty picture.
+   */
+  const askForCaptureRegion = () =>
+    new Promise<RegionBounds | null>((resolve) => {
+      regionCaptureResolveRef.current = resolve;
+      setRegionCapture(null);
+      setRegionCapture({ current: { x: 0, y: 0 }, dragging: false, start: { x: 0, y: 0 } });
+    });
+
+  const finishCaptureRegion = (bounds: RegionBounds | null) => {
+    setRegionCapture(null);
+    const resolve = regionCaptureResolveRef.current;
+    regionCaptureResolveRef.current = null;
+    resolve?.(bounds);
+  };
+
+  const captureScreenshot = async (mode: ScreenshotMode): Promise<DesktopItem | null> => {
+    /*
+     * 사각형: the band is dragged first and the picture taken after, so what
+     * is on screen while the crosshair is up never reaches the capture.
+     */
+    let region: RegionBounds | null = null;
+    if (mode === "region") {
+      region = await askForCaptureRegion();
+      if (!region) return null;
+    }
+
+    const now = Date.now();
 
     let target: HTMLElement | null = document.querySelector<HTMLElement>("main.desktop");
     if (mode === "window") {
@@ -2727,6 +2782,25 @@ export default function App() {
         title: "스크린샷 실패",
       });
       return null;
+    }
+
+    if (region) {
+      try {
+        picture = await cropCaptureDataUrl(
+          picture.dataUrl,
+          getRegionCropRect(
+            region,
+            { height: picture.height, width: picture.width },
+            { height: window.innerHeight, width: window.innerWidth },
+          ),
+        );
+      } catch (error) {
+        notify({
+          detail: error instanceof Error ? error.message : "화면을 자를 수 없습니다.",
+          title: "스크린샷 실패",
+        });
+        return null;
+      }
     }
 
     /*
@@ -4589,7 +4663,7 @@ export default function App() {
       winKeyAloneRef.current = event.key === "Meta" && !event.repeat;
       if (event.key === "PrintScreen") {
         event.preventDefault();
-        void captureScreenshot(event.altKey ? "window" : "screen");
+        void capturePrintScreen(event.altKey ? "window" : "screen");
         return;
       }
       const target = event.target;
@@ -4597,6 +4671,12 @@ export default function App() {
         target instanceof HTMLInputElement ||
         target instanceof HTMLTextAreaElement ||
         (target instanceof HTMLElement && target.isContentEditable);
+
+      if (event.key === "Escape" && regionCapture) {
+        event.preventDefault();
+        finishCaptureRegion(null);
+        return;
+      }
 
       if (event.key === "Escape" && clipboardPanelOpen) {
         event.preventDefault();
@@ -4951,11 +5031,11 @@ export default function App() {
     };
 
     const handleGlobalKeyUp = (event: KeyboardEvent) => {
-      // Some browsers on Windows deliver PrintScreen only as keyup; the capture
-      // dedupes, so one that sends both still takes one picture.
+      // Some browsers on Windows deliver PrintScreen only as keyup; the key
+      // path dedupes, so one that sends both still takes one picture.
       if (event.key === "PrintScreen" && shellPhase === "unlocked") {
         event.preventDefault();
-        void captureScreenshot(event.altKey ? "window" : "screen");
+        void capturePrintScreen(event.altKey ? "window" : "screen");
         return;
       }
       if (event.key === "Alt") {
@@ -5817,6 +5897,65 @@ export default function App() {
             setPermanentDeleteIds(null);
           }}
         />
+      )}
+
+      {regionCapture && (
+        <div
+          aria-label="캡처할 영역을 끌어서 선택"
+          className="region-capture-overlay"
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            /*
+             * The desktop underneath takes the pointer for its own selection
+             * band if this one bubbles: measured, the crosshair's band froze at
+             * 2×2 and the drag never ended, because the desktop had captured
+             * the pointer out from under it.
+             */
+            event.stopPropagation();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            const point = { x: event.clientX, y: event.clientY };
+            setRegionCapture({ current: point, dragging: true, start: point });
+          }}
+          onPointerMove={(event) => {
+            event.stopPropagation();
+            setRegionCapture((current) =>
+              current?.dragging
+                ? { ...current, current: { x: event.clientX, y: event.clientY } }
+                : current,
+            );
+          }}
+          onPointerUp={(event) => {
+            event.stopPropagation();
+            const current = regionCapture;
+            if (!current?.dragging) return;
+            const bounds = getRegionSelectionBounds(current.start, {
+              x: event.clientX,
+              y: event.clientY,
+            });
+            // A click with no drag is a cancel, the way Escape is.
+            finishCaptureRegion(isRegionSelectionUsable(bounds) ? bounds : null);
+          }}
+          role="dialog"
+        >
+          <p>끌어서 캡처할 영역을 고르세요. Esc를 누르면 취소합니다.</p>
+          {regionCapture.dragging && (
+            <div
+              className="region-capture-band"
+              style={(() => {
+                const bounds = getRegionSelectionBounds(
+                  regionCapture.start,
+                  regionCapture.current,
+                );
+                return {
+                  height: bounds.height,
+                  left: bounds.left,
+                  top: bounds.top,
+                  width: bounds.width,
+                };
+              })()}
+            />
+          )}
+        </div>
       )}
 
       {emojiPanelOpen && (

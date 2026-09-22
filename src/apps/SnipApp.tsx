@@ -18,12 +18,15 @@ export default function SnipApp({
   copyImageToClipboard: (dataUrl: string) => Promise<boolean>;
   openVfsEntry: (item: DesktopItem) => void;
 }) {
-  const [mode, setMode] = useState<ScreenshotMode>("screen");
+  // Windows' 캡처 도구 opens on the rectangle, and so does this.
+  const [mode, setMode] = useState<ScreenshotMode>("region");
   const [delaySeconds, setDelaySeconds] = useState(0);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<DesktopItem | null>(null);
-  const [status, setStatus] = useState("새 캡처를 누르면 화면을 찍어 사진 폴더에 저장합니다.");
+  const [status, setStatus] = useState(
+    "새 캡처를 누르면 끌어서 고른 영역을 찍어 사진 폴더에 저장합니다.",
+  );
   const timerRef = useRef<number | null>(null);
 
   useEffect(
@@ -42,7 +45,13 @@ export default function SnipApp({
         setResult(item);
         setStatus(`사진 폴더에 저장됨: ${item.name}`);
       } else {
-        setStatus(mode === "window" ? "캡처할 활성 창이 없습니다." : "캡처에 실패했습니다.");
+        setStatus(
+          mode === "window"
+            ? "캡처할 활성 창이 없습니다."
+            : mode === "region"
+              ? "영역을 고르지 않아 캡처하지 않았습니다."
+              : "캡처에 실패했습니다.",
+        );
       }
     } catch {
       setStatus("캡처에 실패했습니다.");
@@ -91,6 +100,7 @@ export default function SnipApp({
             onChange={(event) => setMode(event.target.value as ScreenshotMode)}
             value={mode}
           >
+            <option value="region">사각형</option>
             <option value="screen">전체 화면</option>
             <option value="window">활성 창</option>
           </select>
