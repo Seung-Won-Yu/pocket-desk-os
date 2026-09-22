@@ -6,6 +6,14 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **휴지통에 끌어다 버리기, 바탕 화면에서 비우기.** The bin was a window you opened, and nothing else: dragging a file onto its icon did nothing at all (measured — the file stayed exactly where it was), and the icon's own menu offered 열기 and 작업 표시줄에 고정 and no way to empty it.
+
+  A file dropped on 휴지통 now goes in it, from the desktop and from a 파일 탐색기 window alike, and the icon lights up while the file is held over it. It is the same 삭제 the menu and the Delete key use, so one Ctrl+Z brings it back — and back **where it was**: the icon returns to the spot it was dragged from instead of sitting on top of the bin.
+
+  Two things had to be measured to get there. The dragged icon follows the pointer, so `elementFromPoint` under the cursor answers *itself*, not the bin — measured, a file dropped straight onto 휴지통 never saw it; the whole stack under the pointer is searched now. And the delete snapshots the row, so the move home is committed a frame before the delete, or undo would restore the file onto the bin.
+
+  휴지통 비우기 is on the icon's menu with what it is about to destroy in its label — 휴지통 비우기 (1개 항목) — greyed out when the bin is empty, the way Windows greys it rather than hiding it. It asks first: 1개 항목을 영구적으로 삭제하시겠습니까? 되돌릴 수 없습니다.
+
 - **메모장 확대/축소와 줄 이동 (Ctrl+G).** The status bar printed a flat `100%` while 글꼴 크게 moved the text between 12 and 24px — the number meant nothing, because nothing ever set it. Zoom is a level now, and the percentage on the bar is the one the text is drawn at: measured, Ctrl+휠 took it to 110% and the text from 15px to 17px, two notches back gave 90% / 14px, and Ctrl+0 put both back to 100% / 15px. Ctrl++ and Ctrl+- step the same levels, and 보기 lists all three with their shortcuts.
 
   The wheel listener is attached by hand with `{ passive: false }`. React registers its root wheel listener as passive, so a `preventDefault` from `onWheel` throws and the browser zooms the whole page instead — the same trap Ctrl+휠 보기 전환 hit in the explorer.

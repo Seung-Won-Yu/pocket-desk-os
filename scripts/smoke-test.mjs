@@ -5981,6 +5981,135 @@ async function runSmoke(baseUrl) {
     );
     await touchContext.close();
 
+    /*
+     * 휴지통 as a drop target and its own 비우기. Dropping a file on the bin is
+     * how Windows throws it away, and the icon's menu says how much it is
+     * about to destroy — both of which the desktop simply did not do.
+     */
+    // Every window out of the way first: an open frame covers the icons. This
+    // is the last thing the run does, so nothing needs them back.
+    await page.keyboard.press("Meta+m");
+    await page.waitForTimeout(450);
+    const desktopBin = page.locator('[data-desktop-drop="trash"]');
+    const binMenuItems = async () => {
+      await desktopBin.click({ button: "right" });
+      await page.waitForTimeout(250);
+      const items = await page
+        .locator(".desktop-icon-context-menu button")
+        .evaluateAll((buttons) =>
+          buttons.map(
+            (button) => `${button.innerText.trim()}${button.disabled ? "(disabled)" : ""}`,
+          ),
+        );
+      return items;
+    };
+    // The menu's own label counts what the bin holds; that count is the
+    // measurement the drop and the undo move.
+    const binCount = async () => {
+      const items = await binMenuItems();
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(200);
+      const label = items.find((item) => item.startsWith("휴지통 비우기"));
+      assert(label, `휴지통's menu offered no 비우기 at all: ${items.join(", ")}`);
+      if (label.includes("(disabled)")) return 0;
+      const match = label.match(/\((\d+)개 항목\)/);
+      assert(match, `휴지통 비우기 did not say how many: ${label}`);
+      return Number(match[1]);
+    };
+    const binCountBefore = await binCount();
+
+    // A file icon on the desktop to throw away — the one 보내기 put there.
+    const desktopFileNames = await page
+      .locator(".desktop-icon")
+      .evaluateAll((els) => els.map((el) => el.innerText.split("\n").pop()));
+    const droppableName = desktopFileNames.find(
+      (name) => name && !["내 PC", "휴지통"].includes(name),
+    );
+    assert(
+      droppableName,
+      `No file icon on the desktop to drop: ${desktopFileNames.join(", ")}`,
+    );
+    const dropIcon = page.locator(".desktop-icon", { hasText: droppableName }).first();
+    const dropFrom = await dropIcon.boundingBox();
+    const binBox = await desktopBin.boundingBox();
+    await page.mouse.move(dropFrom.x + dropFrom.width / 2, dropFrom.y + dropFrom.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(binBox.x + binBox.width / 2, binBox.y + binBox.height / 2, {
+      steps: 18,
+    });
+    let binLit = false;
+    const binClasses = [];
+    for (let step = 0; step < 4; step += 1) {
+      await page.mouse.move(
+        binBox.x + binBox.width / 2 + (step % 2),
+        binBox.y + binBox.height / 2,
+      );
+      await page.waitForTimeout(110);
+      const binClass = await desktopBin.getAttribute("class");
+      binClasses.push(binClass);
+      binLit = binLit || binClass.includes("is-drop-target");
+    }
+    assert(
+      binLit,
+      `휴지통 never lit up while ${droppableName} was held over it: from ${JSON.stringify(dropFrom)} to ${JSON.stringify(binBox)} :: ${binClasses.join(" / ")}`,
+    );
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+    assert(
+      (await page.locator(".desktop-icon", { hasText: droppableName }).count()) === 0,
+      `Dropping ${droppableName} on 휴지통 left it on the desktop`,
+    );
+    assert(
+      (await binCount()) === binCountBefore + 1,
+      `휴지통 holds ${await binCount()} after a drop, not ${binCountBefore + 1}`,
+    );
+
+    // The same 삭제 the menu uses, so one Ctrl+Z puts it back.
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(450);
+    assert(
+      (await page.locator(".desktop-icon", { hasText: droppableName }).count()) === 1,
+      `실행 취소 did not bring ${droppableName} back from 휴지통`,
+    );
+    assert(
+      (await binCount()) === binCountBefore,
+      `실행 취소 left 휴지통 holding ${await binCount()}, not ${binCountBefore}`,
+    );
+
+    await page.mouse.move(dropFrom.x + dropFrom.width / 2, dropFrom.y + dropFrom.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(binBox.x + binBox.width / 2, binBox.y + binBox.height / 2, {
+      steps: 18,
+    });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+    const filledBinItems = await binMenuItems();
+    assert(
+      filledBinItems.some((item) => item.startsWith("휴지통 비우기 (")),
+      `A full 휴지통 offered ${filledBinItems.join(", ")}`,
+    );
+    await page.evaluate(() => {
+      const target = [...document.querySelectorAll(".desktop-icon-context-menu button")].find(
+        (button) => button.textContent.includes("휴지통 비우기"),
+      );
+      target?.click();
+    });
+    const emptyBinDialog = page.locator(".run-dialog").last();
+    await emptyBinDialog.waitFor({ state: "visible" });
+    assert(
+      (await emptyBinDialog.innerText()).includes("영구적으로 삭제"),
+      `휴지통 비우기 asked: ${(await emptyBinDialog.innerText()).replace(/\n/g, " | ")}`,
+    );
+    await emptyBinDialog.getByRole("button", { name: "휴지통 비우기" }).click();
+    await page.waitForTimeout(500);
+    const afterEmptyItems = await binMenuItems();
+    assert(
+      afterEmptyItems.some((item) => item === "휴지통 비우기(disabled)"),
+      `휴지통 did not empty: ${afterEmptyItems.join(", ")}`,
+    );
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+
     assert(consoleErrors.length === 0, `Console errors found: ${consoleErrors.join(" | ")}`);
 
     console.log("PocketDesk smoke test passed");

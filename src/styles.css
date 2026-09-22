@@ -351,6 +351,18 @@ button {
   border-color: color-mix(in srgb, var(--active) 62%, rgba(255, 255, 255, 0.4));
 }
 
+/* 휴지통 lights up while a file is held over it, before it is let go. */
+.desktop-icon.is-drop-target {
+  background:
+    linear-gradient(
+      color-mix(in srgb, var(--active) 34%, transparent),
+      rgba(255, 255, 255, 0.1)
+    ),
+    rgba(255, 255, 255, 0.12);
+  border-color: color-mix(in srgb, var(--active) 78%, white);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--active) 45%, transparent);
+}
+
 .desktop-icon-rename {
   margin-left: 5px;
   position: absolute;

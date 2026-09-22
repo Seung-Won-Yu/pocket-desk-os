@@ -175,6 +175,12 @@ import { NameConflictDialog } from "./shell/components/NameConflictDialog";
 import { PermanentDeleteDialog } from "./shell/components/PermanentDeleteDialog";
 import { getVfsDropEffect, isVfsCopyDrag } from "./vfs/dragEffect";
 import { buildBulkRenames } from "./vfs/bulkRename";
+import {
+  describeEmptyRecycleBinCommand,
+  describeEmptyRecycleBinPrompt,
+  getRecycleBinDropIds,
+  summarizeRecycleBin,
+} from "./vfs/recycleBin";
 import { findEntryForAppDrop, readVfsDragPayload } from "./vfs/dropTarget";
 import {
   findVfsNameConflicts,
@@ -671,6 +677,9 @@ export default function App() {
   const [runOpen, setRunOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [desktopSelection, setDesktopSelection] = useState<DesktopSelectionState | null>(null);
+  /** The icon a drag is hovering, so 휴지통 lights up before the drop. */
+  const [desktopDropIcon, setDesktopDropIcon] = useState<string | null>(null);
+  const [emptyBinPromptOpen, setEmptyBinPromptOpen] = useState(false);
   const [selectedDesktopIds, setSelectedDesktopIds] = useState<string[]>([]);
   const [shellPhase, setShellPhase] = useState<ShellPhase>("booting");
   const [browserLaunchRequest, setBrowserLaunchRequest] = useState<BrowserLaunchRequest | null>(
@@ -3180,6 +3189,36 @@ export default function App() {
     setDesktopRenamingItemId(null);
   };
 
+  /**
+   * 휴지통 as a drop target. Dropping a file on the bin is how Windows throws
+   * it away, and the icon has to say so before the drop — the same 삭제 the
+   * menu and the Delete key use, so one Ctrl+Z puts it back.
+   */
+  const recycleBinSummary = useMemo(() => summarizeRecycleBin(desktopItems), [desktopItems]);
+
+  const dropIdsIntoRecycleBin = (itemIds: string[]) => {
+    const targets = getRecycleBinDropIds(activeDesktopItems, itemIds);
+    if (targets.length === 0) return;
+    deleteVfsEntries(targets);
+    setSelectedDesktopIds([]);
+  };
+
+  const dropDesktopIconInto = (dropKey: string, itemId: string) => {
+    if (dropKey !== "trash") return;
+    // A drag that started on one of several selected icons takes them all.
+    dropIdsIntoRecycleBin(getSelectedDesktopItemIds(itemId));
+  };
+
+  const dropEntriesIntoRecycleBin = (event: React.DragEvent<HTMLElement>) => {
+    const payload = event.dataTransfer.getData(VFS_DRAG_MIME);
+    const itemIds = readVfsDragPayload(payload);
+    if (itemIds.length === 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setDesktopDropIcon(null);
+    dropIdsIntoRecycleBin(itemIds);
+  };
+
   const openSelectedDesktopTarget = () => {
     const targetId = selectedDesktopIds[0];
     if (!targetId) return;
@@ -5270,9 +5309,13 @@ export default function App() {
                 ? `${trashedItems.length}개 항목`
                 : undefined
             }
+            dropKey={app.id === "recycle" ? "trash" : undefined}
+            isDropTarget={app.id === "recycle" && desktopDropIcon === "trash"}
             onContextMenu={(event) =>
               showDesktopIconContextMenu(event, { appId: app.id, kind: "app" })
             }
+            onDropEntries={app.id === "recycle" ? dropEntriesIntoRecycleBin : undefined}
+            onHoverDropIcon={app.id === "recycle" ? setDesktopDropIcon : undefined}
             onMove={(position) => moveDesktopIcon(app.id, position)}
             onOpen={() => openApp(app.id)}
             onSelect={(event) => selectDesktopTarget(`app:${app.id}`, event)}
@@ -5295,6 +5338,8 @@ export default function App() {
               onContextMenu={(event) =>
                 showDesktopIconContextMenu(event, { itemId: item.id, kind: "item" })
               }
+              onDropOnIcon={(dropKey) => dropDesktopIconInto(dropKey, item.id)}
+              onHoverDropIcon={setDesktopDropIcon}
               onDropIntoFolder={(folderId) => {
                 if (folderId === VFS_ROOT_ID) return;
                 moveVfsEntries([item.id], folderId);
@@ -5586,6 +5631,20 @@ export default function App() {
         />
       )}
 
+      {emptyBinPromptOpen && (
+        <PermanentDeleteDialog
+          confirmLabel="휴지통 비우기"
+          items={[]}
+          onCancel={() => setEmptyBinPromptOpen(false)}
+          onConfirm={() => {
+            setEmptyBinPromptOpen(false);
+            emptyRecycleBin();
+          }}
+          summary={`${describeEmptyRecycleBinPrompt(recycleBinSummary)} 되돌릴 수 없습니다.`}
+          title="휴지통을 비울까요?"
+        />
+      )}
+
       {nameConflict && (
         <NameConflictDialog
           conflicts={nameConflict.conflicts}
@@ -5654,6 +5713,23 @@ export default function App() {
                   setCustomWallpaper(desktopContextItem.id);
                 }
               : undefined
+          }
+          emptyRecycleBinLabel={
+            desktopContextApp?.id === "recycle"
+              ? describeEmptyRecycleBinCommand(recycleBinSummary)
+              : undefined
+          }
+          onEmptyRecycleBin={
+            desktopContextApp?.id === "recycle"
+              ? () => {
+                  setDesktopIconMenu(null);
+                  if (recycleBinSummary.count === 0) return;
+                  setEmptyBinPromptOpen(true);
+                }
+              : undefined
+          }
+          recycleBinCount={
+            desktopContextApp?.id === "recycle" ? recycleBinSummary.count : undefined
           }
           onCopy={
             desktopContextItem ? () => copyDesktopItems(desktopContextItem.id) : undefined

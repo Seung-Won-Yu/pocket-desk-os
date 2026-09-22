@@ -8,7 +8,11 @@ import { useRef, type PointerEvent } from "react";
 export function DesktopIcon({
   app,
   badge,
+  dropKey,
+  isDropTarget,
   onContextMenu,
+  onDropEntries,
+  onHoverDropIcon,
   onMove,
   onOpen,
   onSelect,
@@ -19,8 +23,13 @@ export function DesktopIcon({
   app: AppDefinition;
   /** Shown on the tile and in the icon's name; the recycle bin uses it. */
   badge?: string;
+  /** Marks this icon as somewhere a dragged file can be dropped (휴지통). */
+  dropKey?: string;
+  isDropTarget?: boolean;
   onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onDropEntries?: (event: React.DragEvent<HTMLButtonElement>) => void;
   onDropIntoFolder?: (folderId: string) => void;
+  onHoverDropIcon?: (dropKey: string | null) => void;
   onMove: (position: IconPosition) => void;
   onOpen: () => void;
   onSelect: (event: React.MouseEvent<HTMLButtonElement>) => void;
@@ -33,8 +42,12 @@ export function DesktopIcon({
     <DesktopIconButton
       accent={app.accent}
       badge={badge}
+      dropKey={dropKey}
       icon={Icon}
+      isDropTarget={isDropTarget}
       onContextMenu={onContextMenu}
+      onDropEntries={onDropEntries}
+      onHoverDropIcon={onHoverDropIcon}
       onMove={onMove}
       onOpen={onOpen}
       onSelect={onSelect}
@@ -54,6 +67,8 @@ export function DesktopItemIcon({
   onChangeDraftName,
   onCommitRename,
   onContextMenu,
+  onDropOnIcon,
+  onHoverDropIcon,
   onDropIntoFolder,
   onMove,
   onOpen,
@@ -71,6 +86,8 @@ export function DesktopItemIcon({
   onChangeDraftName: (name: string) => void;
   onCommitRename: () => void;
   onDropIntoFolder?: (folderId: string) => void;
+  onDropOnIcon?: (dropKey: string) => void;
+  onHoverDropIcon?: (dropKey: string | null) => void;
   onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onMove: (position: IconPosition) => void;
   onOpen: () => void;
@@ -89,6 +106,8 @@ export function DesktopItemIcon({
         onContextMenu={onContextMenu}
         thumbnail={item.kind === "canvas" && item.content ? item.content : undefined}
         onDropIntoFolder={onDropIntoFolder}
+        onDropOnIcon={onDropOnIcon}
+        onHoverDropIcon={onHoverDropIcon}
         onMove={onMove}
         onOpen={onOpen}
         onSelect={onSelect}
@@ -131,8 +150,13 @@ export function DesktopItemIcon({
 export function DesktopIconButton({
   accent,
   badge,
+  dropKey,
   icon: Icon,
+  isDropTarget,
   onContextMenu,
+  onDropEntries,
+  onDropOnIcon,
+  onHoverDropIcon,
   thumbnail,
   onDropIntoFolder,
   onMove,
@@ -147,8 +171,17 @@ export function DesktopIconButton({
   accent: string;
   /** A count shown on the tile — the recycle bin's contents, as Windows shows a full bin. */
   badge?: string;
+  /** Names this icon as a drop target for a dragged file (휴지통). */
+  dropKey?: string;
   icon: LucideIcon;
+  isDropTarget?: boolean;
   onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  /** A drag out of an Explorer window let go on this icon. */
+  onDropEntries?: (event: React.DragEvent<HTMLButtonElement>) => void;
+  /** A drag let go over an icon that named itself a drop target. */
+  onDropOnIcon?: (dropKey: string) => void;
+  /** The drop target the drag is over right now, so it can light up. */
+  onHoverDropIcon?: (dropKey: string | null) => void;
   onDropIntoFolder?: (folderId: string) => void;
   onMove: (position: IconPosition) => void;
   onOpen: () => void;
@@ -185,6 +218,26 @@ export function DesktopIconButton({
     };
   };
 
+  /*
+   * Pointer capture keeps this icon as the event target for the whole drag, so
+   * what the pointer is actually over has to be hit-tested by hand — the same
+   * way a drop into an Explorer window already was.
+   */
+  const findDropIcon = (clientX: number, clientY: number) => {
+    /*
+     * The icon being dragged sits under the pointer for the whole drag, so
+     * the topmost element at that point is itself — measured, a file dropped
+     * straight onto 휴지통 never saw the bin at all. The whole stack under the
+     * pointer is searched instead, and an icon is never its own target.
+     */
+    for (const element of document.elementsFromPoint(clientX, clientY)) {
+      const target = element.closest<HTMLElement>("[data-desktop-drop]");
+      const key = target?.dataset.desktopDrop;
+      if (key && key !== dropKey) return key;
+    }
+    return null;
+  };
+
   const moveDrag = (event: PointerEvent<HTMLButtonElement>) => {
     const state = dragState.current;
     if (!state) return;
@@ -194,6 +247,7 @@ export function DesktopIconButton({
     if (Math.abs(deltaX) + Math.abs(deltaY) > 4) {
       state.moved = true;
       onMove({ x: state.originX + deltaX, y: state.originY + deltaY });
+      onHoverDropIcon?.(findDropIcon(event.clientX, event.clientY));
     }
   };
 
@@ -202,6 +256,26 @@ export function DesktopIconButton({
     if (!state) return;
     if (event.currentTarget.hasPointerCapture(state.pointerId)) {
       event.currentTarget.releasePointerCapture(state.pointerId);
+    }
+
+    onHoverDropIcon?.(null);
+    // Dropping on 휴지통 throws the item away, and nothing else sees the drop.
+    const dropIcon = state.moved ? findDropIcon(event.clientX, event.clientY) : null;
+    if (dropIcon && onDropOnIcon) {
+      /*
+       * The icon was dragged onto 휴지통, not moved there: it goes back where
+       * it started, so undoing the delete does not leave it sitting on the
+       * bin. The move is committed first — the delete snapshots the row, and
+       * a snapshot taken in the same tick would keep the dragged position.
+       */
+      onMove({ x: state.originX, y: state.originY });
+      window.requestAnimationFrame(() => onDropOnIcon(dropIcon));
+      suppressNextClick.current = true;
+      dragState.current = null;
+      window.setTimeout(() => {
+        suppressNextClick.current = false;
+      }, 50);
+      return;
     }
 
     // Dropping over an open Explorer window files the item into that folder.
@@ -229,12 +303,37 @@ export function DesktopIconButton({
       // The badge is part of the name, or a screen reader hears "휴지통" whether
       // it is full or empty.
       aria-label={badge ? `${title}, ${badge}` : undefined}
-      className={`desktop-icon ${selected ? "is-selected" : ""}`}
+      className={`desktop-icon ${selected ? "is-selected" : ""}${
+        isDropTarget ? " is-drop-target" : ""
+      }`}
+      data-desktop-drop={dropKey}
       onClick={(event) => {
         handleClick();
         if (!suppressNextClick.current) onSelect(event);
       }}
       onContextMenu={onContextMenu}
+      onDragLeave={
+        onDropEntries
+          ? (event) => {
+              // Moving onto the icon's own tile fires a leave for the button;
+              // only a drag that has really left it puts the highlight out.
+              if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+              onHoverDropIcon?.(null);
+            }
+          : undefined
+      }
+      onDragOver={
+        onDropEntries
+          ? (event) => {
+              // Saying yes to the drag is what makes the drop fire at all.
+              event.preventDefault();
+              event.stopPropagation();
+              event.dataTransfer.dropEffect = "move";
+              if (dropKey) onHoverDropIcon?.(dropKey);
+            }
+          : undefined
+      }
+      onDrop={onDropEntries}
       onDoubleClick={(event) => {
         event.stopPropagation();
         if (!suppressNextClick.current) onOpen();

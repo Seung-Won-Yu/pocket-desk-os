@@ -309,32 +309,40 @@ const MOVE_TARGETS: Array<{ id: string; label: string }> = [
 
 export function DesktopIconContextMenu({
   appPinned,
+  emptyRecycleBinLabel,
   itemSelectionCount,
   onCopy,
   onCut,
   onMoveTo,
   onDelete,
+  onEmptyRecycleBin,
   onOpen,
   onProperties,
   onRename,
   onSetWallpaper,
   onTogglePin,
+  recycleBinCount,
   target,
   x,
   y,
 }: {
   appPinned?: boolean;
+  /** 휴지통 비우기's own label, which counts what it is about to destroy. */
+  emptyRecycleBinLabel?: string;
   itemSelectionCount: number;
   onCopy?: () => void;
   onCut?: () => void;
   onMoveTo?: (folderId: string) => void;
   onDelete?: () => void;
+  onEmptyRecycleBin?: () => void;
   onOpen: () => void;
   onProperties?: () => void;
   onRename?: () => void;
   /** Present for a picture file with pixels: 바탕 화면 배경으로 설정. */
   onSetWallpaper?: () => void;
   onTogglePin?: () => void;
+  /** How many items 휴지통 holds; zero greys the command out, as Windows does. */
+  recycleBinCount?: number;
   target: {
     accent: string;
     icon: LucideIcon;
@@ -439,6 +447,19 @@ export function DesktopIconContextMenu({
         >
           <Pencil aria-hidden="true" size={16} />
           이름 바꾸기
+        </button>
+      )}
+      {onEmptyRecycleBin && (
+        <button
+          // Windows greys this out when there is nothing to empty rather than
+          // hiding it, so the bin's own menu always says the same things.
+          disabled={!recycleBinCount}
+          onClick={onEmptyRecycleBin}
+          role="menuitem"
+          type="button"
+        >
+          <Trash2 aria-hidden="true" size={16} />
+          {emptyRecycleBinLabel ?? "휴지통 비우기"}
         </button>
       )}
       {onTogglePin && (
