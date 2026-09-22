@@ -1270,6 +1270,29 @@ async function runSmoke(baseUrl) {
       additiveBlankY - (additiveSecondLast.y + 6) > 20,
       `The second band would be ${additiveBlankY - (additiveSecondLast.y + 6)}px tall`,
     );
+    // The band failed on the Linux runner and nowhere else; the events the list
+    // actually saw are collected so the failure can name the cause.
+    await explorerList.evaluate((list) => {
+      window.__marqueeTrace = [];
+      const record = (event) => {
+        const target = event.target;
+        window.__marqueeTrace.push(
+          `${event.type}:${target === list ? "list" : (target.className || target.tagName).toString().slice(0, 24)}` +
+            (event.type === "pointerdown"
+              ? `:button=${event.button}:ctrl=${event.ctrlKey}:meta=${event.metaKey}`
+              : ""),
+        );
+      };
+      for (const type of [
+        "pointerdown",
+        "pointercancel",
+        "lostpointercapture",
+        "dragstart",
+        "contextmenu",
+      ]) {
+        list.addEventListener(type, record, true);
+      }
+    });
     await page.keyboard.down(multiSelectModifier);
     await page.mouse.move(additiveListBox.x + additiveListBox.width - 40, additiveBlankY);
     await page.mouse.down();
@@ -1278,7 +1301,11 @@ async function runSmoke(baseUrl) {
     // Kept for the failure message: a band that never appeared and a band that
     // appeared but added nothing are different bugs.
     const additiveBandCount = await files.locator(".file-marquee").count();
-    assert(additiveBandCount === 1, "Ctrl+끌어서 선택 drew no band at all");
+    const marqueeTrace = await page.evaluate(() => window.__marqueeTrace ?? []);
+    assert(
+      additiveBandCount === 1,
+      `Ctrl+끌어서 선택 drew no band at all (events: ${marqueeTrace.join(" / ") || "none"})`,
+    );
     await page.mouse.up();
     await page.keyboard.up(multiSelectModifier);
     await page.waitForTimeout(200);
