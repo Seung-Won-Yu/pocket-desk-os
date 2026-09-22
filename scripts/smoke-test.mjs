@@ -1216,6 +1216,40 @@ async function runSmoke(baseUrl) {
     await propertiesDialog.getByRole("button", { name: "확인" }).click();
     await page.waitForTimeout(200);
 
+    /*
+     * 속성 on more than one row describes the selection, not the first of
+     * them: it used to open the single-file dialog for whichever row the
+     * menu was aimed at and say nothing about the rest. The status bar's
+     * size had the same hole — it summed entry sizes, and a folder's own
+     * size is zero.
+     */
+    await explorerRows.first().click();
+    await explorerRows.nth(1).click({ modifiers: [multiSelectModifier] });
+    const groupProperties = files.getByRole("dialog", { name: "선택 항목 속성" });
+    await page.keyboard.press("Alt+Enter");
+    await groupProperties.waitFor({ state: "visible" });
+    const groupText = await groupProperties.innerText();
+    assert(groupText.includes("2개 항목"), `선택 항목 속성 said ${groupText.split("\n")[0]}`);
+    assert(
+      /내용\n파일 \d+개, 폴더 \d+개/.test(groupText),
+      `선택 항목 속성 did not say what the selection holds: ${groupText}`,
+    );
+    assert(
+      parseFolderBytes(groupText) > 0,
+      `선택 항목 속성 reported ${parseFolderBytes(groupText)} bytes for a selection holding a folder`,
+    );
+    assert(
+      (await files.locator(".file-statusbar").innerText()).includes("2개 선택됨"),
+      "The status bar lost the selection count",
+    );
+    // Two system folders: 숨김 has nothing it may change, and says so.
+    assert(
+      await groupProperties.getByLabel("숨김").isDisabled(),
+      "선택 항목 속성 offered to hide a selection of system folders",
+    );
+    await page.keyboard.press("Escape");
+    await groupProperties.waitFor({ state: "detached" });
+
     // 숨김 is set from the entry's own 속성, and the dialog stays open when it
     // is — looking its own subject up in the filtered list used to close it.
     const rowsBeforeHide = await explorerRows.count();
@@ -4713,14 +4747,33 @@ async function runSmoke(baseUrl) {
       await shotExplorer.locator(".window-titlebar").click();
     }
     await page.waitForTimeout(200);
-    await page.keyboard.press("Alt+PrintScreen");
+    /*
+     * Counted, not matched: an earlier window capture in this same section
+     * leaves its own 창 스크린샷 저장됨 toast on screen, and waiting for "a
+     * toast with that text" resolved to two of them — a strict-mode
+     * violation the failure handler then reported as "no toast", which is
+     * the opposite of what had happened.
+     */
     const windowShotToast = page.locator(".toast", { hasText: "창 스크린샷 저장됨" });
-    // On failure, say what the shell actually said: a capture can be refused
-    // for space or fail outright, and both of those are toasts of their own.
-    await windowShotToast.waitFor({ state: "visible", timeout: 15000 }).catch(async () => {
-      const said = (await page.locator(".toast").allInnerTexts()).join(" | ") || "(no toast)";
-      throw new Error(`Alt+PrintScreen produced no 창 스크린샷 저장됨. On screen: ${said}`);
-    });
+    const windowShotsBefore = await windowShotToast.count();
+    await page.keyboard.press("Alt+PrintScreen");
+    // A capture can also be refused for space or fail outright, and both of
+    // those are toasts of their own; say what the shell actually said.
+    await page
+      .waitForFunction(
+        (expected) =>
+          Array.from(document.querySelectorAll(".toast")).filter((toast) =>
+            (toast.textContent ?? "").includes("창 스크린샷 저장됨"),
+          ).length > expected,
+        windowShotsBefore,
+        { timeout: 15000 },
+      )
+      .catch(async (error) => {
+        const said = (await page.locator(".toast").allInnerTexts()).join(" | ") || "(no toast)";
+        throw new Error(
+          `Alt+PrintScreen added no 창 스크린샷 저장됨 (${windowShotsBefore} before). On screen: ${said} — ${String(error).split("\n")[0]}`,
+        );
+      });
     /*
      * 텍스트 크기: one multiplier on the root font size, which every rem in the
      * stylesheet reads — so the whole shell grows with one setting, and the

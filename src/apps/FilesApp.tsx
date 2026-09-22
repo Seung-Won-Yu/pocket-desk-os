@@ -11,18 +11,17 @@ import {
   Copy,
   Download,
   ExternalLink,
+  FileArchive,
   FilePlus2,
+  Files,
   FileText,
   Folder,
-  FileArchive,
   FolderOpen,
   FolderOutput,
   FolderSymlink,
   Grid2X2,
   House,
   Info,
-  Share2,
-  SlidersHorizontal,
   LayoutGrid,
   List,
   Monitor,
@@ -33,15 +32,17 @@ import {
   RefreshCw,
   Scissors,
   Search,
+  Share2,
+  SlidersHorizontal,
   SquarePlus,
   SquareTerminal,
   Star,
   Trash2,
+  type LucideIcon,
   Undo2,
   Upload,
   Wallpaper,
   X,
-  type LucideIcon,
 } from "lucide-react";
 import {
   type ChangeEvent,
@@ -58,6 +59,7 @@ import AppIconTile from "../components/AppIconTile";
 import { VFS_DRAG_APP_MIME, VFS_DRAG_MIME } from "../shell/constants";
 import { findVfsContentMatch, type VfsContentMatch } from "../vfs/contentSearch";
 import { getVfsDropEffect, isVfsCopyDrag } from "../vfs/dragEffect";
+import { describeVfsSelectionTitle, summarizeVfsSelection } from "../vfs/selectionStats";
 import { type FileViewMode, getNextFileViewMode } from "./fileViewMode";
 import {
   DEFAULT_FILE_COLUMN_WIDTHS,
@@ -459,6 +461,12 @@ export default function FilesApp({
   const [fileSubmenuOpen, setFileSubmenuOpen] = useState(false);
   const [pendingRenameId, setPendingRenameId] = useState<string | null>(null);
   const [propertiesFileId, setPropertiesFileId] = useState<string | null>(null);
+  /**
+   * 속성 opened on several rows. Windows describes the selection as a whole —
+   * how many, what they add up to — where it would otherwise name one file;
+   * this described only the first of them.
+   */
+  const [propertiesGroupIds, setPropertiesGroupIds] = useState<string[] | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const currentFolderId = navigationHistory[navigationIndex] ?? VFS_ROOT_ID;
   const folderPath = useMemo(
@@ -543,13 +551,46 @@ export default function FilesApp({
   );
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   /** Bytes the selection holds; Windows shows this beside the count. */
-  const selectedSize = useMemo(
-    () =>
-      desktopItems
-        .filter((item) => selectedIds.includes(item.id))
-        .reduce((total, item) => total + getVfsEntrySize(item), 0),
+  /*
+   * A folder's own size is zero, so summing entry sizes reported 0 B for any
+   * selection that held one — the same trap 폴더 속성 fell into. The summary
+   * walks what is inside.
+   */
+  const selectionSummary = useMemo(
+    () => summarizeVfsSelection(desktopItems, selectedIds),
     [desktopItems, selectedIds],
   );
+  const groupSummary = useMemo(
+    () => summarizeVfsSelection(desktopItems, propertiesGroupIds ?? []),
+    [desktopItems, propertiesGroupIds],
+  );
+  /*
+   * 숨김 describes only what it can actually change. A system folder cannot
+   * be hidden, so counting one into the state left the box stuck on mixed:
+   * every click hid the rest and the state never reached "all", which is the
+   * only state a second click can undo.
+   */
+  const groupHideableIds = useMemo(
+    () => (propertiesGroupIds ?? []).filter((id) => !isVfsSystemFolderId(id)),
+    [propertiesGroupIds],
+  );
+  const groupHiddenState = useMemo(
+    () => summarizeVfsSelection(desktopItems, groupHideableIds).hidden,
+    [desktopItems, groupHideableIds],
+  );
+  /** One folder when they share it, and the count of folders when they do not. */
+  const groupLocation = useMemo(() => {
+    if (!propertiesGroupIds) return "";
+    const parents = new Set(
+      propertiesGroupIds
+        .map((id) => desktopItems.find((item) => item.id === id)?.parentId)
+        .filter((parentId): parentId is string => Boolean(parentId)),
+    );
+    if (parents.size !== 1) return `${parents.size}개 폴더`;
+    return getVfsFolderPath(desktopItems, [...parents][0])
+      .map((segment) => segment.name)
+      .join(" > ");
+  }, [desktopItems, propertiesGroupIds]);
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   // The search belongs to the tab, like the folder and the history: a new tab
   // opened while a search was on used to inherit the filter and look empty.
@@ -752,7 +793,7 @@ export default function FilesApp({
   }, [crumbMenuId, newOpen, optionsOpen, sortOpen]);
 
   useEffect(() => {
-    if (!fileContextMenu && !propertiesFileId) return;
+    if (!fileContextMenu && !propertiesFileId && !propertiesGroupIds) return;
     const closeOnOutsidePointer = (event: Event) => {
       if (
         fileContextMenu &&
@@ -768,6 +809,7 @@ export default function FilesApp({
       setFileContextMenu(null);
       setFileSubmenuOpen(false);
       setPropertiesFileId(null);
+      setPropertiesGroupIds(null);
     };
     window.addEventListener("pointerdown", closeOnOutsidePointer);
     window.addEventListener("keydown", closeOnEscape);
@@ -775,10 +817,10 @@ export default function FilesApp({
       window.removeEventListener("pointerdown", closeOnOutsidePointer);
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [fileContextMenu, propertiesFileId]);
+  }, [fileContextMenu, propertiesFileId, propertiesGroupIds]);
 
   useEffect(() => {
-    if (!propertiesFileId) return;
+    if (!propertiesFileId && !propertiesGroupIds) return;
     const windowContent = propertiesConfirmRef.current?.closest<HTMLElement>(".window-content");
     if (windowContent) {
       windowContent.scrollLeft = 0;
@@ -788,7 +830,7 @@ export default function FilesApp({
       propertiesConfirmRef.current?.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(focusFrame);
-  }, [propertiesFileId]);
+  }, [propertiesFileId, propertiesGroupIds]);
 
   useEffect(() => {
     setDraftName(selectedFile?.name ?? "");
@@ -1340,6 +1382,11 @@ export default function FilesApp({
 
   const openFileProperties = (fileId: string) => {
     setFileContextMenu(null);
+    const selection = getSelectedCommandIds(fileId);
+    if (selection.length > 1) {
+      setPropertiesGroupIds(selection);
+      return;
+    }
     setPropertiesFileId(fileId);
   };
 
@@ -1795,6 +1842,14 @@ export default function FilesApp({
       // has to work with the search box, the toolbar, or nothing focused.
       onKeyDown={(event) => {
         if (isShellReservedChord(event)) return;
+        // Alt+D is Windows' other name for Ctrl+L, and the one anyone who
+        // came from a browser reaches for. It belongs to the window too.
+        if (event.altKey && !event.ctrlKey && !event.metaKey) {
+          if (event.key.toLowerCase() !== "d") return;
+          event.preventDefault();
+          setAddressDraft(formatVfsPathText(desktopItems, currentFolderId));
+          return;
+        }
         if (!(event.ctrlKey || event.metaKey)) return;
         // Explorer's tab keys belong to the window, like Ctrl+L.
         if (event.key === "Tab") {
@@ -2963,7 +3018,9 @@ export default function FilesApp({
           <span>
             {selectedIds.length > 0
               ? `${selectedIds.length}개 선택됨${
-                  selectedSize > 0 ? ` · ${formatStorageSize(selectedSize)}` : ""
+                  selectionSummary.bytes > 0
+                    ? ` · ${formatStorageSize(selectionSummary.bytes)}`
+                    : ""
                 }`
               : "선택한 항목 없음"}
           </span>
@@ -3397,6 +3454,99 @@ export default function FilesApp({
           </div>
         </div>
       )}
+      {propertiesGroupIds && (
+        <div
+          className="file-properties-overlay"
+          onPointerDown={() => setPropertiesGroupIds(null)}
+        >
+          <section
+            aria-label="선택 항목 속성"
+            aria-modal="true"
+            className="file-properties-dialog"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setPropertiesGroupIds(null);
+                return;
+              }
+              trapDialogFocus(event, event.currentTarget);
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <header>
+              <AppIconTile accent="#6f7d8c" icon={Files} size="medium" />
+              <div>
+                <h2>{describeVfsSelectionTitle(groupSummary)}</h2>
+                <span>{groupSummary.typeLabel ?? "여러 종류"}</span>
+              </div>
+              <button
+                aria-label="선택 항목 속성 닫기"
+                onClick={() => setPropertiesGroupIds(null)}
+                type="button"
+              >
+                <X aria-hidden="true" size={16} />
+              </button>
+            </header>
+            <dl>
+              <div>
+                <dt>파일 형식</dt>
+                <dd>{groupSummary.typeLabel ?? "여러 종류"}</dd>
+              </div>
+              <div>
+                <dt>위치</dt>
+                <dd>{groupLocation}</dd>
+              </div>
+              <div>
+                <dt>크기</dt>
+                <dd>{formatStorageSize(groupSummary.bytes)}</dd>
+              </div>
+              <div>
+                <dt>내용</dt>
+                <dd>{describeVfsFolderContents(groupSummary)}</dd>
+              </div>
+              <div>
+                <dt>특성</dt>
+                <dd>
+                  {/*
+                   * Mixed reads as mixed rather than as "off": ticking an
+                   * unchecked box would hide the ones already hidden and say
+                   * nothing about the rest. Clicking it from mixed hides all,
+                   * which is what Windows does.
+                   */}
+                  <label className="file-properties-attribute">
+                    <input
+                      checked={groupHiddenState === "all"}
+                      disabled={groupHideableIds.length === 0}
+                      onChange={(event) => {
+                        // From mixed, Windows hides everything; from either
+                        // settled state the box says what happens next.
+                        const hide = groupHiddenState === "some" ? true : event.target.checked;
+                        groupHideableIds.forEach((itemId) => setVfsEntryHidden(itemId, hide));
+                      }}
+                      ref={(input) => {
+                        if (input) input.indeterminate = groupHiddenState === "some";
+                      }}
+                      type="checkbox"
+                    />
+                    숨김
+                  </label>
+                </dd>
+              </div>
+            </dl>
+            <footer>
+              <button
+                onClick={() => setPropertiesGroupIds(null)}
+                ref={propertiesConfirmRef}
+                type="button"
+              >
+                확인
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+
       {propertiesFile && (
         <div
           className="file-properties-overlay"

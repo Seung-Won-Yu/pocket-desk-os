@@ -6,6 +6,14 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **여러 항목 속성, 그리고 선택 크기가 폴더 안까지 센다.** 속성 on more than one row opened the single-file dialog for whichever row the menu was aimed at and said nothing about the rest. It now describes the selection: 2개 항목, 여러 종류 (or the one type they share), 위치, the total size, 내용 as a file and folder count, and a 숨김 box for the whole set. The status bar had the same hole in a different place — it summed entry sizes, and a folder's own size is zero, so any selection holding a folder under-reported. Measured: a folder holding 19 B plus a 19 B file now reads `2개 선택됨 · 38 B` and `크기 38 B`, where the bar used to say 19 B and the dialog named one file.
+
+  A file inside a selected folder is counted once, not twice — the totals come from the top-level rows, so selecting a folder and something inside it does not double it.
+
+  숨김 across a selection describes only what it can actually change. Counting a system folder into the state left the box stuck on mixed: every click hid the rest, the state never reached "all", and "all" is the only state a second click can undo. Two system folders selected now disable the row outright, the way one of them already did. Measured: unchecked → check → both hidden → uncheck → both back; hiding one on its own makes the box read mixed; two system folders disable it.
+
+- **Alt+D.** Windows' other name for Ctrl+L, and the one anyone who came from a browser reaches for. It belongs to the window, like Ctrl+L, so it works with the toolbar or the search box focused.
+
 - **이미 있는 이름으로 바꾸면 거절한다.** Renaming a file to a name its folder already had quietly produced something else: typing `web-surf.url` over `새 텍스트 문서.txt` gave `web-surf 2.url` — a name nobody asked for, with nothing to say it had happened except reading the row afterwards. Windows refuses instead, and so does this: 이 위치에 같은 이름의 항목이 이미 있습니다, the box stays open with what was typed still in it, and a free name goes through from that same box. Measured before and after: `web-surf 2.url` → refused, box open holding `web-surf.url`, then `자유로운 이름.txt` accepted.
 
   The same rule on the desktop, from the same check. A copy or a move onto a taken name still asks 파일 바꾸기 또는 건너뛰기 — there the other file is a real alternative, and here there is nothing to choose between.
