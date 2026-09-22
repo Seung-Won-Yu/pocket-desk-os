@@ -9521,9 +9521,37 @@ button {
   justify-content: flex-end;
 }
 
-.note-close-overlay button.is-primary {
-  background: #0067c0;
-  border-color: #1473e6;
+/* 줄 이동: the same frame the save prompt uses, with one number in it. */
+.note-goto-dialog h2 {
+  font-size: 1rem;
+  margin: 0 0 12px;
+}
+
+.note-goto-dialog label {
+  display: grid;
+  gap: 6px;
+}
+
+.note-goto-dialog input {
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  min-height: 32px;
+  padding: 0 8px;
+}
+
+.note-goto-error {
+  color: #ffb4a9;
+  margin: 8px 0 0;
+}
+
+.note-goto-dialog footer {
+  display: flex;
+  gap: 7px;
+  justify-content: flex-end;
+  margin-top: 18px;
 }
 
 .note-close-overlay button:hover,

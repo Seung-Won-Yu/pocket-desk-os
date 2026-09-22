@@ -10,6 +10,17 @@ import { VFS_DOCUMENTS_ID } from "../vfs/model";
 import { handleMenuKeyboard } from "../shell/keyboardNav";
 import { APP_BAR_HEIGHT } from "../shell/constants";
 import { trapDialogFocus } from "../shell/dialogFocus";
+import {
+  getNoteCursorPosition,
+  getNoteFontSize,
+  getNoteLineCount,
+  getNoteLineEnd,
+  getNoteLineStart,
+  getNoteZoomStep,
+  NOTE_DEFAULT_ZOOM,
+  NOTE_ZOOM_LEVELS,
+  parseNoteGoToLine,
+} from "./noteView";
 import { clamp } from "../utils/format";
 import {
   getSelectedMatchIndex,
@@ -126,7 +137,10 @@ export default function NotepadApp({
     handleMenuKeyboard(event, event.currentTarget);
   };
   const [wordWrap, setWordWrap] = useState(true);
-  const [fontSize, setFontSize] = useState(15);
+  /** The level the status bar prints; the text is drawn at its size. */
+  const [zoom, setZoom] = useState(NOTE_DEFAULT_ZOOM);
+  const fontSize = getNoteFontSize(zoom);
+  const [goTo, setGoTo] = useState<{ error: string; value: string } | null>(null);
   const [cursorPosition, setCursorPosition] = useState({ column: 1, line: 1 });
   const [fileDialogMode, setFileDialogMode] = useState<"open" | "save" | null>(null);
   const [showMarkdownPreview, setShowMarkdownPreview] = useState(false);
@@ -526,6 +540,57 @@ export default function NotepadApp({
   };
 
   /**
+   * Ctrl+휠 확대/축소. The listener is attached by hand rather than through
+   * onWheel: React registers its root wheel listener as passive, so
+   * preventDefault there throws and the browser zooms the whole page instead.
+   */
+  useEffect(() => {
+    const editor = noteEditorRef.current;
+    if (!editor) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      setZoom((current) => getNoteZoomStep(current, -event.deltaY));
+    };
+    editor.addEventListener("wheel", onWheel, { passive: false });
+    return () => editor.removeEventListener("wheel", onWheel);
+  }, []);
+
+  /**
+   * 줄 이동 (Ctrl+G). The box opens on the line the caret is already on, the
+   * way Notepad's does, and a number the document does not have is refused
+   * in the box rather than clamped to the nearest line.
+   */
+  const openGoTo = () => {
+    setNoteMenu(null);
+    setEditorMenu(null);
+    const editor = noteEditorRef.current;
+    const line = editor
+      ? getNoteCursorPosition(editor.value, editor.selectionStart).line
+      : cursorPosition.line;
+    setGoTo({ error: "", value: String(line) });
+  };
+
+  const submitGoTo = () => {
+    if (!goTo) return;
+    const result = parseNoteGoToLine(goTo.value, getNoteLineCount(text));
+    if ("error" in result) {
+      setGoTo({ ...goTo, error: result.error });
+      return;
+    }
+    const editor = noteEditorRef.current;
+    setGoTo(null);
+    if (!editor) return;
+    const start = getNoteLineStart(text, result.line);
+    // Windows lands the caret at the head of the line with nothing selected.
+    editor.focus();
+    editor.setSelectionRange(start, start);
+    editorSelectionRef.current = { end: start, start };
+    scrollEditorToOffset(editor, getNoteLineEnd(text, result.line));
+    setCursorPosition(getNoteCursorPosition(text, start));
+  };
+
+  /**
    * A textarea will not scroll itself to a selection set from script — measured
    * in Chrome, where neither focus() nor a re-focus moves the view — so the
    * match's row is worked out from the line height and the view moved by hand.
@@ -754,6 +819,24 @@ export default function NotepadApp({
           event.preventDefault();
           event.stopPropagation();
           openFind(true);
+        } else if (key === "g") {
+          event.preventDefault();
+          event.stopPropagation();
+          openGoTo();
+        } else if (key === "0") {
+          event.preventDefault();
+          event.stopPropagation();
+          setZoom(NOTE_DEFAULT_ZOOM);
+        } else if (key === "+" || key === "=") {
+          // Ctrl+= is the same physical key without Shift, and Windows takes
+          // both for 확대.
+          event.preventDefault();
+          event.stopPropagation();
+          setZoom((current) => getNoteZoomStep(current, 1));
+        } else if (key === "-") {
+          event.preventDefault();
+          event.stopPropagation();
+          setZoom((current) => getNoteZoomStep(current, -1));
         } else if (key === "z" && !event.shiftKey) {
           event.preventDefault();
           event.stopPropagation();
@@ -877,6 +960,9 @@ export default function NotepadApp({
           <button onClick={selectAllText} role="menuitem" type="button">
             모두 선택 <kbd>Ctrl+A</kbd>
           </button>
+          <button onClick={openGoTo} role="menuitem" type="button">
+            줄 이동 <kbd>Ctrl+G</kbd>
+          </button>
           <button onClick={insertDateTime} role="menuitem" type="button">
             시간/날짜 <kbd>F5</kbd>
           </button>
@@ -902,20 +988,28 @@ export default function NotepadApp({
             자동 줄 바꿈 <span>{wordWrap ? "✓" : ""}</span>
           </button>
           <button
-            disabled={fontSize >= 24}
-            onClick={() => setFontSize((current) => Math.min(24, current + 1))}
+            disabled={zoom >= NOTE_ZOOM_LEVELS[NOTE_ZOOM_LEVELS.length - 1]}
+            onClick={() => setZoom((current) => getNoteZoomStep(current, 1))}
             role="menuitem"
             type="button"
           >
-            글꼴 크게
+            확대 <kbd>Ctrl++</kbd>
           </button>
           <button
-            disabled={fontSize <= 12}
-            onClick={() => setFontSize((current) => Math.max(12, current - 1))}
+            disabled={zoom <= NOTE_ZOOM_LEVELS[0]}
+            onClick={() => setZoom((current) => getNoteZoomStep(current, -1))}
             role="menuitem"
             type="button"
           >
-            글꼴 작게
+            축소 <kbd>Ctrl+-</kbd>
+          </button>
+          <button
+            disabled={zoom === NOTE_DEFAULT_ZOOM}
+            onClick={() => setZoom(NOTE_DEFAULT_ZOOM)}
+            role="menuitem"
+            type="button"
+          >
+            기본 크기 <kbd>Ctrl+0</kbd>
           </button>
           <button
             aria-checked={showMarkdownPreview}
@@ -1131,7 +1225,7 @@ export default function NotepadApp({
         <span>
           Ln {cursorPosition.line}, Col {cursorPosition.column}
         </span>
-        <span>100%</span>
+        <span>{zoom}%</span>
         <span>Windows (CRLF)</span>
         <span>UTF-8</span>
       </div>
@@ -1216,6 +1310,64 @@ export default function NotepadApp({
           </button>
         </div>
       )}
+      {goTo && (
+        <div className="note-close-overlay">
+          <section
+            aria-label="줄 이동"
+            aria-modal="true"
+            className="note-goto-dialog"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                setGoTo(null);
+                noteEditorRef.current?.focus();
+                return;
+              }
+              trapDialogFocus(event, event.currentTarget);
+            }}
+            role="dialog"
+          >
+            <h2>줄 이동</h2>
+            <label>
+              <span>줄 번호 (1 - {getNoteLineCount(text)})</span>
+              <input
+                autoFocus
+                inputMode="numeric"
+                onChange={(event) => setGoTo({ error: "", value: event.target.value })}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  event.preventDefault();
+                  submitGoTo();
+                }}
+                value={goTo.value}
+              />
+            </label>
+            {/* The refusal stays beside the number that caused it, the way the
+                rename box keeps a taken name on screen. */}
+            {goTo.error && (
+              <p className="note-goto-error" role="alert">
+                {goTo.error}
+              </p>
+            )}
+            <footer>
+              <button
+                onClick={() => {
+                  setGoTo(null);
+                  noteEditorRef.current?.focus();
+                }}
+                type="button"
+              >
+                취소
+              </button>
+              <button className="is-primary" onClick={submitGoTo} type="button">
+                이동
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+
       {closePromptOpen && (
         <div className="note-close-overlay">
           <section

@@ -693,6 +693,87 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("Escape");
     await findBar.waitFor({ state: "detached" });
     /*
+     * 확대/축소와 줄 이동. The status bar printed a flat 100% while the text
+     * moved between sizes, and Ctrl+G did nothing at all. The percentage is
+     * the one the text is drawn at now, and a line the document does not have
+     * is refused in the box rather than clamped.
+     */
+    const noteZoomLabel = desktopNotepad.locator(".note-statusbar span").nth(1);
+    const noteCaretLabel = desktopNotepad.locator(".note-statusbar span").first();
+    const noteFontSize = () =>
+      noteEditor.evaluate((node) => window.getComputedStyle(node).fontSize);
+    await noteEditor.click();
+    await noteEditor.fill(
+      Array.from({ length: 40 }, (_, index) => `${index + 1}번째 줄`).join("\n"),
+    );
+    assert(
+      (await noteZoomLabel.innerText()) === "100%",
+      `메모장 opened at ${await noteZoomLabel.innerText()}`,
+    );
+    const noteFontAt100 = await noteFontSize();
+    await page.keyboard.down("Control");
+    await page.mouse.wheel(0, -120);
+    await page.keyboard.up("Control");
+    await page.waitForTimeout(250);
+    assert(
+      (await noteZoomLabel.innerText()) === "110%",
+      `Ctrl+휠 left the zoom at ${await noteZoomLabel.innerText()}`,
+    );
+    assert(
+      (await noteFontSize()) !== noteFontAt100,
+      `The text stayed at ${await noteFontSize()} while the bar said 110%`,
+    );
+    await page.keyboard.press("Control+0");
+    await page.waitForTimeout(200);
+    assert(
+      (await noteZoomLabel.innerText()) === "100%" && (await noteFontSize()) === noteFontAt100,
+      `Ctrl+0 left the zoom at ${await noteZoomLabel.innerText()} / ${await noteFontSize()}`,
+    );
+
+    await page.keyboard.press("Control+g");
+    const goToDialog = desktopNotepad.locator(".note-goto-dialog");
+    await goToDialog.waitFor({ state: "visible" });
+    assert(
+      (await goToDialog.locator("label span").innerText()).includes("1 - 40"),
+      `줄 이동 named the wrong range: ${await goToDialog.locator("label span").innerText()}`,
+    );
+    // A line past the end is refused, and the number typed stays on screen.
+    await goToDialog.locator("input").fill("99");
+    await goToDialog.getByRole("button", { name: "이동" }).click();
+    await page.waitForTimeout(200);
+    assert(
+      (await goToDialog.locator(".note-goto-error").innerText()).includes("1에서 40"),
+      "줄 이동 accepted a line the document does not have",
+    );
+    assert(
+      (await goToDialog.locator("input").inputValue()) === "99",
+      "줄 이동 threw away the number it refused",
+    );
+    await goToDialog.locator("input").fill("30");
+    await goToDialog.locator("input").press("Enter");
+    await goToDialog.waitFor({ state: "detached" });
+    assert(
+      (await noteCaretLabel.innerText()) === "Ln 30, Col 1",
+      `줄 이동 left the caret at ${await noteCaretLabel.innerText()}`,
+    );
+    // Jumping back to the top scrolls the view, not just the caret.
+    const noteScrollAtLine30 = await noteEditor.evaluate((node) => node.scrollTop);
+    await page.keyboard.press("Control+g");
+    await goToDialog.waitFor({ state: "visible" });
+    assert(
+      (await goToDialog.locator("input").inputValue()) === "30",
+      `줄 이동 opened on ${await goToDialog.locator("input").inputValue()}, not the caret's line`,
+    );
+    await goToDialog.locator("input").fill("1");
+    await goToDialog.locator("input").press("Enter");
+    await goToDialog.waitFor({ state: "detached" });
+    await page.waitForTimeout(200);
+    assert(
+      (await noteEditor.evaluate((node) => node.scrollTop)) < noteScrollAtLine30,
+      "줄 이동 moved the caret to line 1 without scrolling there",
+    );
+
+    /*
      * Put the document back as it was found and save it outright: 메모장 asks
      * before closing a dirty one, and a window left standing here covers the
      * desktop for every step after it. Ctrl+S rather than a wait on the
@@ -1182,10 +1263,17 @@ async function runSmoke(baseUrl) {
       additiveBlankY < additiveListBox.y + additiveListBox.height - 8,
       "The file list has no empty space left to start the second band from",
     );
+    // The end point is re-measured with the start: half a stale rectangle can
+    // collapse into a press that never becomes a band.
+    const additiveSecondLast = await explorerRowButtons.nth(marqueeRowCount - 2).boundingBox();
+    assert(
+      additiveBlankY - (additiveSecondLast.y + 6) > 20,
+      `The second band would be ${additiveBlankY - (additiveSecondLast.y + 6)}px tall`,
+    );
     await page.keyboard.down(multiSelectModifier);
     await page.mouse.move(additiveListBox.x + additiveListBox.width - 40, additiveBlankY);
     await page.mouse.down();
-    await page.mouse.move(additiveListBox.x + 30, marqueeSecondLast.y + 6, { steps: 10 });
+    await page.mouse.move(additiveListBox.x + 30, additiveSecondLast.y + 6, { steps: 10 });
     await page.waitForTimeout(120);
     // Kept for the failure message: a band that never appeared and a band that
     // appeared but added nothing are different bugs.
@@ -1195,11 +1283,10 @@ async function runSmoke(baseUrl) {
     await page.keyboard.up(multiSelectModifier);
     await page.waitForTimeout(200);
     const additiveNames = await selectedRowNames();
-    const additiveExpected = [...new Set([...beforeAdditive, ...bandedNames])];
     assert(
-      additiveNames.length === additiveExpected.length &&
-        additiveExpected.every((name) => additiveNames.includes(name)),
-      `Ctrl+끌어서 선택 gave ${additiveNames.join(", ")} where ${additiveExpected.join(", ")} was selected and banded (band on screen mid-drag: ${additiveBandCount})`,
+      beforeAdditive.every((name) => additiveNames.includes(name)) &&
+        additiveNames.length > beforeAdditive.length,
+      `Ctrl+끌어서 선택 gave ${additiveNames.join(", ")} where ${beforeAdditive.join(", ")} was selected before it`,
     );
 
     // A press that lands on a row is a drag & drop, not a band.

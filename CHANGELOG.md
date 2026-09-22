@@ -6,6 +6,12 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **메모장 확대/축소와 줄 이동 (Ctrl+G).** The status bar printed a flat `100%` while 글꼴 크게 moved the text between 12 and 24px — the number meant nothing, because nothing ever set it. Zoom is a level now, and the percentage on the bar is the one the text is drawn at: measured, Ctrl+휠 took it to 110% and the text from 15px to 17px, two notches back gave 90% / 14px, and Ctrl+0 put both back to 100% / 15px. Ctrl++ and Ctrl+- step the same levels, and 보기 lists all three with their shortcuts.
+
+  The wheel listener is attached by hand with `{ passive: false }`. React registers its root wheel listener as passive, so a `preventDefault` from `onWheel` throws and the browser zooms the whole page instead — the same trap Ctrl+휠 보기 전환 hit in the explorer.
+
+  Ctrl+G opens 줄 이동 on the line the caret is already on and moves the caret to the head of the line typed. A line the document does not have is refused in the box, which stays open holding the number: measured on a 40-line document, `99` gave 줄 번호는 1에서 40 사이여야 합니다 with `99` still in the box, then `2` went through. Line 30 put the status bar on `Ln 30, Col 1`, and jumping back to line 1 scrolled the view from 552 to 0 rather than moving the caret out of sight.
+
 - **파일 탐색기 끌어서 선택.** The desktop has drawn a selection band since early on; the list inside a 파일 탐색기 window never did. A drag over the rows picked nothing at all, and — measured before — a click on the empty space under the last row left the selection exactly as it was, where Windows drops it.
 
   A press on the list's own empty space now starts a band: it is drawn in the list's content space, so a list scrolled halfway down marks the rows the pointer is really over, and it takes every row it touches in list order. Measured: a band drawn up from under the last row took 문서, 사진 and web-surf.url; in 큰 아이콘 보기 a band across the tiles took all five. Ctrl (⌘) held adds to what was already selected instead of replacing it — measured, 게임 plus the two the band crossed.
