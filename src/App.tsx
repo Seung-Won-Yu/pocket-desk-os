@@ -174,6 +174,7 @@ import {
 import { NameConflictDialog } from "./shell/components/NameConflictDialog";
 import { PermanentDeleteDialog } from "./shell/components/PermanentDeleteDialog";
 import { getVfsDropEffect, isVfsCopyDrag } from "./vfs/dragEffect";
+import { buildBulkRenames } from "./vfs/bulkRename";
 import { findEntryForAppDrop, readVfsDragPayload } from "./vfs/dropTarget";
 import {
   findVfsNameConflicts,
@@ -350,6 +351,7 @@ type ContentOps = Pick<
   | "permanentlyDeleteVfsEntry"
   | "requestPermanentDelete"
   | "playSound"
+  | "renameVfsEntries"
   | "renameVfsEntry"
   | "requestPowerAction"
   | "resetDesktopIconLayout"
@@ -2767,6 +2769,32 @@ export default function App() {
     }
   };
 
+  /**
+   * 여러 항목 이름 바꾸기. One write, so one Ctrl+Z puts every one of them
+   * back — renaming them one at a time would leave a stack of steps for what
+   * the user did once.
+   */
+  const renameVfsEntries = (itemIds: string[], name: string) => {
+    const targets = itemIds.filter((id) => !isVfsSystemFolderId(id));
+    const renames = buildBulkRenames(activeDesktopItems, targets, name);
+    if (renames.length === 0) return false;
+
+    const byId = new Map(renames.map((entry) => [entry.id, entry.name] as const));
+    const now = Date.now();
+    playSound("success");
+    mutateVfsItems("이름 바꾸기", (current) =>
+      current.map((item) =>
+        byId.has(item.id) ? { ...item, name: byId.get(item.id)!, updatedAt: now } : item,
+      ),
+    );
+    notify({
+      detail: `${renames[0].name} 부터 번호를 붙였습니다.`,
+      title: `${renames.length}개 항목 이름 변경됨`,
+      tone: "success",
+    });
+    return true;
+  };
+
   const renameVfsEntry = (itemId: string, name: string) => {
     const target = activeDesktopItems.find((item) => item.id === itemId);
     if (!target || isVfsSystemFolderId(itemId)) return false;
@@ -4940,6 +4968,7 @@ export default function App() {
     permanentlyDeleteVfsEntry,
     requestPermanentDelete,
     playSound,
+    renameVfsEntries,
     renameVfsEntry,
     requestPowerAction,
     resetDesktopIconLayout,
@@ -5003,6 +5032,7 @@ export default function App() {
       requestPermanentDelete: (...args) =>
         contentOpsRef.current.requestPermanentDelete(...args),
       playSound: (...args) => contentOpsRef.current.playSound(...args),
+      renameVfsEntries: (...args) => contentOpsRef.current.renameVfsEntries(...args),
       renameVfsEntry: (...args) => contentOpsRef.current.renameVfsEntry(...args),
       requestPowerAction: (...args) => contentOpsRef.current.requestPowerAction(...args),
       resetDesktopIconLayout: (...args) =>

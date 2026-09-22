@@ -6,6 +6,10 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **여러 항목 이름 바꾸기 (F2).** F2 on a selection did nothing at all — the rename box only ever opened for one row, and the guard that made that true was explicit. One name typed now numbers the whole set the way Windows does: three files renamed to `보고서` become `보고서 (1).txt`, `보고서 (2).txt`, `보고서 (3).txt`, each keeping **its own** extension rather than the one that happened to be typed, and a folder keeping none. A number the folder already holds is stepped over instead of collided with — measured: with `보고서 (1).txt` already there, the next two came out (2) and (3).
+
+  One write, so one Ctrl+Z puts all of them back (measured). Renaming them one at a time would have left a stack of steps for something done once. A system folder is never part of the run, and the context menu says how many it is about to rename.
+
 - **여러 항목 속성, 그리고 선택 크기가 폴더 안까지 센다.** 속성 on more than one row opened the single-file dialog for whichever row the menu was aimed at and said nothing about the rest. It now describes the selection: 2개 항목, 여러 종류 (or the one type they share), 위치, the total size, 내용 as a file and folder count, and a 숨김 box for the whole set. The status bar had the same hole in a different place — it summed entry sizes, and a folder's own size is zero, so any selection holding a folder under-reported. Measured: a folder holding 19 B plus a 19 B file now reads `2개 선택됨 · 38 B` and `크기 38 B`, where the bar used to say 19 B and the dialog named one file.
 
   A file inside a selected folder is counted once, not twice — the totals come from the top-level rows, so selecting a folder and something inside it does not double it.

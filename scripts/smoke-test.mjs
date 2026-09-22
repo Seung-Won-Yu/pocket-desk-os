@@ -1837,6 +1837,51 @@ async function runSmoke(baseUrl) {
       .waitFor({ state: "detached" });
 
     /*
+     * 여러 항목 이름 바꾸기. F2 on a selection did nothing at all — the box
+     * only ever opened for one row. One name typed now numbers the whole set,
+     * the way Windows does, and one Ctrl+Z puts all of them back.
+     */
+    const bulkNames = ["묶음 하나.txt", "묶음 둘.txt"];
+    for (const bulkName of bulkNames) {
+      await files.getByRole("button", { name: "새로 만들기" }).first().click();
+      await files.getByRole("menuitem", { name: "텍스트 문서", exact: true }).click();
+      const newBox = files.locator(".file-inline-rename input");
+      await newBox.waitFor({ state: "visible" });
+      await newBox.fill(bulkName);
+      await newBox.press("Enter");
+      await explorerRows.filter({ hasText: bulkName }).first().waitFor();
+    }
+    await explorerRows.filter({ hasText: bulkNames[0] }).first().click();
+    await explorerRows
+      .filter({ hasText: bulkNames[1] })
+      .first()
+      .click({ modifiers: [multiSelectModifier] });
+    await page.keyboard.press("F2");
+    const bulkBox = files.locator(".file-inline-rename input");
+    await bulkBox.waitFor({ state: "visible" });
+    await bulkBox.fill("묶음 이름");
+    await bulkBox.press("Enter");
+    await explorerRows.filter({ hasText: "묶음 이름 (2).txt" }).first().waitFor();
+    assert(
+      (await explorerRows.filter({ hasText: "묶음 이름 (1).txt" }).count()) === 1,
+      "The numbered run did not start at (1)",
+    );
+    // One write, so one undo: renaming them one at a time would leave a stack
+    // of steps for what was done once.
+    await explorerRows.first().click();
+    await page.keyboard.press("Control+z");
+    await explorerRows.filter({ hasText: bulkNames[0] }).first().waitFor();
+    assert(
+      (await explorerRows.filter({ hasText: bulkNames[1] }).count()) === 1,
+      "One undo took back only part of the bulk rename",
+    );
+    for (const bulkName of bulkNames) {
+      await explorerRows.filter({ hasText: bulkName }).first().click();
+      await page.keyboard.press("Delete");
+      await explorerRows.filter({ hasText: bulkName }).first().waitFor({ state: "detached" });
+    }
+
+    /*
      * Explorer's hand habits: Ctrl+wheel walks the view sizes, a middle click
      * opens a folder in a new tab, and Shift+Delete skips the 휴지통 after the
      * shell has asked.

@@ -180,6 +180,8 @@ type FilesAppProps = {
   createVfsTextFile: (parentId?: string) => DesktopItem;
   deleteVfsEntries: (itemIds: string[]) => void;
   desktopItems: DesktopItem[];
+  /** 여러 항목: one typed name, numbered across the selection, in one step. */
+  renameVfsEntries: (itemIds: string[], name: string) => boolean;
   /** Shift+Delete: the shell asks, then skips the 휴지통 for good. */
   requestPermanentDelete: (itemIds: string[]) => void;
   exportVfsZip: () => void;
@@ -329,6 +331,7 @@ export default function FilesApp({
   createVfsTextFile,
   deleteVfsEntries,
   desktopItems,
+  renameVfsEntries,
   requestPermanentDelete,
   exportVfsZip,
   fileRedoLabel,
@@ -1404,6 +1407,17 @@ export default function FilesApp({
       });
       return false;
     }
+    /*
+     * Several rows selected: the one name typed here numbers all of them,
+     * the way Windows does — 사진 (1), 사진 (2), … each keeping its own
+     * extension. A system folder is never part of it.
+     */
+    const bulkIds = getSelectedCommandIds(fileId).filter(
+      (itemId) => !isVfsSystemFolderId(itemId),
+    );
+    if (bulkIds.length > 1) {
+      return renameVfsEntries(bulkIds, name);
+    }
     const target = files.find((file) => file.id === fileId);
     // False means the shell refused it — a name the folder already has. Keep
     // editing rather than closing the box over a rename that did not happen.
@@ -1585,14 +1599,11 @@ export default function FilesApp({
       return;
     }
 
-    if (
-      event.key === "F2" &&
-      selectedFile &&
-      selectedIds.length <= 1 &&
-      !isVfsSystemFolderId(selectedFile.id)
-    ) {
+    if (event.key === "F2" && selectedFile && !isVfsSystemFolderId(selectedFile.id)) {
       event.preventDefault();
-      setSelectedIds([selectedFile.id]);
+      // A selection keeps its selection: F2 on several rows types one name
+      // for all of them, and used to do nothing at all.
+      if (selectedIds.length <= 1) setSelectedIds([selectedFile.id]);
       setActiveFileId(selectedFile.id);
       setRenaming(true);
       return;
@@ -2413,7 +2424,7 @@ export default function FilesApp({
             <button
               aria-label="이름 바꾸기"
               className="file-command-action file-command-compact"
-              disabled={!selectedFile || selectedIds.length > 1 || selectedHasSystemFolder}
+              disabled={!selectedFile || selectedHasSystemFolder}
               onClick={() => selectedFile && setRenaming(true)}
               type="button"
             >
@@ -3076,7 +3087,7 @@ export default function FilesApp({
             붙여넣기
           </button>
           <button
-            disabled={selectedIds.length > 1 || isVfsSystemFolderId(contextFile.id)}
+            disabled={isVfsSystemFolderId(contextFile.id)}
             onClick={() => {
               setFileContextMenu(null);
               setRenaming(true);
@@ -3085,7 +3096,7 @@ export default function FilesApp({
             type="button"
           >
             <Pencil aria-hidden="true" size={16} />
-            이름 바꾸기
+            {selectedIds.length > 1 ? `${selectedIds.length}개 이름 바꾸기` : "이름 바꾸기"}
           </button>
           {contextFile.item.kind === "folder" && (
             <>
