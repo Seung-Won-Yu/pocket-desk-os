@@ -210,6 +210,7 @@ import {
   persistNightLightStrength,
 } from "./shell/nightLight";
 import { getNeighbourByPosition, handleMenuKeyboard } from "./shell/keyboardNav";
+import { getNextDesktopViewMode } from "./shell/desktopViewMode";
 import {
   getRegionCropRect,
   getRegionSelectionBounds,
@@ -709,6 +710,8 @@ export default function App() {
   const [clipboardPanelOpen, setClipboardPanelOpen] = useState(false);
   /** 이모지 패널 (Win+. / Win+;). */
   const [emojiPanelOpen, setEmojiPanelOpen] = useState(false);
+  /** Win+X: each press asks the taskbar for its power user menu. */
+  const [powerUserMenuRequest, setPowerUserMenuRequest] = useState(0);
   /** 사각형 캡처: the crosshair overlay and the band being dragged on it. */
   const [regionCapture, setRegionCapture] = useState<{
     current: RegionPoint;
@@ -802,6 +805,28 @@ export default function App() {
   const altTabActionsRef = useRef<{ commitTo: (windowId: string) => void } | null>(null);
   const desktopRenameGuardRef = useRef(false);
   const desktopSelectionRef = useRef<DesktopSelectionState | null>(null);
+  const desktopSurfaceRef = useRef<HTMLElement | null>(null);
+
+  /**
+   * Ctrl+휠 on the bare desktop changes the icon size, as it does in Windows.
+   * The listener is attached by hand: React's root wheel listener is passive,
+   * so a preventDefault from onWheel throws and the browser zooms the page.
+   */
+  useEffect(() => {
+    const surface = desktopSurfaceRef.current;
+    if (!surface) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      // A window over the desktop keeps its own Ctrl+휠 — the explorer's view
+      // switch, 메모장's zoom — and only the bare desktop answers here.
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(".window-layer, .taskbar, .start-menu")) return;
+      event.preventDefault();
+      setDesktopViewMode((current) => getNextDesktopViewMode(current, event.deltaY));
+    };
+    surface.addEventListener("wheel", onWheel, { passive: false });
+    return () => surface.removeEventListener("wheel", onWheel);
+  }, []);
   const showDesktopRestoreRef = useRef<string[]>([]);
   /** Windows an Aero Shake minimized, so the next shake can bring them back. */
   const shakeRestoreRef = useRef<string[]>([]);
@@ -4761,6 +4786,14 @@ export default function App() {
           setClipboardPanelOpen((current) => !current);
           return;
         }
+        if (key === "x") {
+          // Windows' power user menu, the one the Start button's right-click
+          // already opened — the chord itself did nothing.
+          event.preventDefault();
+          setStartOpen(false);
+          setPowerUserMenuRequest((current) => current + 1);
+          return;
+        }
         if (key === "." || key === ";") {
           // Windows opens the emoji panel with either of these two.
           event.preventDefault();
@@ -5510,6 +5543,7 @@ export default function App() {
       className={`desktop desktop-view-${desktopViewMode} theme-${theme} wallpaper-${wallpaper} ${
         shellPhase === "unlocked" ? "is-unlocked" : ""
       }`}
+      ref={desktopSurfaceRef}
       onContextMenu={showDesktopContextMenu}
       onDragOver={(event) => {
         if (!event.dataTransfer.types.includes(VFS_DRAG_MIME)) return;
@@ -5764,6 +5798,7 @@ export default function App() {
       )}
 
       <Taskbar
+        powerUserMenuRequest={powerUserMenuRequest}
         activeDesktopIndex={activeDesktopIndex}
         activeDesktopName={getDesktopName(desktopNames, activeDesktopIndex)}
         focusAssist={focusAssist}

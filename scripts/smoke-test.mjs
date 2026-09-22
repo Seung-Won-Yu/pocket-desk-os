@@ -6165,6 +6165,101 @@ async function runSmoke(baseUrl) {
     await touchContext.close();
 
     /*
+     * 마우스 관례: Ctrl+휠 on the bare desktop sizes the icons, Shift+클릭 on a
+     * taskbar button opens another window, and Win+X opens the power user menu.
+     * All three are Windows' and none of them did anything here.
+     */
+    await page.keyboard.press("Meta+d");
+    await page.waitForTimeout(400);
+    const desktopViewClass = async () =>
+      (await page.locator("main.desktop").getAttribute("class")).match(/desktop-view-\w+/)[0];
+    const desktopIconSize = async () => {
+      const box = await page.locator(".desktop-icon").first().boundingBox();
+      return Math.round(box.width);
+    };
+    const viewBeforeWheel = await desktopViewClass();
+    await page.mouse.move(900, 400);
+    await page.keyboard.down("Control");
+    // Down to the smallest first, so the run starts from a known size whatever
+    // the steps before it left behind.
+    await page.mouse.wheel(0, 120);
+    await page.mouse.wheel(0, 120);
+    await page.waitForTimeout(400);
+    assert(
+      (await desktopViewClass()) === "desktop-view-small",
+      `Ctrl+휠 down left the desktop at ${await desktopViewClass()}`,
+    );
+    const iconAtSmall = await desktopIconSize();
+    // The bottom holds rather than wrapping round to 큰 아이콘.
+    await page.mouse.wheel(0, 120);
+    await page.waitForTimeout(300);
+    assert(
+      (await desktopViewClass()) === "desktop-view-small",
+      `Ctrl+휠 past 작은 아이콘 wrapped to ${await desktopViewClass()}`,
+    );
+    await page.mouse.wheel(0, -120);
+    await page.waitForTimeout(350);
+    const iconAtMedium = await desktopIconSize();
+    assert(
+      (await desktopViewClass()) === "desktop-view-medium" && iconAtMedium > iconAtSmall,
+      `Ctrl+휠 up gave ${await desktopViewClass()} (${iconAtMedium}px from ${iconAtSmall}px)`,
+    );
+    await page.mouse.wheel(0, -120);
+    await page.mouse.wheel(0, -120);
+    await page.waitForTimeout(400);
+    assert(
+      (await desktopViewClass()) === "desktop-view-large",
+      `Ctrl+휠 up twice more gave ${await desktopViewClass()}`,
+    );
+    // Back to the size this run found, so nothing after it sees a new desktop.
+    const stepsBack = {
+      "desktop-view-large": 0,
+      "desktop-view-medium": 1,
+      "desktop-view-small": 2,
+    }[viewBeforeWheel];
+    for (let step = 0; step < stepsBack; step += 1) {
+      await page.mouse.wheel(0, 120);
+      await page.waitForTimeout(250);
+    }
+    await page.keyboard.up("Control");
+    assert(
+      (await desktopViewClass()) === viewBeforeWheel,
+      `The desktop did not come back to ${viewBeforeWheel}`,
+    );
+
+    // Win+X: the menu the Start button's right-click opens, on the keyboard.
+    await page.keyboard.press("Meta+x");
+    const powerUserMenu = page.locator("[aria-label='작업 표시줄 메뉴']");
+    await powerUserMenu.waitFor({ state: "visible" });
+    assert(
+      (await powerUserMenu.innerText()).includes("작업 관리자"),
+      `Win+X opened ${(await powerUserMenu.innerText()).replace(/\n/g, " | ")}`,
+    );
+    await page.keyboard.press("Escape");
+    await powerUserMenu.waitFor({ state: "detached" });
+
+    // Shift+클릭 on a taskbar button opens another window of that app.
+    await page.keyboard.press("Meta+e");
+    await page.waitForTimeout(600);
+    const filesWindows = () => page.locator('article[data-app-id="files"]').count();
+    const filesBeforeShift = await filesWindows();
+    await page
+      .locator(".taskbar-app")
+      .filter({ hasText: "파일 탐색기" })
+      .first()
+      .click({ modifiers: ["Shift"] });
+    await page.waitForTimeout(700);
+    assert(
+      (await filesWindows()) === filesBeforeShift + 1,
+      `Shift+클릭 left ${await filesWindows()} 파일 탐색기 windows, not ${filesBeforeShift + 1}`,
+    );
+    // Put the extra windows away again; the steps after this one own the desktop.
+    await page.keyboard.press("Alt+F4");
+    await page.waitForTimeout(300);
+    await page.keyboard.press("Alt+F4");
+    await page.waitForTimeout(300);
+
+    /*
      * 이모지 패널 (Win+. / Win+;). Windows puts one behind both chords and the
      * shell had neither; the pick lands at the caret of the field the panel
      * was opened over, and 최근 사용 remembers what was used.

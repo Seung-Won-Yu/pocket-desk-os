@@ -78,6 +78,7 @@ export function Taskbar({
   onOpenSettingsSection,
   onReorderPinnedApp,
   onOpenStart,
+  powerUserMenuRequest,
   getDocumentLabel,
   onArrangeWindows,
   onOpenApp,
@@ -140,6 +141,8 @@ export function Taskbar({
   /** The clock's 날짜 및 시간 조정 and 작업 표시줄 설정 open 설정 at their page. */
   onOpenSettingsSection: (section: "personalization" | "time") => void;
   onOpenStart: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  /** Bumped by Win+X: the shell asks for the power user menu. */
+  powerUserMenuRequest?: number;
   getDocumentLabel: (windowId: string, appId: AppId) => string | undefined;
   /** 창 계단식 배열 / 위아래 정렬 / 나란히 정렬 from the taskbar menu. */
   onArrangeWindows: (mode: ArrangeMode) => void;
@@ -206,6 +209,7 @@ export function Taskbar({
     null,
   );
   const [shellMenu, setShellMenu] = useState<{ x: number; y: number } | null>(null);
+  const startButtonRef = useRef<HTMLButtonElement>(null);
   const taskbarMenuButtonRef = useRef<HTMLButtonElement>(null);
   const shellMenuButtonRef = useRef<HTMLButtonElement>(null);
   const [trayPanel, setTrayPanel] = useState<"notifications" | "quick" | null>(null);
@@ -381,6 +385,23 @@ export function Taskbar({
   };
 
   /*
+   * Win+X opens the same menu the Start button's right-click does, anchored on
+   * that button — Windows calls it the power user menu and the chord did
+   * nothing here. The shell bumps a counter rather than reaching in, so the
+   * menu stays the taskbar's own state.
+   */
+  useEffect(() => {
+    if (!powerUserMenuRequest) return;
+    const box = startButtonRef.current?.getBoundingClientRect();
+    setPreview(null);
+    setTaskbarMenu(null);
+    setShellMenu({
+      x: box ? box.left + box.width / 2 : window.innerWidth / 2,
+      y: box ? box.top : window.innerHeight,
+    });
+  }, [powerUserMenuRequest]);
+
+  /*
    * What keeps a hidden bar out: anything of the bar's own that is open. The
    * Start menu counts, and so does a window preview — the pointer travels off
    * the bar to reach either of them.
@@ -458,6 +479,7 @@ export function Taskbar({
           className="start-button"
           onClick={onOpenStart}
           onContextMenu={openShellMenu}
+          ref={startButtonRef}
           type="button"
         >
           <StartGlyph />
@@ -588,7 +610,15 @@ export function Taskbar({
                   className={`taskbar-app ${activeAppWindow ? "is-current" : ""} ${
                     allMinimized ? "is-minimized" : ""
                   } ${isPinned ? "is-pinned" : ""} ${windowItem ? "is-open" : ""}`}
-                  onClick={() => {
+                  onClick={(event) => {
+                    // Windows opens another instance on Shift+click, the same
+                    // way a middle click does; this button only ever toggled.
+                    if (event.shiftKey && app.multiInstance) {
+                      event.preventDefault();
+                      hidePreviewNow();
+                      onOpenNewWindow(app.id);
+                      return;
+                    }
                     if (activeAppWindow && orderedAppWindows.length > 1) {
                       const activeIndex = orderedAppWindows.findIndex(
                         (item) => item.id === activeAppWindow.id,

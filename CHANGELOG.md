@@ -6,6 +6,12 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **바탕 화면 Ctrl+휠, 작업 표시줄 Shift+클릭, Win+X.** Three mouse-and-keyboard habits Windows has that did nothing here.
+
+  Ctrl+휠 on the bare desktop sizes the icons — the sizes were only reachable through 보기 in the desktop's own menu, which is not how anyone changes them. Measured: 보통 → 큰 takes the icons from 86px to 110px, another notch holds at 큰 rather than wrapping, and two notches down gives 작은 (76px). A window over the desktop keeps its own Ctrl+휠: measured, the explorer's list switched views and the desktop's icons did not move.
+
+  Shift+클릭 on a taskbar button opens another window of that app, the way a middle click already did — measured, one 파일 탐색기 became two. Win+X opens the same menu the Start button's right-click opens, anchored on that button, with the keyboard already on its first item.
+
 - **캡처 도구 사각형 캡처.** The tool could picture the whole screen or one window and nothing in between, where Windows' 캡처 도구 opens on a rectangle. 새 캡처 now puts a crosshair over everything, and the picture is the band that was dragged: measured, a 320×240 drag saved a 320×240 PNG. Escape cancels, and a press that never became a drag cancels too — both say 영역을 고르지 않아 캡처하지 않았습니다 rather than saving an empty picture.
 
   The band is dragged before the picture is taken, so nothing that was on screen during the selection reaches the capture, and the crop is scaled from CSS pixels into the picture's own — a 2× screen crops where the band actually was.
