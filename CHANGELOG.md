@@ -6,6 +6,14 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **그림판 스포이드와 크기 조정.** 그림판 had seven tools and no way to pick a colour up off the picture, and no way to change the canvas at all — it was 1120×720 forever. 스포이드 reads the pixel under the click into 붓 색상 and hands the previous tool straight back, the way Paint's own eyedropper does: measured, a #2563eb brush clicking a #ef4444 stroke came back holding #ef4444 with 브러시 selected again. Blank paper reads as `#ffffff`, not the transparent black the pixels actually hold.
+
+  크기 조정 opens on the canvas's current size, keeps the aspect ratio while it is checked — typing 560 into 가로 put 360 into 세로 — and rescales the drawing into the new bitmap rather than cropping it. Measured: 1120×720 → 560×300 with the stroke still there.
+
+  Undo had been stretching the old picture over the new canvas, because a snapshot was drawn into whatever size the canvas happened to be. A snapshot carries the size it was taken at, so 실행 취소 now restores that size too: 560×300 → 1120×720 on one Ctrl+Z, and Ctrl+Y back.
+
+  그림판 also opens 160px wider. Five ribbon buttons and eight tools did not fit in 820px — the 색 palette was scrolled off the right edge of the window at the size the app opened at. Measured: 949px of ribbon in an 818px row before, nothing outside the window now.
+
 - **여러 항목 이름 바꾸기 (F2).** F2 on a selection did nothing at all — the rename box only ever opened for one row, and the guard that made that true was explicit. One name typed now numbers the whole set the way Windows does: three files renamed to `보고서` become `보고서 (1).txt`, `보고서 (2).txt`, `보고서 (3).txt`, each keeping **its own** extension rather than the one that happened to be typed, and a folder keeping none. A number the folder already holds is stepped over instead of collided with — measured: with `보고서 (1).txt` already there, the next two came out (2) and (3).
 
   One write, so one Ctrl+Z puts all of them back (measured). Renaming them one at a time would have left a stack of steps for something done once. A system folder is never part of the run, and the context menu says how many it is about to rename.

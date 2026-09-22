@@ -134,7 +134,9 @@ export const appMetadata: Record<AppId, AppMetadata> = {
     subtitle: "캔버스 그림판",
     icon: Paintbrush,
     accent: "#ef6f6c",
-    defaultSize: { width: 820, height: 560 },
+    // Wide enough that every ribbon group — tools, size, colours — is on
+    // screen when 그림판 opens; narrower than this and 색 scrolls out of view.
+    defaultSize: { width: 980, height: 560 },
     minSize: { width: 620, height: 440 },
   },
   notepad: {

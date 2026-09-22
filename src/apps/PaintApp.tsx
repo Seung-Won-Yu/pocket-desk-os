@@ -1,14 +1,16 @@
 import {
   Check,
   Eraser,
-  PaintBucket,
   FileText,
   FolderOpen,
   Minus,
   Paintbrush,
+  PaintBucket,
   Palette,
+  Pipette,
   Redo2,
   Save,
+  Scaling,
   Square,
   Undo2,
   ZoomIn,
@@ -16,13 +18,19 @@ import {
 } from "lucide-react";
 import { trapDialogFocus } from "../shell/dialogFocus";
 import { useEffect, useRef, useState } from "react";
+import {
+  getResizedDimensions,
+  PAINT_MAX_DIMENSION,
+  PAINT_MIN_DIMENSION,
+  toHexColor,
+} from "./paintTools";
 import type React from "react";
 import FileDialog from "../components/FileDialog";
 import type { DesktopItem } from "../types";
 import { VFS_PICTURES_ID } from "../vfs/model";
 import { handleMenuKeyboard } from "../shell/keyboardNav";
 
-type PaintTool = "brush" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "text";
+type PaintTool = "brush" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "text" | "picker";
 const PAINT_SAVE_EVENT = "pocket-desk-save-paint";
 const PAINT_OPEN_EVENT = "pocket-desk-open-paint";
 const PAINT_SAVE_AS_EVENT = "pocket-desk-save-paint-as";
@@ -74,6 +82,7 @@ const paintTools: Array<{ id: PaintTool; label: string }> = [
   { id: "rect", label: "사각형" },
   { id: "ellipse", label: "타원" },
   { id: "text", label: "텍스트" },
+  { id: "picker", label: "스포이드" },
 ];
 
 /**
@@ -187,6 +196,13 @@ export default function PaintApp({
   const activeCanvas =
     canvasEntries.find((item) => item.id === activeCanvasId) ?? canvasEntries[0];
   const [tool, setTool] = useState<PaintTool>("brush");
+  /** What the eyedropper hands the canvas back to once it has picked. */
+  const toolBeforePicker = useRef<PaintTool | null>(null);
+  const [resizeDraft, setResizeDraft] = useState<{
+    height: string;
+    keepAspect: boolean;
+    width: string;
+  } | null>(null);
   /*
    * 텍스트: a click places the caret and a field appears over the canvas at
    * that spot. Nothing is on the bitmap until it is committed, so Escape leaves
@@ -337,6 +353,14 @@ export default function PaintApp({
     };
     image.onerror = finish;
     image.onload = () => {
+      // A snapshot carries the size it was taken at. Undoing 크기 조정 means
+      // putting the canvas back to that size, not stretching the old picture
+      // over the new one.
+      if (image.width !== canvas.width || image.height !== canvas.height) {
+        canvas.width = image.width;
+        canvas.height = image.height;
+        setCanvasSize({ height: image.height, width: image.width });
+      }
       context.clearRect(0, 0, canvas.width, canvas.height);
       context.fillStyle = "#ffffff";
       context.fillRect(0, 0, canvas.width, canvas.height);
@@ -577,6 +601,19 @@ export default function PaintApp({
     strokeRectRef.current = null;
     const point = getPoint(event);
 
+    if (tool === "picker") {
+      /*
+       * Paint's eyedropper takes the colour and hands the canvas back to the
+       * tool you were using — picking is something you do in the middle of
+       * drawing, not a mode you sit in.
+       */
+      const pixel = context.getImageData(point.x, point.y, 1, 1).data;
+      setColor(toHexColor(pixel[0], pixel[1], pixel[2], pixel[3]));
+      setTool(toolBeforePicker.current ?? "brush");
+      toolBeforePicker.current = null;
+      return;
+    }
+
     if (tool === "text") {
       // A second click while typing puts the first text down and starts again.
       commitTextRef.current();
@@ -604,6 +641,43 @@ export default function PaintApp({
     shapeStart.current = point;
     shapeSnapshot.current = context.getImageData(0, 0, canvas.width, canvas.height);
     canvas.setPointerCapture(event.pointerId);
+  };
+
+  const openResize = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    setResizeDraft({
+      height: String(canvas.height),
+      keepAspect: true,
+      width: String(canvas.width),
+    });
+  };
+
+  /**
+   * 크기 조정 redraws the bitmap into a canvas of the new size — the picture
+   * is scaled, not cropped, which is what Paint's own 크기 조정 does. One undo
+   * step, taken before the canvas is resized.
+   */
+  const applyResize = (next: { height: number; width: number }) => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    if (next.width === canvas.width && next.height === canvas.height) {
+      setResizeDraft(null);
+      return;
+    }
+    pushUndoSnapshot();
+    const source = document.createElement("canvas");
+    source.width = canvas.width;
+    source.height = canvas.height;
+    source.getContext("2d")?.drawImage(canvas, 0, 0);
+    canvas.width = next.width;
+    canvas.height = next.height;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(source, 0, 0, next.width, next.height);
+    setCanvasSize({ height: next.height, width: next.width });
+    setResizeDraft(null);
+    markDirty();
   };
 
   const commitText = () => {
@@ -771,6 +845,14 @@ export default function PaintApp({
                 >
                   <Eraser aria-hidden="true" size={18} />
                 </button>
+                <button
+                  aria-label="크기 조정"
+                  onClick={openResize}
+                  title="크기 조정"
+                  type="button"
+                >
+                  <Scaling aria-hidden="true" size={18} />
+                </button>
               </div>
               <small>파일 및 편집</small>
             </div>
@@ -798,6 +880,7 @@ export default function PaintApp({
                     {option.id === "ellipse" && (
                       <span aria-hidden="true" className="ellipse-tool-icon" />
                     )}
+                    {option.id === "picker" && <Pipette aria-hidden="true" size={17} />}
                     <span>{option.label}</span>
                   </button>
                 ))}
@@ -999,6 +1082,118 @@ export default function PaintApp({
           onSave={saveAs}
           title={fileDialogMode === "open" ? "열기" : "다른 이름으로 저장"}
         />
+      )}
+
+      {resizeDraft && (
+        <div className="note-close-overlay" onPointerDown={() => setResizeDraft(null)}>
+          <section
+            aria-label="크기 조정"
+            aria-modal="true"
+            className="paint-resize-dialog"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setResizeDraft(null);
+                return;
+              }
+              trapDialogFocus(event, event.currentTarget);
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+            role="dialog"
+          >
+            <h2>크기 조정</h2>
+            <p>그림 전체를 새 크기에 맞춰 다시 그립니다.</p>
+            <label>
+              <span>가로</span>
+              <input
+                autoFocus
+                max={PAINT_MAX_DIMENSION}
+                min={PAINT_MIN_DIMENSION}
+                onChange={(event) =>
+                  setResizeDraft((current) => {
+                    if (!current) return current;
+                    const next = getResizedDimensions(
+                      canvasSize,
+                      { height: Number(current.height), width: Number(event.target.value) },
+                      current.keepAspect,
+                      "width",
+                    );
+                    return {
+                      ...current,
+                      height: current.keepAspect ? String(next.height) : current.height,
+                      width: event.target.value,
+                    };
+                  })
+                }
+                type="number"
+                value={resizeDraft.width}
+              />
+              <span>픽셀</span>
+            </label>
+            <label>
+              <span>세로</span>
+              <input
+                max={PAINT_MAX_DIMENSION}
+                min={PAINT_MIN_DIMENSION}
+                onChange={(event) =>
+                  setResizeDraft((current) => {
+                    if (!current) return current;
+                    const next = getResizedDimensions(
+                      canvasSize,
+                      { height: Number(event.target.value), width: Number(current.width) },
+                      current.keepAspect,
+                      "height",
+                    );
+                    return {
+                      ...current,
+                      height: event.target.value,
+                      width: current.keepAspect ? String(next.width) : current.width,
+                    };
+                  })
+                }
+                type="number"
+                value={resizeDraft.height}
+              />
+              <span>픽셀</span>
+            </label>
+            <label className="paint-resize-aspect">
+              <input
+                checked={resizeDraft.keepAspect}
+                onChange={(event) =>
+                  setResizeDraft((current) =>
+                    current ? { ...current, keepAspect: event.target.checked } : current,
+                  )
+                }
+                type="checkbox"
+              />
+              가로 세로 비율 유지
+            </label>
+            <footer>
+              <button onClick={() => setResizeDraft(null)} type="button">
+                취소
+              </button>
+              <button
+                className="is-primary"
+                onClick={() =>
+                  applyResize(
+                    getResizedDimensions(
+                      canvasSize,
+                      {
+                        height: Number(resizeDraft.height),
+                        width: Number(resizeDraft.width),
+                      },
+                      false,
+                      "width",
+                    ),
+                  )
+                }
+                type="button"
+              >
+                확인
+              </button>
+            </footer>
+          </section>
+        </div>
       )}
 
       {/* Windows asks before throwing a drawing away; this closed in silence. */}

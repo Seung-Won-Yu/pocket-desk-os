@@ -4623,9 +4623,107 @@ async function runSmoke(baseUrl) {
     );
     await fillPaint.getByRole("button", { name: "그림판 닫기" }).click();
     await page.waitForTimeout(300);
-    if (await page.locator(".window-dialog").count()) {
+    // 그림판's own save prompt is a .note-close-overlay, not a .window-dialog;
+    // left standing it swallows every later click on the desktop.
+    if (await page.locator(".note-close-overlay, .window-dialog").count()) {
       await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(250);
+    }
+
+    /*
+     * 그림판 스포이드와 크기 조정: the eyedropper reads a painted pixel into
+     * 붓 색상 and hands the previous tool back, and 크기 조정 rescales the
+     * bitmap — with one 실행 취소 putting the old size back, not stretching
+     * the old picture over the new one.
+     */
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("mspaint");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const pickPaint = page.locator('article[data-app-id="paint"]').last();
+    await pickPaint.waitFor({ state: "visible" });
+    const pickCanvas = pickPaint.locator(".paint-canvas");
+    const pickColor = pickPaint.getByLabel("붓 색상");
+    const pickedTool = () =>
+      pickPaint
+        .locator('.paint-tool-group button[aria-pressed="true"] span:last-child')
+        .innerText();
+    const canvasPixels = () => pickCanvas.evaluate((node) => `${node.width}x${node.height}`);
+    await pickPaint.getByRole("button", { name: "#ef4444 색상 선택" }).click();
+    const pickBox = await pickCanvas.boundingBox();
+    await page.mouse.move(pickBox.x + 100, pickBox.y + 90);
+    await page.mouse.down();
+    await page.mouse.move(pickBox.x + 190, pickBox.y + 140, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+    // A different colour is loaded, so the pick has something to change.
+    await pickPaint.getByRole("button", { name: "#2563eb 색상 선택" }).click();
+    await pickPaint.getByRole("button", { name: "스포이드" }).click();
+    await page.mouse.click(pickBox.x + 145, pickBox.y + 115);
+    await page.waitForTimeout(200);
+    assert(
+      (await pickColor.inputValue()) === "#ef4444",
+      `스포이드 read ${await pickColor.inputValue()} off a #ef4444 stroke`,
+    );
+    assert(
+      (await pickedTool()) === "브러시",
+      `스포이드 stayed selected instead of handing 브러시 back: ${await pickedTool()}`,
+    );
+    // Blank paper is white, not the transparent black the pixels hold.
+    await pickPaint.getByRole("button", { name: "스포이드" }).click();
+    await page.mouse.click(pickBox.x + 60, pickBox.y + 230);
+    await page.waitForTimeout(200);
+    assert(
+      (await pickColor.inputValue()) === "#ffffff",
+      `스포이드 read ${await pickColor.inputValue()} off blank paper`,
+    );
+
+    const sizeBeforeResize = await canvasPixels();
+    await pickPaint.getByRole("button", { name: "크기 조정" }).click();
+    const resizeDialog = pickPaint.locator(".paint-resize-dialog");
+    await resizeDialog.waitFor({ state: "visible" });
+    const resizeWidth = resizeDialog.locator('input[type="number"]').first();
+    const resizeHeight = resizeDialog.locator('input[type="number"]').nth(1);
+    assert(
+      (await resizeWidth.inputValue()) === "1120" &&
+        (await resizeHeight.inputValue()) === "720",
+      `크기 조정 opened on ${await resizeWidth.inputValue()}×${await resizeHeight.inputValue()}, not the canvas size`,
+    );
+    await resizeWidth.fill("560");
+    assert(
+      (await resizeHeight.inputValue()) === "360",
+      `비율 유지 left 세로 at ${await resizeHeight.inputValue()} when 가로 halved`,
+    );
+    await resizeDialog.getByRole("button", { name: "확인" }).click();
+    await resizeDialog.waitFor({ state: "hidden" });
+    assert(
+      (await canvasPixels()) === "560x360",
+      `크기 조정 left the canvas at ${await canvasPixels()}`,
+    );
+    // The picture is rescaled, not cleared: the stroke is still there.
+    const scaledStroke = await pickCanvas.evaluate((node) => {
+      const context = node.getContext("2d");
+      const pixels = context.getImageData(0, 0, node.width, node.height).data;
+      let painted = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (pixels[i] > 180 && pixels[i + 1] < 120 && pixels[i + 2] < 120) painted += 1;
+      }
+      return painted;
+    });
+    assert(scaledStroke > 0, "크기 조정 threw the drawing away instead of rescaling it");
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(400);
+    assert(
+      (await canvasPixels()) === sizeBeforeResize,
+      `실행 취소 left the canvas at ${await canvasPixels()}, not ${sizeBeforeResize}`,
+    );
+    await pickPaint.getByRole("button", { name: "그림판 닫기" }).click();
+    await page.waitForTimeout(300);
+    // 그림판's own save prompt is a .note-close-overlay, not a .window-dialog;
+    // left standing it swallows every later click on the desktop.
+    if (await page.locator(".note-close-overlay, .window-dialog").count()) {
+      await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
+      await page.waitForTimeout(250);
     }
 
     // 스크린샷: PrintScreen pictures the desktop for real — the DOM drawn to a
@@ -4782,9 +4880,11 @@ async function runSmoke(baseUrl) {
     await snip.waitFor({ state: "detached" });
     await snipSubject.getByRole("button", { name: "메모장 닫기" }).click();
     await page.waitForTimeout(250);
-    if (await page.locator(".window-dialog").count()) {
+    // 그림판's own save prompt is a .note-close-overlay, not a .window-dialog;
+    // left standing it swallows every later click on the desktop.
+    if (await page.locator(".note-close-overlay, .window-dialog").count()) {
       await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(250);
     }
     // Alt+PrintScreen pictures the active window alone. Closing the tool hands
     // focus back to Explorer; its title bar is clear now if it did not.

@@ -9473,6 +9473,49 @@ button {
   padding: 0 12px;
 }
 
+/* 크기 조정: Paint's own resize box, in the same frame the save prompt uses. */
+.paint-resize-dialog h2 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.paint-resize-dialog label {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 48px 120px auto;
+  margin-bottom: 10px;
+}
+
+.paint-resize-dialog input[type="number"] {
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  min-height: 32px;
+  padding: 0 8px;
+  width: 100%;
+}
+
+.paint-resize-dialog .paint-resize-aspect {
+  display: flex;
+  gap: 8px;
+  grid-template-columns: none;
+  margin: 14px 0 18px;
+}
+
+.paint-resize-dialog footer {
+  display: flex;
+  gap: 7px;
+  justify-content: flex-end;
+}
+
+.note-close-overlay button.is-primary {
+  background: #0067c0;
+  border-color: #1473e6;
+}
+
 .note-close-overlay button:hover,
 .note-close-overlay button:focus-visible {
   background: #414141;
