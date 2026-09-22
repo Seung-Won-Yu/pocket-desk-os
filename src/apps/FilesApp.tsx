@@ -62,6 +62,13 @@ import { getVfsDropEffect, isVfsCopyDrag } from "../vfs/dragEffect";
 import { describeVfsSelectionTitle, summarizeVfsSelection } from "../vfs/selectionStats";
 import { type FileViewMode, getNextFileViewMode } from "./fileViewMode";
 import {
+  type FileMarqueeRow,
+  type FileMarqueeState,
+  getFileMarqueeSelection,
+  getFileMarqueeStyle,
+  isFileMarqueeVisible,
+} from "./fileMarquee";
+import {
   DEFAULT_FILE_COLUMN_WIDTHS,
   FILE_COLUMN_KEYS,
   type FileColumnKey,
@@ -358,6 +365,9 @@ export default function FilesApp({
   windowId,
 }: FilesAppProps) {
   const fileListRef = useRef<HTMLDivElement | null>(null);
+  const [marquee, setMarquee] = useState<FileMarqueeState | null>(null);
+  // Pointer moves arrive faster than renders; the ref is what they read.
+  const marqueeRef = useRef<FileMarqueeState | null>(null);
   const filesRootRef = useRef<HTMLDivElement | null>(null);
   const fileContextMenuRef = useRef<HTMLDivElement | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
@@ -1536,6 +1546,108 @@ export default function FilesApp({
     }
     setActiveFileId(fileId);
     setRenaming(false);
+  };
+
+  /**
+   * 끌어서 선택. The band is drawn and measured in the list's own content
+   * space — client point minus the list's box, plus its scroll — so a list
+   * scrolled halfway down marks the rows the pointer is really over.
+   */
+  const getMarqueePoint = (list: HTMLDivElement, clientX: number, clientY: number) => {
+    const rect = list.getBoundingClientRect();
+    return {
+      x: clientX - rect.left + list.scrollLeft,
+      y: clientY - rect.top + list.scrollTop,
+    };
+  };
+
+  const getMarqueeRows = (list: HTMLDivElement): FileMarqueeRow[] => {
+    const rect = list.getBoundingClientRect();
+    return [...list.querySelectorAll<HTMLElement>("[data-file-id]")].map((node) => {
+      const box = node.getBoundingClientRect();
+      return {
+        bottom: box.bottom - rect.top + list.scrollTop,
+        id: node.dataset.fileId ?? "",
+        left: box.left - rect.left + list.scrollLeft,
+        right: box.right - rect.left + list.scrollLeft,
+        top: box.top - rect.top + list.scrollTop,
+      };
+    });
+  };
+
+  const beginMarquee = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    // A press on a row is a click, or the start of a drag that moves the file.
+    // The band belongs to the list's own empty space.
+    if (event.target !== event.currentTarget) return;
+
+    const list = event.currentTarget;
+    const point = getMarqueePoint(list, event.clientX, event.clientY);
+    const additive = event.ctrlKey || event.metaKey;
+    const next: FileMarqueeState = {
+      additive,
+      base: additive ? selectedIds : [],
+      currentX: point.x,
+      currentY: point.y,
+      pointerId: event.pointerId,
+      startX: point.x,
+      startY: point.y,
+    };
+    list.setPointerCapture(event.pointerId);
+    marqueeRef.current = next;
+    setMarquee(next);
+    // Windows drops the selection the moment the press lands on empty space,
+    // band or no band.
+    if (!additive) setSelectedIds([]);
+  };
+
+  /**
+   * Dragging past the edge scrolls the list, the way Windows does — otherwise
+   * a band can only ever reach the rows that already fit on screen.
+   */
+  const MARQUEE_EDGE = 26;
+  const MARQUEE_SCROLL_STEP = 14;
+
+  const scrollListForMarquee = (list: HTMLDivElement, clientY: number) => {
+    const rect = list.getBoundingClientRect();
+    if (clientY < rect.top + MARQUEE_EDGE) {
+      list.scrollTop -= MARQUEE_SCROLL_STEP;
+      return true;
+    }
+    if (clientY > rect.bottom - MARQUEE_EDGE) {
+      list.scrollTop += MARQUEE_SCROLL_STEP;
+      return true;
+    }
+    return false;
+  };
+
+  const updateMarquee = (event: React.PointerEvent<HTMLDivElement>) => {
+    const current = marqueeRef.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+
+    const list = event.currentTarget;
+    scrollListForMarquee(list, event.clientY);
+    const point = getMarqueePoint(list, event.clientX, event.clientY);
+    const next: FileMarqueeState = { ...current, currentX: point.x, currentY: point.y };
+    marqueeRef.current = next;
+    setMarquee(next);
+
+    const nextIds = getFileMarqueeSelection(next, getMarqueeRows(list));
+    // Most moves change the rectangle without changing what it covers.
+    setSelectedIds((ids) =>
+      ids.length === nextIds.length && ids.every((id, index) => id === nextIds[index])
+        ? ids
+        : nextIds,
+    );
+  };
+
+  const finishMarquee = (event: React.PointerEvent<HTMLDivElement>) => {
+    const list = event.currentTarget;
+    if (list.hasPointerCapture(event.pointerId)) list.releasePointerCapture(event.pointerId);
+    const current = marqueeRef.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    marqueeRef.current = null;
+    setMarquee(null);
   };
 
   const handleFileListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -2777,13 +2889,27 @@ export default function FilesApp({
               onDrop={(event) => dropFilesIntoFolder(event, currentFolderId)}
               data-vfs-drop-folder={currentFolderId}
               onKeyDown={handleFileListKeyDown}
-              onPointerDown={() => setFileContextMenu(null)}
+              onLostPointerCapture={finishMarquee}
+              onPointerCancel={finishMarquee}
+              onPointerDown={(event) => {
+                setFileContextMenu(null);
+                beginMarquee(event);
+              }}
+              onPointerMove={updateMarquee}
+              onPointerUp={finishMarquee}
               ref={fileListRef}
               role="listbox"
               // A listbox is a single tab stop. The active option holds it, so
               // the container is only focusable when there is no option at all.
               tabIndex={visibleFiles.length === 0 ? 0 : -1}
             >
+              {marquee && isFileMarqueeVisible(marquee) && (
+                <div
+                  aria-hidden="true"
+                  className="file-marquee"
+                  style={getFileMarqueeStyle(marquee)}
+                />
+              )}
               {visibleFiles.map((file, index) => {
                 const FileIcon = file.icon;
                 // A heading is painted where the group changes, not per row.

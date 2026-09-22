@@ -6,6 +6,12 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **파일 탐색기 끌어서 선택.** The desktop has drawn a selection band since early on; the list inside a 파일 탐색기 window never did. A drag over the rows picked nothing at all, and — measured before — a click on the empty space under the last row left the selection exactly as it was, where Windows drops it.
+
+  A press on the list's own empty space now starts a band: it is drawn in the list's content space, so a list scrolled halfway down marks the rows the pointer is really over, and it takes every row it touches in list order. Measured: a band drawn up from under the last row took 문서, 사진 and web-surf.url; in 큰 아이콘 보기 a band across the tiles took all five. Ctrl (⌘) held adds to what was already selected instead of replacing it — measured, 게임 plus the two the band crossed.
+
+  A press that starts on a row is still a drag that moves the file, and draws no band. Dragging past the edge scrolls the list, so a band is not limited to what already fits on screen: measured, a drag to the top edge scrolled the list from 36 back to 0 and took the tiles that had been out of view.
+
 - **그림판 스포이드와 크기 조정.** 그림판 had seven tools and no way to pick a colour up off the picture, and no way to change the canvas at all — it was 1120×720 forever. 스포이드 reads the pixel under the click into 붓 색상 and hands the previous tool straight back, the way Paint's own eyedropper does: measured, a #2563eb brush clicking a #ef4444 stroke came back holding #ef4444 with 브러시 selected again. Blank paper reads as `#ffffff`, not the transparent black the pixels actually hold.
 
   크기 조정 opens on the canvas's current size, keeps the aspect ratio while it is checked — typing 560 into 가로 put 360 into 세로 — and rescales the drawing into the new bitmap rather than cropping it. Measured: 1120×720 → 560×300 with the stroke still there.

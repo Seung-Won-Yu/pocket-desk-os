@@ -1110,6 +1110,87 @@ async function runSmoke(baseUrl) {
       arrowSelectedName !== "web-surf.url",
       `Explorer arrow navigation did not move selection: ${arrowSelectedName}`,
     );
+    /*
+     * 끌어서 선택: a drag from the list's empty space draws a band and takes
+     * the rows it crosses, the way the desktop's own band always has. A press
+     * on empty space that never becomes a drag clears the selection instead,
+     * and a press that starts on a row belongs to drag & drop — no band.
+     */
+    const explorerList = files.locator(".file-list");
+    const explorerRowButtons = files.locator(".file-list button");
+    const selectedRowNames = () =>
+      files
+        .locator(".file-list button.is-selected")
+        .evaluateAll((els) => els.map((el) => el.innerText.split("\n")[0]));
+    await explorerRowButtons.first().click();
+    assert((await selectedRowNames()).length === 1, "Explorer would not select one row");
+    const marqueeListBox = await explorerList.boundingBox();
+    const marqueeRowCount = await explorerRowButtons.count();
+    const marqueeLastRow = await explorerRowButtons.last().boundingBox();
+    const marqueeBlankY = marqueeLastRow.y + marqueeLastRow.height + 30;
+    assert(
+      marqueeBlankY < marqueeListBox.y + marqueeListBox.height - 8,
+      "The file list has no empty space under its rows to drag from",
+    );
+    await page.mouse.click(marqueeListBox.x + marqueeListBox.width / 2, marqueeBlankY);
+    await page.waitForTimeout(150);
+    assert(
+      (await selectedRowNames()).length === 0,
+      `A click on the list's empty space kept ${(await selectedRowNames()).length} rows selected`,
+    );
+
+    const marqueeSecondLast = await explorerRowButtons.nth(marqueeRowCount - 2).boundingBox();
+    await page.mouse.move(marqueeListBox.x + marqueeListBox.width - 40, marqueeBlankY);
+    await page.mouse.down();
+    await page.mouse.move(marqueeListBox.x + 30, marqueeSecondLast.y + 6, { steps: 12 });
+    await page.waitForTimeout(120);
+    const marqueeBandBox = await files.locator(".file-marquee").boundingBox();
+    assert(
+      marqueeBandBox && marqueeBandBox.height > 10 && marqueeBandBox.width > 10,
+      `끌어서 선택 drew no band: ${JSON.stringify(marqueeBandBox)}`,
+    );
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+    const bandedNames = await selectedRowNames();
+    assert(
+      bandedNames.length === 2,
+      `끌어서 선택 took ${bandedNames.length} rows where the band covered 2: ${bandedNames.join(", ")}`,
+    );
+    assert(
+      (await files.locator(".file-marquee").count()) === 0,
+      "The selection band stayed on screen after the drag ended",
+    );
+
+    // Ctrl (⌘ on macOS) adds the band's rows to what was already selected.
+    await explorerRowButtons.first().click();
+    const beforeAdditive = await selectedRowNames();
+    await page.keyboard.down(multiSelectModifier);
+    await page.mouse.move(marqueeListBox.x + marqueeListBox.width - 40, marqueeBlankY);
+    await page.mouse.down();
+    await page.mouse.move(marqueeListBox.x + 30, marqueeLastRow.y + 6, { steps: 10 });
+    await page.mouse.up();
+    await page.keyboard.up(multiSelectModifier);
+    await page.waitForTimeout(200);
+    const additiveNames = await selectedRowNames();
+    assert(
+      beforeAdditive.every((name) => additiveNames.includes(name)) &&
+        additiveNames.length > beforeAdditive.length,
+      `Ctrl+끌어서 선택 replaced the selection (${beforeAdditive.join(", ")}) instead of adding to it: ${additiveNames.join(", ")}`,
+    );
+
+    // A press that lands on a row is a drag & drop, not a band.
+    const marqueeFirstRow = await explorerRowButtons.first().boundingBox();
+    await page.mouse.move(
+      marqueeFirstRow.x + 60,
+      marqueeFirstRow.y + marqueeFirstRow.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(marqueeFirstRow.x + 60, marqueeFirstRow.y + 90, { steps: 8 });
+    const bandFromRow = await files.locator(".file-marquee").count();
+    await page.mouse.up();
+    await page.waitForTimeout(150);
+    assert(bandFromRow === 0, "A drag that started on a row drew a selection band");
+
     await files.getByRole("button", { name: "자세히 보기" }).click();
     await files.getByRole("button", { name: "정렬", exact: true }).click();
     await files.locator(".file-address").click();

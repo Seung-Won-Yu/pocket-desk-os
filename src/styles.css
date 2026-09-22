@@ -5708,6 +5708,16 @@ button {
   min-height: 0;
   overflow: auto;
   padding: 4px 5px;
+  /* The 끌어서 선택 band is placed in the list's own scrolled content. */
+  position: relative;
+}
+
+.file-marquee {
+  background: color-mix(in srgb, var(--active) 24%, transparent);
+  border: 1px solid color-mix(in srgb, var(--active) 72%, rgba(255, 255, 255, 0.65));
+  pointer-events: none;
+  position: absolute;
+  z-index: 3;
 }
 
 .file-list:focus-visible {
