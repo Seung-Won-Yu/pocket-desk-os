@@ -176,6 +176,13 @@ import { PermanentDeleteDialog } from "./shell/components/PermanentDeleteDialog"
 import { getVfsDropEffect, isVfsCopyDrag } from "./vfs/dragEffect";
 import { buildBulkRenames } from "./vfs/bulkRename";
 import {
+  type ClipboardHistoryEntry,
+  describeClipboardEntry,
+  insertClipboardText,
+  pushClipboardEntry,
+  removeClipboardEntry,
+} from "./shell/clipboardHistory";
+import {
   describeEmptyRecycleBinCommand,
   describeEmptyRecycleBinPrompt,
   getRecycleBinDropIds,
@@ -194,7 +201,7 @@ import {
   persistNightLight,
   persistNightLightStrength,
 } from "./shell/nightLight";
-import { getNeighbourByPosition } from "./shell/keyboardNav";
+import { getNeighbourByPosition, handleMenuKeyboard } from "./shell/keyboardNav";
 import { type AppContentProps, type WindowDocumentRef } from "./shell/types";
 import { formatWindowTitle } from "./shell/windowTitle";
 import {
@@ -293,6 +300,7 @@ import {
   sanitizeVfsFileName,
   getVfsTopLevelIds,
   isVfsSystemFolderId,
+  formatDesktopItemTime,
 } from "./vfs/model";
 import { getSnapshotContentBytes, MAX_CONTENT_BYTES, persistVfsEntries } from "./vfs/storage";
 import {
@@ -680,6 +688,14 @@ export default function App() {
   /** The icon a drag is hovering, so 휴지통 lights up before the drop. */
   const [desktopDropIcon, setDesktopDropIcon] = useState<string | null>(null);
   const [emptyBinPromptOpen, setEmptyBinPromptOpen] = useState(false);
+  /** 클립보드 기록 (Win+V): what was copied, newest first. */
+  const [clipboardHistory, setClipboardHistory] = useState<ClipboardHistoryEntry[]>([]);
+  const [clipboardPanelOpen, setClipboardPanelOpen] = useState(false);
+  /**
+   * The field a paste goes back into. The panel takes focus when it opens, so
+   * the target has to be remembered from before that.
+   */
+  const lastEditableRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const [selectedDesktopIds, setSelectedDesktopIds] = useState<string[]>([]);
   const [shellPhase, setShellPhase] = useState<ShellPhase>("booting");
   const [browserLaunchRequest, setBrowserLaunchRequest] = useState<BrowserLaunchRequest | null>(
@@ -4331,6 +4347,107 @@ export default function App() {
     setDesktopSelection(null);
   };
 
+  /*
+   * 클립보드 기록. Every copy in the shell passes through the document, so one
+   * listener catches them all — 메모장, 터미널, the browser's reader — rather
+   * than each app reporting its own.
+   */
+  useEffect(() => {
+    const remember = (event: ClipboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const field =
+        target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
+          ? target
+          : null;
+      const copied = field
+        ? field.value.slice(field.selectionStart ?? 0, field.selectionEnd ?? 0)
+        : (window.getSelection()?.toString() ?? "");
+      setClipboardHistory((current) =>
+        pushClipboardEntry(current, copied, Date.now(), crypto.randomUUID()),
+      );
+    };
+    document.addEventListener("copy", remember, true);
+    document.addEventListener("cut", remember, true);
+    return () => {
+      document.removeEventListener("copy", remember, true);
+      document.removeEventListener("cut", remember, true);
+    };
+  }, []);
+
+  useEffect(() => {
+    const rememberField = (event: FocusEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+        // The panel's own 지우기 buttons are not a paste target.
+        if (target.closest(".clipboard-panel")) return;
+        lastEditableRef.current = target;
+      }
+    };
+    document.addEventListener("focusin", rememberField);
+    return () => document.removeEventListener("focusin", rememberField);
+  }, []);
+
+  const clipboardPanelRef = useRef<HTMLDivElement | null>(null);
+
+  /*
+   * The panel takes focus when it opens, the way Windows' does: Escape closes
+   * it and the arrows walk the list without touching the mouse. A click
+   * anywhere else puts it away, like every other flyout in the shell.
+   */
+  useEffect(() => {
+    if (!clipboardPanelOpen) return;
+    const frame = window.requestAnimationFrame(() => {
+      const panel = clipboardPanelRef.current;
+      const first = panel?.querySelector<HTMLButtonElement>(".clipboard-entry");
+      (first ?? panel)?.focus();
+    });
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const panel = clipboardPanelRef.current;
+      if (panel && !panel.contains(event.target as Node | null)) setClipboardPanelOpen(false);
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("pointerdown", closeOnOutsidePointer);
+    };
+  }, [clipboardPanelOpen]);
+
+  const pasteClipboardEntry = (entry: ClipboardHistoryEntry) => {
+    setClipboardPanelOpen(false);
+    const field = lastEditableRef.current;
+    if (!field || !field.isConnected || field.disabled || field.readOnly) {
+      // Nothing to paste into: the entry goes back on the clipboard instead, so
+      // the next Ctrl+V in any app has it.
+      void navigator.clipboard?.writeText(entry.text).catch(() => undefined);
+      notify({
+        detail: describeClipboardEntry(entry.text, 60),
+        title: "클립보드에 복사됨",
+      });
+      return;
+    }
+
+    const next = insertClipboardText(
+      field.value,
+      field.selectionStart ?? field.value.length,
+      field.selectionEnd ?? field.value.length,
+      entry.text,
+    );
+    /*
+     * React owns these fields, and assigning `value` behind its back leaves its
+     * state holding the old text — the next keystroke would put it right back.
+     * The native setter plus an input event is what React listens for.
+     */
+    const prototype =
+      field instanceof HTMLTextAreaElement
+        ? window.HTMLTextAreaElement.prototype
+        : window.HTMLInputElement.prototype;
+    const setValue = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+    field.focus();
+    setValue?.call(field, next.value);
+    field.setSelectionRange(next.caret, next.caret);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+
   const openRunDialog = () => {
     playSound("toggle");
     setStartOpen(false);
@@ -4440,6 +4557,12 @@ export default function App() {
         target instanceof HTMLTextAreaElement ||
         (target instanceof HTMLElement && target.isContentEditable);
 
+      if (event.key === "Escape" && clipboardPanelOpen) {
+        event.preventDefault();
+        setClipboardPanelOpen(false);
+        return;
+      }
+
       if (event.metaKey && event.ctrlKey && event.key.startsWith("Arrow")) {
         const step = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
         if (step !== 0) {
@@ -4502,6 +4625,13 @@ export default function App() {
         if (key === "i") {
           event.preventDefault();
           openApp("settings");
+          return;
+        }
+        if (key === "v") {
+          // 클립보드 기록: the panel, not a paste. Ctrl+V is still the paste.
+          event.preventDefault();
+          setStartOpen(false);
+          setClipboardPanelOpen((current) => !current);
           return;
         }
         if (key === "m") {
@@ -5629,6 +5759,70 @@ export default function App() {
             setPermanentDeleteIds(null);
           }}
         />
+      )}
+
+      {clipboardPanelOpen && (
+        <div
+          aria-label="클립보드 기록"
+          className="clipboard-panel"
+          ref={clipboardPanelRef}
+          tabIndex={-1}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              setClipboardPanelOpen(false);
+              return;
+            }
+            handleMenuKeyboard(event, event.currentTarget);
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          role="dialog"
+        >
+          <header>
+            <strong>클립보드</strong>
+            <button
+              disabled={clipboardHistory.length === 0}
+              onClick={() => setClipboardHistory([])}
+              type="button"
+            >
+              모두 지우기
+            </button>
+          </header>
+          {clipboardHistory.length === 0 ? (
+            /* Windows says what the panel is for rather than showing a blank. */
+            <p className="clipboard-empty">
+              복사한 내용이 여기에 표시됩니다. 복사하면 최근 10개까지 남습니다.
+            </p>
+          ) : (
+            <ul>
+              {clipboardHistory.map((entry) => (
+                <li key={entry.id}>
+                  <button
+                    className="clipboard-entry"
+                    onClick={() => pasteClipboardEntry(entry)}
+                    title={describeClipboardEntry(entry.text, 200)}
+                    type="button"
+                  >
+                    <span>{describeClipboardEntry(entry.text)}</span>
+                    <small>{formatDesktopItemTime(entry.at)}</small>
+                  </button>
+                  <button
+                    aria-label={`${describeClipboardEntry(entry.text, 20)} 지우기`}
+                    className="clipboard-remove"
+                    onClick={() =>
+                      setClipboardHistory((current) => removeClipboardEntry(current, entry.id))
+                    }
+                    title="지우기"
+                    type="button"
+                  >
+                    <span aria-hidden="true">×</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       {emptyBinPromptOpen && (

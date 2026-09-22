@@ -6,6 +6,14 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **클립보드 기록 (Win+V).** The shell had a clipboard for files and none at all for text: whatever was copied last was the only thing that existed, and a copy made two steps ago was gone. Win+V opens the panel, and it reaches back past the newest entry — measured, copying `첫 번째 복사` then `두 번째 복사` listed both newest-first, and clicking the older one put it in at the caret of the 메모장 the panel was opened over.
+
+  One listener on the document catches every copy in the shell — 메모장, 터미널, the browser's reader — rather than each app reporting its own. Copying the same text again moves it to the top instead of listing it twice (measured: A, B, A left two rows with A first), whitespace-only copies are ignored, and the last ten are kept.
+
+  The paste goes through the field's native value setter and an `input` event, because React owns those fields and an assignment behind its back would be undone by the next keystroke. Each row has its own 지우기 and the panel has 모두 지우기; Escape or a click outside puts it away.
+
+  Win(⌘)+V is the panel, the way Windows binds it. Ctrl+V still pastes.
+
 - **휴지통에 끌어다 버리기, 바탕 화면에서 비우기.** The bin was a window you opened, and nothing else: dragging a file onto its icon did nothing at all (measured — the file stayed exactly where it was), and the icon's own menu offered 열기 and 작업 표시줄에 고정 and no way to empty it.
 
   A file dropped on 휴지통 now goes in it, from the desktop and from a 파일 탐색기 window alike, and the icon lights up while the file is held over it. It is the same 삭제 the menu and the Delete key use, so one Ctrl+Z brings it back — and back **where it was**: the icon returns to the spot it was dragged from instead of sitting on top of the bin.

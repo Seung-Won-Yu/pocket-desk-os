@@ -5982,6 +5982,92 @@ async function runSmoke(baseUrl) {
     await touchContext.close();
 
     /*
+     * 클립보드 기록 (Win+V). The shell kept a clipboard for files and nothing
+     * at all for text: whatever was copied last was the only thing that
+     * existed. The panel reaches back past the newest copy.
+     */
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("notepad");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const clipNote = page.locator('article[data-app-id="notepad"]').last();
+    await clipNote.waitFor({ state: "visible" });
+    await page.waitForTimeout(400);
+    const clipEditor = clipNote.getByLabel("메모 내용");
+    await clipEditor.click();
+    await clipEditor.fill("첫 번째 복사\n두 번째 복사");
+    // The native copy event is what the history listens to, and on macOS only
+    // ⌘C fires it — the same modifier the rest of the run uses for multi-select.
+    const copyRange = async (start, end) => {
+      await clipEditor.evaluate(
+        (node, range) => {
+          node.focus();
+          node.setSelectionRange(range.start, range.end);
+        },
+        { end, start },
+      );
+      await page.keyboard.press(`${multiSelectModifier}+c`);
+      await page.waitForTimeout(200);
+    };
+    await copyRange(0, 7);
+    await copyRange(8, 15);
+
+    const clipboardPanel = page.locator(".clipboard-panel");
+    const clipboardRows = () =>
+      clipboardPanel
+        .locator(".clipboard-entry span")
+        .evaluateAll((els) => els.map((el) => el.innerText));
+    await page.keyboard.press("Meta+v");
+    await clipboardPanel.waitFor({ state: "visible" });
+    assert(
+      JSON.stringify(await clipboardRows()) ===
+        JSON.stringify(["두 번째 복사", "첫 번째 복사"]),
+      `클립보드 기록 listed ${JSON.stringify(await clipboardRows())}`,
+    );
+
+    // Reaching back past the newest copy is the whole point: the older entry
+    // lands at the caret in the field the panel was opened over.
+    await page.keyboard.press("Escape");
+    await clipboardPanel.waitFor({ state: "detached" });
+    await clipEditor.evaluate((node) => {
+      node.focus();
+      node.setSelectionRange(node.value.length, node.value.length);
+    });
+    await page.keyboard.press("Meta+v");
+    await clipboardPanel.waitFor({ state: "visible" });
+    await clipboardPanel.locator(".clipboard-entry").nth(1).click();
+    await clipboardPanel.waitFor({ state: "detached" });
+    await page.waitForTimeout(250);
+    assert(
+      (await clipEditor.inputValue()) === "첫 번째 복사\n두 번째 복사첫 번째 복사",
+      `클립보드 기록 pasted: ${JSON.stringify(await clipEditor.inputValue())}`,
+    );
+
+    await page.keyboard.press("Meta+v");
+    await clipboardPanel.waitFor({ state: "visible" });
+    const clipBeforeRemove = (await clipboardRows()).length;
+    await clipboardPanel.locator(".clipboard-remove").first().click();
+    await page.waitForTimeout(250);
+    assert(
+      (await clipboardRows()).length === clipBeforeRemove - 1,
+      `지우기 left ${(await clipboardRows()).length} of ${clipBeforeRemove} rows`,
+    );
+    await clipboardPanel.getByRole("button", { name: "모두 지우기" }).click();
+    await page.waitForTimeout(250);
+    assert(
+      (await clipboardPanel.innerText()).includes("복사한 내용이 여기에 표시됩니다"),
+      `모두 지우기 left ${(await clipboardPanel.innerText()).replace(/\n/g, " | ")}`,
+    );
+    await page.keyboard.press("Escape");
+    await clipboardPanel.waitFor({ state: "detached" });
+    await clipNote.getByRole("button", { name: "메모장 닫기" }).click();
+    await page.waitForTimeout(300);
+    if (await page.locator(".note-close-overlay, .window-dialog").count()) {
+      await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
+      await page.waitForTimeout(250);
+    }
+
+    /*
      * 휴지통 as a drop target and its own 비우기. Dropping a file on the bin is
      * how Windows throws it away, and the icon's menu says how much it is
      * about to destroy — both of which the desktop simply did not do.
