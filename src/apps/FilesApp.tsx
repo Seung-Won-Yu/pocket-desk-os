@@ -1593,6 +1593,11 @@ export default function FilesApp({
       startX: point.x,
       startY: point.y,
     };
+    /*
+     * The press keeps its default — clicking the blank area is how the list
+     * takes focus, and without it Ctrl+V lands somewhere else. The native drag
+     * that would otherwise follow is refused in onDragStart instead.
+     */
     list.setPointerCapture(event.pointerId);
     marqueeRef.current = next;
     setMarquee(next);
@@ -2885,6 +2890,11 @@ export default function FilesApp({
               onDragOver={(event) => {
                 event.preventDefault();
                 event.dataTransfer.dropEffect = getVfsDropEffect(event);
+              }}
+              onDragStart={(event) => {
+                // A band in progress owns the gesture; a native drag started
+                // under it would cancel the pointer and drop the selection.
+                if (marqueeRef.current) event.preventDefault();
               }}
               onDrop={(event) => dropFilesIntoFolder(event, currentFolderId)}
               data-vfs-drop-folder={currentFolderId}
