@@ -132,10 +132,12 @@ import {
   loadClock24h,
   loadDefaultApps,
   loadFocusAssist,
+  loadRecentEmoji,
   loadShowDesktopIcons,
   loadTextScale,
   loadUserName,
   persistDefaultApps,
+  persistRecentEmoji,
   persistShowDesktopIcons,
   type DefaultAppMap,
   type TextScale,
@@ -175,6 +177,12 @@ import { NameConflictDialog } from "./shell/components/NameConflictDialog";
 import { PermanentDeleteDialog } from "./shell/components/PermanentDeleteDialog";
 import { getVfsDropEffect, isVfsCopyDrag } from "./vfs/dragEffect";
 import { buildBulkRenames } from "./vfs/bulkRename";
+import {
+  EMOJI_GROUPS,
+  getEmojiKeywords,
+  pushRecentEmoji,
+  searchEmoji,
+} from "./shell/emojiPanel";
 import {
   type ClipboardHistoryEntry,
   describeClipboardEntry,
@@ -691,6 +699,10 @@ export default function App() {
   /** 클립보드 기록 (Win+V): what was copied, newest first. */
   const [clipboardHistory, setClipboardHistory] = useState<ClipboardHistoryEntry[]>([]);
   const [clipboardPanelOpen, setClipboardPanelOpen] = useState(false);
+  /** 이모지 패널 (Win+. / Win+;). */
+  const [emojiPanelOpen, setEmojiPanelOpen] = useState(false);
+  const [emojiQuery, setEmojiQuery] = useState("");
+  const [recentEmoji, setRecentEmoji] = useState<string[]>(() => loadRecentEmoji());
   /**
    * The field a paste goes back into. The panel takes focus when it opens, so
    * the target has to be remembered from before that.
@@ -4378,8 +4390,8 @@ export default function App() {
     const rememberField = (event: FocusEvent) => {
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-        // The panel's own 지우기 buttons are not a paste target.
-        if (target.closest(".clipboard-panel")) return;
+        // A panel's own search box is not where its pick should land.
+        if (target.closest(".clipboard-panel, .emoji-panel")) return;
         lastEditableRef.current = target;
       }
     };
@@ -4412,17 +4424,31 @@ export default function App() {
     };
   }, [clipboardPanelOpen]);
 
-  const pasteClipboardEntry = (entry: ClipboardHistoryEntry) => {
-    setClipboardPanelOpen(false);
+  const emojiPanelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!emojiPanelOpen) return;
+    // The search box takes focus through autoFocus on mount: a frame later is
+    // a frame the keyboard could have typed into whatever was focused before.
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const panel = emojiPanelRef.current;
+      if (panel && !panel.contains(event.target as Node | null)) setEmojiPanelOpen(false);
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => window.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [emojiPanelOpen]);
+
+  /**
+   * Puts text into the field the panel was opened over — the clipboard panel
+   * and the emoji panel both hand their pick to this.
+   */
+  const insertIntoLastField = (text: string, fallbackTitle: string) => {
     const field = lastEditableRef.current;
     if (!field || !field.isConnected || field.disabled || field.readOnly) {
-      // Nothing to paste into: the entry goes back on the clipboard instead, so
+      // Nothing to paste into: the text goes back on the clipboard instead, so
       // the next Ctrl+V in any app has it.
-      void navigator.clipboard?.writeText(entry.text).catch(() => undefined);
-      notify({
-        detail: describeClipboardEntry(entry.text, 60),
-        title: "클립보드에 복사됨",
-      });
+      void navigator.clipboard?.writeText(text).catch(() => undefined);
+      notify({ detail: describeClipboardEntry(text, 60), title: fallbackTitle });
       return;
     }
 
@@ -4430,7 +4456,7 @@ export default function App() {
       field.value,
       field.selectionStart ?? field.value.length,
       field.selectionEnd ?? field.value.length,
-      entry.text,
+      text,
     );
     /*
      * React owns these fields, and assigning `value` behind its back leaves its
@@ -4446,6 +4472,21 @@ export default function App() {
     setValue?.call(field, next.value);
     field.setSelectionRange(next.caret, next.caret);
     field.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+
+  const pasteClipboardEntry = (entry: ClipboardHistoryEntry) => {
+    setClipboardPanelOpen(false);
+    insertIntoLastField(entry.text, "클립보드에 복사됨");
+  };
+
+  const insertEmoji = (emoji: string) => {
+    setEmojiPanelOpen(false);
+    setRecentEmoji((current) => {
+      const next = pushRecentEmoji(current, emoji);
+      persistRecentEmoji(next);
+      return next;
+    });
+    insertIntoLastField(emoji, "이모지를 클립보드에 복사했습니다");
   };
 
   const openRunDialog = () => {
@@ -4563,6 +4604,12 @@ export default function App() {
         return;
       }
 
+      if (event.key === "Escape" && emojiPanelOpen) {
+        event.preventDefault();
+        setEmojiPanelOpen(false);
+        return;
+      }
+
       if (event.metaKey && event.ctrlKey && event.key.startsWith("Arrow")) {
         const step = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
         if (step !== 0) {
@@ -4632,6 +4679,15 @@ export default function App() {
           event.preventDefault();
           setStartOpen(false);
           setClipboardPanelOpen((current) => !current);
+          return;
+        }
+        if (key === "." || key === ";") {
+          // Windows opens the emoji panel with either of these two.
+          event.preventDefault();
+          setStartOpen(false);
+          setClipboardPanelOpen(false);
+          setEmojiQuery("");
+          setEmojiPanelOpen((current) => !current);
           return;
         }
         if (key === "m") {
@@ -5759,6 +5815,75 @@ export default function App() {
             setPermanentDeleteIds(null);
           }}
         />
+      )}
+
+      {emojiPanelOpen && (
+        <div
+          aria-label="이모지"
+          className="emoji-panel"
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            setEmojiPanelOpen(false);
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          ref={emojiPanelRef}
+          role="dialog"
+          tabIndex={-1}
+        >
+          <input
+            aria-label="이모지 검색"
+            autoFocus
+            onChange={(event) => setEmojiQuery(event.target.value)}
+            placeholder="이모지 검색"
+            value={emojiQuery}
+          />
+          {(() => {
+            const matches = searchEmoji(emojiQuery);
+            if (matches.length === 0) {
+              return <p className="emoji-empty">찾는 이모지가 없습니다.</p>;
+            }
+            const matchSet = new Set(matches);
+            /* 최근 사용 first, the way Windows opens on what you actually use;
+               a search narrows the recents too rather than ignoring them. */
+            const recent = recentEmoji.filter((emoji) => matchSet.has(emoji));
+            const sections = [
+              ...(recent.length > 0
+                ? [{ emoji: recent, id: "recent", label: "최근 사용" }]
+                : []),
+              ...EMOJI_GROUPS.map((group) => ({
+                emoji: group.emoji
+                  .map((entry) => entry.char)
+                  .filter((char) => matchSet.has(char)),
+                id: group.id,
+                label: group.label,
+              })).filter((group) => group.emoji.length > 0),
+            ];
+            return (
+              <div className="emoji-scroll">
+                {sections.map((section) => (
+                  <section key={section.id}>
+                    <h2>{section.label}</h2>
+                    <div className="emoji-grid">
+                      {section.emoji.map((emoji) => (
+                        <button
+                          aria-label={`${emoji} ${getEmojiKeywords(emoji)[0] ?? ""}`.trim()}
+                          key={`${section.id}-${emoji}`}
+                          onClick={() => insertEmoji(emoji)}
+                          title={getEmojiKeywords(emoji).join(", ")}
+                          type="button"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
       )}
 
       {clipboardPanelOpen && (

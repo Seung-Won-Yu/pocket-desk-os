@@ -5,6 +5,7 @@ import {
   DEFAULT_APPS_KEY,
   DEFAULT_USER_NAME,
   DESKTOP_ICONS_KEY,
+  EMOJI_RECENT_KEY,
   FOCUS_ASSIST_KEY,
   TEXT_SCALE_KEY,
   USER_NAME_KEY,
@@ -124,5 +125,26 @@ export function persistDefaultApps(defaultApps: DefaultAppMap) {
     localStorage.setItem(DEFAULT_APPS_KEY, JSON.stringify(defaultApps));
   } catch {
     // A private-mode storage failure must not break the setting itself.
+  }
+}
+
+/** 이모지 패널's 최근 사용, remembered the way Windows remembers it. */
+export function loadRecentEmoji(): string[] {
+  try {
+    const raw = localStorage.getItem(EMOJI_RECENT_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((value): value is string => typeof value === "string").slice(0, 32);
+  } catch {
+    return [];
+  }
+}
+
+export function persistRecentEmoji(recent: string[]) {
+  try {
+    localStorage.setItem(EMOJI_RECENT_KEY, JSON.stringify(recent));
+  } catch {
+    // A private-mode storage failure must not break the panel itself.
   }
 }

@@ -383,6 +383,77 @@ button {
   color: var(--text);
 }
 
+/* 이모지 패널 (Win+. / Win+;): the clipboard panel's frame, a grid inside. */
+.emoji-panel {
+  animation: dialog-enter 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  background: color-mix(in srgb, var(--surface) 92%, black);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  bottom: calc(var(--taskbar-height) + 12px);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  left: 50%;
+  max-height: 400px;
+  padding: 12px;
+  position: fixed;
+  transform: translateX(-50%);
+  width: 340px;
+  z-index: 60;
+}
+
+.emoji-panel input {
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.emoji-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.emoji-panel h2 {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+.emoji-grid {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(8, 1fr);
+}
+
+.emoji-grid button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 1.2rem;
+  line-height: 1;
+  min-height: 34px;
+  padding: 0;
+}
+
+.emoji-grid button:hover,
+.emoji-grid button:focus-visible {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.emoji-empty {
+  color: var(--muted);
+  margin: 2px 0;
+}
+
 /* 클립보드 기록 (Win+V): a flyout above the taskbar, not a modal. */
 .clipboard-panel {
   animation: dialog-enter 160ms cubic-bezier(0.16, 1, 0.3, 1) both;

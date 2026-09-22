@@ -6049,6 +6049,79 @@ async function runSmoke(baseUrl) {
     await touchContext.close();
 
     /*
+     * 이모지 패널 (Win+. / Win+;). Windows puts one behind both chords and the
+     * shell had neither; the pick lands at the caret of the field the panel
+     * was opened over, and 최근 사용 remembers what was used.
+     */
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("notepad");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const emojiNote = page.locator('article[data-app-id="notepad"]').last();
+    await emojiNote.waitFor({ state: "visible" });
+    await page.waitForTimeout(400);
+    const emojiEditor = emojiNote.getByLabel("메모 내용");
+    await emojiEditor.click();
+    await emojiEditor.fill("오늘 기분은 ");
+    await emojiEditor.evaluate((node) => {
+      node.focus();
+      node.setSelectionRange(node.value.length, node.value.length);
+    });
+    await page.keyboard.press("Meta+.");
+    const emojiPanel = page.locator(".emoji-panel");
+    await emojiPanel.waitFor({ state: "visible" });
+    await page.waitForTimeout(200);
+    assert(
+      (await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))) ===
+        "이모지 검색",
+      "이모지 패널 opened without the caret in its search box",
+    );
+    // 검색 narrows to what the keyword names.
+    await emojiPanel.getByLabel("이모지 검색").fill("커피");
+    await page.waitForTimeout(250);
+    const coffeeOnly = await emojiPanel
+      .locator(".emoji-grid button")
+      .evaluateAll((els) => els.map((el) => el.innerText));
+    assert(
+      JSON.stringify(coffeeOnly) === JSON.stringify(["☕"]),
+      `이모지 검색 "커피" showed ${JSON.stringify(coffeeOnly)}`,
+    );
+    await emojiPanel.locator(".emoji-grid button").first().click();
+    await emojiPanel.waitFor({ state: "detached" });
+    await page.waitForTimeout(250);
+    assert(
+      (await emojiEditor.inputValue()) === "오늘 기분은 ☕",
+      `이모지 패널 left the note as ${JSON.stringify(await emojiEditor.inputValue())}`,
+    );
+
+    // Win+; is the same panel, and it opens on 최근 사용 now that there is one.
+    await emojiEditor.evaluate((node) => {
+      node.focus();
+      node.setSelectionRange(node.value.length, node.value.length);
+    });
+    await page.keyboard.press("Meta+;");
+    await emojiPanel.waitFor({ state: "visible" });
+    const emojiSections = await emojiPanel
+      .locator("h2")
+      .evaluateAll((els) => els.map((el) => el.innerText));
+    assert(
+      emojiSections[0] === "최근 사용",
+      `이모지 패널 opened on ${emojiSections.join(", ")}`,
+    );
+    assert(
+      (await emojiPanel.locator(".emoji-grid button").first().innerText()).trim() === "☕",
+      "최근 사용 did not lead with the emoji just used",
+    );
+    await page.keyboard.press("Escape");
+    await emojiPanel.waitFor({ state: "detached" });
+    await emojiNote.getByRole("button", { name: "메모장 닫기" }).click();
+    await page.waitForTimeout(300);
+    if (await page.locator(".note-close-overlay, .window-dialog").count()) {
+      await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
+      await page.waitForTimeout(250);
+    }
+
+    /*
      * 클립보드 기록 (Win+V). The shell kept a clipboard for files and nothing
      * at all for text: whatever was copied last was the only thing that
      * existed. The panel reaches back past the newest copy.

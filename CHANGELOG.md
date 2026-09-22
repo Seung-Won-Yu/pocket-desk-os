@@ -6,6 +6,12 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **이모지 패널 (Win+. / Win+;).** Windows puts one behind both chords and the shell had neither. The panel opens with the caret in its search box, and the emoji lands where the caret was in the field the panel was opened over — measured, `오늘 기분은 ` plus a click came out `오늘 기분은 ☕`. Searching narrows by Korean keywords: 커피 leaves `☕` alone, 휴지통 leaves `🗑️`, and a word no emoji carries says 찾는 이모지가 없습니다 rather than showing everything.
+
+  최근 사용 leads the list once there is one and survives a reload (measured), because a panel that opens on the same six faces every time is a list, not a memory.
+
+  The field a pick goes back into is remembered from before the panel opened, and a panel's own search box is explicitly not that field — measured before the fix, the emoji went into the search box and the note was left untouched.
+
 - **탐색기의 가장자리: 검색 단축키, 상태 표시줄 보기 전환, 인터넷 바로 가기.** Three things Windows' 파일 탐색기 has and this one did not. Ctrl+F, Ctrl+E and F3 all put the caret in 파일 검색 — measured before, Ctrl+F left focus on the column header it happened to be on. The status bar grew the two view buttons Windows keeps at its right end, so 자세히 ⇄ 큰 아이콘 is one click away from wherever you are, with `aria-pressed` saying which is on. And 새로 만들기 offers 인터넷 바로 가기, which the desktop's own menu had all along: the same wizard, creating the shortcut in the folder that is open rather than on the desktop — measured, `PocketDesk 홈` landed in 바탕 화면's listing and came up selected.
 
 - **클립보드 기록 (Win+V).** The shell had a clipboard for files and none at all for text: whatever was copied last was the only thing that existed, and a copy made two steps ago was gone. Win+V opens the panel, and it reaches back past the newest entry — measured, copying `첫 번째 복사` then `두 번째 복사` listed both newest-first, and clicking the older one put it in at the caret of the 메모장 the panel was opened over.
