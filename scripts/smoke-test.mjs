@@ -1161,21 +1161,45 @@ async function runSmoke(baseUrl) {
       "The selection band stayed on screen after the drag ended",
     );
 
-    // Ctrl (⌘ on macOS) adds the band's rows to what was already selected.
-    await explorerRowButtons.first().click();
+    /*
+     * Ctrl (⌘ on macOS) adds the band's rows to what was already selected.
+     * The same rectangle as above runs again, so what it covers is known: a
+     * row it misses is selected first, and both have to survive.
+     */
+    const allRowNames = await explorerRowButtons.evaluateAll((els) =>
+      els.map((el) => el.innerText.split("\n")[0]),
+    );
+    const outsideBand = allRowNames.find((name) => !bandedNames.includes(name));
+    assert(outsideBand, `Every row was under the band: ${allRowNames.join(", ")}`);
+    await explorerRowButtons.filter({ hasText: outsideBand }).first().click();
     const beforeAdditive = await selectedRowNames();
+    // Selecting a row can move the list — the preview pane beside it grows with
+    // what it has to show — so the band's own points are measured again here.
+    const additiveListBox = await explorerList.boundingBox();
+    const additiveLastRow = await explorerRowButtons.last().boundingBox();
+    const additiveBlankY = additiveLastRow.y + additiveLastRow.height + 30;
+    assert(
+      additiveBlankY < additiveListBox.y + additiveListBox.height - 8,
+      "The file list has no empty space left to start the second band from",
+    );
     await page.keyboard.down(multiSelectModifier);
-    await page.mouse.move(marqueeListBox.x + marqueeListBox.width - 40, marqueeBlankY);
+    await page.mouse.move(additiveListBox.x + additiveListBox.width - 40, additiveBlankY);
     await page.mouse.down();
-    await page.mouse.move(marqueeListBox.x + 30, marqueeLastRow.y + 6, { steps: 10 });
+    await page.mouse.move(additiveListBox.x + 30, marqueeSecondLast.y + 6, { steps: 10 });
+    await page.waitForTimeout(120);
+    // Kept for the failure message: a band that never appeared and a band that
+    // appeared but added nothing are different bugs.
+    const additiveBandCount = await files.locator(".file-marquee").count();
+    assert(additiveBandCount === 1, "Ctrl+끌어서 선택 drew no band at all");
     await page.mouse.up();
     await page.keyboard.up(multiSelectModifier);
     await page.waitForTimeout(200);
     const additiveNames = await selectedRowNames();
+    const additiveExpected = [...new Set([...beforeAdditive, ...bandedNames])];
     assert(
-      beforeAdditive.every((name) => additiveNames.includes(name)) &&
-        additiveNames.length > beforeAdditive.length,
-      `Ctrl+끌어서 선택 replaced the selection (${beforeAdditive.join(", ")}) instead of adding to it: ${additiveNames.join(", ")}`,
+      additiveNames.length === additiveExpected.length &&
+        additiveExpected.every((name) => additiveNames.includes(name)),
+      `Ctrl+끌어서 선택 gave ${additiveNames.join(", ")} where ${additiveExpected.join(", ")} was selected and banded (band on screen mid-drag: ${additiveBandCount})`,
     );
 
     // A press that lands on a row is a drag & drop, not a band.
