@@ -23,6 +23,7 @@ import {
   House,
   Info,
   LayoutGrid,
+  Link,
   List,
   Monitor,
   Paintbrush,
@@ -93,6 +94,7 @@ import {
   writeLocalFolder,
 } from "../vfs/localFolder";
 import { trapDialogFocus } from "../shell/dialogFocus";
+import { ShortcutDialog } from "../shell/components/ShortcutDialog";
 import type {
   AppId,
   ClipboardMode,
@@ -180,6 +182,7 @@ type FilesAppProps = {
   copyToClipboard: (itemIds: string[], mode?: ClipboardMode) => void;
   pasteFromClipboard: (parentId: string) => string[];
   createVfsFolder: (parentId?: string, name?: string) => DesktopItem;
+  createVfsShortcut: (parentId: string, name: string, target: string) => DesktopItem | null;
   addVfsEntries: (entries: DesktopItem[]) => boolean;
   onImportLocalEntries: (entries: DesktopItem[]) => void;
   quickAccessIds: string[];
@@ -334,6 +337,7 @@ export default function FilesApp({
   copyToClipboard,
   pasteFromClipboard,
   createVfsFolder,
+  createVfsShortcut,
   onImportLocalEntries,
   createVfsTextFile,
   deleteVfsEntries,
@@ -365,6 +369,7 @@ export default function FilesApp({
   windowId,
 }: FilesAppProps) {
   const fileListRef = useRef<HTMLDivElement | null>(null);
+  const fileSearchRef = useRef<HTMLInputElement | null>(null);
   const [marquee, setMarquee] = useState<FileMarqueeState | null>(null);
   // Pointer moves arrive faster than renders; the ref is what they read.
   const marqueeRef = useRef<FileMarqueeState | null>(null);
@@ -1310,6 +1315,24 @@ export default function FilesApp({
     setFileContextMenu(null);
   };
 
+  const [shortcutDialogOpen, setShortcutDialogOpen] = useState(false);
+
+  /** 새로 만들기 > 인터넷 바로 가기, the same wizard the desktop's menu opens. */
+  const createShortcut = (name: string, target: string) => {
+    const item = createVfsShortcut(currentFolderId, name, target);
+    setShortcutDialogOpen(false);
+    if (!item) return;
+    setSelectedIds([item.id]);
+    setActiveFileId(item.id);
+    selectionAnchorRef.current = item.id;
+  };
+
+  const openShortcutDialog = () => {
+    setNewOpen(false);
+    setFileContextMenu(null);
+    setShortcutDialogOpen(true);
+  };
+
   const createFolder = () => {
     const item = createVfsFolder(currentFolderId);
     setSelectedIds([item.id]);
@@ -1970,6 +1993,16 @@ export default function FilesApp({
       // has to work with the search box, the toolbar, or nothing focused.
       onKeyDown={(event) => {
         if (isShellReservedChord(event)) return;
+        // Windows gives 검색 three ways in and this window had none of them.
+        if (
+          event.key === "F3" ||
+          ((event.ctrlKey || event.metaKey) && /^[fe]$/i.test(event.key))
+        ) {
+          event.preventDefault();
+          fileSearchRef.current?.focus();
+          fileSearchRef.current?.select();
+          return;
+        }
         // Alt+D is Windows' other name for Ctrl+L, and the one anyone who
         // came from a browser reaches for. It belongs to the window too.
         if (event.altKey && !event.ctrlKey && !event.metaKey) {
@@ -2469,6 +2502,7 @@ export default function FilesApp({
               <input
                 aria-label="파일 검색"
                 onChange={(event) => setFileQuery(event.target.value)}
+                ref={fileSearchRef}
                 placeholder={`${locationLabel} 검색`}
                 value={fileQuery}
               />
@@ -2500,6 +2534,10 @@ export default function FilesApp({
                   <button onClick={createFolder} role="menuitem" type="button">
                     <Folder aria-hidden="true" size={15} />
                     폴더
+                  </button>
+                  <button onClick={openShortcutDialog} role="menuitem" type="button">
+                    <Link aria-hidden="true" size={15} />
+                    인터넷 바로 가기
                   </button>
                   <button onClick={createTextFile} role="menuitem" type="button">
                     <FileText aria-hidden="true" size={15} />
@@ -3171,6 +3209,30 @@ export default function FilesApp({
                 }`
               : "선택한 항목 없음"}
           </span>
+          {/* Windows puts the two view buttons at the right end of the bar, a
+              click from 자세히 to 큰 아이콘 without opening the 보기 menu. */}
+          <div className="file-statusbar-views">
+            <button
+              aria-label="보기 전환: 자세히"
+              aria-pressed={viewMode === "details"}
+              className={viewMode === "details" ? "is-selected" : ""}
+              onClick={() => setViewMode("details")}
+              title="자세히 보기"
+              type="button"
+            >
+              <List aria-hidden="true" size={15} />
+            </button>
+            <button
+              aria-label="보기 전환: 큰 아이콘"
+              aria-pressed={viewMode === "icons"}
+              className={viewMode === "icons" ? "is-selected" : ""}
+              onClick={() => setViewMode("icons")}
+              title="큰 아이콘 보기"
+              type="button"
+            >
+              <LayoutGrid aria-hidden="true" size={15} />
+            </button>
+          </div>
         </div>
       </section>
       {fileContextMenu && contextFile && (
@@ -3592,6 +3654,10 @@ export default function FilesApp({
                   <Folder aria-hidden="true" size={15} />
                   폴더
                 </button>
+                <button onClick={openShortcutDialog} role="menuitem" type="button">
+                  <Link aria-hidden="true" size={15} />
+                  인터넷 바로 가기
+                </button>
                 <button onClick={createTextFile} role="menuitem" type="button">
                   <FileText aria-hidden="true" size={15} />
                   텍스트 문서
@@ -3810,6 +3876,13 @@ export default function FilesApp({
             </footer>
           </section>
         </div>
+      )}
+
+      {shortcutDialogOpen && (
+        <ShortcutDialog
+          onClose={() => setShortcutDialogOpen(false)}
+          onCreate={createShortcut}
+        />
       )}
     </div>
   );

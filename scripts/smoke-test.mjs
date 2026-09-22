@@ -1329,6 +1329,73 @@ async function runSmoke(baseUrl) {
     await page.waitForTimeout(150);
     assert(bandFromRow === 0, "A drag that started on a row drew a selection band");
 
+    /*
+     * 탐색기의 가장자리: 검색 단축키, 상태 표시줄 보기 단추, 새로 만들기의
+     * 인터넷 바로 가기. Windows has all three and this window had none of them.
+     */
+    await explorerRowButtons.first().click();
+    await page.keyboard.press("Control+f");
+    await page.waitForTimeout(200);
+    assert(
+      (await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))) ===
+        "파일 검색",
+      `Ctrl+F focused ${await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))}`,
+    );
+    await explorerList.click({ position: { x: 300, y: 300 } });
+    await page.keyboard.press("F3");
+    await page.waitForTimeout(200);
+    assert(
+      (await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))) ===
+        "파일 검색",
+      "F3 did not reach 파일 검색",
+    );
+
+    const statusViewButtons = files.locator(".file-statusbar-views button");
+    await statusViewButtons.nth(1).click();
+    await page.waitForTimeout(300);
+    assert(
+      (await explorerList.getAttribute("class")).includes("file-view-icons"),
+      `The status bar's 큰 아이콘 button left the list as ${await explorerList.getAttribute("class")}`,
+    );
+    assert(
+      (await statusViewButtons.nth(1).getAttribute("aria-pressed")) === "true",
+      "The status bar's view buttons do not say which view is on",
+    );
+    await statusViewButtons.nth(0).click();
+    await page.waitForTimeout(300);
+    assert(
+      (await explorerList.getAttribute("class")).includes("file-view-details"),
+      "The status bar's 자세히 button did not switch back",
+    );
+
+    await files.getByRole("button", { name: "새로 만들기" }).click();
+    const shortcutNewMenu = files.getByRole("menu", { name: "새로 만들기" });
+    await shortcutNewMenu.waitFor({ state: "visible" });
+    await shortcutNewMenu.getByRole("menuitem", { name: "인터넷 바로 가기" }).click();
+    const explorerShortcutDialog = page.getByRole("dialog", { name: /바로 가기/ });
+    await explorerShortcutDialog.waitFor({ state: "visible" });
+    await explorerShortcutDialog.getByLabel("항목 위치").fill("https://example.com/");
+    await explorerShortcutDialog.getByLabel("바로 가기 이름").fill("스모크 탐색기 바로 가기");
+    await explorerShortcutDialog.getByRole("button", { name: "만들기", exact: true }).click();
+    await explorerShortcutDialog.waitFor({ state: "detached" });
+    const madeShortcut = files
+      .locator(".file-list button", { hasText: "스모크 탐색기 바로 가기" })
+      .first();
+    await madeShortcut.waitFor({ state: "visible" });
+    // It belongs to the folder that was open, not the desktop.
+    assert(
+      (await madeShortcut.getAttribute("aria-selected")) === "true",
+      "The new shortcut was not the selection after it was made",
+    );
+    await page.keyboard.press("Delete");
+    await page.waitForTimeout(300);
+    assert(
+      (await files
+        .locator(".file-list button", { hasText: "스모크 탐색기 바로 가기" })
+        .count()) === 0,
+      "The smoke's own shortcut is still in the folder",
+    );
+
     await files.getByRole("button", { name: "자세히 보기" }).click();
     await files.getByRole("button", { name: "정렬", exact: true }).click();
     await files.locator(".file-address").click();

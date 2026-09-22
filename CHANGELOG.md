@@ -6,6 +6,8 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **탐색기의 가장자리: 검색 단축키, 상태 표시줄 보기 전환, 인터넷 바로 가기.** Three things Windows' 파일 탐색기 has and this one did not. Ctrl+F, Ctrl+E and F3 all put the caret in 파일 검색 — measured before, Ctrl+F left focus on the column header it happened to be on. The status bar grew the two view buttons Windows keeps at its right end, so 자세히 ⇄ 큰 아이콘 is one click away from wherever you are, with `aria-pressed` saying which is on. And 새로 만들기 offers 인터넷 바로 가기, which the desktop's own menu had all along: the same wizard, creating the shortcut in the folder that is open rather than on the desktop — measured, `PocketDesk 홈` landed in 바탕 화면's listing and came up selected.
+
 - **클립보드 기록 (Win+V).** The shell had a clipboard for files and none at all for text: whatever was copied last was the only thing that existed, and a copy made two steps ago was gone. Win+V opens the panel, and it reaches back past the newest entry — measured, copying `첫 번째 복사` then `두 번째 복사` listed both newest-first, and clicking the older one put it in at the caret of the 메모장 the panel was opened over.
 
   One listener on the document catches every copy in the shell — 메모장, 터미널, the browser's reader — rather than each app reporting its own. Copying the same text again moves it to the top instead of listing it twice (measured: A, B, A left two rows with A first), whitespace-only copies are ignored, and the last ten are kept.
