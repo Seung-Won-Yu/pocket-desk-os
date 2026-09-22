@@ -6,6 +6,10 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **시작 메뉴 항목 메뉴.** A tile's right-click menu had exactly one command — 시작 화면에서 제거 — and it said that whether the tile was pinned or listed under 모든 앱, where the honest answer is 시작 화면에 고정. It never mentioned the taskbar, which is where Windows pins from.
+
+  The menu now answers the three questions Windows' does: 열기, whether it is on 시작, whether it is on 작업 표시줄. Measured: a pinned tile offers 열기 / 시작 화면에서 제거 / 작업 표시줄에 고정; 작업 표시줄에 고정 put 계산기 on the bar and the same menu then read 작업 표시줄에서 제거, which took it back off; a row under 모든 앱 offers 시작 화면에 고정 instead. A tile folder still offers only 그룹 해제 — the one thing a folder can do.
+
 - **이모지 패널 (Win+. / Win+;).** Windows puts one behind both chords and the shell had neither. The panel opens with the caret in its search box, and the emoji lands where the caret was in the field the panel was opened over — measured, `오늘 기분은 ` plus a click came out `오늘 기분은 ☕`. Searching narrows by Korean keywords: 커피 leaves `☕` alone, 휴지통 leaves `🗑️`, and a word no emoji carries says 찾는 이모지가 없습니다 rather than showing everything.
 
   최근 사용 leads the list once there is one and survives a reload (measured), because a panel that opens on the same six faces every time is a list, not a memory.

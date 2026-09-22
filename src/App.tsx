@@ -5786,6 +5786,8 @@ export default function App() {
           onOpenApp={openApp}
           onRestart={restartDesktop}
           onShutdown={shutdownDesktop}
+          onToggleTaskbarPin={togglePinnedApp}
+          taskbarPinnedAppIds={pinnedAppIds}
           onPointerDown={(event) => event.stopPropagation()}
           onRecentItemOpen={openDesktopItem}
           onResultOpen={openStartSearchResult}

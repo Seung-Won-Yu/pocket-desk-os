@@ -940,6 +940,63 @@ async function runSmoke(baseUrl) {
     await page.getByRole("button", { name: "시작 메뉴" }).click();
     await startMenu.waitFor({ state: "visible" });
 
+    /*
+     * 시작 메뉴 항목 메뉴. The tile's menu offered 시작 화면에서 제거 and
+     * nothing else — not 열기, and nothing about 작업 표시줄, which is where
+     * Windows' own menu pins from.
+     */
+    const startTileMenuItems = () =>
+      page
+        .locator(".start-tile-menu button")
+        .evaluateAll((buttons) => buttons.map((button) => button.innerText.trim()));
+    const taskbarAppNames = () =>
+      page
+        .locator(".taskbar-app")
+        .evaluateAll((items) =>
+          items.map((item) => item.textContent.trim().replace(/\s+/g, " ")),
+        );
+    const calcTile = startMenu
+      .locator(".start-pinned-grid button")
+      .filter({ hasText: "계산기" })
+      .first();
+    await calcTile.click({ button: "right" });
+    await page.locator(".start-tile-menu").waitFor({ state: "visible" });
+    assert(
+      JSON.stringify(await startTileMenuItems()) ===
+        JSON.stringify(["열기", "시작 화면에서 제거", "작업 표시줄에 고정"]),
+      `A pinned tile offered ${(await startTileMenuItems()).join(", ")}`,
+    );
+    const taskbarBeforePin = await taskbarAppNames();
+    await page
+      .locator(".start-tile-menu button")
+      .filter({ hasText: "작업 표시줄에 고정" })
+      .first()
+      .click();
+    await page.waitForTimeout(400);
+    const taskbarAfterPin = await taskbarAppNames();
+    assert(
+      taskbarAfterPin.length === taskbarBeforePin.length + 1 &&
+        taskbarAfterPin.some((name) => name.includes("계산기")),
+      `작업 표시줄에 고정 left the bar as ${taskbarAfterPin.join(", ")}`,
+    );
+    // The same menu now offers the way back off the bar, and takes it.
+    await calcTile.click({ button: "right" });
+    await page.locator(".start-tile-menu").waitFor({ state: "visible" });
+    assert(
+      (await startTileMenuItems()).includes("작업 표시줄에서 제거"),
+      `A pinned app still offered ${(await startTileMenuItems()).join(", ")}`,
+    );
+    await page
+      .locator(".start-tile-menu button")
+      .filter({ hasText: "작업 표시줄에서 제거" })
+      .first()
+      .click();
+    await page.waitForTimeout(400);
+    assert(
+      JSON.stringify(await taskbarAppNames()) === JSON.stringify(taskbarBeforePin),
+      `작업 표시줄에서 제거 left the bar as ${(await taskbarAppNames()).join(", ")}`,
+    );
+
     await startMenu
       .locator(".start-pinned-grid")
       .getByRole("button", { name: /내 PC/ })

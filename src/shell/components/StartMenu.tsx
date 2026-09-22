@@ -10,6 +10,7 @@ import {
   reorderTiles,
   ungroupFolder,
 } from "../startPinned";
+import { getStartTileCommands } from "../startTileMenu";
 import {
   getResultIconTileTone,
   getStartPinnedTiles,
@@ -20,6 +21,7 @@ import { type AppDefinition, type StartSearchResult } from "../types";
 import {
   ChevronLeft,
   ChevronRight,
+  ExternalLink,
   FileText,
   FolderOpen,
   Lock,
@@ -45,6 +47,8 @@ export function StartMenu({
   onSleep,
   onOpenApp,
   onRestart,
+  onToggleTaskbarPin,
+  taskbarPinnedAppIds,
   onShutdown,
   onPointerDown,
   onRecentItemOpen,
@@ -61,6 +65,9 @@ export function StartMenu({
   onSleep: () => void;
   onOpenApp: (appId: AppId) => void;
   onRestart: () => void;
+  /** 작업 표시줄에 고정 from the same menu, the way Windows offers both. */
+  onToggleTaskbarPin: (appId: AppId) => void;
+  taskbarPinnedAppIds: AppId[];
   onShutdown: () => void;
   onPointerDown: (event: React.PointerEvent<HTMLElement>) => void;
   onRecentItemOpen: (item: DesktopItem) => void;
@@ -606,42 +613,44 @@ export function StartMenu({
               return { left: clamped.x, top: clamped.y };
             })()}
           >
-            {tileMenu.folderId ? (
+            {getStartTileCommands({
+              isFolder: Boolean(tileMenu.folderId),
+              pinnedToStart: tileMenu.appId ? pinnedAppIds.includes(tileMenu.appId) : false,
+              pinnedToTaskbar: tileMenu.appId
+                ? taskbarPinnedAppIds.includes(tileMenu.appId)
+                : false,
+            }).map((command, index) => (
               <button
-                autoFocus
+                autoFocus={index === 0}
+                key={command.id}
                 onClick={() => {
-                  setPinnedEntries((current) => ungroupFolder(current, tileMenu.folderId!));
-                  setOpenFolderId(null);
+                  const appId = tileMenu.appId;
                   setTileMenu(null);
+                  if (command.id === "ungroupFolder") {
+                    setPinnedEntries((current) => ungroupFolder(current, tileMenu.folderId!));
+                    setOpenFolderId(null);
+                    return;
+                  }
+                  if (!appId) return;
+                  if (command.id === "open") onOpenApp(appId);
+                  else if (command.id === "pinToStart") pinApp(appId);
+                  else if (command.id === "unpinFromStart") unpinApp(appId);
+                  else onToggleTaskbarPin(appId);
                 }}
                 role="menuitem"
                 type="button"
               >
-                <FolderOpen aria-hidden="true" size={15} />
-                그룹 해제
-              </button>
-            ) : (
-              <button
-                autoFocus
-                onClick={() => {
-                  const appId = tileMenu.appId!;
-                  if (pinnedAppIds.includes(appId)) unpinApp(appId);
-                  else pinApp(appId);
-                  setTileMenu(null);
-                }}
-                role="menuitem"
-                type="button"
-              >
-                {pinnedAppIds.includes(tileMenu.appId!) ? (
-                  <PinOff aria-hidden="true" size={15} />
-                ) : (
+                {command.id === "ungroupFolder" && <FolderOpen aria-hidden="true" size={15} />}
+                {command.id === "open" && <ExternalLink aria-hidden="true" size={15} />}
+                {(command.id === "pinToStart" || command.id === "pinToTaskbar") && (
                   <Pin aria-hidden="true" size={15} />
                 )}
-                {pinnedAppIds.includes(tileMenu.appId!)
-                  ? "시작 화면에서 제거"
-                  : "시작 화면에 고정"}
+                {(command.id === "unpinFromStart" || command.id === "unpinFromTaskbar") && (
+                  <PinOff aria-hidden="true" size={15} />
+                )}
+                {command.label}
               </button>
-            )}
+            ))}
           </div>,
           document.body,
         )}
