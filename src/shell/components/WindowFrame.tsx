@@ -94,21 +94,28 @@ export function WindowFrame({
     "--window-min-height": `${minHeight}px`,
     "--window-min-width": `${minWidth}px`,
   } as CSSProperties;
-  const frameStyle: CSSProperties = instance.maximized
+  const frameStyle: CSSProperties = instance.fullscreen
     ? {
-        // Inset by the taskbar's edge, whichever edge that is now.
+        // F11: the whole screen, over the taskbar (z 9000) and everything under it.
         ...minSizeVars,
-        inset: "var(--work-area-inset)",
-        zIndex: instance.z,
+        inset: 0,
+        zIndex: 9500,
       }
-    : {
-        ...minSizeVars,
-        left: instance.x,
-        top: instance.y,
-        width: instance.width,
-        height: instance.height,
-        zIndex: instance.z,
-      };
+    : instance.maximized
+      ? {
+          // Inset by the taskbar's edge, whichever edge that is now.
+          ...minSizeVars,
+          inset: "var(--work-area-inset)",
+          zIndex: instance.z,
+        }
+      : {
+          ...minSizeVars,
+          left: instance.x,
+          top: instance.y,
+          width: instance.width,
+          height: instance.height,
+          zIndex: instance.z,
+        };
 
   const frameRef = useRef<HTMLElement | null>(null);
   const focusBeforeMinimizeRef = useRef<HTMLElement | null>(null);
@@ -343,7 +350,7 @@ export function WindowFrame({
       aria-hidden={instance.minimized ? "true" : undefined}
       className={`window-frame ${active ? "is-active" : ""} ${
         instance.maximized ? "is-maximized" : ""
-      } ${instance.minimized ? "is-minimized" : ""} ${motion ? `is-${motion}` : ""} ${
+      } ${instance.fullscreen ? "is-fullscreen" : ""} ${instance.minimized ? "is-minimized" : ""} ${motion ? `is-${motion}` : ""} ${
         interacting ? "is-interacting" : ""
       } ${peeked ? "is-peeked" : ""}`}
       /*

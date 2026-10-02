@@ -50,6 +50,8 @@ export type WindowInstance = {
   desktopIndex: number;
   /** Last snap layout applied, so Win+Arrow can step between half and quarter. */
   snapZone?: SnapZone;
+  /** F11: over the whole screen, taskbar included. Never persisted. */
+  fullscreen?: boolean;
 };
 
 export type PersistedWindow = Partial<Omit<WindowInstance, "id">> & {

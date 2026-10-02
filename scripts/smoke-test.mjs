@@ -6420,6 +6420,159 @@ async function runSmoke(baseUrl) {
     await page.waitForTimeout(300);
 
     /*
+     * 창 관리 단축키: Win+Home, Win+Shift+↑/↓, Alt+Esc, F11, Win+Ctrl+D/F4.
+     * Windows has every one of these; here they did nothing, or — Win+Shift+↑ —
+     * maximized instead of stretching.
+     */
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("notepad");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const chordNote = page.locator('article[data-app-id="notepad"]').last();
+    await chordNote.waitFor({ state: "visible" });
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("calc");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const chordCalc = page.locator('article[data-app-id="calculator"]').last();
+    await chordCalc.waitFor({ state: "visible" });
+    await page.waitForTimeout(400);
+    const isMinimized = (frame) =>
+      frame.evaluate((node) => node.classList.contains("is-minimized"));
+    const frameBox = async (frame) => {
+      const box = await frame.boundingBox();
+      return {
+        height: Math.round(box.height),
+        width: Math.round(box.width),
+        x: Math.round(box.x),
+        y: Math.round(box.y),
+      };
+    };
+
+    // Win+Home: everything but the window in front goes; the second press brings it back.
+    await page.keyboard.press("Meta+Home");
+    await page.waitForTimeout(500);
+    assert(
+      (await isMinimized(chordNote)) && !(await isMinimized(chordCalc)),
+      "Win+Home did not put away every window but the active one",
+    );
+    await page.keyboard.press("Meta+Home");
+    await page.waitForTimeout(500);
+    assert(
+      !(await isMinimized(chordNote)),
+      "The second Win+Home did not bring the windows back",
+    );
+    assert(
+      (await chordCalc.getAttribute("class")).includes("is-active"),
+      "The window in front lost its place to the ones Win+Home brought back",
+    );
+
+    // Win+Shift+↑ stretches top to bottom and keeps the width; ↓ gives the height back.
+    const calcBefore = await frameBox(chordCalc);
+    await page.keyboard.press("Meta+Shift+ArrowUp");
+    await page.waitForTimeout(350);
+    const calcStretched = await frameBox(chordCalc);
+    assert(
+      calcStretched.y === 0 &&
+        calcStretched.height > calcBefore.height &&
+        calcStretched.width === calcBefore.width &&
+        calcStretched.x === calcBefore.x,
+      `Win+Shift+↑ gave ${JSON.stringify(calcStretched)} from ${JSON.stringify(calcBefore)}`,
+    );
+    await page.keyboard.press("Meta+Shift+ArrowDown");
+    await page.waitForTimeout(350);
+    assert(
+      JSON.stringify(await frameBox(chordCalc)) === JSON.stringify(calcBefore),
+      `Win+Shift+↓ left ${JSON.stringify(await frameBox(chordCalc))}`,
+    );
+
+    // Alt+Esc: the front window goes to the back and the next comes forward.
+    await page.keyboard.press("Alt+Escape");
+    await page.waitForTimeout(350);
+    assert(
+      !(await chordCalc.getAttribute("class")).includes("is-active"),
+      "Alt+Esc left the same window in front",
+    );
+    const lowestZ = await page
+      .locator(".window-frame")
+      .evaluateAll((els) => Math.min(...els.map((el) => Number(el.style.zIndex) || 1)));
+    assert(lowestZ >= 1, `Alt+Esc pushed a window to z ${lowestZ}, behind the desktop`);
+    // Back to the calculator from its taskbar button — its title bar is under
+    // the window Alt+Esc brought forward.
+    const calcTaskbarButton = page
+      .locator(".taskbar-app")
+      .filter({ hasText: "계산기" })
+      .first();
+    await calcTaskbarButton.click();
+    await page.waitForTimeout(300);
+
+    // F11: the whole screen, taskbar included; F11 again restores the frame.
+    await page.keyboard.press("F11");
+    await page.waitForTimeout(350);
+    const calcFull = await frameBox(chordCalc);
+    const fullscreenViewport = page.viewportSize();
+    assert(
+      calcFull.x === 0 &&
+        calcFull.y === 0 &&
+        calcFull.width === fullscreenViewport.width &&
+        calcFull.height === fullscreenViewport.height,
+      `F11 gave ${JSON.stringify(calcFull)}`,
+    );
+    const underTaskbar = await page.evaluate(() => {
+      const bar = document.querySelector(".taskbar").getBoundingClientRect();
+      const hit = document.elementFromPoint(bar.left + 200, bar.top + bar.height / 2);
+      return hit?.closest(".window-frame") ? "window" : "taskbar";
+    });
+    assert(underTaskbar === "window", "F11 left the taskbar over the window");
+    await page.keyboard.press("F11");
+    await page.waitForTimeout(350);
+    assert(
+      JSON.stringify(await frameBox(chordCalc)) === JSON.stringify(calcBefore),
+      `F11 again left ${JSON.stringify(await frameBox(chordCalc))}`,
+    );
+
+    // Win+Ctrl+D makes a desktop and goes there; Win+Ctrl+F4 closes it again.
+    const desktopLabels = async () => {
+      await page.keyboard.press("Meta+Tab");
+      await page.locator(".task-view-desktop").first().waitFor({ state: "visible" });
+      const labels = await page
+        .locator(".task-view-desktop")
+        .evaluateAll((els) => els.map((el) => el.classList.contains("is-active")));
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(300);
+      return labels;
+    };
+    const desktopsBefore = await desktopLabels();
+    await page.keyboard.press("Meta+Control+d");
+    await page.waitForTimeout(400);
+    const desktopsAfterAdd = await desktopLabels();
+    assert(
+      desktopsAfterAdd.length === desktopsBefore.length + 1 && desktopsAfterAdd.at(-1) === true,
+      `Win+Ctrl+D left the desktops as ${JSON.stringify(desktopsAfterAdd)}`,
+    );
+    await page.keyboard.press("Meta+Control+F4");
+    await page.waitForTimeout(400);
+    assert(
+      (await desktopLabels()).length === desktopsBefore.length,
+      "Win+Ctrl+F4 did not close the desktop it was on",
+    );
+    // The two windows this opened go again.
+    await chordCalc.getByRole("button", { name: "계산기 닫기" }).click();
+    await page.waitForTimeout(250);
+    // A taskbar click on the window already in front minimizes it, so it is
+    // only for bringing back one that is down.
+    if (await isMinimized(chordNote)) {
+      await page.locator(".taskbar-app").filter({ hasText: "메모장" }).first().click();
+      await page.waitForTimeout(300);
+    }
+    await chordNote.getByRole("button", { name: "메모장 닫기" }).click();
+    await page.waitForTimeout(300);
+    if (await page.locator(".note-close-overlay, .window-dialog").count()) {
+      await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
+      await page.waitForTimeout(250);
+    }
+
+    /*
      * 이모지 패널 (Win+. / Win+;). Windows puts one behind both chords and the
      * shell had neither; the pick lands at the caret of the field the panel
      * was opened over, and 최근 사용 remembers what was used.

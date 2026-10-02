@@ -212,6 +212,13 @@ import {
 import { getNeighbourByPosition, handleMenuKeyboard } from "./shell/keyboardNav";
 import { getNextDesktopViewMode } from "./shell/desktopViewMode";
 import {
+  getAltEscPileOrder,
+  getMinimizeOthersIds,
+  getRestoreOthersIds,
+  getVerticalStretchPatch,
+  isVerticallyStretched,
+} from "./shell/windowChords";
+import {
   getRegionCropRect,
   getRegionSelectionBounds,
   isRegionSelectionUsable,
@@ -828,6 +835,10 @@ export default function App() {
     return () => surface.removeEventListener("wheel", onWheel);
   }, []);
   const showDesktopRestoreRef = useRef<string[]>([]);
+  /** Win+Home: the windows it put away, so the second press brings them back. */
+  const minimizeOthersRef = useRef<string[]>([]);
+  /** Win+Shift+Up: each window's height before it was stretched, for Win+Shift+Down. */
+  const verticalRestoreRef = useRef(new Map<string, { height: number; y: number }>());
   /** Windows an Aero Shake minimized, so the next shake can bring them back. */
   const shakeRestoreRef = useRef<string[]>([]);
   const soundEnabledRef = useRef(soundEnabled);
@@ -4169,6 +4180,94 @@ export default function App() {
       .sort((first, second) => second.z - first.z);
 
   /**
+   * Win+Home: every window but the one in front goes to the taskbar, and the
+   * second press brings them back — the chord did nothing before.
+   */
+  const toggleMinimizeOthers = () => {
+    const restoreIds = getRestoreOthersIds(windows, minimizeOthersRef.current);
+    if (restoreIds.length > 0) {
+      minimizeOthersRef.current = [];
+      playSound("toggle");
+      restoreIds.forEach((id) => scheduleWindowMotion(id, "restoring", () => undefined));
+      // Back behind the window in front, in the order they were in.
+      setWindows((current) =>
+        current.map((item) =>
+          restoreIds.includes(item.id) ? { ...item, minimized: false } : item,
+        ),
+      );
+      return;
+    }
+    const ids = getMinimizeOthersIds(windows, activeWindowId ?? null, activeDesktopIndex);
+    if (ids.length === 0) return;
+    minimizeOthersRef.current = ids;
+    playSound("minimize");
+    ids.forEach((id) => {
+      moveFocusOutOfWindow(id);
+      scheduleWindowMotion(id, "minimizing", () => updateWindow(id, { minimized: true }));
+    });
+  };
+
+  /**
+   * Win+Shift+Up stretches the window from the top of the work area to the
+   * bottom and keeps its width and place; it used to maximize instead.
+   * Win+Shift+Down gives the height back.
+   */
+  const stretchWindowVertically = (id: string, stretch: boolean) => {
+    const target = windows.find((item) => item.id === id);
+    if (!target || target.maximized || target.fullscreen) return;
+    const area = getDesktopWorkArea();
+    if (stretch) {
+      if (isVerticallyStretched(target, area)) return;
+      verticalRestoreRef.current.set(id, { height: target.height, y: target.y });
+      playSound("toggle");
+      updateWindow(id, { ...getVerticalStretchPatch(target, area), snapZone: undefined });
+      return;
+    }
+    const saved = verticalRestoreRef.current.get(id);
+    if (!saved) return;
+    verticalRestoreRef.current.delete(id);
+    playSound("toggle");
+    updateWindow(id, saved);
+  };
+
+  /**
+   * Alt+Esc: the window in front goes to the back of the pile and the next
+   * one comes forward, with no switcher in between. The pile is restacked
+   * with fresh z values, never pushed below the others.
+   */
+  const cycleWindowsBackward = () => {
+    const order = getAltEscPileOrder(windows, activeWindowId ?? null, activeDesktopIndex);
+    if (!order) return;
+    playSound("toggle");
+    setWindows((current) => {
+      const topZ = Math.max(1, ...current.map((item) => item.z));
+      return current.map((item) => {
+        const index = order.indexOf(item.id);
+        return index === -1 ? item : { ...item, z: topZ + order.length - index };
+      });
+    });
+  };
+
+  /** F11: the window in front fills the screen, taskbar and title bar gone; F11 again undoes it. */
+  const toggleWindowFullscreen = (id: string) => {
+    const target = windows.find((item) => item.id === id);
+    if (!target) return;
+    playSound("toggle");
+    updateWindow(id, { fullscreen: !target.fullscreen, minimized: false });
+  };
+
+  /** Win+Ctrl+D makes a desktop and goes to it, where the Task View button stays put. */
+  const addDesktopAndSwitch = () => {
+    if (desktopCount >= MAX_VIRTUAL_DESKTOPS) {
+      addDesktop();
+      return;
+    }
+    addDesktop();
+    setActiveDesktopIndex(desktopCount);
+    setDesktopFocusZ(0);
+  };
+
+  /**
    * Windows-style Win+Arrow stepping: a half-snapped window narrows to a
    * quarter, an unsnapped one snaps or maximizes, and Down unwinds the chain.
    */
@@ -4715,6 +4814,40 @@ export default function App() {
         return;
       }
 
+      // Alt+Esc cycles the pile without the switcher; with Alt+Tab up, Escape
+      // belongs to the switcher.
+      if (
+        event.key === "Escape" &&
+        event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !altTabWindowId
+      ) {
+        event.preventDefault();
+        cycleWindowsBackward();
+        return;
+      }
+
+      if (event.key === "F11" && activeWindowId) {
+        event.preventDefault();
+        toggleWindowFullscreen(activeWindowId);
+        return;
+      }
+
+      // Win+Ctrl+D makes a desktop and goes there; Win+Ctrl+F4 closes this one.
+      if (event.metaKey && event.ctrlKey && !event.altKey) {
+        if (event.key.toLowerCase() === "d") {
+          event.preventDefault();
+          addDesktopAndSwitch();
+          return;
+        }
+        if (event.key === "F4") {
+          event.preventDefault();
+          closeDesktop(activeDesktopIndex);
+          return;
+        }
+      }
+
       if (event.metaKey && event.ctrlKey && event.key.startsWith("Arrow")) {
         const step = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
         if (step !== 0) {
@@ -4820,6 +4953,20 @@ export default function App() {
           const target = windows.find((item) => item.id === activeWindowId);
           if (!target || target.maximized) return;
           setSnapFlyoutWindowId((current) => (current === target.id ? null : target.id));
+          return;
+        }
+        if (event.key === "Home") {
+          event.preventDefault();
+          toggleMinimizeOthers();
+          return;
+        }
+        if (
+          event.shiftKey &&
+          (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+          activeWindowId
+        ) {
+          event.preventDefault();
+          stretchWindowVertically(activeWindowId, event.key === "ArrowUp");
           return;
         }
         if (event.key.startsWith("Arrow") && activeWindowId) {

@@ -1700,6 +1700,24 @@ button {
     0 28px 90px rgba(0, 0, 0, 0.46);
 }
 
+/*
+ * F11 전체 화면: the frame covers the screen, taskbar included, and gives up
+ * its title bar and edges — F11 again brings them back.
+ */
+.window-frame.is-fullscreen {
+  border: 0;
+  border-radius: 0;
+  height: auto;
+  max-height: none;
+  max-width: none;
+  width: auto;
+}
+
+.window-frame.is-fullscreen > .window-titlebar,
+.window-frame.is-fullscreen > .resize-handle {
+  display: none;
+}
+
 .window-frame.is-maximized {
   animation-name: window-maximize;
   border: 0;

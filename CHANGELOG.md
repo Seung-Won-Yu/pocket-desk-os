@@ -6,6 +6,14 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **창 관리 단축키: Win+Home, Win+Shift+↑/↓, Alt+Esc, F11, Win+Ctrl+D/F4.** Measured before: Win+Home, Alt+Esc, F11 and Win+Ctrl+D did nothing at all, and Win+Shift+↑ maximized the window — Windows stretches it.
+
+  Win+Home puts every window but the one in front on the taskbar and the second press brings them back behind it, in their old order; a window restored or closed by hand in between is left alone. Win+Shift+↑ runs the window from the top of the work area to the bottom and keeps its width and place — measured, 600×520 at y 42 became 600×852 at y 0 — and Win+Shift+↓ gives the height back.
+
+  Alt+Esc sends the front window to the back of the pile and brings the next forward, with no switcher: measured, three presses walked 그림판 → 계산기 → 메모장 → 그림판. The pile is restacked with fresh z values rather than pushing one window below the rest, which would have slid it behind the desktop itself.
+
+  F11 puts the window in front over the whole screen — taskbar and title bar gone — and F11 again restores the exact frame it had. Win+Ctrl+D makes a desktop and goes to it (the Task View button still stays where you are, as Windows' does), and Win+Ctrl+F4 closes the desktop you are on, handing its windows to the one on its left.
+
 - **그림판 선택·자르기·회전.** 그림판 had eight drawing tools and nothing to take hold of what was already drawn: no selection, no crop, no rotate. The ribbon now has Paint's own 이미지 group — 선택, 자르기, 크기 조정, 회전.
 
   A drag with 선택 draws a dashed rectangle on a layer of its own over the picture, so the border never touches the bitmap. Dragging inside it picks the pixels up and leaves paper behind; Escape puts them down. Measured: a red block moved 300px read paper at its old spot and red at the new one, and one Ctrl+Z took the whole move back. Ctrl+C and Ctrl+V copy and paste (the paste lands at the top-left, floating, the way Paint's does), Delete takes a selection back to paper, Ctrl+A selects the whole picture.
