@@ -351,6 +351,9 @@ export type AppContentProps = {
   defaultApps: DefaultAppMap;
   setClock24h: (enabled: boolean) => void;
   setDefaultApp: (extension: string, appId: AppId) => void;
+  /** 시작 프로그램: the apps a sign-in opens by itself. */
+  startupApps: AppId[];
+  setStartupAppEnabled: (appId: AppId, enabled: boolean) => void;
   setUserName: (name: string) => void;
   theme: ThemeName;
   userName: string;

@@ -1,5 +1,6 @@
 import { type AppId } from "../types";
 import { appsById } from "./appCatalog";
+import { normalizeStartupApps } from "./startupApps";
 import {
   CLOCK_24H_KEY,
   DEFAULT_APPS_KEY,
@@ -7,6 +8,7 @@ import {
   DESKTOP_ICONS_KEY,
   EMOJI_RECENT_KEY,
   FOCUS_ASSIST_KEY,
+  STARTUP_APPS_KEY,
   TEXT_SCALE_KEY,
   USER_NAME_KEY,
 } from "./constants";
@@ -146,5 +148,22 @@ export function persistRecentEmoji(recent: string[]) {
     localStorage.setItem(EMOJI_RECENT_KEY, JSON.stringify(recent));
   } catch {
     // A private-mode storage failure must not break the panel itself.
+  }
+}
+
+/** 시작 프로그램, remembered across sessions the way Windows keeps them. */
+export function loadStartupApps(): AppId[] {
+  try {
+    return normalizeStartupApps(JSON.parse(localStorage.getItem(STARTUP_APPS_KEY) ?? "null"));
+  } catch {
+    return [];
+  }
+}
+
+export function persistStartupApps(startupApps: AppId[]) {
+  try {
+    localStorage.setItem(STARTUP_APPS_KEY, JSON.stringify(startupApps));
+  } catch {
+    // A private-mode storage failure must not break the setting itself.
   }
 }

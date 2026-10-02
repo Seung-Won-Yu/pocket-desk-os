@@ -6943,6 +6943,62 @@ async function runSmoke(baseUrl) {
     }
 
     /*
+     * 시작 프로그램. Windows lists what a sign-in opens by itself in 작업
+     * 관리자; the shell had no such list. 사용 is real: the first sign-in after
+     * a boot opens the app — a reload is a boot here — and unlocking after
+     * Win+L, the same session carrying on, does not.
+     */
+    const calcWindows = () => page.locator('article[data-app-id="calculator"]').count();
+    while ((await calcWindows()) > 0) {
+      await page
+        .locator('article[data-app-id="calculator"]')
+        .first()
+        .getByRole("button", { name: "계산기 닫기" })
+        .click();
+      await page.waitForTimeout(250);
+    }
+    const setCalculatorStartup = async (wanted) => {
+      await page.keyboard.press("Control+Shift+Escape");
+      const startupManager = page.locator('article[data-app-id="taskmanager"]').last();
+      await startupManager.waitFor({ state: "visible" });
+      await startupManager.getByRole("tab", { name: /시작 프로그램/ }).click();
+      const calcRow = startupManager.getByRole("row", { name: /계산기/ });
+      await calcRow.click();
+      const toggle = startupManager.locator(".taskmgr-startup .taskmgr-actions button");
+      if ((await toggle.innerText()).trim() === wanted) await toggle.click();
+      await page.waitForTimeout(150);
+      const state = (await calcRow.innerText()).includes("사용 안 함") ? "사용 안 함" : "사용";
+      await startupManager.getByRole("button", { name: "작업 관리자 닫기" }).click();
+      await startupManager.waitFor({ state: "detached" });
+      return state;
+    };
+    assert(
+      (await setCalculatorStartup("사용")) === "사용",
+      "시작 프로그램 did not turn 계산기 on",
+    );
+    await page.keyboard.press("Meta+l");
+    await unlockPocketDesk(page);
+    await page.waitForTimeout(600);
+    assert(
+      (await calcWindows()) === 0,
+      "Unlocking after Win+L ran 시작 프로그램, as if it were a new session",
+    );
+    await page.reload();
+    await unlockPocketDesk(page);
+    await page
+      .locator('article[data-app-id="calculator"]')
+      .first()
+      .waitFor({ state: "visible" });
+    assert(
+      (await calcWindows()) === 1,
+      `A boot opened ${await calcWindows()} 계산기 windows, not 1`,
+    );
+    assert(
+      (await setCalculatorStartup("사용 안 함")) === "사용 안 함",
+      "시작 프로그램 did not turn 계산기 off again",
+    );
+
+    /*
      * 휴지통 as a drop target and its own 비우기. Dropping a file on the bin is
      * how Windows throws it away, and the icon's menu says how much it is
      * about to destroy — both of which the desktop simply did not do.

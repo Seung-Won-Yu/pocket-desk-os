@@ -6,6 +6,10 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **작업 관리자 시작 프로그램.** Windows lists what a sign-in opens by itself in 작업 관리자, with 사용 and 사용 안 함; the shell had no such list, so every sign-in began on an empty desktop. 작업 관리자 has a 시작 프로그램 tab now — every app, its 게시자 and its 상태, with the button under the list (or a double-click) switching it.
+
+  사용 is real. The first sign-in after a boot or a 다시 시작 opens the app; unlocking after Win+L, which is the same session carrying on, does not; and a session restored with the app already open does not get a second copy. Measured: 계산기 set to 사용 — Win+L and back opened nothing, a restart and sign-in opened 계산기, and a reload kept exactly one.
+
 - **브라우저 단축키와 기록 창 (Ctrl+H).** The browser had no keyboard at all: no Ctrl+T, Ctrl+W, Ctrl+L or F5, every one a trip to the toolbar in a program people mostly drive from the keys. Edge's set now: Ctrl+T opens a tab with the caret in the address bar, Ctrl+W (Ctrl+F4) closes one, Ctrl+L, Alt+D and F6 select the address, Ctrl+Tab and Ctrl+Shift+Tab (Ctrl+PageDown/PageUp) walk the tabs, Ctrl+1…8 go to a tab and Ctrl+9 to the last, F5 and Ctrl+R reload, Alt+← and Alt+→ go back and forward, Ctrl+D bookmarks. Measured one by one: two tabs became three and back, the address came up fully selected, Alt+← went from developer.mozilla.org back to example.com.
 
   Visits were only listed on the new-tab page, where nobody looks for them mid-page. Ctrl+H — or the toolbar's new 기록 button — opens Edge's history flyout: newest first, a search that reads titles and addresses, and a click opens the page in this tab. Measured: "example" left example.com and dropped developer.mozilla.org.

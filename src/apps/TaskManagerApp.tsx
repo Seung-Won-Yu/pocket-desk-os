@@ -1,9 +1,9 @@
-import { Activity, ChevronUp, Cpu, HardDrive, MemoryStick, Square } from "lucide-react";
+import { Activity, ChevronUp, Cpu, HardDrive, MemoryStick, Power, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { focusTabAt, getNextRovingIndex, getNextTabIndex } from "../shell/keyboardNav";
 import { estimateProcessMemoryMb } from "../shell/processMemory";
-import { appMetadata } from "./metadata";
-import type { OpenWindowInfo, SoundEffectName } from "../types";
+import { appMetadata, appOrder } from "./metadata";
+import type { AppId, OpenWindowInfo, SoundEffectName } from "../types";
 import { formatStorageSize } from "../utils/format";
 
 type TaskManagerAppProps = {
@@ -13,9 +13,12 @@ type TaskManagerAppProps = {
   focusWindow: (windowId: string) => void;
   openWindows: OpenWindowInfo[];
   playSound: (effect: SoundEffectName) => void;
+  /** 시작 프로그램: the apps a sign-in opens by itself. */
+  startupApps: AppId[];
+  setStartupAppEnabled: (appId: AppId, enabled: boolean) => void;
 };
 
-type TaskManagerTab = "performance" | "processes";
+type TaskManagerTab = "performance" | "processes" | "startup";
 
 const TASKMGR_COLUMNS: Array<["cpu" | "disk" | "memory" | "title", string]> = [
   ["title", "이름"],
@@ -103,8 +106,11 @@ export default function TaskManagerApp({
   focusWindow,
   openWindows,
   playSound,
+  setStartupAppEnabled,
+  startupApps,
 }: TaskManagerAppProps) {
   const [tab, setTab] = useState<TaskManagerTab>("processes");
+  const [selectedStartupApp, setSelectedStartupApp] = useState<AppId | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -228,7 +234,7 @@ export default function TaskManagerApp({
 
   // role="tablist" promises Left/Right movement between tabs.
   const handleTabKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    const order: TaskManagerTab[] = ["processes", "performance"];
+    const order: TaskManagerTab[] = ["processes", "performance", "startup"];
     const next = getNextTabIndex(event.key, order.indexOf(tab), order.length);
     if (next === null) return;
     event.preventDefault();
@@ -273,9 +279,83 @@ export default function TaskManagerApp({
         >
           <Cpu size={15} /> 성능
         </button>
+        <button
+          aria-controls={tab === "startup" ? "taskmgr-panel-startup" : undefined}
+          aria-selected={tab === "startup"}
+          className={tab === "startup" ? "is-active" : ""}
+          id="taskmgr-tab-startup"
+          onClick={() => setTab("startup")}
+          role="tab"
+          tabIndex={tab === "startup" ? 0 : -1}
+          type="button"
+        >
+          <Power size={15} /> 시작 프로그램
+        </button>
       </div>
 
-      {tab === "processes" ? (
+      {tab === "startup" ? (
+        /*
+         * 시작 프로그램: Windows' list of what a sign-in opens by itself. The
+         * shell had none, so every sign-in began on an empty desktop. 사용 here
+         * is real — the next sign-in after a boot or a restart opens the app.
+         */
+        <div
+          aria-labelledby="taskmgr-tab-startup"
+          className="taskmgr-processes taskmgr-startup"
+          id="taskmgr-panel-startup"
+          role="tabpanel"
+        >
+          <div aria-label="시작 프로그램" className="taskmgr-table" role="grid">
+            <div className="taskmgr-row is-head" role="row">
+              <span role="columnheader">이름</span>
+              <span role="columnheader">게시자</span>
+              <span role="columnheader">상태</span>
+            </div>
+            {appOrder.map((appId) => {
+              const app = appMetadata[appId];
+              const Icon = app.icon;
+              const enabled = startupApps.includes(appId);
+              return (
+                <div
+                  aria-selected={selectedStartupApp === appId}
+                  className={`taskmgr-row${selectedStartupApp === appId ? " is-selected" : ""}`}
+                  key={appId}
+                  onClick={() => setSelectedStartupApp(appId)}
+                  onDoubleClick={() => setStartupAppEnabled(appId, !enabled)}
+                  role="row"
+                  tabIndex={selectedStartupApp === appId ? 0 : -1}
+                >
+                  <span className="taskmgr-name" role="cell">
+                    <Icon size={16} style={{ color: app.accent }} />
+                    {app.title}
+                  </span>
+                  <span role="cell">PocketDesk</span>
+                  <span role="cell">{enabled ? "사용" : "사용 안 함"}</span>
+                </div>
+              );
+            })}
+          </div>
+          <footer className="taskmgr-actions">
+            <button
+              disabled={!selectedStartupApp}
+              onClick={() => {
+                if (!selectedStartupApp) return;
+                playSound("toggle");
+                setStartupAppEnabled(
+                  selectedStartupApp,
+                  !startupApps.includes(selectedStartupApp),
+                );
+              }}
+              type="button"
+            >
+              <Power size={14} />
+              {selectedStartupApp && startupApps.includes(selectedStartupApp)
+                ? "사용 안 함"
+                : "사용"}
+            </button>
+          </footer>
+        </div>
+      ) : tab === "processes" ? (
         <div
           aria-labelledby="taskmgr-tab-processes"
           className="taskmgr-processes"

@@ -133,11 +133,13 @@ import {
   loadDefaultApps,
   loadFocusAssist,
   loadRecentEmoji,
+  loadStartupApps,
   loadShowDesktopIcons,
   loadTextScale,
   loadUserName,
   persistDefaultApps,
   persistRecentEmoji,
+  persistStartupApps,
   persistShowDesktopIcons,
   type DefaultAppMap,
   type TextScale,
@@ -211,6 +213,7 @@ import {
 } from "./shell/nightLight";
 import { getNeighbourByPosition, handleMenuKeyboard } from "./shell/keyboardNav";
 import { getNextDesktopViewMode } from "./shell/desktopViewMode";
+import { getStartupLaunchIds, setStartupAppEnabled } from "./shell/startupApps";
 import {
   getAltEscPileOrder,
   getMinimizeOthersIds,
@@ -405,6 +408,7 @@ type ContentOps = Pick<
   | "saveNoteContent"
   | "savePaintImage"
   | "setDefaultApp"
+  | "setStartupAppEnabled"
   | "setSoundEnabled"
   | "setTheme"
   | "setCustomWallpaper"
@@ -740,6 +744,10 @@ export default function App() {
   const regionCaptureResolveRef = useRef<((bounds: RegionBounds | null) => void) | null>(null);
   const [emojiQuery, setEmojiQuery] = useState("");
   const [recentEmoji, setRecentEmoji] = useState<string[]>(() => loadRecentEmoji());
+  /** 시작 프로그램: the apps a sign-in opens by itself. */
+  const [startupApps, setStartupApps] = useState<AppId[]>(() => loadStartupApps());
+  /** A boot or a restart is a new session; a lock and unlock is the same one. */
+  const startupPendingRef = useRef(true);
   /**
    * The field a paste goes back into. The panel takes focus when it opens, so
    * the target has to be remembered from before that.
@@ -864,8 +872,31 @@ export default function App() {
 
   useEffect(() => {
     if (shellPhase !== "booting") return;
+    // A boot is a new session: the next sign-in runs 시작 프로그램.
+    startupPendingRef.current = true;
     const timer = window.setTimeout(() => setShellPhase("locked"), 1150);
     return () => window.clearTimeout(timer);
+  }, [shellPhase]);
+
+  useEffect(() => {
+    persistStartupApps(startupApps);
+  }, [startupApps]);
+
+  /*
+   * 시작 프로그램 run on the first sign-in after a boot or a restart — not on
+   * unlocking after Win+L, which is the same session carrying on. An app the
+   * restored session already has open is not opened a second time.
+   */
+  useEffect(() => {
+    if (shellPhase !== "unlocked" || !startupPendingRef.current) return;
+    startupPendingRef.current = false;
+    const launch = getStartupLaunchIds(
+      startupApps,
+      windows.map((item) => item.appId),
+    );
+    launch.forEach((appId) => openApp(appId));
+    // Runs once per sign-in; the lists it reads are the ones at that moment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shellPhase]);
 
   useEffect(
@@ -5508,6 +5539,8 @@ export default function App() {
     savePaintImage,
     setDefaultApp: (extension, appId) =>
       setDefaultApps((current) => ({ ...current, [extension]: appId })),
+    setStartupAppEnabled: (appId, enabled) =>
+      setStartupApps((current) => setStartupAppEnabled(current, appId, enabled)),
     setSoundEnabled: toggleSoundEnabled,
     setTheme: changeTheme,
     setCustomWallpaper,
@@ -5572,6 +5605,7 @@ export default function App() {
       saveNoteContent: (...args) => contentOpsRef.current.saveNoteContent(...args),
       savePaintImage: (...args) => contentOpsRef.current.savePaintImage(...args),
       setDefaultApp: (...args) => contentOpsRef.current.setDefaultApp(...args),
+      setStartupAppEnabled: (...args) => contentOpsRef.current.setStartupAppEnabled(...args),
       setSoundEnabled: (...args) => contentOpsRef.current.setSoundEnabled(...args),
       setTheme: (...args) => contentOpsRef.current.setTheme(...args),
       setCustomWallpaper: (...args) => contentOpsRef.current.setCustomWallpaper(...args),
@@ -5643,6 +5677,7 @@ export default function App() {
       showFileExtensions,
       showHiddenItems,
       defaultApps,
+      startupApps,
       desktopItems: activeDesktopItems,
       customWallpaperItemId,
       filesLaunchRequest,
@@ -5692,6 +5727,7 @@ export default function App() {
       showFileExtensions,
       showHiddenItems,
       defaultApps,
+      startupApps,
       activeDesktopItems,
       customWallpaperItemId,
       filesLaunchRequest,

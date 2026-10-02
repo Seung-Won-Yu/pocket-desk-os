@@ -37,6 +37,8 @@ function renderTaskManager(openWindows: OpenWindowInfo[]) {
       getWindowDocumentBytes={handlers.getWindowDocumentBytes}
       openWindows={openWindows}
       playSound={handlers.playSound}
+      setStartupAppEnabled={vi.fn()}
+      startupApps={[]}
     />,
   );
   return { handlers, user: userEvent.setup() };
@@ -181,5 +183,33 @@ describe("TaskManagerApp 성능 탭", () => {
     await user.click(screen.getByRole("tab", { name: "성능" }));
 
     expect(await screen.findByText("12 MB / 512 MB")).toBeVisible();
+  });
+});
+
+describe("TaskManagerApp 시작 프로그램", () => {
+  it("lists every app with its state and toggles the selected one", async () => {
+    const setStartupAppEnabled = vi.fn();
+    render(
+      <TaskManagerApp
+        closeWindow={vi.fn()}
+        focusWindow={vi.fn()}
+        getWindowDocumentBytes={vi.fn(() => 0)}
+        openWindows={[]}
+        playSound={vi.fn()}
+        setStartupAppEnabled={setStartupAppEnabled}
+        startupApps={["notepad"]}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: /시작 프로그램/ }));
+    const notepadRow = screen.getByRole("row", { name: /메모장/ });
+    expect(notepadRow.textContent).toContain("사용");
+    expect(notepadRow.textContent).not.toContain("사용 안 함");
+    await user.click(screen.getByRole("row", { name: /계산기/ }));
+    await user.click(screen.getByRole("button", { name: "사용" }));
+    expect(setStartupAppEnabled).toHaveBeenCalledWith("calculator", true);
+    await user.click(notepadRow);
+    await user.click(screen.getByRole("button", { name: "사용 안 함" }));
+    expect(setStartupAppEnabled).toHaveBeenCalledWith("notepad", false);
   });
 });
