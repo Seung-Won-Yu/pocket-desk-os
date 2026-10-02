@@ -28,6 +28,7 @@ import {
   useState,
   type CSSProperties,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -72,6 +73,8 @@ class ReaderChunkBoundary extends Component<{ children: ReactNode }, { failed: b
 import { useReturnFocus } from "../shell/dialogFocus";
 import { isSafeHttpUrl, toSafeHttpUrl } from "../utils/safeUrl";
 import { focusTabAt, getNextTabIndex, handleMenuKeyboard } from "../shell/keyboardNav";
+import { isShellReservedChord } from "../shell/shortcuts";
+import { getBrowserShortcut, getShortcutTabIndex } from "./browserShortcuts";
 import { type DesktopItem } from "../types";
 import { VFS_DOWNLOADS_ID, sanitizeVfsFileName } from "../vfs/model";
 
@@ -262,6 +265,10 @@ export default function BrowserApp({
   );
   const [bookmarks, setBookmarks] = useState<BrowserBookmark[]>(() => loadBrowserBookmarks());
   const [history, setHistory] = useState<BrowserHistoryEntry[]>(() => loadBrowserHistory());
+  /** 기록 (Ctrl+H): the history flyout under the toolbar's own button. */
+  const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
+  const [historyQuery, setHistoryQuery] = useState("");
+  const addressRef = useRef<HTMLInputElement | null>(null);
   const [draft, setDraft] = useState("");
   const [url, setUrl] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<BrowserViewMode>("web");
@@ -523,8 +530,68 @@ export default function BrowserApp({
     });
   };
 
+  /*
+   * The browser's own keys, Edge's set. The address bar keeps every key that
+   * edits text; a chord the shell owns (Win+…) passes straight through.
+   */
+  const handleBrowserKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (isShellReservedChord(event)) return;
+    const shortcut = getBrowserShortcut(event);
+    if (!shortcut) return;
+    event.preventDefault();
+    event.stopPropagation();
+    switch (shortcut.kind) {
+      case "newTab":
+        openTab();
+        window.requestAnimationFrame(() => addressRef.current?.focus());
+        return;
+      case "closeTab":
+        closeTab(activeTabId);
+        return;
+      case "focusAddress":
+        addressRef.current?.focus();
+        addressRef.current?.select();
+        return;
+      case "cycleTab":
+      case "tabAt": {
+        const index = getShortcutTabIndex(
+          shortcut,
+          tabs.findIndex((tab) => tab.id === activeTabId),
+          tabs.length,
+        );
+        if (index >= 0) selectTab(tabs[index].id);
+        return;
+      }
+      case "reload":
+        if (url) refreshPage();
+        return;
+      case "back":
+        if (navigationIndex > 0) moveThroughHistory(navigationIndex - 1);
+        return;
+      case "forward":
+        if (navigationIndex < navigationStack.length - 1)
+          moveThroughHistory(navigationIndex + 1);
+        return;
+      case "bookmark":
+        if (url) toggleBookmark();
+        return;
+      case "history":
+        setHistoryPanelOpen((current) => !current);
+        return;
+    }
+  };
+
+  const visibleHistory = useMemo(() => {
+    const needle = historyQuery.trim().toLowerCase();
+    if (!needle) return history;
+    return history.filter(
+      (entry) =>
+        entry.title.toLowerCase().includes(needle) || entry.url.toLowerCase().includes(needle),
+    );
+  }, [history, historyQuery]);
+
   return (
-    <div className="browser-app app-fill">
+    <div className="browser-app app-fill" onKeyDown={handleBrowserKeyDown}>
       <div className="browser-tab-strip">
         {/* Tabs and only tabs belong inside a `role="tablist"`; 새 탭 is a
             button on the strip, not a tab. */}
@@ -623,6 +690,7 @@ export default function BrowserApp({
         <input
           aria-label="웹 주소 또는 검색어"
           onChange={(event) => setDraft(event.target.value)}
+          ref={addressRef}
           placeholder="주소 또는 검색어"
           spellCheck={false}
           value={draft}
@@ -635,6 +703,16 @@ export default function BrowserApp({
           type="button"
         >
           <Star aria-hidden="true" fill={isBookmarked ? "currentColor" : "none"} size={16} />
+        </button>
+        <button
+          aria-expanded={historyPanelOpen}
+          aria-haspopup="dialog"
+          aria-label="기록"
+          onClick={() => setHistoryPanelOpen((current) => !current)}
+          title="기록 (Ctrl+H)"
+          type="button"
+        >
+          <History aria-hidden="true" size={16} />
         </button>
         <button
           aria-label="페이지 다운로드"
@@ -754,6 +832,27 @@ export default function BrowserApp({
           searchEngine={searchEngine}
           triggerRef={browserMenuButtonRef}
           viewMode={viewMode}
+        />
+      )}
+      {historyPanelOpen && (
+        <BrowserHistoryPanel
+          entries={visibleHistory}
+          hasAny={history.length > 0}
+          onClear={() => {
+            clearHistory();
+            setHistoryQuery("");
+          }}
+          onClose={() => {
+            setHistoryPanelOpen(false);
+            setHistoryQuery("");
+          }}
+          onOpen={(entryUrl) => {
+            setHistoryPanelOpen(false);
+            setHistoryQuery("");
+            recordNavigation(entryUrl);
+          }}
+          onQueryChange={setHistoryQuery}
+          query={historyQuery}
         />
       )}
       {url ? (
@@ -895,6 +994,94 @@ export default function BrowserApp({
  * unmounting bracket the menu's lifetime: `useReturnFocus` can then capture the
  * trigger on open and hand focus back on close, however the menu was dismissed.
  */
+/**
+ * 기록 — Edge's history flyout. Visits were only listed on the new-tab page,
+ * where nobody looks for them mid-browsing, and Ctrl+H did nothing. Newest
+ * first, searchable, and a click opens the page in this tab.
+ */
+function BrowserHistoryPanel({
+  entries,
+  hasAny,
+  onClear,
+  onClose,
+  onOpen,
+  onQueryChange,
+  query,
+}: {
+  entries: BrowserHistoryEntry[];
+  hasAny: boolean;
+  onClear: () => void;
+  onClose: () => void;
+  onOpen: (url: string) => void;
+  onQueryChange: (query: string) => void;
+  query: string;
+}) {
+  useReturnFocus();
+  const panelRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const panel = panelRef.current;
+      const trigger = (event.target as HTMLElement | null)?.closest('[aria-label="기록"]');
+      if (panel && !panel.contains(event.target as Node | null) && !trigger) onClose();
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => window.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [onClose]);
+
+  return (
+    <section
+      aria-label="기록"
+      className="browser-history-panel"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }}
+      ref={panelRef}
+      role="dialog"
+    >
+      <header>
+        <strong>기록</strong>
+        <button disabled={!hasAny} onClick={onClear} type="button">
+          기록 지우기
+        </button>
+      </header>
+      <input
+        aria-label="기록 검색"
+        autoFocus
+        onChange={(event) => onQueryChange(event.target.value)}
+        placeholder="기록 검색"
+        value={query}
+      />
+      {entries.length === 0 ? (
+        <p className="browser-empty">
+          {hasAny ? "찾는 기록이 없습니다." : "방문한 페이지가 여기에 표시됩니다."}
+        </p>
+      ) : (
+        <div className="browser-history-list">
+          {entries.map((entry) => (
+            <button key={entry.id} onClick={() => onOpen(entry.url)} type="button">
+              <strong>{entry.title}</strong>
+              <small>
+                {(() => {
+                  try {
+                    return new URL(entry.url).hostname;
+                  } catch {
+                    return entry.url;
+                  }
+                })()}{" "}
+                · {new Date(entry.visitedAt).toLocaleString("ko-KR")}
+              </small>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function BrowserSettingsMenu({
   canClearHistory,
   canReportFrameIssue,

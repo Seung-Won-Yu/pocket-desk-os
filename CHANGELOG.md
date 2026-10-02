@@ -6,6 +6,10 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **브라우저 단축키와 기록 창 (Ctrl+H).** The browser had no keyboard at all: no Ctrl+T, Ctrl+W, Ctrl+L or F5, every one a trip to the toolbar in a program people mostly drive from the keys. Edge's set now: Ctrl+T opens a tab with the caret in the address bar, Ctrl+W (Ctrl+F4) closes one, Ctrl+L, Alt+D and F6 select the address, Ctrl+Tab and Ctrl+Shift+Tab (Ctrl+PageDown/PageUp) walk the tabs, Ctrl+1…8 go to a tab and Ctrl+9 to the last, F5 and Ctrl+R reload, Alt+← and Alt+→ go back and forward, Ctrl+D bookmarks. Measured one by one: two tabs became three and back, the address came up fully selected, Alt+← went from developer.mozilla.org back to example.com.
+
+  Visits were only listed on the new-tab page, where nobody looks for them mid-page. Ctrl+H — or the toolbar's new 기록 button — opens Edge's history flyout: newest first, a search that reads titles and addresses, and a click opens the page in this tab. Measured: "example" left example.com and dropped developer.mozilla.org.
+
 - **macOS: ⌘V와 ⌘X가 다시 텍스트를 편집한다.** On a Mac ⌘ is both this shell's Win key and the system's editing key, and two of this release's chords took it over inside text fields: measured, ⌘V in 메모장 opened 클립보드 기록 and pasted nothing, and ⌘X opened the power user menu and cut nothing. Inside a field on a Mac they are the system's paste and cut again — measured, the text pasted and was cut with no panel or menu opening — and outside a field they are still Win+V and Win+X. On Windows nothing changes: Ctrl+V pastes and Win+V opens the panel, over a field or not.
 
 - **연결 프로그램과 다른 앱 선택.** A file opened in its default app and nowhere else: the only way to open a .txt in 명령 프롬프트, or a picture in 사진 instead of 그림판, was to change 설정 > 기본 앱 for every file of that type. Right-clicking a file — in 파일 탐색기 or on the desktop — now offers 연결 프로그램, listing exactly the apps 기본 앱 offers for that extension with the current default marked (기본값). A folder offers none.

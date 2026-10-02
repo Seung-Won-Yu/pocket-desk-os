@@ -6420,6 +6420,95 @@ async function runSmoke(baseUrl) {
     await page.waitForTimeout(300);
 
     /*
+     * 브라우저 단축키와 기록. The browser had no keyboard at all — no Ctrl+T,
+     * Ctrl+W, Ctrl+L, F5, Alt+← — and its visits were only listed on the
+     * new-tab page. Edge's keys, and its 기록 flyout on Ctrl+H.
+     */
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("edge");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const keyEdge = page.locator('article[data-app-id="browser"]').last();
+    await keyEdge.waitFor({ state: "visible" });
+    await page.waitForTimeout(400);
+    const keyAddress = keyEdge.getByLabel("웹 주소 또는 검색어");
+    const keyTabs = () => keyEdge.locator("[role=tab]").count();
+    const activeLabel = () =>
+      page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
+    for (const target of ["https://example.com/", "https://developer.mozilla.org/"]) {
+      await keyAddress.fill(target);
+      await keyAddress.press("Enter");
+      await page.waitForTimeout(400);
+    }
+    const tabsBeforeKeys = await keyTabs();
+    await keyEdge.locator("[role=tab]").first().focus();
+    await page.keyboard.press("Control+t");
+    await page.waitForTimeout(300);
+    assert(
+      (await keyTabs()) === tabsBeforeKeys + 1 &&
+        (await activeLabel()) === "웹 주소 또는 검색어",
+      "Ctrl+T did not open a tab with the caret in the address bar",
+    );
+    await page.keyboard.press("Control+w");
+    await page.waitForTimeout(300);
+    assert((await keyTabs()) === tabsBeforeKeys, "Ctrl+W did not close the tab");
+    await keyEdge.locator("[role=tab]").first().focus();
+    await page.keyboard.press("Control+l");
+    await page.waitForTimeout(150);
+    const addressSelection = await keyAddress.evaluate((node) => [
+      node.selectionStart,
+      node.selectionEnd,
+      node.value.length,
+    ]);
+    assert(
+      (await activeLabel()) === "웹 주소 또는 검색어" &&
+        addressSelection[0] === 0 &&
+        addressSelection[1] === addressSelection[2],
+      `Ctrl+L left the address bar at ${JSON.stringify(addressSelection)}`,
+    );
+    await keyEdge.locator("[role=tab]").first().focus();
+    await page.keyboard.press("Alt+ArrowLeft");
+    await page.waitForTimeout(300);
+    assert(
+      (await keyAddress.inputValue()) === "https://example.com/",
+      `Alt+← went to ${await keyAddress.inputValue()}`,
+    );
+    await page.keyboard.press("Alt+ArrowRight");
+    await page.waitForTimeout(300);
+
+    // Ctrl+H: newest first, searchable, a click opens the page here.
+    await page.keyboard.press("Control+h");
+    const historyFlyout = keyEdge.locator(".browser-history-panel");
+    await historyFlyout.waitFor({ state: "visible" });
+    const historyTitles = () =>
+      historyFlyout
+        .locator(".browser-history-list button strong")
+        .evaluateAll((els) => els.map((el) => el.innerText));
+    const flyoutTitles = await historyTitles();
+    assert(
+      flyoutTitles.indexOf("developer.mozilla.org") === 0 &&
+        flyoutTitles.includes("example.com"),
+      `기록 listed ${flyoutTitles.join(", ")}`,
+    );
+    await historyFlyout.getByLabel("기록 검색").fill("example");
+    await page.waitForTimeout(150);
+    // The search reads titles and addresses; an earlier step's visit to an
+    // example-domains page on iana.org matches too, and should.
+    const searchedTitles = await historyTitles();
+    assert(
+      searchedTitles[0] === "example.com" && !searchedTitles.includes("developer.mozilla.org"),
+      `기록 검색 "example" left ${searchedTitles.join(", ")}`,
+    );
+    await historyFlyout.locator(".browser-history-list button").first().click();
+    await historyFlyout.waitFor({ state: "detached" });
+    assert(
+      (await keyAddress.inputValue()) === "https://example.com/",
+      "Opening a 기록 entry did not go to it",
+    );
+    await keyEdge.getByRole("button", { name: "Microsoft Edge 닫기" }).click();
+    await page.waitForTimeout(300);
+
+    /*
      * 연결 프로그램. A file opened in its default app and nowhere else; the
      * menu offers the apps 설정 > 기본 앱 offers for the type, and 다른 앱 선택
      * with 항상 이 앱을 사용 changes that same setting.
