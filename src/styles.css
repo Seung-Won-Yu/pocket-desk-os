@@ -351,6 +351,92 @@ button {
   border-color: color-mix(in srgb, var(--active) 62%, rgba(255, 255, 255, 0.4));
 }
 
+/*
+ * 항목 확인란: a box at the start of every row. It sits in the row's own left
+ * padding, out of the grid, so its room comes out of 이름 and the columns to
+ * the right keep their place — the heading takes the same inset for its
+ * 모두 선택 box.
+ */
+.file-list.has-checkboxes button {
+  padding-left: 30px;
+  position: relative;
+}
+
+/* The row's 30px plus the 5px of padding the list wraps its rows in. */
+.file-list-header.has-checkboxes {
+  padding-left: 35px;
+  position: relative;
+}
+
+.file-row-check {
+  align-items: center;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 3px;
+  display: flex;
+  height: 14px;
+  justify-content: center;
+  left: 9px;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+}
+
+.file-row-check.is-checked {
+  background: var(--active);
+  border-color: var(--active);
+  color: #fff;
+}
+
+.file-list.file-view-icons.has-checkboxes button {
+  padding-left: 0;
+}
+
+.file-list.file-view-icons .file-row-check {
+  left: 6px;
+  top: 6px;
+  transform: none;
+}
+
+/*
+ * 모두 선택 is a real checkbox drawn as the row boxes are, so the column of
+ * boxes reads as one. 15px = the list's 5px, the row's 1px border, its 9px.
+ */
+.file-select-all {
+  appearance: none;
+  background: rgba(0, 0, 0, 0.25) center / 12px no-repeat;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 3px;
+  cursor: pointer;
+  height: 14px;
+  left: 15px;
+  margin: 0;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+}
+
+.file-select-all:checked,
+.file-select-all:indeterminate {
+  background-color: var(--active);
+  border-color: var(--active);
+}
+
+.file-select-all:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+}
+
+.file-select-all:indeterminate {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 12h12'/%3E%3C/svg%3E");
+}
+
+.file-select-all:focus-visible {
+  outline: 2px solid var(--active);
+  outline-offset: 2px;
+}
+
 /* 보기 전환은 상태 표시줄 오른쪽 끝에 — Windows가 두 단추를 두는 자리. */
 .file-statusbar-views {
   display: flex;
@@ -10079,22 +10165,31 @@ button {
      * done by narrowing the others, which is what keeps this list free of the
      * sideways scroll the header could not follow.
      */
-    grid-template-columns:
+    grid-template-columns: var(
+      --file-grid,
       26px minmax(96px, 1fr) minmax(0, var(--col-modified)) minmax(0, var(--col-type))
-      minmax(0, var(--col-size));
+        minmax(0, var(--col-size))
+    );
     min-width: 0;
     padding-right: 13px;
   }
 
-  /* 이름 spans the icon column, as it did when the heads were bare spans. */
-  .file-list-header > .file-column-head:first-child {
+  /*
+   * 이름 spans the icon column, as it did when the heads were bare spans.
+   * :first-of-type, not :first-child — the 모두 선택 box ahead of it is an
+   * input, and with it in front 이름 lost its span and every heading after it
+   * slid one track left.
+   */
+  .file-list-header > .file-column-head:first-of-type {
     grid-column: 1 / 3;
   }
 
   .file-list.file-view-details button {
-    grid-template-columns:
+    grid-template-columns: var(
+      --file-grid,
       26px minmax(96px, 1fr) minmax(0, var(--col-modified)) minmax(0, var(--col-type))
-      minmax(0, var(--col-size));
+        minmax(0, var(--col-size))
+    );
     min-width: 0;
   }
 

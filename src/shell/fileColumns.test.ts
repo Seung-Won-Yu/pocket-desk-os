@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  getFileGridTemplate,
+  loadHiddenFileColumns,
+  persistHiddenFileColumns,
+  toggleFileColumn,
   clampFileColumnWidth,
   DEFAULT_FILE_COLUMN_WIDTHS,
   FILE_COLUMN_WIDTH_KEY,
@@ -83,5 +87,49 @@ describe("loadFileColumnWidths", () => {
   it("survives a stored value that is not JSON", () => {
     localStorage.setItem(FILE_COLUMN_WIDTH_KEY, "{{{");
     expect(loadFileColumnWidths()).toEqual(DEFAULT_FILE_COLUMN_WIDTHS);
+  });
+});
+
+describe("toggleFileColumn", () => {
+  it("hides a shown column and shows a hidden one, in column order", () => {
+    expect(toggleFileColumn([], "size")).toEqual(["size"]);
+    expect(toggleFileColumn(["size"], "modified")).toEqual(["modified", "size"]);
+    expect(toggleFileColumn(["modified", "size"], "size")).toEqual(["modified"]);
+  });
+});
+
+describe("getFileGridTemplate", () => {
+  const widths = { modified: 116, name: 240, size: 72, type: 106 };
+
+  it("lays out every column when none is hidden", () => {
+    expect(getFileGridTemplate(widths, [])).toBe(
+      "26px minmax(96px, 1fr) minmax(0, 116px) minmax(0, 106px) minmax(0, 72px)",
+    );
+  });
+
+  it("drops a hidden column's track instead of leaving it empty", () => {
+    expect(getFileGridTemplate(widths, ["type"])).toBe(
+      "26px minmax(96px, 1fr) minmax(0, 116px) minmax(0, 72px)",
+    );
+  });
+
+  it("keeps 이름 when everything else is hidden", () => {
+    expect(getFileGridTemplate(widths, ["modified", "type", "size"])).toBe(
+      "26px minmax(96px, 1fr)",
+    );
+  });
+});
+
+describe("hidden columns storage", () => {
+  it("round-trips and ignores what is not a column", () => {
+    persistHiddenFileColumns(["size"]);
+    expect(loadHiddenFileColumns()).toEqual(["size"]);
+    localStorage.setItem(
+      "pocket-desk-file-hidden-columns-v1",
+      JSON.stringify(["name", "type", 3]),
+    );
+    expect(loadHiddenFileColumns()).toEqual(["type"]);
+    localStorage.setItem("pocket-desk-file-hidden-columns-v1", "{not json");
+    expect(loadHiddenFileColumns()).toEqual([]);
   });
 });

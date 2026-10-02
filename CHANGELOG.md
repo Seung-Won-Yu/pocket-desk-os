@@ -6,6 +6,10 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **탐색기 열 선택과 항목 확인란.** The details view always showed all four columns with no way to drop one, and selecting several files took Ctrl or Shift every time — with a pointer alone it could not be done. Right-clicking the column heading now opens Explorer's column chooser: 이름 (always on), 수정한 날짜, 유형 and 크기. A column taken off leaves the heading and every row together and stays off after a reload — measured with 유형: the heading read 이름 | 수정한 날짜 | 크기, each row kept two detail cells, and both were the same after a reload.
+
+  보기 옵션 > 항목 확인란 puts Windows' item check box at the head of every row. Clicking a box adds or drops that file with no modifier, while a click on the row itself still selects that row alone; the heading's 모두 선택 box takes everything, clears everything, and shows a part selection as a dash. Measured: two box clicks selected 게임 and 문서, 모두 선택 took all 5 and clearing it left none, and the heading box and the row boxes stand at the same x. The box takes its room out of 이름: 수정한 날짜 and 크기 stayed exactly where they were.
+
 - **작업 관리자 시작 프로그램.** Windows lists what a sign-in opens by itself in 작업 관리자, with 사용 and 사용 안 함; the shell had no such list, so every sign-in began on an empty desktop. 작업 관리자 has a 시작 프로그램 tab now — every app, its 게시자 and its 상태, with the button under the list (or a double-click) switching it.
 
   사용 is real. The first sign-in after a boot or a 다시 시작 opens the app; unlocking after Win+L, which is the same session carrying on, does not; and a session restored with the app already open does not get a second copy. Measured: 계산기 set to 사용 — Win+L and back opened nothing, a restart and sign-in opened 계산기, and a reload kept exactly one.

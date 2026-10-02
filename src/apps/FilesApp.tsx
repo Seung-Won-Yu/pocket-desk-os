@@ -74,10 +74,15 @@ import {
   DEFAULT_FILE_COLUMN_WIDTHS,
   FILE_COLUMN_KEYS,
   type FileColumnKey,
+  getFileGridTemplate,
+  type HideableFileColumn,
   loadFileColumnWidths,
+  loadHiddenFileColumns,
   MAX_FILE_COLUMN_WIDTH,
   MIN_FILE_COLUMN_WIDTH,
   persistFileColumnWidths,
+  persistHiddenFileColumns,
+  toggleFileColumn,
   resizeFileColumn,
 } from "../shell/fileColumns";
 import {
@@ -292,6 +297,8 @@ const FILE_VIEW_OPTIONS: Array<[FileViewMode, string]> = [
 // What a menu needs to stay on screen: 204px of menu width plus a margin, that
 // again with its 190px submenu beside it, and the height of the rows each of the
 // two menus carries.
+const FILE_CHECKBOXES_KEY = "pocket-desk-file-checkboxes-v1";
+
 const FILE_COLUMNS: [FileSortKey, string][] = [
   ["name", "이름"],
   ["modified", "수정한 날짜"],
@@ -471,6 +478,18 @@ export default function FilesApp({
    * of disagreement 폴더 옵션 already decided against.
    */
   const [columnWidths, setColumnWidths] = useState(loadFileColumnWidths);
+  /** 열 선택: the columns right-clicking the heading has taken away. */
+  const [hiddenColumns, setHiddenColumns] =
+    useState<HideableFileColumn[]>(loadHiddenFileColumns);
+  const [columnMenu, setColumnMenu] = useState<{ x: number; y: number } | null>(null);
+  /** 항목 확인란: a box on every row, for selecting several without a modifier key. */
+  const [showItemCheckboxes, setShowItemCheckboxes] = useState(() => {
+    try {
+      return localStorage.getItem(FILE_CHECKBOXES_KEY) === "on";
+    } catch {
+      return false;
+    }
+  });
   const [resizingColumn, setResizingColumn] = useState<FileColumnKey | null>(null);
   const [crumbMenu, setCrumbMenu] = useState<{ id: string; left: number } | null>(null);
   const crumbMenuId = crumbMenu?.id ?? null;
@@ -1034,6 +1053,38 @@ export default function FilesApp({
     persistFileColumnWidths(columnWidths);
   }, [columnWidths]);
 
+  useEffect(() => {
+    persistHiddenFileColumns(hiddenColumns);
+  }, [hiddenColumns]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FILE_CHECKBOXES_KEY, showItemCheckboxes ? "on" : "off");
+    } catch {
+      // Storage refused: the boxes still show for this session.
+    }
+  }, [showItemCheckboxes]);
+
+  useEffect(() => {
+    if (!columnMenu) return;
+    const close = (event: Event) => {
+      if (event instanceof KeyboardEvent && event.key !== "Escape") return;
+      if (
+        event instanceof PointerEvent &&
+        (event.target as HTMLElement | null)?.closest(".file-column-menu")
+      ) {
+        return;
+      }
+      setColumnMenu(null);
+    };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", close);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", close);
+    };
+  }, [columnMenu]);
+
   /*
    * Ctrl+wheel walks the view sizes, as it does in Explorer. Attached by hand
    * rather than through onWheel: React registers its root wheel listener as
@@ -1559,6 +1610,17 @@ export default function FilesApp({
     }
   };
 
+  /** One row in or out of the selection, the rest untouched — what a row's box does. */
+  const toggleFileSelection = (fileId: string) => {
+    const next = selectedIds.includes(fileId)
+      ? selectedIds.filter((id) => id !== fileId)
+      : [...selectedIds, fileId];
+    setSelectedIds(next);
+    setActiveFileId(next.includes(fileId) ? fileId : (next[next.length - 1] ?? null));
+    selectionAnchorRef.current = fileId;
+    setRenaming(false);
+  };
+
   const selectFile = (
     fileId: string,
     index: number,
@@ -2006,6 +2068,8 @@ export default function FilesApp({
           "--col-modified": `${columnWidths.modified}px`,
           "--col-size": `${columnWidths.size}px`,
           "--col-type": `${columnWidths.type}px`,
+          // The grid itself, without the columns 열 선택 has hidden.
+          "--file-grid": getFileGridTemplate(columnWidths, hiddenColumns),
         } as React.CSSProperties
       }
       // Ctrl+L belongs to the whole window in Explorer, not just the list: it
@@ -2829,6 +2893,15 @@ export default function FilesApp({
                     {showHiddenItems ? <Check aria-hidden="true" size={15} /> : <span />}
                     숨긴 항목
                   </button>
+                  <button
+                    aria-checked={showItemCheckboxes}
+                    onClick={() => setShowItemCheckboxes((current) => !current)}
+                    role="menuitemcheckbox"
+                    type="button"
+                  >
+                    {showItemCheckboxes ? <Check aria-hidden="true" size={15} /> : <span />}
+                    항목 확인란
+                  </button>
                 </div>
               )}
             </div>
@@ -2871,8 +2944,49 @@ export default function FilesApp({
                * button's name instead of aria-sort, which is only valid
                * inside a real table.
                */
-              <div aria-label="파일 정렬 기준" className="file-list-header" role="group">
-                {FILE_COLUMNS.map(([key, label]) => (
+              <div
+                aria-label="파일 정렬 기준"
+                className={`file-list-header${showItemCheckboxes ? " has-checkboxes" : ""}`}
+                // 열 선택: Windows offers the columns from the heading's own menu.
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setFileContextMenu(null);
+                  setColumnMenu({ x: event.clientX, y: event.clientY });
+                }}
+                role="group"
+              >
+                {showItemCheckboxes && (
+                  <input
+                    aria-label="모두 선택"
+                    checked={
+                      visibleFiles.length > 0 &&
+                      visibleFiles.every((file) => selectedIds.includes(file.id))
+                    }
+                    className="file-select-all"
+                    onChange={(event) => {
+                      const ids = event.target.checked
+                        ? visibleFiles.map((file) => file.id)
+                        : [];
+                      setSelectedIds(ids);
+                      setActiveFileId(ids[0] ?? null);
+                      selectionAnchorRef.current = ids[0] ?? null;
+                    }}
+                    ref={(node) => {
+                      if (!node) return;
+                      const some = visibleFiles.some((file) => selectedIds.includes(file.id));
+                      const all =
+                        visibleFiles.length > 0 &&
+                        visibleFiles.every((file) => selectedIds.includes(file.id));
+                      node.indeterminate = some && !all;
+                    }}
+                    type="checkbox"
+                  />
+                )}
+                {FILE_COLUMNS.filter(
+                  ([key]) =>
+                    key === "name" || !hiddenColumns.includes(key as HideableFileColumn),
+                ).map(([key, label]) => (
                   <div className="file-column-head" key={key}>
                     <button
                       aria-label={`${label} 정렬${
@@ -2935,7 +3049,7 @@ export default function FilesApp({
               aria-multiselectable="true"
               className={`file-list file-view-${viewMode}${
                 dragOverFolderId === currentFolderId ? " is-drop-target" : ""
-              }`}
+              }${showItemCheckboxes ? " has-checkboxes" : ""}`}
               onDragEnter={(event) => {
                 if (event.target === event.currentTarget) setDragOverFolderId(currentFolderId);
               }}
@@ -3016,9 +3130,20 @@ export default function FilesApp({
                           event.preventDefault();
                           addTab(file.id);
                         }}
-                        onClick={(event) => selectFile(file.id, index, event)}
+                        onClick={(event) => {
+                          // The row's box toggles just this row, the way a
+                          // Ctrl+click does; the rest of the row selects as usual.
+                          if ((event.target as HTMLElement).closest(".file-row-check")) {
+                            toggleFileSelection(file.id);
+                            return;
+                          }
+                          selectFile(file.id, index, event);
+                        }}
                         onContextMenu={(event) => showFileContextMenu(event, file.id)}
-                        onDoubleClick={() => openFile(file.item)}
+                        onDoubleClick={(event) => {
+                          if ((event.target as HTMLElement).closest(".file-row-check")) return;
+                          openFile(file.item);
+                        }}
                         onDragEnd={() => setDragOverFolderId(null)}
                         onDragStart={(event) => startFileDrag(event, file.id)}
                         onDragEnter={() => {
@@ -3039,6 +3164,16 @@ export default function FilesApp({
                         role="option"
                         type="button"
                       >
+                        {showItemCheckboxes && (
+                          <span
+                            aria-hidden="true"
+                            className={`file-row-check${
+                              selectedIds.includes(file.id) ? " is-checked" : ""
+                            }`}
+                          >
+                            {selectedIds.includes(file.id) && <Check size={12} />}
+                          </span>
+                        )}
                         {file.item.kind === "canvas" && file.item.content ? (
                           <img
                             alt=""
@@ -3076,11 +3211,13 @@ export default function FilesApp({
                             </em>
                           )}
                         </span>
-                        <small>{file.modified}</small>
-                        <small>{file.type}</small>
-                        <small>
-                          {file.item.kind === "folder" ? "" : formatVfsEntrySize(file.item)}
-                        </small>
+                        {!hiddenColumns.includes("modified") && <small>{file.modified}</small>}
+                        {!hiddenColumns.includes("type") && <small>{file.type}</small>}
+                        {!hiddenColumns.includes("size") && (
+                          <small>
+                            {file.item.kind === "folder" ? "" : formatVfsEntrySize(file.item)}
+                          </small>
+                        )}
                       </button>
                       {renaming && selectedFile?.id === file.id && (
                         <form className="file-inline-rename" onSubmit={submitRename}>
@@ -3978,6 +4115,40 @@ export default function FilesApp({
           onClose={() => setShortcutDialogOpen(false)}
           onCreate={createShortcut}
         />
+      )}
+
+      {columnMenu && (
+        <div
+          aria-label="열"
+          className="file-context-menu file-column-menu"
+          onContextMenu={(event) => event.preventDefault()}
+          onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+          role="menu"
+          style={{ left: columnMenu.x, top: columnMenu.y }}
+        >
+          {FILE_COLUMNS.map(([key, label]) => {
+            const shown = key === "name" || !hiddenColumns.includes(key as HideableFileColumn);
+            return (
+              <button
+                aria-checked={shown}
+                disabled={key === "name"}
+                key={key}
+                onClick={() => {
+                  setHiddenColumns((current) =>
+                    toggleFileColumn(current, key as HideableFileColumn),
+                  );
+                  // One pick per opening, as Explorer's heading menu does.
+                  setColumnMenu(null);
+                }}
+                role="menuitemcheckbox"
+                type="button"
+              >
+                {shown ? <Check aria-hidden="true" size={15} /> : <span />}
+                {label}
+              </button>
+            );
+          })}
+        </div>
       )}
 
       {openWithItem &&

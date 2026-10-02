@@ -2056,6 +2056,106 @@ async function runSmoke(baseUrl) {
     );
 
     /*
+     * 열 선택. Right-clicking the heading is Explorer's column chooser: 유형
+     * leaves the heading and every row together, and is written down so it
+     * stays off. 이름 is the one column that cannot go.
+     */
+    const openColumnMenu = async () => {
+      await files
+        .locator(".file-list-header")
+        .click({ button: "right", position: { x: 300, y: 12 } });
+      const menu = page.locator(".file-column-menu");
+      await menu.waitFor({ state: "visible" });
+      return menu;
+    };
+    const headingLabels = () => files.locator(".file-column-head > button").allInnerTexts();
+    let columnMenu = await openColumnMenu();
+    assert(
+      await columnMenu.getByRole("menuitemcheckbox", { name: "이름" }).isDisabled(),
+      "이름 could be taken off the heading",
+    );
+    await columnMenu.getByRole("menuitemcheckbox", { name: "유형" }).click();
+    await page.waitForTimeout(250);
+    assert(!(await columnMenu.isVisible()), "The column menu stayed open after a pick");
+    assert(
+      !(await headingLabels()).some((label) => label.includes("유형")),
+      `유형 is still on the heading: ${(await headingLabels()).join(" | ")}`,
+    );
+    const cellsWithoutType = await explorerRows.first().locator("small").count();
+    assert(cellsWithoutType === 2, `A row still has ${cellsWithoutType} detail cells`);
+    assert(
+      JSON.parse(
+        await page.evaluate(() => localStorage.getItem("pocket-desk-file-hidden-columns-v1")),
+      ).includes("type"),
+      "The hidden column was not written down",
+    );
+
+    /*
+     * 항목 확인란. A box at the head of every row selects without a modifier —
+     * the way to multi-select with a pointer alone — and the heading's
+     * 모두 선택 box shows a part selection as a dash.
+     */
+    const toggleItemCheckboxes = async () => {
+      await files.getByRole("button", { name: "보기 옵션" }).click();
+      await files
+        .locator(".file-options-menu")
+        .getByRole("menuitemcheckbox", { name: "항목 확인란" })
+        .click();
+      await page.waitForTimeout(250);
+    };
+    await toggleItemCheckboxes();
+    const selectedRows = files.locator('[role="option"][aria-selected="true"]');
+    await explorerRows.nth(0).locator(".file-row-check").click();
+    await explorerRows.nth(2).locator(".file-row-check").click();
+    await page.waitForTimeout(200);
+    assert(
+      (await selectedRows.count()) === 2,
+      `Two box clicks left ${await selectedRows.count()} rows selected`,
+    );
+    const selectAll = files.getByLabel("모두 선택");
+    assert(
+      await selectAll.evaluate((input) => input.indeterminate),
+      "모두 선택 did not show the part selection",
+    );
+    const boxEdges = await page.evaluate(() => {
+      const left = (el) => Math.round(el.getBoundingClientRect().left);
+      const heads = document.querySelectorAll(".file-list-header .file-column-head");
+      const row = document.querySelector('.file-list [role="option"]');
+      return {
+        all: left(document.querySelector(".file-select-all")),
+        box: left(row.querySelector(".file-row-check")),
+        head: left(heads[1]),
+        cell: left(row.querySelector("small")),
+      };
+    });
+    assert(
+      Math.abs(boxEdges.all - boxEdges.box) <= 1 &&
+        Math.abs(boxEdges.head - boxEdges.cell) <= 2,
+      `The boxes or the headings sit off their column: ${JSON.stringify(boxEdges)}`,
+    );
+    await selectAll.check();
+    await page.waitForTimeout(200);
+    assert(
+      (await selectedRows.count()) === (await explorerRows.count()),
+      `모두 선택 selected ${await selectedRows.count()} of ${await explorerRows.count()}`,
+    );
+    await selectAll.uncheck();
+    await page.waitForTimeout(200);
+    assert((await selectedRows.count()) === 0, "Clearing 모두 선택 left rows selected");
+    await toggleItemCheckboxes();
+    assert(
+      (await files.locator(".file-row-check").count()) === 0,
+      "The boxes stayed after 항목 확인란 was turned off",
+    );
+    columnMenu = await openColumnMenu();
+    await columnMenu.getByRole("menuitemcheckbox", { name: "유형" }).click();
+    await page.waitForTimeout(250);
+    assert(
+      (await headingLabels()).some((label) => label.includes("유형")),
+      "유형 did not come back",
+    );
+
+    /*
      * Ctrl+드래그 = 복사. Every drop used to move whatever was held. The
      * modifier is read at the moment of the drop, so it can be pressed after
      * the drag has started, and the cursor's badge follows it.

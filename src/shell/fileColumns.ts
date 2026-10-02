@@ -74,3 +74,46 @@ export function persistFileColumnWidths(widths: FileColumnWidths) {
     // A full or blocked storage must not stop the column from resizing.
   }
 }
+
+/*
+ * 열 선택 — right-clicking the heading picks which columns show, the way
+ * Windows' does. 이름 always shows: a list with no names is not a list.
+ */
+export type HideableFileColumn = Exclude<FileColumnKey, "name">;
+export const HIDEABLE_FILE_COLUMNS: HideableFileColumn[] = ["modified", "type", "size"];
+export const FILE_HIDDEN_COLUMNS_KEY = "pocket-desk-file-hidden-columns-v1";
+
+export function toggleFileColumn(hidden: HideableFileColumn[], key: HideableFileColumn) {
+  const next = hidden.includes(key) ? hidden.filter((item) => item !== key) : [...hidden, key];
+  return HIDEABLE_FILE_COLUMNS.filter((item) => next.includes(item));
+}
+
+/**
+ * The details grid for the columns that show: the icon, 이름 taking the rest,
+ * then each visible column at its own width. Hidden columns drop out of the
+ * template entirely, so the cells after them do not slide into their track.
+ */
+export function getFileGridTemplate(widths: FileColumnWidths, hidden: HideableFileColumn[]) {
+  const tracks = HIDEABLE_FILE_COLUMNS.filter((key) => !hidden.includes(key)).map(
+    (key) => `minmax(0, ${widths[key]}px)`,
+  );
+  return ["26px", "minmax(96px, 1fr)", ...tracks].join(" ");
+}
+
+export function loadHiddenFileColumns(): HideableFileColumn[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(FILE_HIDDEN_COLUMNS_KEY) ?? "[]");
+    if (!Array.isArray(parsed)) return [];
+    return HIDEABLE_FILE_COLUMNS.filter((key) => parsed.includes(key));
+  } catch {
+    return [];
+  }
+}
+
+export function persistHiddenFileColumns(hidden: HideableFileColumn[]) {
+  try {
+    localStorage.setItem(FILE_HIDDEN_COLUMNS_KEY, JSON.stringify(hidden));
+  } catch {
+    // A full or blocked storage must not stop the column from hiding.
+  }
+}
