@@ -29,6 +29,7 @@ import { ToastStack } from "./shell/components/ToastStack";
 import { SnapPreview } from "./shell/components/WindowFrame";
 import { WindowSystemMenu } from "./shell/components/WindowSystemMenu";
 import {
+  ACTIVE_NOTE_KEY,
   CLOCK_24H_KEY,
   CUSTOM_WALLPAPER_KEY,
   DESKTOP_ICON_GRID_KEY,
@@ -217,6 +218,7 @@ import { getNeighbourByPosition, handleMenuKeyboard } from "./shell/keyboardNav"
 import { getNextDesktopViewMode } from "./shell/desktopViewMode";
 import { getStartupLaunchIds, setStartupAppEnabled } from "./shell/startupApps";
 import { useImageObjectUrl } from "./shell/useImageObjectUrl";
+import { closeNoteTabs } from "./apps/noteTabs";
 import {
   getAlbumSlides,
   getCurrentSlide,
@@ -426,6 +428,7 @@ type ContentOps = Pick<
   | "setCustomWallpaper"
   | "setWallpaper"
   | "updateWallpaperSlideshow"
+  | "reportNoteTabs"
 >;
 
 /**
@@ -788,7 +791,12 @@ export default function App() {
     useState<SettingsLaunchRequest | null>(null);
   const [activeCanvasId, setActiveCanvasId] = useState(VFS_PRIMARY_CANVAS_ID);
   const [activeCanvasOpenKey, setActiveCanvasOpenKey] = useState(0);
-  const [activeNoteId, setActiveNoteId] = useState(VFS_PRIMARY_NOTE_ID);
+  // Remembered, so 메모장's tabs come back after a reload with the same one in front.
+  const [activeNoteId, setActiveNoteId] = useState(
+    () => localStorage.getItem(ACTIVE_NOTE_KEY) || VFS_PRIMARY_NOTE_ID,
+  );
+  /** 메모장's open tabs as it last reported them, for when a document is taken away. */
+  const noteTabsRef = useRef<string[]>([]);
   /*
    * What each WINDOW is showing — keyed by window id, not app id. The old
    * per-app key meant two windows of one app shared a single document slot,
@@ -979,6 +987,14 @@ export default function App() {
   useEffect(() => {
     persistWallpaperSlideshow(wallpaperSlideshow);
   }, [wallpaperSlideshow]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ACTIVE_NOTE_KEY, activeNoteId);
+    } catch {
+      // Storage refused: 메모장 opens on its first tab next time.
+    }
+  }, [activeNoteId]);
 
   /*
    * The show's clock: one timeout to the next change, counted from the last
@@ -2114,6 +2130,25 @@ export default function App() {
    * Makes an entry current inside the app that is already showing it. Saving in
    * Paint must not bounce the user to whichever app owns the file type.
    */
+  /**
+   * The document 메모장 shows once its own is deleted: the tab beside it, as
+   * closing that tab would pick — not the first text file on the disk, which
+   * opened a tab nobody asked for.
+   */
+  const pickNoteAfterLoss = (remaining: DesktopItem[]) => {
+    const alive = new Set(
+      remaining.filter((item) => item.kind === "note" && !item.trashed).map((item) => item.id),
+    );
+    const tabs = noteTabsRef.current;
+    const { nextActiveId } = closeNoteTabs(
+      tabs,
+      tabs.filter((id) => !alive.has(id)),
+      activeNoteId,
+    );
+    if (nextActiveId && alive.has(nextActiveId)) return nextActiveId;
+    return [...alive][0] ?? VFS_PRIMARY_NOTE_ID;
+  };
+
   const activateVfsEntry = (item: DesktopItem) => {
     if (item.kind === "note") setActiveNoteId(item.id);
     if (item.kind === "canvas") {
@@ -2281,9 +2316,7 @@ export default function App() {
     // 실행 취소 can take back the very file an app has open. Point the app at
     // something that still exists, or its next autosave writes the row back.
     if (!next.some((item) => item.id === activeNoteId)) {
-      setActiveNoteId(
-        next.find((item) => item.kind === "note" && !item.trashed)?.id ?? VFS_PRIMARY_NOTE_ID,
-      );
+      setActiveNoteId(pickNoteAfterLoss(next));
     }
     if (!next.some((item) => item.id === activeCanvasId)) {
       setActiveCanvasId(
@@ -3205,9 +3238,7 @@ export default function App() {
     );
 
     if (deletedIds.has(activeNoteId)) {
-      setActiveNoteId(
-        remaining.find((item) => item.kind === "note")?.id ?? VFS_PRIMARY_NOTE_ID,
-      );
+      setActiveNoteId(pickNoteAfterLoss(remaining));
     }
     if (deletedIds.has(activeCanvasId)) {
       setActiveCanvasId(
@@ -3600,9 +3631,7 @@ export default function App() {
     setFileUndo((state) => dropFileUndoSteps(state, doomed));
     const remaining = activeDesktopItems.filter((item) => !doomed.has(item.id));
     if (doomed.has(activeNoteId)) {
-      setActiveNoteId(
-        remaining.find((item) => item.kind === "note")?.id ?? VFS_PRIMARY_NOTE_ID,
-      );
+      setActiveNoteId(pickNoteAfterLoss(remaining));
     }
     if (doomed.has(activeCanvasId)) {
       setActiveCanvasId(
@@ -5646,6 +5675,9 @@ export default function App() {
     setCustomWallpaper,
     setWallpaper: changeWallpaper,
     updateWallpaperSlideshow,
+    reportNoteTabs: (ids) => {
+      noteTabsRef.current = ids;
+    },
   };
   const stableContentOps = useMemo<ContentOps>(
     () => ({
@@ -5713,6 +5745,7 @@ export default function App() {
       setWallpaper: (...args) => contentOpsRef.current.setWallpaper(...args),
       updateWallpaperSlideshow: (...args) =>
         contentOpsRef.current.updateWallpaperSlideshow(...args),
+      reportNoteTabs: (...args) => contentOpsRef.current.reportNoteTabs(...args),
     }),
     [],
   );

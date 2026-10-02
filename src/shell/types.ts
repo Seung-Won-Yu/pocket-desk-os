@@ -346,6 +346,8 @@ export type AppContentProps = {
   /** A picture file of the user's used as the wallpaper; null = the preset. */
   customWallpaperItemId: string | null;
   setCustomWallpaper: (itemId: string | null) => void;
+  /** 메모장 tells the shell which documents it has open, for when one is deleted. */
+  reportNoteTabs: (ids: string[]) => void;
   /** 배경 > 슬라이드 쇼: the album that takes turns as the wallpaper, and how. */
   wallpaperSlideshow: WallpaperSlideshow;
   updateWallpaperSlideshow: (

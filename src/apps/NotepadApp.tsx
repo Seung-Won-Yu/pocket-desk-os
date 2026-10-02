@@ -23,6 +23,14 @@ import {
 } from "./noteView";
 import { clamp } from "../utils/format";
 import {
+  closeNoteTabs,
+  getNoteTabs,
+  getNoteTabsToClose,
+  normalizeNoteTabs,
+  withNoteTab,
+  type NoteTabCloseAction,
+} from "./noteTabs";
+import {
   getSelectedMatchIndex,
   replaceAllTextMatches,
   replaceTextMatch,
@@ -73,6 +81,7 @@ type NotepadAppProps = {
     existingItemId?: string,
   ) => DesktopItem;
   saveNoteContent: (noteId: string, content: string) => void;
+  reportNoteTabs: (ids: string[]) => void;
   windowId: string;
 };
 
@@ -83,6 +92,16 @@ const NOTE_HISTORY_LIMIT = 120;
 const NOTE_HISTORY_RUN_MS = 700;
 const NOTE_CONTEXT_MENU_WIDTH = 232;
 const NOTE_CONTEXT_MENU_HEIGHT = 240;
+const NOTE_TAB_MENU_HEIGHT = 120;
+const NOTE_TABS_KEY = "pocket-desk-notepad-tabs-v1";
+
+function loadNoteTabIds() {
+  try {
+    return normalizeNoteTabs(JSON.parse(localStorage.getItem(NOTE_TABS_KEY) ?? "null"));
+  } catch {
+    return [];
+  }
+}
 /** The window frame's own close button, which this app has to see coming. */
 const CLIPBOARD_BLOCKED_TOAST: ToastInput = {
   detail: "브라우저가 클립보드 사용을 막았습니다. Ctrl+C나 Ctrl+V를 사용해 주세요.",
@@ -102,9 +121,25 @@ export default function NotepadApp({
   openVfsEntry,
   saveNoteAs,
   saveNoteContent,
+  reportNoteTabs,
   windowId,
 }: NotepadAppProps) {
-  const activeNote = noteEntries.find((item) => item.id === activeNoteId) ?? noteEntries[0];
+  /*
+   * 메모장 탭: the documents open in this window, kept across reloads. The
+   * strip used to be every text file in the file system, so no tab could be
+   * closed; the document on screen always has one, however it was opened.
+   */
+  const [openTabIds, setOpenTabIds] = useState<string[]>(() => loadNoteTabIds());
+  const activeNote =
+    noteEntries.find((item) => item.id === activeNoteId) ??
+    getNoteTabs(openTabIds, noteEntries)[0] ??
+    noteEntries[0];
+  const tabs = useMemo(
+    () => getNoteTabs(withNoteTab(openTabIds, activeNote?.id ?? ""), noteEntries),
+    [activeNote?.id, noteEntries, openTabIds],
+  );
+  const [tabMenu, setTabMenu] = useState<{ noteId: string; x: number; y: number } | null>(null);
+  const tabMenuRef = useRef<HTMLDivElement | null>(null);
   const noteAppRef = useRef<HTMLDivElement | null>(null);
   const noteEditorRef = useRef<HTMLTextAreaElement | null>(null);
   const editorMenuRef = useRef<HTMLDivElement | null>(null);
@@ -174,6 +209,24 @@ export default function NotepadApp({
   };
 
   const loadedNoteRef = useRef<{ content: string; id: string } | null>(null);
+
+  const shownNoteId = activeNote?.id ?? "";
+  useEffect(() => {
+    if (shownNoteId) setOpenTabIds((current) => withNoteTab(current, shownNoteId));
+  }, [shownNoteId]);
+
+  useEffect(() => {
+    reportNoteTabs(tabs.map((tab) => tab.id));
+  }, [reportNoteTabs, tabs]);
+  useEffect(() => () => reportNoteTabs([]), [reportNoteTabs]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(NOTE_TABS_KEY, JSON.stringify(openTabIds));
+    } catch {
+      // Storage refused: the tabs still hold for this session.
+    }
+  }, [openTabIds]);
 
   useEffect(() => {
     /*
@@ -321,6 +374,30 @@ export default function NotepadApp({
       window.removeEventListener("keydown", cancelOnEscape, true);
     };
   }, [closePromptOpen]);
+
+  useEffect(() => {
+    if (!tabMenu) return;
+    const frame = window.requestAnimationFrame(() => {
+      tabMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    });
+    const closeOnOutsidePointer = (event: Event) => {
+      if (event.target instanceof Node && !tabMenuRef.current?.contains(event.target)) {
+        setTabMenu(null);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setTabMenu(null);
+      noteEditorRef.current?.focus();
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("pointerdown", closeOnOutsidePointer);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [tabMenu]);
 
   useEffect(() => {
     if (!editorMenu) return;
@@ -519,6 +596,55 @@ export default function NotepadApp({
   const cancelClose = () => {
     setClosePromptOpen(false);
     noteEditorRef.current?.focus();
+  };
+
+  /**
+   * Puts tabs away — the files stay where they are. What was typed into the
+   * document on screen is written first, as a tab switch does, so closing its
+   * tab inside the autosave's 850ms loses nothing. The last tab takes the
+   * window with it, as in Notepad.
+   */
+  const closeTabs = (closing: string[]) => {
+    setTabMenu(null);
+    if (closing.length === 0) return;
+    const closesActive = Boolean(activeNote && closing.includes(activeNote.id));
+    if (activeNote && closesActive && text !== (activeNote.content ?? "")) {
+      saveNoteContent(activeNote.id, text);
+    }
+    const { nextActiveId, openIds } = closeNoteTabs(
+      tabs.map((tab) => tab.id),
+      closing,
+      activeNote?.id ?? "",
+    );
+    setOpenTabIds(openIds);
+    if (nextActiveId === null) {
+      skipFinalSaveRef.current = true;
+      registerCloseGuard(windowId, null);
+      closeWindow(windowId);
+      return;
+    }
+    const next = tabs.find((tab) => tab.id === nextActiveId);
+    if (next && next.id !== activeNote?.id) activateVfsEntry(next);
+    if (closesActive) window.requestAnimationFrame(() => noteEditorRef.current?.focus());
+  };
+
+  const closeTabsFrom = (noteId: string, action: NoteTabCloseAction) =>
+    closeTabs(
+      getNoteTabsToClose(
+        tabs.map((tab) => tab.id),
+        noteId,
+        action,
+      ),
+    );
+
+  const showTabMenu = (noteId: string, x: number, y: number) => {
+    setNoteMenu(null);
+    setEditorMenu(null);
+    setTabMenu({
+      noteId,
+      x: clamp(x, 8, Math.max(8, window.innerWidth - NOTE_CONTEXT_MENU_WIDTH)),
+      y: clamp(y, 8, Math.max(8, window.innerHeight - APP_BAR_HEIGHT - NOTE_TAB_MENU_HEIGHT)),
+    });
   };
 
   const openFind = (withReplace = false) => {
@@ -811,6 +937,11 @@ export default function NotepadApp({
           event.preventDefault();
           event.stopPropagation();
           activateVfsEntry(createVfsTextFile());
+        } else if (key === "w" && !event.shiftKey) {
+          // Notepad's 탭 닫기.
+          event.preventDefault();
+          event.stopPropagation();
+          if (activeNote) closeTabs([activeNote.id]);
         } else if (key === "f") {
           event.preventDefault();
           event.stopPropagation();
@@ -1026,36 +1157,71 @@ export default function NotepadApp({
       )}
       <div className="note-tab-row">
         <div
+          aria-label="메모장 탭"
           className="note-tabs"
           onKeyDown={(event) => {
+            const index = tabs.findIndex((note) => note.id === activeNote?.id);
+            // The menu key and Shift+F10 open the tab's own menu, under it.
+            if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+              const tab = tabs[index];
+              const box = (event.target as HTMLElement).getBoundingClientRect();
+              if (!tab) return;
+              event.preventDefault();
+              showTabMenu(tab.id, box.left, box.bottom);
+              return;
+            }
             // role="tablist" promises Left/Right movement between documents.
-            const index = noteEntries.findIndex((note) => note.id === activeNote?.id);
-            const next = getNextTabIndex(event.key, index, noteEntries.length);
+            const next = getNextTabIndex(event.key, index, tabs.length);
             if (next === null) return;
             event.preventDefault();
-            activateVfsEntry(noteEntries[next]);
+            activateVfsEntry(tabs[next]);
             focusTabAt(event.currentTarget, next);
           }}
           role="tablist"
         >
-          {noteEntries.map((note) => (
-            <button
+          {tabs.map((note) => (
+            <div
               aria-controls="note-editor-panel"
               aria-selected={note.id === activeNote?.id}
-              className={note.id === activeNote?.id ? "is-selected" : ""}
+              className={`note-tab${note.id === activeNote?.id ? " is-selected" : ""}`}
               id={`note-tab-${note.id}`}
               key={note.id}
+              // Middle-click closes a tab, in Notepad and in every browser.
+              onAuxClick={(event) => {
+                if (event.button !== 1) return;
+                event.preventDefault();
+                closeTabs([note.id]);
+              }}
               onClick={() => activateVfsEntry(note)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                showTabMenu(note.id, event.clientX, event.clientY);
+              }}
               role="tab"
               tabIndex={note.id === activeNote?.id ? 0 : -1}
-              type="button"
             >
               <FileText aria-hidden="true" size={14} />
-              <span>{note.name}</span>
+              <span className="note-tab-name">{note.name}</span>
               {note.id === activeNote?.id && saveStatus !== "saved" && (
                 <span aria-label="저장되지 않은 변경 내용" className="note-dirty-dot" />
               )}
-            </button>
+              <button
+                aria-label={`${note.name} 탭 닫기`}
+                className="note-tab-close"
+                onClick={(event) => {
+                  // The tab under it selects on click; closing must not.
+                  event.stopPropagation();
+                  closeTabs([note.id]);
+                }}
+                // One tab stop for the strip: only the selected tab lends it
+                // to its ✕, as the explorer's strip does.
+                tabIndex={note.id === activeNote?.id ? 0 : -1}
+                title="탭 닫기 (Ctrl+W)"
+                type="button"
+              >
+                <X aria-hidden="true" size={12} />
+              </button>
+            </div>
           ))}
         </div>
         <button
@@ -1252,6 +1418,46 @@ export default function NotepadApp({
           title={fileDialogMode === "open" ? "열기" : "다른 이름으로 저장"}
         />
       )}
+      {tabMenu &&
+        (() => {
+          const ids = tabs.map((tab) => tab.id);
+          return (
+            <div
+              aria-label="탭 메뉴"
+              className="note-menu note-context-menu note-tab-menu"
+              onContextMenu={(event) => event.preventDefault()}
+              onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+              onPointerDown={(event) => event.stopPropagation()}
+              ref={tabMenuRef}
+              role="menu"
+              style={{ left: tabMenu.x, top: tabMenu.y }}
+            >
+              <button
+                onClick={() => closeTabsFrom(tabMenu.noteId, "this")}
+                role="menuitem"
+                type="button"
+              >
+                탭 닫기 <kbd>Ctrl+W</kbd>
+              </button>
+              <button
+                disabled={getNoteTabsToClose(ids, tabMenu.noteId, "others").length === 0}
+                onClick={() => closeTabsFrom(tabMenu.noteId, "others")}
+                role="menuitem"
+                type="button"
+              >
+                다른 탭 닫기
+              </button>
+              <button
+                disabled={getNoteTabsToClose(ids, tabMenu.noteId, "right").length === 0}
+                onClick={() => closeTabsFrom(tabMenu.noteId, "right")}
+                role="menuitem"
+                type="button"
+              >
+                오른쪽 탭 닫기
+              </button>
+            </div>
+          );
+        })()}
       {editorMenu && (
         <div
           aria-label="메모 편집 메뉴"

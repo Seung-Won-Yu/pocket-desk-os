@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 import NotepadApp from "./NotepadApp";
 import type { DesktopItem } from "../types";
 
@@ -35,6 +36,7 @@ function renderNotepad(content: string) {
       openVfsEntry={vi.fn()}
       registerCloseGuard={vi.fn()}
       saveNoteAs={vi.fn()}
+      reportNoteTabs={vi.fn()}
       saveNoteContent={vi.fn()}
       windowId="win-notepad"
     />,
@@ -43,7 +45,10 @@ function renderNotepad(content: string) {
   return { editor, user: userEvent.setup() };
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 describe("메모장 Tab", () => {
   it("Shift+Tab은 선택한 텍스트를 남기고 들여쓰기만 지운다", async () => {
@@ -80,5 +85,93 @@ describe("메모장 Tab", () => {
 
     await user.keyboard("{Control>}z{/Control}");
     expect(editor.value).toBe("가나다");
+  });
+});
+
+describe("메모장 탭", () => {
+  const notes = ["a.txt", "b.txt", "c.txt"].map((name, index) => ({
+    ...makeNote(`${name} 내용`),
+    id: `note-${index}`,
+    name,
+  }));
+
+  function renderTabs(activeNoteId: string) {
+    localStorage.setItem("pocket-desk-notepad-tabs-v1", JSON.stringify(notes.map((n) => n.id)));
+    const props = {
+      activateVfsEntry: vi.fn(),
+      closeWindow: vi.fn(),
+      reportNoteTabs: vi.fn(),
+      saveNoteContent: vi.fn(),
+    };
+    // The shell's side of it: activating a document puts it on screen.
+    function Shell() {
+      const [shown, setShown] = useState(activeNoteId);
+      return (
+        <NotepadApp
+          activeNoteId={shown}
+          activateVfsEntry={(item) => {
+            props.activateVfsEntry(item);
+            setShown(item.id);
+          }}
+          closeWindow={props.closeWindow}
+          createVfsFolder={vi.fn()}
+          createVfsTextFile={vi.fn()}
+          desktopItems={notes}
+          noteEntries={[
+            ...notes,
+            { ...makeNote("열지 않은 파일"), id: "never", name: "z.txt" },
+          ]}
+          notify={vi.fn()}
+          openVfsEntry={vi.fn()}
+          registerCloseGuard={vi.fn()}
+          reportNoteTabs={props.reportNoteTabs}
+          saveNoteAs={vi.fn()}
+          saveNoteContent={props.saveNoteContent}
+          windowId="win-notepad"
+        />
+      );
+    }
+    render(<Shell />);
+    return { ...props, user: userEvent.setup() };
+  }
+
+  const tabNames = () => screen.getAllByRole("tab").map((tab) => tab.textContent);
+
+  it("lists the documents that were opened, not every text file", () => {
+    renderTabs("note-1");
+    expect(tabNames()).toEqual(["a.txt", "b.txt", "c.txt"]);
+  });
+
+  it("closing the tab on screen shows its right-hand neighbour", async () => {
+    const { activateVfsEntry, user } = renderTabs("note-1");
+    await user.click(screen.getByRole("button", { name: "b.txt 탭 닫기" }));
+    expect(tabNames()).toEqual(["a.txt", "c.txt"]);
+    expect(activateVfsEntry).toHaveBeenLastCalledWith(notes[2]);
+  });
+
+  it("writes what was typed before its tab closes", async () => {
+    const { saveNoteContent, user } = renderTabs("note-1");
+    const editor = screen.getByLabelText("메모 내용");
+    await user.type(editor, "!");
+    await user.keyboard("{Control>}w{/Control}");
+    expect(saveNoteContent).toHaveBeenCalledWith("note-1", "b.txt 내용!");
+  });
+
+  it("offers 다른 탭 닫기 and 오른쪽 탭 닫기 from a tab's menu", async () => {
+    const { user } = renderTabs("note-0");
+    fireEvent.contextMenu(screen.getByRole("tab", { name: /c\.txt/ }));
+    const menu = screen.getByRole("menu", { name: "탭 메뉴" });
+    expect(within(menu).getByRole("menuitem", { name: "오른쪽 탭 닫기" })).toBeDisabled();
+    await user.click(within(menu).getByRole("menuitem", { name: "다른 탭 닫기" }));
+    expect(tabNames()).toEqual(["c.txt"]);
+  });
+
+  it("closes the window with its last tab", async () => {
+    localStorage.clear();
+    const { closeWindow, user } = renderTabs("note-0");
+    fireEvent.contextMenu(screen.getByRole("tab", { name: /a\.txt/ }));
+    await user.click(screen.getByRole("menuitem", { name: "다른 탭 닫기" }));
+    await user.click(screen.getByRole("button", { name: "a.txt 탭 닫기" }));
+    expect(closeWindow).toHaveBeenCalledWith("win-notepad");
   });
 });

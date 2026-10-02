@@ -626,6 +626,90 @@ async function runSmoke(baseUrl) {
       ),
       "Notepad Open dialog did not activate the selected document",
     );
+
+    /*
+     * 메모장 탭. The strip listed every text file on the disk and none of them
+     * could be closed. A tab is a document that was opened now: Ctrl+W (or the
+     * tab's ✕, a middle-click, its menu) puts it away and leaves the file —
+     * with what was typed a moment before written, not dropped inside the
+     * autosave's 850ms — and the tab beside it comes forward.
+     */
+    const noteTabNames = () =>
+      desktopNotepad
+        .locator('[role="tab"]')
+        .evaluateAll((tabs) =>
+          tabs.map(
+            (tab) =>
+              `${tab.textContent.trim()}${tab.getAttribute("aria-selected") === "true" ? "*" : ""}`,
+          ),
+        );
+    const tabsBeforeNew = await noteTabNames();
+    await desktopNotepad.getByLabel("메모 내용").click();
+    await page.keyboard.press("Control+n");
+    await page.waitForTimeout(250);
+    const newNoteName = (
+      await desktopNotepad.locator('[role="tab"][aria-selected="true"]').innerText()
+    ).trim();
+    assert(
+      (await noteTabNames()).length === tabsBeforeNew.length + 1,
+      `Ctrl+N left the tabs at ${(await noteTabNames()).join(" | ")}`,
+    );
+    await page.keyboard.type("탭을 닫기 직전에 쓴 글");
+    await page.keyboard.press("Control+w");
+    await page.waitForTimeout(300);
+    assert(
+      JSON.stringify(await noteTabNames()) ===
+        JSON.stringify(
+          tabsBeforeNew.map(
+            (name, index) =>
+              // The tab to the left comes forward when the last one closes.
+              `${name.replace(/\*$/, "")}${index === tabsBeforeNew.length - 1 ? "*" : ""}`,
+          ),
+        ),
+      `Ctrl+W left ${(await noteTabNames()).join(" | ")}`,
+    );
+    await page.keyboard.press("Control+o");
+    await notepadOpenDialog.waitFor({ state: "visible" });
+    await notepadOpenDialog
+      .getByRole("option", { name: new RegExp(newNoteName.replace(/[()]/g, "\\$&")) })
+      .dblclick();
+    await notepadOpenDialog.waitFor({ state: "hidden" });
+    // The document's text lands a render after the dialog closes — read too
+    // soon, the editor still holds the tab that was in front (empty here).
+    await page
+      .waitForFunction(
+        (expected) =>
+          document.querySelector('article[data-app-id="notepad"] textarea')?.value === expected,
+        "탭을 닫기 직전에 쓴 글",
+        { timeout: 3000 },
+      )
+      .catch(() => {});
+    const reopenedText = await desktopNotepad.getByLabel("메모 내용").inputValue();
+    assert(
+      reopenedText === "탭을 닫기 직전에 쓴 글",
+      `Closing the tab dropped what had just been typed: ${newNoteName} reopened as ${JSON.stringify(
+        reopenedText.slice(0, 80),
+      )} with tabs ${(await noteTabNames()).join(" | ")}`,
+    );
+    // The last tab has nothing to its right; 다른 탭 닫기 on notes.txt leaves it
+    // alone, in front, for the steps after this one.
+    const noteTabMenu = desktopNotepad.getByRole("menu", { name: "탭 메뉴" });
+    await desktopNotepad.locator('[role="tab"]').last().click({ button: "right" });
+    await noteTabMenu.waitFor({ state: "visible" });
+    assert(
+      await noteTabMenu.getByRole("menuitem", { name: "오른쪽 탭 닫기" }).isDisabled(),
+      "오른쪽 탭 닫기 was offered on the last tab",
+    );
+    await page.keyboard.press("Escape");
+    await noteTabMenu.waitFor({ state: "detached" });
+    await desktopNotepad.getByRole("tab", { name: /notes\.txt/ }).click({ button: "right" });
+    await noteTabMenu.waitFor({ state: "visible" });
+    await noteTabMenu.getByRole("menuitem", { name: "다른 탭 닫기" }).click();
+    await page.waitForTimeout(250);
+    assert(
+      JSON.stringify(await noteTabNames()) === JSON.stringify(["notes.txt*"]),
+      `다른 탭 닫기 left ${(await noteTabNames()).join(" | ")}`,
+    );
     /*
      * 찾기 및 바꾸기. 찾기 could point at every occurrence and do nothing
      * about any of them. 바꾸기 takes the one the selection is sitting on;
@@ -1104,8 +1188,13 @@ async function runSmoke(baseUrl) {
         const options = [...node.querySelectorAll('[role="option"]')];
         const names = options.map((option) => option.textContent?.trim().split("\n")[0] ?? "");
         const first = names[0] ?? "";
-        // A letter that some other item starts with and the first one does not.
-        return names.slice(1).find((name) => name[0] && name[0] !== first[0])?.[0] ?? "";
+        // A letter that some other item starts with and the first one does not —
+        // one a key press can type: a Hangul name ("새 텍스트 문서.txt") has
+        // no key of its own, only an IME composition.
+        return (
+          names.slice(1).find((name) => /^[a-z0-9]/i.test(name) && name[0] !== first[0])?.[0] ??
+          ""
+        );
       })
     ).toLowerCase();
     assert(typeAheadLetter !== "", "No distinct first letter to test type-ahead with");

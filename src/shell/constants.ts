@@ -32,6 +32,7 @@ export const DESKTOP_ICON_GRID_KEY = "pocket-desk-icon-grid-v1";
 export const EMOJI_RECENT_KEY = "pocket-desk-emoji-recent-v1";
 export const STARTUP_APPS_KEY = "pocket-desk-startup-apps-v1";
 export const WALLPAPER_SLIDESHOW_KEY = "pocket-desk-wallpaper-slideshow-v1";
+export const ACTIVE_NOTE_KEY = "pocket-desk-active-note-v1";
 export const DESKTOP_ITEMS_KEY = "pocket-desk-desktop-items-v1";
 export const SOUND_VOLUME_KEY = "pocket-desk-volume-v1";
 export const SOUND_ENABLED_KEY = "pocket-desk-sound-enabled-v1";

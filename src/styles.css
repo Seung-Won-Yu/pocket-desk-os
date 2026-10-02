@@ -5240,40 +5240,65 @@ button {
   overflow-x: auto;
 }
 
-.note-tabs button {
+.note-tab {
   align-items: center;
   background: transparent;
   border: 0;
   border-bottom: 2px solid transparent;
+  border-radius: 4px 4px 0 0;
   color: var(--text);
+  cursor: default;
   display: flex;
+  flex: 0 0 auto;
   gap: 7px;
   height: 34px;
-  padding: 0 10px;
-  flex: 0 0 auto;
-  max-width: 170px;
+  max-width: 190px;
+  overflow: hidden;
+  padding: 0 4px 0 10px;
+  white-space: nowrap;
 }
 
-.note-tabs button.is-selected {
+.note-tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.note-tab.is-selected {
   background: rgba(255, 255, 255, 0.085);
   border-color: transparent;
   border-bottom-color: var(--active);
 }
 
-.note-tabs button:not(.is-selected) {
+.note-tab:not(.is-selected) {
   color: var(--muted);
 }
 
-.note-tabs button {
-  border-radius: 4px 4px 0 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.note-tab:focus-visible {
+  outline: 2px solid var(--active);
+  outline-offset: -2px;
 }
 
-.note-tabs button > span:not(.note-dirty-dot) {
+.note-tab-name {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Every tab carries its ✕, as Notepad's do — the last one closes the window. */
+.note-tab-close {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--muted);
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: center;
+  padding: 3px;
+}
+
+.note-tab-close:hover,
+.note-tab-close:focus-visible {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--text);
 }
 
 .note-dirty-dot {
