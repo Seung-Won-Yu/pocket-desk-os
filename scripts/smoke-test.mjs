@@ -691,6 +691,70 @@ async function runSmoke(baseUrl) {
         reopenedText.slice(0, 80),
       )} with tabs ${(await noteTabNames()).join(" | ")}`,
     );
+    /*
+     * 탭 순서. The strip's order was fixed by when each document opened. A tab
+     * dragged onto the left half of another lands before it, and
+     * Ctrl+Shift+PageUp/PageDown moves the one on screen a place either way —
+     * without a drop on the editor typing anything into the document.
+     */
+    const waitForNoteTabs = async (expected, label) => {
+      await page
+        .waitForFunction(
+          (names) =>
+            JSON.stringify(
+              [...document.querySelectorAll('article[data-app-id="notepad"] [role="tab"]')].map(
+                (tab) =>
+                  `${tab.textContent.trim()}${tab.getAttribute("aria-selected") === "true" ? "*" : ""}`,
+              ),
+            ) === JSON.stringify(names),
+          expected,
+          { timeout: 3000 },
+        )
+        .catch(() => {});
+      assert(
+        JSON.stringify(await noteTabNames()) === JSON.stringify(expected),
+        `${label} left ${(await noteTabNames()).join(" | ")}, not ${expected.join(" | ")}`,
+      );
+    };
+    const tabsBeforeDrag = await noteTabNames();
+    assert(
+      tabsBeforeDrag.length >= 3,
+      `Too few tabs to reorder: ${tabsBeforeDrag.join(" | ")}`,
+    );
+    const noteTabs = desktopNotepad.locator('[role="tab"]');
+    assert(
+      (await noteTabs.evaluateAll((tabs) => tabs.every((tab) => tab.draggable))) === true,
+      "Notepad tabs are not draggable",
+    );
+    // The second tab, not the last: the strip scrolls in a narrow window, and
+    // dragTo scrolling its target into view would slide another tab under the
+    // pressed pointer.
+    await noteTabs.nth(1).dragTo(noteTabs.first(), { targetPosition: { x: 4, y: 12 } });
+    const draggedFirst = [tabsBeforeDrag[1], tabsBeforeDrag[0], ...tabsBeforeDrag.slice(2)];
+    await waitForNoteTabs(
+      draggedFirst,
+      "Dragging the second tab onto the first one's left edge",
+    );
+    // The tab on screen is the last one; the chords move it and nothing else.
+    const editorBeforeReorder = await desktopNotepad.getByLabel("메모 내용").inputValue();
+    await desktopNotepad.getByLabel("메모 내용").click();
+    await page.keyboard.press("Control+Shift+PageUp");
+    await waitForNoteTabs(
+      [...draggedFirst.slice(0, -2), draggedFirst.at(-1), draggedFirst.at(-2)],
+      "Ctrl+Shift+PageUp",
+    );
+    await page.keyboard.press("Control+Shift+PageDown");
+    await waitForNoteTabs(draggedFirst, "Ctrl+Shift+PageDown");
+    await noteTabs.first().dragTo(desktopNotepad.getByLabel("메모 내용"));
+    assert(
+      (await desktopNotepad.getByLabel("메모 내용").inputValue()) === editorBeforeReorder &&
+        JSON.stringify(await noteTabNames()) === JSON.stringify(draggedFirst) &&
+        (await desktopNotepad
+          .locator(".is-dragging, .is-drop-before, .is-drop-after")
+          .count()) === 0,
+      "A tab dropped on the editor changed the document or the strip",
+    );
+
     // The last tab has nothing to its right; 다른 탭 닫기 on notes.txt leaves it
     // alone, in front, for the steps after this one.
     const noteTabMenu = desktopNotepad.getByRole("menu", { name: "탭 메뉴" });

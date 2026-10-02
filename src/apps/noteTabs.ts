@@ -1,3 +1,5 @@
+import { reorderList } from "../utils/reorder";
+
 /**
  * 메모장 탭 — the documents open in the window. The strip used to list every
  * text file in the file system, so a tab could not be closed at all: closing
@@ -58,6 +60,53 @@ export function closeNoteTabs(
   const right = openIds.slice(index + 1).find((id) => !shut.has(id));
   const left = [...openIds.slice(0, Math.max(0, index))].reverse().find((id) => !shut.has(id));
   return { nextActiveId: right ?? left ?? remaining[0], openIds: remaining };
+}
+
+/** Which side of the tab under the pointer a dragged tab would land on. */
+export type NoteTabDropSide = "after" | "before";
+
+/**
+ * A tab dropped on the left half of another goes before it, on the right
+ * half after it — the gap the browser's strip opens is where it lands.
+ */
+export function getNoteTabDropSide(
+  pointerX: number,
+  left: number,
+  width: number,
+): NoteTabDropSide {
+  return pointerX < left + width / 2 ? "before" : "after";
+}
+
+/**
+ * The strip with `movedId` dropped beside `targetId`. Returns the strip
+ * itself when nothing would move — dropped on itself, or into the gap it
+ * already fills — so the caller can skip the write.
+ */
+export function moveNoteTab(
+  openIds: ReadonlyArray<string>,
+  movedId: string,
+  targetId: string,
+  side: NoteTabDropSide,
+): string[] {
+  const from = openIds.indexOf(movedId);
+  const target = openIds.indexOf(targetId);
+  if (from < 0 || target < 0 || movedId === targetId) return openIds as string[];
+  // The slot counted once the moved tab is out of the strip.
+  const gap = side === "before" ? target : target + 1;
+  return reorderList(openIds, from, from < gap ? gap - 1 : gap);
+}
+
+/**
+ * Ctrl+Shift+PageUp/PageDown: the tab one place left or right, stopping at
+ * either end, as in Edge and Chrome.
+ */
+export function stepNoteTab(
+  openIds: ReadonlyArray<string>,
+  id: string,
+  step: -1 | 1,
+): string[] {
+  const from = openIds.indexOf(id);
+  return reorderList(openIds, from, from + step);
 }
 
 /** What a stored strip may hold: ids, each once. */

@@ -5277,6 +5277,19 @@ button {
   outline-offset: -2px;
 }
 
+/* Dragging a tab along the strip: it fades, and a bar marks the gap it lands in. */
+.note-tab.is-dragging {
+  opacity: 0.45;
+}
+
+.note-tab.is-drop-before {
+  box-shadow: inset 2px 0 0 var(--active);
+}
+
+.note-tab.is-drop-after {
+  box-shadow: inset -2px 0 0 var(--active);
+}
+
 .note-tab-name {
   overflow: hidden;
   text-overflow: ellipsis;

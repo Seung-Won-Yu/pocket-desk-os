@@ -25,11 +25,15 @@ import { clamp } from "../utils/format";
 import { printNoteText } from "./notePrint";
 import {
   closeNoteTabs,
+  getNoteTabDropSide,
   getNoteTabs,
   getNoteTabsToClose,
+  moveNoteTab,
   normalizeNoteTabs,
+  stepNoteTab,
   withNoteTab,
   type NoteTabCloseAction,
+  type NoteTabDropSide,
 } from "./noteTabs";
 import {
   getSelectedMatchIndex,
@@ -140,6 +144,11 @@ export default function NotepadApp({
     [activeNote?.id, noteEntries, openTabIds],
   );
   const [tabMenu, setTabMenu] = useState<{ noteId: string; x: number; y: number } | null>(null);
+  // A tab being dragged along the strip, and the gap it would drop into.
+  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
+  const [tabDrop, setTabDrop] = useState<{ noteId: string; side: NoteTabDropSide } | null>(
+    null,
+  );
   const tabMenuRef = useRef<HTMLDivElement | null>(null);
   const noteAppRef = useRef<HTMLDivElement | null>(null);
   const noteEditorRef = useRef<HTMLTextAreaElement | null>(null);
@@ -658,6 +667,23 @@ export default function NotepadApp({
     window.requestAnimationFrame(() => noteEditorRef.current?.focus());
   };
 
+  /**
+   * Rearranging the strip by hand — a drag, or Ctrl+Shift+PageUp/PageDown. A
+   * tab that had keyboard focus keeps it: React moves the node, and a moved
+   * node drops focus.
+   */
+  const reorderTabs = (next: string[], current: string[], focusId?: string) => {
+    if (next === current) return;
+    setOpenTabIds(next);
+    if (!focusId) return;
+    window.requestAnimationFrame(() => document.getElementById(`note-tab-${focusId}`)?.focus());
+  };
+
+  const endTabDrag = () => {
+    setDraggingTabId(null);
+    setTabDrop(null);
+  };
+
   const closeTabsFrom = (noteId: string, action: NoteTabCloseAction) =>
     closeTabs(
       getNoteTabsToClose(
@@ -953,7 +979,19 @@ export default function NotepadApp({
         if (isShellReservedChord(event)) return;
         if (!(event.ctrlKey || event.metaKey)) return;
         const key = event.key.toLowerCase();
-        if (key === "o") {
+        if ((key === "pageup" || key === "pagedown") && event.ctrlKey && event.shiftKey) {
+          // Edge's and Chrome's chord for moving the tab on screen along the strip.
+          event.preventDefault();
+          event.stopPropagation();
+          if (!activeNote) return;
+          const ids = tabs.map((tab) => tab.id);
+          const inStrip = Boolean((event.target as HTMLElement).closest?.('[role="tablist"]'));
+          reorderTabs(
+            stepNoteTab(ids, activeNote.id, key === "pageup" ? -1 : 1),
+            ids,
+            inStrip ? activeNote.id : undefined,
+          );
+        } else if (key === "o") {
           event.preventDefault();
           event.stopPropagation();
           setNoteMenu(null);
@@ -1216,15 +1254,59 @@ export default function NotepadApp({
             activateVfsEntry(tabs[next]);
             focusTabAt(event.currentTarget, next);
           }}
+          // A tab dropped past the last one, on the strip's empty end, goes last.
+          onDragOver={(event) => {
+            if (!draggingTabId) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            const last = tabs[tabs.length - 1];
+            if (event.target !== event.currentTarget || !last) return;
+            if (tabDrop?.noteId !== last.id || tabDrop.side !== "after") {
+              setTabDrop({ noteId: last.id, side: "after" });
+            }
+          }}
+          onDragLeave={(event) => {
+            if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+            setTabDrop(null);
+          }}
+          onDrop={(event) => {
+            if (!draggingTabId) return;
+            event.preventDefault();
+            const ids = tabs.map((tab) => tab.id);
+            if (tabDrop) {
+              reorderTabs(moveNoteTab(ids, draggingTabId, tabDrop.noteId, tabDrop.side), ids);
+            }
+            endTabDrag();
+          }}
           role="tablist"
         >
           {tabs.map((note) => (
             <div
               aria-controls="note-editor-panel"
               aria-selected={note.id === activeNote?.id}
-              className={`note-tab${note.id === activeNote?.id ? " is-selected" : ""}`}
+              className={`note-tab${note.id === activeNote?.id ? " is-selected" : ""}${
+                note.id === draggingTabId ? " is-dragging" : ""
+              }${tabDrop?.noteId === note.id ? ` is-drop-${tabDrop.side}` : ""}`}
+              draggable
               id={`note-tab-${note.id}`}
               key={note.id}
+              onDragEnd={endTabDrag}
+              onDragOver={(event) => {
+                if (!draggingTabId) return;
+                const box = event.currentTarget.getBoundingClientRect();
+                const side = getNoteTabDropSide(event.clientX, box.left, box.width);
+                if (tabDrop?.noteId !== note.id || tabDrop.side !== side) {
+                  setTabDrop({ noteId: note.id, side });
+                }
+              }}
+              onDragStart={(event) => {
+                // A type of its own, not text/plain: dropped on the editor, a
+                // tab must not type its id into the document.
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("application/x-pocketdesk-note-tab", note.id);
+                setTabMenu(null);
+                setDraggingTabId(note.id);
+              }}
               // Middle-click closes a tab, in Notepad and in every browser.
               onAuxClick={(event) => {
                 if (event.button !== 1) return;

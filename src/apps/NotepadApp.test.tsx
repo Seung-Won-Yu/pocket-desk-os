@@ -166,6 +166,30 @@ describe("메모장 탭", () => {
     expect(tabNames()).toEqual(["c.txt"]);
   });
 
+  it("moves the tab on screen along the strip with Ctrl+Shift+PageUp/PageDown", async () => {
+    const { user } = renderTabs("note-0");
+    await user.click(screen.getByLabelText("메모 내용"));
+    await user.keyboard("{Control>}{Shift>}{PageDown}{/Shift}{/Control}");
+    expect(tabNames()).toEqual(["b.txt", "a.txt", "c.txt"]);
+    await user.keyboard("{Control>}{Shift>}{PageUp}{PageUp}{/Shift}{/Control}");
+    expect(tabNames()).toEqual(["a.txt", "b.txt", "c.txt"]);
+  });
+
+  it("drops a dragged tab into the gap beside another", () => {
+    renderTabs("note-0");
+    const dataTransfer = { dropEffect: "", effectAllowed: "", setData: vi.fn() };
+    const target = screen.getByRole("tab", { name: /c\.txt/ });
+    fireEvent.dragStart(screen.getByRole("tab", { name: /a\.txt/ }), { dataTransfer });
+    // jsdom lays nothing out: every box is 0 wide, so any x is its right half.
+    fireEvent.dragOver(target, { clientX: 5, dataTransfer });
+    fireEvent.drop(target, { dataTransfer });
+    expect(tabNames()).toEqual(["b.txt", "c.txt", "a.txt"]);
+    expect(dataTransfer.setData).toHaveBeenCalledWith(
+      "application/x-pocketdesk-note-tab",
+      "note-0",
+    );
+  });
+
   it("closes the window with its last tab", async () => {
     localStorage.clear();
     const { closeWindow, user } = renderTabs("note-0");

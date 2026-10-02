@@ -6,6 +6,8 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **메모장 탭 순서 바꾸기.** A Notepad tab stayed where it opened — measured: no tab was draggable, two drags along the strip and Ctrl+Shift+PageUp/PageDown changed the order 0 times. Drag a tab now and a bar marks the gap it will land in: the left half of another tab drops it before, the right half after, the strip's empty end makes it last. Ctrl+Shift+PageUp/PageDown move the tab on screen a place left or right, as in Edge and Chrome, and the order is kept across reloads. A tab dropped on the editor types nothing into the document.
+
 - **메모장 인쇄 (Ctrl+P).** 메모장 could not print — measured: 파일 held 열기, 새 탭, 저장 and 다른 이름으로 저장 and nothing more, Ctrl+P printed nothing, and the browser's own print, the only one left, pictures the page as it stands: the whole desktop, wallpaper and taskbar included. 파일 > 인쇄 and Ctrl+P print the document now — the text as it reads on screen, saved or just typed — on Notepad's page: 25mm top and bottom, 20mm either side, the file name at the head and 페이지 N at the foot, long lines wrapped at the paper's edge.
 
   It prints from a hidden frame of its own, built with DOM calls rather than a markup string (the page's Trusted Types policy rules one out), so a tag in the text prints as the characters it is. Measured: one print, from the frame and none from the page, with the frame's text equal to the editor's; laid out by Chrome's print engine, a 160-line note came to four pages, each headed notes.txt and numbered 페이지 1 to 페이지 4.
