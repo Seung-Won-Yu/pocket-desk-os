@@ -4722,6 +4722,104 @@ button {
   min-width: 50px;
 }
 
+/*
+ * Paint's 도구 are a block of icons, not a row of labelled buttons — and the
+ * labelled row left no room on the ribbon for the 이미지 group. The name stays
+ * on every button for screen readers and the tooltip.
+ */
+.paint-ribbon .paint-tool-group {
+  display: grid;
+  gap: 4px;
+  grid-auto-rows: 30px;
+  grid-template-columns: repeat(4, 32px);
+}
+
+.paint-ribbon .paint-tool-group button {
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.paint-tool-label {
+  border: 0;
+  clip-path: inset(50%);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.paint-image-group > div {
+  align-items: stretch;
+  display: flex;
+  gap: 6px;
+}
+
+.paint-select-button {
+  align-items: center;
+  display: grid;
+  font-size: 0.72rem;
+  gap: 4px;
+  justify-items: center;
+  min-width: 52px;
+  padding: 6px 4px;
+}
+
+.paint-select-button.is-selected {
+  background: color-mix(in srgb, var(--active) 22%, rgba(255, 255, 255, 0.08));
+  border-color: var(--active);
+}
+
+.paint-image-actions {
+  display: grid;
+  gap: 3px;
+}
+
+.paint-image-actions button {
+  align-items: center;
+  display: flex;
+  gap: 2px;
+  justify-content: center;
+  min-height: 22px;
+  min-width: 34px;
+  padding: 0 4px;
+}
+
+.paint-rotate-control {
+  position: relative;
+}
+
+.paint-rotate-menu {
+  background: #2b2b2b;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  display: grid;
+  left: 0;
+  min-width: 170px;
+  padding: 4px;
+  position: absolute;
+  top: calc(100% + 4px);
+  z-index: 20;
+}
+
+.paint-rotate-menu button {
+  background: transparent;
+  border: 0;
+  justify-content: flex-start;
+  min-height: 30px;
+  padding: 0 10px;
+  text-align: left;
+}
+
+.paint-rotate-menu button:hover,
+.paint-rotate-menu button:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .paint-tool-group button.is-selected {
   background: color-mix(in srgb, var(--active) 22%, rgba(255, 255, 255, 0.08));
   border-color: var(--active);
@@ -12514,6 +12612,29 @@ button {
 
 .paint-canvas-wrap {
   position: relative;
+}
+
+/*
+ * The selection layer sits exactly over the picture: same width, same
+ * bitmap, inside the canvas's one-pixel border, and never in the way of the
+ * pointer — every press still lands on the picture underneath.
+ */
+.paint-selection-overlay {
+  /* The same box as the picture — border included — so the bitmap inside lines up. */
+  border: 1px solid transparent;
+  height: auto;
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+}
+
+.paint-canvas-wrap[data-tool="select"] .paint-canvas {
+  cursor: crosshair;
+}
+
+.paint-canvas-wrap[data-selection-hover="on"] .paint-canvas {
+  cursor: move;
 }
 
 /*

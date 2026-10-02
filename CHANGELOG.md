@@ -6,6 +6,16 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **그림판 선택·자르기·회전.** 그림판 had eight drawing tools and nothing to take hold of what was already drawn: no selection, no crop, no rotate. The ribbon now has Paint's own 이미지 group — 선택, 자르기, 크기 조정, 회전.
+
+  A drag with 선택 draws a dashed rectangle on a layer of its own over the picture, so the border never touches the bitmap. Dragging inside it picks the pixels up and leaves paper behind; Escape puts them down. Measured: a red block moved 300px read paper at its old spot and red at the new one, and one Ctrl+Z took the whole move back. Ctrl+C and Ctrl+V copy and paste (the paste lands at the top-left, floating, the way Paint's does), Delete takes a selection back to paper, Ctrl+A selects the whole picture.
+
+  자르기 makes the canvas the selection — measured 1120×720 → 161×101 — and 회전 offers 오른쪽으로 90도 / 왼쪽으로 90도 / 180도 / 세로 대칭 / 가로 대칭. With a selection only the selection turns and it stays selected; without one the whole picture turns and a quarter turn swaps its sides: measured 1120×720 → 720×1120 with the block exactly where a right turn puts it. A brush stroke drawn afterwards is not itself turned — the canvas transform is reset after the turn, or every later stroke would have been rotated too. Every one of these is a single undo step that puts the size back.
+
+  The tools became Paint's block of icons — the labelled row left no room on the ribbon for the 이미지 group — with each name kept for screen readers and the tooltip.
+
+  Two things the measurements caught on the way. A menu item that closes its menu took the keyboard focus down to the page body, so after 회전 the selection's keys reached nothing: focus goes back to the window now. And on macOS, ⌘C handled inside 그림판 left the shell's "Win pressed alone" flag armed — letting go of ⌘ opened the Start menu over the picture. That flag is read in the capture phase now, before any app can stop the key.
+
 - **바탕 화면 Ctrl+휠, 작업 표시줄 Shift+클릭, Win+X.** Three mouse-and-keyboard habits Windows has that did nothing here.
 
   Ctrl+휠 on the bare desktop sizes the icons — the sizes were only reachable through 보기 in the desktop's own menu, which is not how anyone changes them. Measured: 보통 → 큰 takes the icons from 86px to 110px, another notch holds at 큰 rather than wrapping, and two notches down gives 작은 (76px). A window over the desktop keeps its own Ctrl+휠: measured, the explorer's list switched views and the desktop's icons did not move.

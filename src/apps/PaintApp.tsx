@@ -1,5 +1,7 @@
 import {
   Check,
+  ChevronDown,
+  Crop,
   Eraser,
   FileText,
   FolderOpen,
@@ -10,8 +12,11 @@ import {
   Pipette,
   Redo2,
   Save,
+  RotateCw,
   Scaling,
   Square,
+  SquareDashed,
+  Type,
   Undo2,
   ZoomIn,
   ZoomOut,
@@ -24,13 +29,25 @@ import {
   PAINT_MIN_DIMENSION,
   toHexColor,
 } from "./paintTools";
+import {
+  describePaintTransform,
+  getSelectionRect,
+  isPointInRect,
+  isSelectionUsable,
+  offsetRect,
+  PAINT_TRANSFORMS,
+  type PaintPoint,
+  type PaintRect,
+  type PaintTransformKind,
+} from "./paintSelection";
 import type React from "react";
 import FileDialog from "../components/FileDialog";
 import type { DesktopItem } from "../types";
 import { VFS_PICTURES_ID } from "../vfs/model";
 import { handleMenuKeyboard } from "../shell/keyboardNav";
 
-type PaintTool = "brush" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "text" | "picker";
+type PaintTool =
+  "brush" | "eraser" | "fill" | "line" | "rect" | "ellipse" | "text" | "picker" | "select";
 const PAINT_SAVE_EVENT = "pocket-desk-save-paint";
 const PAINT_OPEN_EVENT = "pocket-desk-open-paint";
 const PAINT_SAVE_AS_EVENT = "pocket-desk-save-paint-as";
@@ -198,6 +215,25 @@ export default function PaintApp({
   const [tool, setTool] = useState<PaintTool>("brush");
   /** What the eyedropper hands the canvas back to once it has picked. */
   const toolBeforePicker = useRef<PaintTool | null>(null);
+  /*
+   * 선택. The rectangle is state, so the overlay redraws; the pointer handlers
+   * read the ref, because moves arrive faster than renders. Pixels that have
+   * been picked up to move float on their own canvas until they are put down.
+   */
+  const [selection, setSelection] = useState<PaintRect | null>(null);
+  const selectionRef = useRef<PaintRect | null>(null);
+  const floatingRef = useRef<HTMLCanvasElement | null>(null);
+  const [floating, setFloating] = useState(false);
+  const selectionDragRef = useRef<{
+    mode: "marquee" | "move";
+    origin: PaintRect | null;
+    start: PaintPoint;
+  } | null>(null);
+  const pasteBufferRef = useRef<HTMLCanvasElement | null>(null);
+  const overlayRef = useRef<HTMLCanvasElement | null>(null);
+  const [selectionHover, setSelectionHover] = useState(false);
+  const [rotateMenuOpen, setRotateMenuOpen] = useState(false);
+  const paintRootRef = useRef<HTMLDivElement | null>(null);
   const [resizeDraft, setResizeDraft] = useState<{
     height: string;
     keepAspect: boolean;
@@ -256,8 +292,13 @@ export default function PaintApp({
      */
     const previousId = loadedCanvasIdRef.current;
     if (previousId && previousId !== activeCanvas?.id && dirtyRef.current) {
+      flattenSelectionRef.current();
       savePaintImage(canvas.toDataURL("image/png"), { existingItemId: previousId });
     }
+    // A selection belongs to the picture it was made on.
+    floatingRef.current = null;
+    setFloating(false);
+    setSelectionState(null);
     loadedCanvasIdRef.current = activeCanvas?.id ?? null;
     loadedContentRef.current = activeCanvas?.content;
     dirtyRef.current = false;
@@ -371,6 +412,231 @@ export default function PaintApp({
   };
 
   /*
+   * A menu item that closes its menu takes the focus down with it, to the
+   * page body — and from there Delete, Ctrl+C and Escape reached nothing.
+   * Measured after 회전: document.activeElement was BODY. The frame is where
+   * the keyboard belongs.
+   */
+  const focusPaintFrame = () => {
+    paintRootRef.current?.closest<HTMLElement>(".window-frame")?.focus({ preventScroll: true });
+  };
+
+  const setSelectionState = (rect: PaintRect | null) => {
+    selectionRef.current = rect;
+    setSelection(rect);
+  };
+
+  /** A copy of part of the bitmap on a canvas of its own. */
+  const copyRegion = (source: HTMLCanvasElement, rect: PaintRect) => {
+    const region = document.createElement("canvas");
+    region.width = Math.max(1, rect.width);
+    region.height = Math.max(1, rect.height);
+    region
+      .getContext("2d")
+      ?.drawImage(
+        source,
+        rect.x,
+        rect.y,
+        rect.width,
+        rect.height,
+        0,
+        0,
+        rect.width,
+        rect.height,
+      );
+    return region;
+  };
+
+  /** The part of a (possibly moved) selection that is still on the canvas. */
+  const clampToCanvas = (rect: PaintRect) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return rect;
+    return getSelectionRect(
+      { x: rect.x, y: rect.y },
+      { x: rect.x + rect.width, y: rect.y + rect.height },
+      { height: canvas.height, width: canvas.width },
+    );
+  };
+
+  /**
+   * Picks the selected pixels up to move them. Paint leaves the paper colour
+   * behind, and the move is one undo step, taken before anything changes.
+   */
+  const liftSelection = () => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    const rect = selectionRef.current;
+    if (!canvas || !context || !rect || floatingRef.current) return;
+    pushUndoSnapshot();
+    floatingRef.current = copyRegion(canvas, rect);
+    context.fillStyle = "#ffffff";
+    context.fillRect(rect.x, rect.y, rect.width, rect.height);
+    setFloating(true);
+    markDirty();
+  };
+
+  /** Puts floating pixels down where the selection now is; what fell off the edge is gone. */
+  const flattenSelection = () => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    const buffer = floatingRef.current;
+    const rect = selectionRef.current;
+    floatingRef.current = null;
+    setFloating(false);
+    if (!canvas || !context || !buffer || !rect) return;
+    context.drawImage(buffer, rect.x, rect.y);
+    markDirty();
+  };
+  // Saving and the document swap read the bitmap outside any render.
+  const flattenSelectionRef = useRef(flattenSelection);
+  flattenSelectionRef.current = flattenSelection;
+
+  const clearSelection = () => {
+    flattenSelection();
+    setSelectionState(null);
+  };
+
+  const selectAll = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return false;
+    commitTextRef.current();
+    flattenSelection();
+    setTool("select");
+    setSelectionState({ height: canvas.height, width: canvas.width, x: 0, y: 0 });
+    return true;
+  };
+
+  /** Delete: the selection goes to the paper colour, or a floating one is dropped. */
+  const deleteSelection = () => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    const rect = selectionRef.current;
+    if (!canvas || !context || !rect) return false;
+    if (floatingRef.current) {
+      // The hole it left is already paper, and the lift took the undo step.
+      floatingRef.current = null;
+      setFloating(false);
+    } else {
+      pushUndoSnapshot();
+      context.fillStyle = "#ffffff";
+      context.fillRect(rect.x, rect.y, rect.width, rect.height);
+    }
+    setSelectionState(null);
+    markDirty();
+    return true;
+  };
+
+  const copySelection = () => {
+    const canvas = canvasRef.current;
+    const rect = selectionRef.current;
+    if (!canvas || !rect) return false;
+    const source = floatingRef.current;
+    pasteBufferRef.current = source
+      ? copyRegion(source, { height: source.height, width: source.width, x: 0, y: 0 })
+      : copyRegion(canvas, rect);
+    return true;
+  };
+
+  const cutSelection = () => copySelection() && deleteSelection();
+
+  /** Paste lands at the top-left, floating and selected, the way Paint's does. */
+  const pasteSelection = () => {
+    const buffer = pasteBufferRef.current;
+    if (!buffer) return false;
+    commitTextRef.current();
+    flattenSelection();
+    pushUndoSnapshot();
+    floatingRef.current = copyRegion(buffer, {
+      height: buffer.height,
+      width: buffer.width,
+      x: 0,
+      y: 0,
+    });
+    setTool("select");
+    setSelectionState({ height: buffer.height, width: buffer.width, x: 0, y: 0 });
+    setFloating(true);
+    markDirty();
+    return true;
+  };
+
+  /** 자르기: the canvas becomes the selection. One undo step puts the size back. */
+  const cropToSelection = () => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    const current = selectionRef.current;
+    if (!canvas || !context || !current) return;
+    focusPaintFrame();
+    flattenSelection();
+    const rect = clampToCanvas(current);
+    if (!isSelectionUsable(rect)) return;
+    pushUndoSnapshot();
+    const region = copyRegion(canvas, rect);
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+    context.drawImage(region, 0, 0);
+    setCanvasSize({ height: rect.height, width: rect.width });
+    setSelectionState(null);
+    markDirty();
+  };
+
+  /**
+   * 회전 and 대칭. With a selection only the selection turns, and it stays
+   * selected where it was; without one the whole picture turns, and a quarter
+   * turn swaps the canvas's sides.
+   */
+  const transformPicture = (kind: PaintTransformKind) => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    setRotateMenuOpen(false);
+    commitTextRef.current();
+    focusPaintFrame();
+
+    const draw = (source: HTMLCanvasElement, target: HTMLCanvasElement) => {
+      const plan = describePaintTransform(kind, source.width, source.height);
+      target.width = plan.width;
+      target.height = plan.height;
+      const targetContext = target.getContext("2d");
+      if (!targetContext) return;
+      targetContext.translate(plan.translateX, plan.translateY);
+      targetContext.rotate(plan.rotate);
+      targetContext.scale(plan.scaleX, plan.scaleY);
+      targetContext.drawImage(source, 0, 0);
+      // The main canvas keeps drawing afterwards; a turn left in its context
+      // would turn every stroke after it.
+      targetContext.setTransform(1, 0, 0, 1, 0, 0);
+    };
+
+    const current = selectionRef.current;
+    if (current) {
+      flattenSelection();
+      const rect = clampToCanvas(current);
+      if (!isSelectionUsable(rect)) return;
+      pushUndoSnapshot();
+      const turned = document.createElement("canvas");
+      draw(copyRegion(canvas, rect), turned);
+      context.fillStyle = "#ffffff";
+      context.fillRect(rect.x, rect.y, rect.width, rect.height);
+      floatingRef.current = turned;
+      setFloating(true);
+      setSelectionState({ height: turned.height, width: turned.width, x: rect.x, y: rect.y });
+      markDirty();
+      return;
+    }
+
+    pushUndoSnapshot();
+    const source = copyRegion(canvas, {
+      height: canvas.height,
+      width: canvas.width,
+      x: 0,
+      y: 0,
+    });
+    draw(source, canvas);
+    setCanvasSize({ height: canvas.height, width: canvas.width });
+    markDirty();
+  };
+
+  /*
    * getBoundingClientRect forces layout, and drawing calls this per
    * pointermove. The canvas box only changes with zoom or a window resize,
    * neither of which can happen mid-stroke — so the rect is read once per
@@ -421,7 +687,33 @@ export default function PaintApp({
     context.stroke();
   };
 
+  const moveSelection = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const point = getPoint(event);
+    const drag = selectionDragRef.current;
+    if (!drag) {
+      // The cursor says "move" over a selection before anything is pressed.
+      const rect = selectionRef.current;
+      setSelectionHover(Boolean(rect && isPointInRect(point, rect)));
+      return;
+    }
+    if (drag.mode === "move" && drag.origin) {
+      setSelectionState(
+        offsetRect(drag.origin, point.x - drag.start.x, point.y - drag.start.y),
+      );
+      return;
+    }
+    setSelectionState(
+      getSelectionRect(drag.start, point, { height: canvas.height, width: canvas.width }),
+    );
+  };
+
   const draw = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (tool === "select") {
+      moveSelection(event);
+      return;
+    }
     if (!drawing.current) return;
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
@@ -455,6 +747,7 @@ export default function PaintApp({
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
+    clearSelection();
     pushUndoSnapshot();
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, canvas.width, canvas.height);
@@ -463,8 +756,10 @@ export default function PaintApp({
   };
 
   const save = () => {
-    // Saving with text still in the field would write a picture without it.
+    // Saving with text still in the field would write a picture without it,
+    // and saving mid-move would write the hole the selection left behind.
     commitTextRef.current();
+    flattenSelectionRef.current();
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -485,6 +780,7 @@ export default function PaintApp({
    */
   flushRef.current = () => {
     if (!dirtyRef.current) return;
+    flattenSelectionRef.current();
     const canvas = canvasRef.current;
     if (!canvas) return;
     savePaintImage(canvas.toDataURL("image/png"));
@@ -547,6 +843,7 @@ export default function PaintApp({
   };
 
   const saveAs = (result: { existingItem?: DesktopItem; name: string; parentId: string }) => {
+    flattenSelectionRef.current();
     const canvas = canvasRef.current;
     if (!canvas) return;
     const item = savePaintImage(canvas.toDataURL("image/png"), {
@@ -564,6 +861,8 @@ export default function PaintApp({
     // held-down Ctrl+Z used to fill the redo stack with copies of it.
     if (restoreInFlightRef.current) return;
     if (!canvas || undoStack.current.length === 0) return;
+    // A move in progress is put down first, so undo takes back the move itself.
+    clearSelection();
     const previous = undoStack.current.pop();
     if (!previous) return;
     redoStack.current = [...redoStack.current, canvas.toDataURL("image/png")].slice(-30);
@@ -575,6 +874,7 @@ export default function PaintApp({
     const canvas = canvasRef.current;
     if (restoreInFlightRef.current) return;
     if (!canvas || redoStack.current.length === 0) return;
+    clearSelection();
     const next = redoStack.current.pop();
     if (!next) return;
     undoStack.current = [...undoStack.current, canvas.toDataURL("image/png")].slice(-30);
@@ -593,6 +893,104 @@ export default function PaintApp({
     };
   });
 
+  // The 회전 menu closes on a click anywhere else, like every other menu here.
+  useEffect(() => {
+    if (!rotateMenuOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const control = paintRootRef.current?.querySelector(".paint-rotate-control");
+      if (control && !control.contains(event.target as Node | null)) setRotateMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => window.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [rotateMenuOpen]);
+
+  // Leaving 선택 for another tool puts the selection down where it is.
+  useEffect(() => {
+    if (tool === "select") return;
+    if (selectionRef.current || floatingRef.current) clearSelection();
+    setSelectionHover(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tool]);
+
+  /*
+   * The selection is drawn on a canvas of its own laid over the picture, at
+   * the picture's own resolution: the dashed border and any floating pixels
+   * never touch the bitmap until they are put down.
+   */
+  useEffect(() => {
+    const overlay = overlayRef.current;
+    const canvas = canvasRef.current;
+    const context = overlay?.getContext("2d");
+    if (!overlay || !canvas || !context) return;
+    if (overlay.width !== canvas.width) overlay.width = canvas.width;
+    if (overlay.height !== canvas.height) overlay.height = canvas.height;
+    context.clearRect(0, 0, overlay.width, overlay.height);
+    const rect = selection;
+    if (!rect) return;
+    if (floatingRef.current) context.drawImage(floatingRef.current, rect.x, rect.y);
+    // One screen pixel wide at any zoom: the overlay is scaled with the picture.
+    const pixel = 100 / zoom;
+    context.save();
+    context.lineWidth = pixel;
+    context.setLineDash([4 * pixel, 3 * pixel]);
+    context.strokeStyle = "#ffffff";
+    context.strokeRect(
+      rect.x + pixel / 2,
+      rect.y + pixel / 2,
+      rect.width - pixel,
+      rect.height - pixel,
+    );
+    context.lineDashOffset = 3.5 * pixel;
+    context.strokeStyle = "#0067c0";
+    context.strokeRect(
+      rect.x + pixel / 2,
+      rect.y + pixel / 2,
+      rect.width - pixel,
+      rect.height - pixel,
+    );
+    context.restore();
+  }, [selection, floating, zoom, canvasSize]);
+
+  /*
+   * The window frame holds the keyboard focus, not anything inside the app,
+   * so the selection's keys are read off the frame itself. Only a key that
+   * acted is stopped; everything else still reaches the shell.
+   */
+  useEffect(() => {
+    const root = paintRootRef.current;
+    const frame = root?.closest<HTMLElement>(".window-frame") ?? root;
+    if (!frame) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target?.isContentEditable ||
+        resizeDraft ||
+        closePromptOpen ||
+        fileDialogMode
+      ) {
+        return;
+      }
+      const modifier = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+      let acted = false;
+      if (!modifier && event.key === "Delete") acted = deleteSelection();
+      else if (!modifier && event.key === "Escape" && selectionRef.current) {
+        clearSelection();
+        acted = true;
+      } else if (modifier && !event.altKey && key === "a") acted = selectAll();
+      else if (modifier && !event.altKey && key === "c") acted = copySelection();
+      else if (modifier && !event.altKey && key === "x") acted = cutSelection();
+      else if (modifier && !event.altKey && key === "v") acted = pasteSelection();
+      if (!acted) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    frame.addEventListener("keydown", onKeyDown);
+    return () => frame.removeEventListener("keydown", onKeyDown);
+  });
+
   const startDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = event.currentTarget;
     const context = canvas.getContext("2d");
@@ -600,6 +998,21 @@ export default function PaintApp({
 
     strokeRectRef.current = null;
     const point = getPoint(event);
+
+    if (tool === "select") {
+      const rect = selectionRef.current;
+      if (rect && isPointInRect(point, rect)) {
+        // A press inside the selection picks it up to move.
+        liftSelection();
+        selectionDragRef.current = { mode: "move", origin: rect, start: point };
+      } else {
+        // Anywhere else puts the last one down and starts a new rectangle.
+        clearSelection();
+        selectionDragRef.current = { mode: "marquee", origin: null, start: point };
+      }
+      canvas.setPointerCapture(event.pointerId);
+      return;
+    }
 
     if (tool === "picker") {
       /*
@@ -666,6 +1079,7 @@ export default function PaintApp({
       setResizeDraft(null);
       return;
     }
+    clearSelection();
     pushUndoSnapshot();
     const source = document.createElement("canvas");
     source.width = canvas.width;
@@ -706,6 +1120,18 @@ export default function PaintApp({
   commitTextRef.current = commitText;
 
   const finishDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (tool === "select") {
+      const drag = selectionDragRef.current;
+      selectionDragRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      // A click that never became a drag selects nothing.
+      if (drag?.mode === "marquee" && !isSelectionUsable(selectionRef.current)) {
+        setSelectionState(null);
+      }
+      return;
+    }
     if (drawing.current && tool !== "brush" && tool !== "eraser") {
       draw(event);
     }
@@ -719,6 +1145,7 @@ export default function PaintApp({
   return (
     <div
       className="paint-app app-fill"
+      ref={paintRootRef}
       onKeyDown={(event) => {
         if (!(event.ctrlKey || event.metaKey)) return;
         const key = event.key.toLowerCase();
@@ -845,16 +1272,86 @@ export default function PaintApp({
                 >
                   <Eraser aria-hidden="true" size={18} />
                 </button>
-                <button
-                  aria-label="크기 조정"
-                  onClick={openResize}
-                  title="크기 조정"
-                  type="button"
-                >
-                  <Scaling aria-hidden="true" size={18} />
-                </button>
               </div>
               <small>파일 및 편집</small>
+            </div>
+            {/* 이미지: Paint's own group for taking hold of what is already drawn. */}
+            <div className="paint-ribbon-group paint-image-group">
+              <div>
+                <button
+                  aria-pressed={tool === "select"}
+                  className={`paint-select-button${tool === "select" ? " is-selected" : ""}`}
+                  onClick={() => {
+                    commitTextRef.current();
+                    setTool("select");
+                  }}
+                  title="선택"
+                  type="button"
+                >
+                  <SquareDashed aria-hidden="true" size={20} />
+                  <span>선택</span>
+                </button>
+                <div className="paint-image-actions">
+                  <button
+                    aria-label="자르기"
+                    disabled={!selection}
+                    onClick={cropToSelection}
+                    title="자르기"
+                    type="button"
+                  >
+                    <Crop aria-hidden="true" size={16} />
+                  </button>
+                  <button
+                    aria-label="크기 조정"
+                    onClick={openResize}
+                    title="크기 조정"
+                    type="button"
+                  >
+                    <Scaling aria-hidden="true" size={16} />
+                  </button>
+                  <div className="paint-rotate-control">
+                    <button
+                      aria-expanded={rotateMenuOpen}
+                      aria-haspopup="menu"
+                      aria-label="회전"
+                      onClick={() => setRotateMenuOpen((current) => !current)}
+                      title="회전"
+                      type="button"
+                    >
+                      <RotateCw aria-hidden="true" size={16} />
+                      <ChevronDown aria-hidden="true" size={12} />
+                    </button>
+                    {rotateMenuOpen && (
+                      <div
+                        aria-label="회전"
+                        className="paint-rotate-menu"
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") {
+                            event.stopPropagation();
+                            setRotateMenuOpen(false);
+                            return;
+                          }
+                          handleMenuKeyboard(event, event.currentTarget);
+                        }}
+                        role="menu"
+                      >
+                        {PAINT_TRANSFORMS.map((transform, index) => (
+                          <button
+                            autoFocus={index === 0}
+                            key={transform.id}
+                            onClick={() => transformPicture(transform.id)}
+                            role="menuitem"
+                            type="button"
+                          >
+                            {transform.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <small>이미지</small>
             </div>
             <div className="paint-ribbon-group">
               <div className="paint-tool-group" aria-label="그림 도구">
@@ -881,7 +1378,9 @@ export default function PaintApp({
                       <span aria-hidden="true" className="ellipse-tool-icon" />
                     )}
                     {option.id === "picker" && <Pipette aria-hidden="true" size={17} />}
-                    <span>{option.label}</span>
+                    {option.id === "text" && <Type aria-hidden="true" size={17} />}
+                    {/* Paint's tools are icons; the name stays for screen readers and tooltips. */}
+                    <span className="paint-tool-label">{option.label}</span>
                   </button>
                 ))}
               </div>
@@ -988,7 +1487,12 @@ export default function PaintApp({
           strokeRectRef.current = null;
         }}
       >
-        <div className="paint-canvas-wrap" data-text-draft={textDraft ? "on" : "off"}>
+        <div
+          className="paint-canvas-wrap"
+          data-selection-hover={tool === "select" && selectionHover ? "on" : "off"}
+          data-text-draft={textDraft ? "on" : "off"}
+          data-tool={tool}
+        >
           <canvas
             aria-label="그림판 캔버스"
             className="paint-canvas"
@@ -1012,6 +1516,12 @@ export default function PaintApp({
              */
             style={{ width: `${Math.round((canvasSize.width * zoom) / 100)}px` }}
             width={PAINT_CANVAS_WIDTH}
+          />
+          <canvas
+            aria-hidden="true"
+            className="paint-selection-overlay"
+            ref={overlayRef}
+            style={{ width: `${Math.round((canvasSize.width * zoom) / 100)}px` }}
           />
           {textDraft && (
             <input

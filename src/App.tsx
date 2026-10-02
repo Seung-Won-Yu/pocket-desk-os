@@ -4685,7 +4685,7 @@ export default function App() {
       if (shellPhase !== "unlocked") return;
       // A bare Win press arms the Start menu; any other key disarms it — and so
       // does a click, or Cmd+click for multi-select would open it on release.
-      winKeyAloneRef.current = event.key === "Meta" && !event.repeat;
+      // The flag itself is set in the capture phase, below.
       if (event.key === "PrintScreen") {
         event.preventDefault();
         void capturePrintScreen(event.altKey ? "window" : "screen");
@@ -5120,6 +5120,16 @@ export default function App() {
     const blur = () => globalShellHandlersRef.current.blur();
     const pointer = () => globalShellHandlersRef.current.pointer();
     const visibility = () => globalShellHandlersRef.current.visibility();
+    /*
+     * Whether Win was pressed alone is read off every keydown in the capture
+     * phase. An app that stops a key it handled must still disarm it: measured
+     * on macOS, 그림판's ⌘C stopped the "c" before the shell saw it, the flag
+     * stayed armed, and letting go of ⌘ opened the Start menu over the picture.
+     */
+    const armWinKey = (event: KeyboardEvent) => {
+      winKeyAloneRef.current = event.key === "Meta" && !event.repeat;
+    };
+    window.addEventListener("keydown", armWinKey, true);
     window.addEventListener("pointerdown", pointer, true);
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
@@ -5127,6 +5137,7 @@ export default function App() {
     document.addEventListener("visibilitychange", visibility);
     return () => {
       window.removeEventListener("pointerdown", pointer, true);
+      window.removeEventListener("keydown", armWinKey, true);
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
       window.removeEventListener("blur", blur);

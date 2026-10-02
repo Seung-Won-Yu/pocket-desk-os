@@ -5069,6 +5069,166 @@ async function runSmoke(baseUrl) {
       await page.waitForTimeout(250);
     }
 
+    /*
+     * 그림판 선택·자르기·회전. Paint had eight drawing tools and nothing to take
+     * hold of what was already drawn. A selection moves its pixels (leaving
+     * paper behind), copies, pastes, deletes and crops, and 회전 turns either
+     * the selection or the whole picture — each one undo step.
+     */
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("mspaint");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const selectPaint = page.locator('article[data-app-id="paint"]').last();
+    await selectPaint.waitFor({ state: "visible" });
+    // At 50% the whole picture fits the stage, so every point below is on screen.
+    await selectPaint.getByRole("button", { name: "보기", exact: true }).click();
+    await selectPaint.getByLabel("확대/축소").fill("50");
+    await selectPaint.getByRole("button", { name: "홈", exact: true }).click();
+    const selectCanvas = selectPaint.locator(".paint-canvas");
+    const selectCanvasSize = () =>
+      selectCanvas.evaluate((node) => `${node.width}x${node.height}`);
+    const selectPixel = (x, y) =>
+      selectCanvas.evaluate(
+        (node, point) =>
+          [...node.getContext("2d").getImageData(point.x, point.y, 1, 1).data]
+            .slice(0, 3)
+            .join(","),
+        { x, y },
+      );
+    const bitmapToScreen = async (x, y) => {
+      const box = await selectCanvas.evaluate((node) => {
+        const rect = node.getBoundingClientRect();
+        const style = window.getComputedStyle(node);
+        return {
+          bitmapHeight: node.height,
+          bitmapWidth: node.width,
+          height: node.clientHeight,
+          left: rect.left + parseFloat(style.borderLeftWidth),
+          top: rect.top + parseFloat(style.borderTopWidth),
+          width: node.clientWidth,
+        };
+      });
+      return {
+        x: box.left + (x / box.bitmapWidth) * box.width,
+        y: box.top + (y / box.bitmapHeight) * box.height,
+      };
+    };
+    const dragOnBitmap = async (fromX, fromY, toX, toY) => {
+      const from = await bitmapToScreen(fromX, fromY);
+      const to = await bitmapToScreen(toX, toY);
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move(to.x, to.y, { steps: 8 });
+      await page.mouse.up();
+      await page.waitForTimeout(150);
+    };
+    const red = "239,68,68";
+    const paper = "255,255,255";
+    const cropButton = selectPaint.getByRole("button", { name: "자르기" });
+
+    await selectPaint.getByRole("button", { name: "#ef4444 색상 선택" }).click();
+    await selectPaint.getByRole("button", { name: "사각형", exact: true }).click();
+    await selectPaint.getByLabel("도형 채우기").check();
+    await dragOnBitmap(100, 100, 200, 160);
+    assert((await selectPixel(150, 130)) === red, "The red block was not drawn to select");
+
+    await selectPaint.getByRole("button", { name: "선택", exact: true }).click();
+    await dragOnBitmap(90, 90, 210, 170);
+    assert(await cropButton.isEnabled(), "A drawn selection left 자르기 disabled");
+    // Moving picks the pixels up and leaves paper behind.
+    await dragOnBitmap(150, 130, 450, 130);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    assert(
+      (await selectPixel(150, 130)) === paper && (await selectPixel(450, 130)) === red,
+      `A moved selection left ${await selectPixel(150, 130)} behind and ${await selectPixel(450, 130)} where it went`,
+    );
+    assert(!(await cropButton.isEnabled()), "Escape left the selection standing");
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(500);
+    assert(
+      (await selectPixel(150, 130)) === red && (await selectPixel(450, 130)) === paper,
+      "One 실행 취소 did not take the move back",
+    );
+
+    // Copy, paste (it lands at the top-left, floating), put it down elsewhere.
+    await dragOnBitmap(90, 90, 210, 170);
+    await page.keyboard.press(`${multiSelectModifier}+c`);
+    await page.keyboard.press(`${multiSelectModifier}+v`);
+    await page.waitForTimeout(150);
+    await dragOnBitmap(60, 40, 660, 440);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    assert(
+      (await selectPixel(660, 440)) === red && (await selectPixel(150, 130)) === red,
+      `Copy and paste left ${await selectPixel(660, 440)} at the copy and ${await selectPixel(150, 130)} at the original`,
+    );
+    // Delete takes the selection back to paper.
+    await dragOnBitmap(590, 390, 730, 490);
+    await page.keyboard.press("Delete");
+    await page.waitForTimeout(150);
+    assert(
+      (await selectPixel(660, 440)) === paper,
+      `Delete left ${await selectPixel(660, 440)} in the selection`,
+    );
+
+    // 자르기: the canvas becomes the selection; one undo puts the size back.
+    await dragOnBitmap(80, 80, 240, 180);
+    await cropButton.click();
+    await page.waitForTimeout(250);
+    const [croppedWidth, croppedHeight] = (await selectCanvasSize()).split("x").map(Number);
+    assert(
+      Math.abs(croppedWidth - 160) <= 2 && Math.abs(croppedHeight - 100) <= 2,
+      `자르기 left the canvas at ${croppedWidth}×${croppedHeight}, not about 160×100`,
+    );
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(500);
+    assert(
+      (await selectCanvasSize()) === "1120x720",
+      `실행 취소 after 자르기 left ${await selectCanvasSize()}`,
+    );
+
+    // 회전 with nothing selected turns the whole picture and swaps its sides.
+    await selectPaint.getByRole("button", { name: "회전" }).click();
+    await selectPaint
+      .locator(".paint-rotate-menu button")
+      .filter({ hasText: "오른쪽으로 90도 회전" })
+      .click();
+    await page.waitForTimeout(250);
+    assert(
+      (await selectCanvasSize()) === "720x1120",
+      `오른쪽으로 90도 회전 left ${await selectCanvasSize()}`,
+    );
+    // The block at x 100..200, y 100..160 turns to x 560..620, y 100..200.
+    assert(
+      (await selectPixel(590, 150)) === red,
+      `The turned block is not where a right turn puts it: ${await selectPixel(590, 150)}`,
+    );
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(500);
+    assert(
+      (await selectCanvasSize()) === "1120x720",
+      `실행 취소 after 회전 left ${await selectCanvasSize()}`,
+    );
+
+    // Ctrl+A selects the whole picture with the 선택 tool.
+    await page.keyboard.press(`${multiSelectModifier}+a`);
+    await page.waitForTimeout(150);
+    assert(
+      (await selectPaint
+        .getByRole("button", { name: "선택", exact: true })
+        .getAttribute("aria-pressed")) === "true" && (await cropButton.isEnabled()),
+      "Ctrl+A did not select the picture",
+    );
+    await page.keyboard.press("Escape");
+    await selectPaint.getByRole("button", { name: "그림판 닫기" }).click();
+    await page.waitForTimeout(300);
+    if (await page.locator(".note-close-overlay, .window-dialog").count()) {
+      await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
+      await page.waitForTimeout(250);
+    }
+
     // 스크린샷: PrintScreen pictures the desktop for real — the DOM drawn to a
     // canvas — and saves a PNG into 사진. The pixels must be a picture, not a
     // blank: sampled colours have to vary.
