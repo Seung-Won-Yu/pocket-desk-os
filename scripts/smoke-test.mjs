@@ -3953,6 +3953,79 @@ async function runSmoke(baseUrl) {
       (await settingsPane.evaluate((el) => el.scrollTop)) > 0,
       "Settings content did not scroll",
     );
+
+    /*
+     * 배경 > 슬라이드 쇼. The desktop kept one picture until it was changed by
+     * hand. Starting the show keeps a wallpaper that is already in the album,
+     * 다음 바탕 화면 배경 on the desktop's menu moves to the album's next
+     * picture at once, and 사진 stops it and brings the gallery back. The
+     * timer itself is measured on a controlled clock outside this run — a
+     * minute is the shortest interval, too long to wait out here.
+     */
+    const presetShown = () =>
+      page
+        .locator("main.desktop")
+        .evaluate(
+          (node) =>
+            /wallpapers\/([a-z-]+)\.jpg/.exec(
+              node.style.getPropertyValue("--wallpaper-image"),
+            )?.[1] ?? null,
+        );
+    const galleryOrder = [
+      "green-vista",
+      "blue-ribbon",
+      "aurora-lake",
+      "dawn-lake",
+      "sunny-field",
+      "glass-wave",
+      "misty-peak",
+      "moon-coast",
+    ];
+    const openDesktopMenuAt = async () => {
+      await page.locator(".desktop").dispatchEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 1150,
+        clientY: 700,
+      });
+      const menu = page.locator(".desktop-context-menu").first();
+      await menu.waitFor({ state: "visible" });
+      return menu;
+    };
+    const backgroundMode = settingsWindow.getByRole("combobox", { exact: true, name: "배경" });
+    const shownBefore = (await presetShown()) ?? galleryOrder[0];
+    await backgroundMode.selectOption("slideshow");
+    await page.waitForTimeout(250);
+    assert(
+      (await settingsWindow.locator('.wallpaper-slideshow-strip [role="listitem"]').count()) ===
+        8,
+      "The gallery album does not show its eight pictures",
+    );
+    assert(
+      (await presetShown()) === shownBefore,
+      `Starting the show swapped ${shownBefore} for ${await presetShown()}`,
+    );
+    let showMenu = await openDesktopMenuAt();
+    await showMenu.getByRole("menuitem", { name: "다음 바탕 화면 배경" }).click();
+    await page.waitForTimeout(250);
+    const expectedNext = galleryOrder[(galleryOrder.indexOf(shownBefore) + 1) % 8];
+    assert(
+      (await presetShown()) === expectedNext,
+      `다음 바탕 화면 배경 went from ${shownBefore} to ${await presetShown()}, not ${expectedNext}`,
+    );
+    await backgroundMode.selectOption("picture");
+    await page.waitForTimeout(250);
+    assert(
+      (await settingsWindow.locator(".wallpaper-options button").count()) === 8,
+      "사진 did not bring the gallery back",
+    );
+    showMenu = await openDesktopMenuAt();
+    assert(
+      !(await showMenu.innerText()).includes("다음 바탕 화면 배경"),
+      "다음 바탕 화면 배경 stayed on the menu after the show stopped",
+    );
+    await page.keyboard.press("Escape");
+    await showMenu.waitFor({ state: "detached" });
     await settingsWindow.getByRole("button", { name: "설정 닫기" }).click();
     await page.waitForTimeout(200);
 
@@ -6083,31 +6156,46 @@ async function runSmoke(baseUrl) {
     await notifiedPhotos.getByRole("button", { name: "사진 닫기" }).click();
     await notifiedPhotos.waitFor({ state: "detached" });
 
-    // 바탕 화면 배경으로 설정: the screenshot becomes the wallpaper; deleting the
-    // file puts the preset back.
+    /*
+     * 바탕 화면 배경으로 설정: the screenshot becomes the wallpaper; deleting the
+     * file puts the preset back. CSS gets the picture as a blob: URL — a
+     * full-screen PNG runs past 2 MiB as a data URL, and Chrome drops a custom
+     * property that long, so the variable kept the preset and nothing changed.
+     * The blob is decoded here to prove it is the screenshot itself.
+     */
     const wallpaperVar = () =>
       page
         .locator("main.desktop")
         .evaluate((node) => node.style.getPropertyValue("--wallpaper-image"));
+    const wallpaperPictureSize = (locator) =>
+      locator.evaluate(async (node) => {
+        const value = node.style.getPropertyValue("--wallpaper-image");
+        const url = /^url\("(blob:[^"]+)"\)$/.exec(value)?.[1];
+        if (!url) return value.slice(0, 40);
+        const image = new Image();
+        image.src = url;
+        await image.decode();
+        return `${image.naturalWidth}x${image.naturalHeight}`;
+      });
     await shotRow.first().click({ button: "right" });
     await shotExplorer
       .locator(".file-context-menu")
       .getByRole("menuitem", { name: "바탕 화면 배경으로 설정" })
       .click();
     await page.waitForTimeout(250);
+    const desktopPicture = await wallpaperPictureSize(page.locator("main.desktop"));
     assert(
-      (await wallpaperVar()).startsWith('url("data:image/png'),
-      `Setting the picture as wallpaper left ${(await wallpaperVar()).slice(0, 40)}`,
+      desktopPicture === "1280x820",
+      `Setting the screenshot as wallpaper left ${desktopPicture}`,
     );
     // The lock screen shows the same picture.
     await page.keyboard.press("Meta+l");
     const lockScreen = page.locator('[aria-label="PocketDesk 잠금 화면"]');
     await lockScreen.waitFor({ state: "visible" });
+    const lockPicture = await wallpaperPictureSize(lockScreen);
     assert(
-      (
-        await lockScreen.evaluate((node) => node.style.getPropertyValue("--wallpaper-image"))
-      ).startsWith('url("data:image/png'),
-      "The lock screen did not show the custom wallpaper",
+      lockPicture === "1280x820",
+      `The lock screen did not show the custom wallpaper: ${lockPicture}`,
     );
     await unlockPocketDesk(page);
     await shotExplorer.waitFor({ state: "visible" });
@@ -6118,8 +6206,8 @@ async function runSmoke(baseUrl) {
       .click();
     await page.waitForTimeout(300);
     assert(
-      !(await wallpaperVar()).startsWith('url("data:'),
-      "Deleting the wallpaper picture did not bring the preset back",
+      /wallpapers\/[a-z-]+\.jpg/.test(await wallpaperVar()),
+      `Deleting the wallpaper picture left ${(await wallpaperVar()).slice(0, 40)}`,
     );
     // Something is in the bin now: the desktop icon says so.
     assert(

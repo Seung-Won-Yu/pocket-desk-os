@@ -34,6 +34,7 @@ import {
   Redo2,
   RefreshCw,
   Scissors,
+  SkipForward,
   Trash2,
   Undo2,
   type LucideIcon,
@@ -52,6 +53,7 @@ export function DesktopContextMenu({
   onCreateFolder,
   onCreateNote,
   onCreateShortcut,
+  onNextWallpaper,
   onPaste,
   onRedo,
   onRefresh,
@@ -74,6 +76,8 @@ export function DesktopContextMenu({
   onCreateFolder: () => void;
   onCreateNote: () => void;
   onCreateShortcut: () => void;
+  /** Set only while 배경 > 슬라이드 쇼 is on, as Windows lists the item. */
+  onNextWallpaper?: () => void;
   onPaste: () => void;
   onRedo: () => void;
   onRefresh: () => void;
@@ -253,6 +257,21 @@ export function DesktopContextMenu({
           <Redo2 aria-hidden="true" size={16} />
           {`다시 실행 — ${redoLabel}`}
         </button>
+      )}
+      {onNextWallpaper && (
+        <>
+          <span aria-hidden="true" className="menu-separator" />
+          <button
+            onClick={onNextWallpaper}
+            onMouseEnter={() => setSubmenu(null)}
+            role="menuitem"
+            type="button"
+          >
+            <SkipForward aria-hidden="true" size={16} />
+            다음 바탕 화면 배경
+          </button>
+          <span aria-hidden="true" className="menu-separator" />
+        </>
       )}
       <div className="desktop-menu-row" onMouseEnter={() => setSubmenu("new")}>
         <button

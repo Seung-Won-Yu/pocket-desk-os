@@ -34,7 +34,8 @@ export function getAssetUrl(path: string) {
 
 /**
  * The desktop's wallpaper variable: a picture the user chose from their own
- * files when there is one (its data URL), else the preset.
+ * files when there is one (a blob: URL of it — see useImageObjectUrl for why
+ * not its data URL), else the preset.
  */
 export function getWallpaperStyle(
   wallpaper: WallpaperName,

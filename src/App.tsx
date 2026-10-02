@@ -137,10 +137,12 @@ import {
   loadShowDesktopIcons,
   loadTextScale,
   loadUserName,
+  loadWallpaperSlideshow,
   persistDefaultApps,
   persistRecentEmoji,
   persistStartupApps,
   persistShowDesktopIcons,
+  persistWallpaperSlideshow,
   type DefaultAppMap,
   type TextScale,
 } from "./shell/preferences";
@@ -214,6 +216,16 @@ import {
 import { getNeighbourByPosition, handleMenuKeyboard } from "./shell/keyboardNav";
 import { getNextDesktopViewMode } from "./shell/desktopViewMode";
 import { getStartupLaunchIds, setStartupAppEnabled } from "./shell/startupApps";
+import { useImageObjectUrl } from "./shell/useImageObjectUrl";
+import {
+  getAlbumSlides,
+  getCurrentSlide,
+  getOpeningSlide,
+  getSlideDelay,
+  pickNextSlide,
+  type WallpaperSlide,
+  type WallpaperSlideshow,
+} from "./shell/wallpaperSlideshow";
 import {
   getAltEscPileOrder,
   getMinimizeOthersIds,
@@ -413,6 +425,7 @@ type ContentOps = Pick<
   | "setTheme"
   | "setCustomWallpaper"
   | "setWallpaper"
+  | "updateWallpaperSlideshow"
 >;
 
 /**
@@ -430,6 +443,9 @@ function useStableList<T>(next: T[], equal: (a: T, b: T) => boolean): T[] {
   return same ? previous : next;
 }
 
+/** The gallery album of 배경 > 슬라이드 쇼, in the order 설정 lists it. */
+const WALLPAPER_PRESET_IDS = wallpaperGallery.map((option) => option.id);
+
 /** ⌘ doubles as the editing key on a Mac; see the Win+V and Win+X chords. */
 const IS_MAC_PLATFORM =
   typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -445,6 +461,10 @@ export default function App() {
   // id is stored; the pixels come from the file, so deleting it undoes it.
   const [customWallpaperItemId, setCustomWallpaperItemId] = useState<string | null>(() =>
     localStorage.getItem(CUSTOM_WALLPAPER_KEY),
+  );
+  /** 배경 > 슬라이드 쇼: an album whose pictures take turns as the wallpaper. */
+  const [wallpaperSlideshow, setWallpaperSlideshow] = useState<WallpaperSlideshow>(() =>
+    loadWallpaperSlideshow(),
   );
   const [soundEnabled, setSoundEnabled] = useState(() => {
     return localStorage.getItem(SOUND_ENABLED_KEY) !== "off";
@@ -955,6 +975,29 @@ export default function App() {
       localStorage.setItem(CUSTOM_WALLPAPER_KEY, customWallpaperItemId);
     else localStorage.removeItem(CUSTOM_WALLPAPER_KEY);
   }, [customWallpaperItemId]);
+
+  useEffect(() => {
+    persistWallpaperSlideshow(wallpaperSlideshow);
+  }, [wallpaperSlideshow]);
+
+  /*
+   * The show's clock: one timeout to the next change, counted from the last
+   * one, so a reload picks the wait up where it was. Held until the file
+   * system has loaded — a folder album read before that is empty.
+   */
+  useEffect(() => {
+    if (!wallpaperSlideshow.enabled || !vfsReady) return;
+    const timer = window.setTimeout(
+      () => advanceWallpaperSlideshowRef.current(),
+      getSlideDelay(wallpaperSlideshow.changedAt, wallpaperSlideshow.intervalMs, Date.now()),
+    );
+    return () => window.clearTimeout(timer);
+  }, [
+    vfsReady,
+    wallpaperSlideshow.changedAt,
+    wallpaperSlideshow.enabled,
+    wallpaperSlideshow.intervalMs,
+  ]);
 
   useEffect(() => {
     soundEnabledRef.current = soundEnabled;
@@ -1723,8 +1766,15 @@ export default function App() {
     });
   };
 
+  /** A wallpaper picked by hand ends the show, as choosing 사진 does in Windows. */
+  const endWallpaperSlideshow = () =>
+    setWallpaperSlideshow((current) =>
+      current.enabled ? { ...current, enabled: false } : current,
+    );
+
   const changeWallpaper = (nextWallpaper: WallpaperName) => {
     playSound("success");
+    endWallpaperSlideshow();
     setWallpaper(nextWallpaper);
     // Picking a preset is how you leave a custom picture behind.
     setCustomWallpaperItemId(null);
@@ -1739,6 +1789,7 @@ export default function App() {
   /** A picture file as the wallpaper (null puts the preset back). */
   const setCustomWallpaper = (itemId: string | null) => {
     playSound("success");
+    endWallpaperSlideshow();
     setCustomWallpaperItemId(itemId);
     notify(
       itemId
@@ -1754,6 +1805,53 @@ export default function App() {
             tone: "success",
           },
     );
+  };
+
+  /** Puts one slide up, quietly: a show that chimed at every change would be noise. */
+  const showWallpaperSlide = (slide: WallpaperSlide) => {
+    if (slide.kind === "preset") {
+      setWallpaper(slide.id);
+      setCustomWallpaperItemId(null);
+    } else {
+      setCustomWallpaperItemId(slide.itemId);
+    }
+  };
+
+  /** The show's next picture, from its timer or from 다음 바탕 화면 배경. */
+  const advanceWallpaperSlideshow = () => {
+    const next = pickNextSlide(
+      getAlbumSlides(wallpaperSlideshow.album, activeDesktopItems, WALLPAPER_PRESET_IDS),
+      getCurrentSlide(wallpaper, customWallpaperItemId),
+      wallpaperSlideshow.shuffle,
+    );
+    if (next) showWallpaperSlide(next);
+    // The wait starts over either way: an album that has emptied is looked at
+    // again an interval later, not in a loop.
+    setWallpaperSlideshow((current) => ({ ...current, changedAt: Date.now() }));
+  };
+  const advanceWallpaperSlideshowRef = useRef(advanceWallpaperSlideshow);
+  advanceWallpaperSlideshowRef.current = advanceWallpaperSlideshow;
+
+  /**
+   * 설정 > 배경's switches for the show. Starting it, or moving it to another
+   * album, puts that album's picture up at once rather than an interval later.
+   */
+  const updateWallpaperSlideshow = (
+    patch: Partial<Pick<WallpaperSlideshow, "album" | "enabled" | "intervalMs" | "shuffle">>,
+  ) => {
+    const next = { ...wallpaperSlideshow, ...patch };
+    const opens =
+      next.enabled && (!wallpaperSlideshow.enabled || next.album !== wallpaperSlideshow.album);
+    if (opens) {
+      const opening = getOpeningSlide(
+        getAlbumSlides(next.album, activeDesktopItems, WALLPAPER_PRESET_IDS),
+        getCurrentSlide(wallpaper, customWallpaperItemId),
+        next.shuffle,
+      );
+      if (opening) showWallpaperSlide(opening);
+    }
+    const restarts = opens || next.intervalMs !== wallpaperSlideshow.intervalMs;
+    setWallpaperSlideshow(restarts ? { ...next, changedAt: Date.now() } : next);
   };
 
   const changeTheme = (nextTheme: ThemeName) => {
@@ -2234,6 +2332,8 @@ export default function App() {
     () => resolveCustomWallpaper(activeDesktopItems, customWallpaperItemId),
     [activeDesktopItems, customWallpaperItemId],
   );
+  // What CSS gets: the picture as a blob: URL, which no picture outgrows.
+  const customWallpaperUrl = useImageObjectUrl(customWallpaperImage);
   const desktopContextItem =
     desktopIconMenu?.kind === "item"
       ? activeDesktopItems.find((item) => item.id === desktopIconMenu.itemId)
@@ -5545,6 +5645,7 @@ export default function App() {
     setTheme: changeTheme,
     setCustomWallpaper,
     setWallpaper: changeWallpaper,
+    updateWallpaperSlideshow,
   };
   const stableContentOps = useMemo<ContentOps>(
     () => ({
@@ -5610,6 +5711,8 @@ export default function App() {
       setTheme: (...args) => contentOpsRef.current.setTheme(...args),
       setCustomWallpaper: (...args) => contentOpsRef.current.setCustomWallpaper(...args),
       setWallpaper: (...args) => contentOpsRef.current.setWallpaper(...args),
+      updateWallpaperSlideshow: (...args) =>
+        contentOpsRef.current.updateWallpaperSlideshow(...args),
     }),
     [],
   );
@@ -5701,6 +5804,7 @@ export default function App() {
       updateStickyNotes: setStickyNotes,
       userName,
       wallpaper,
+      wallpaperSlideshow,
     }),
     [
       stableContentOps,
@@ -5746,6 +5850,7 @@ export default function App() {
       trashedItems,
       userName,
       wallpaper,
+      wallpaperSlideshow,
     ],
   );
 
@@ -5784,7 +5889,7 @@ export default function App() {
       onPointerUp={finishDesktopSelection}
       style={
         {
-          ...getWallpaperStyle(wallpaper, customWallpaperImage),
+          ...getWallpaperStyle(wallpaper, customWallpaperUrl),
           "--display-dim": ((100 - displayBrightness) / 100) * 0.7,
           "--night-light": getNightLightAlpha(nightLight, nightLightStrength),
         } as WallpaperCssVars
@@ -6416,6 +6521,14 @@ export default function App() {
             setDesktopMenu(null);
             openApp("settings");
           }}
+          onNextWallpaper={
+            wallpaperSlideshow.enabled
+              ? () => {
+                  setDesktopMenu(null);
+                  advanceWallpaperSlideshow();
+                }
+              : undefined
+          }
           onCreateFolder={() => createDesktopItem("folder")}
           onCreateNote={() => createDesktopItem("note")}
           onCreateShortcut={() => {
@@ -6576,7 +6689,7 @@ export default function App() {
       {shellPhase !== "unlocked" && (
         <ShellGate
           clock24h={clock24h}
-          customWallpaperImage={customWallpaperImage}
+          customWallpaperImage={customWallpaperUrl}
           userName={userName}
           onPowerOn={powerOnDesktop}
           onUnlock={unlockDesktop}

@@ -8847,7 +8847,8 @@ button {
   gap: 8px;
 }
 
-.settings-default-app {
+.settings-default-app,
+.settings-select-row {
   align-items: center;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -8857,23 +8858,27 @@ button {
   padding: 10px 14px;
 }
 
-.settings-default-app > span {
+.settings-default-app > span,
+.settings-select-row > span {
   display: grid;
   gap: 2px;
 }
 
-.settings-default-app small {
+.settings-default-app small,
+.settings-select-row small {
   color: var(--muted);
   font-size: 0.72rem;
 }
 
-.settings-default-app label {
+.settings-default-app label,
+.settings-select-row label {
   align-items: center;
   display: flex;
   gap: 8px;
 }
 
-.settings-default-app select {
+.settings-default-app select,
+.settings-select-row select {
   background: var(--panel-strong);
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -8928,7 +8933,12 @@ button {
 }
 
 @media (max-width: 620px) {
-  .settings-default-app {
+  .wallpaper-slideshow-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .settings-default-app,
+  .settings-select-row {
     align-items: flex-start;
     flex-direction: column;
     gap: 8px;
@@ -11340,6 +11350,41 @@ button {
   justify-content: center;
   padding: 20px;
   text-align: center;
+}
+
+/* 배경 > 슬라이드 쇼: the album's pictures in a row, the one showing ringed. */
+.settings-section > .settings-select-row {
+  margin-bottom: 10px;
+}
+
+.settings-slideshow {
+  display: grid;
+  gap: 10px;
+}
+
+/* Eight across — the whole gallery in one row — however wide the pane is. */
+.wallpaper-slideshow-strip {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.wallpaper-slideshow-strip .wallpaper-preview {
+  aspect-ratio: 16 / 10;
+  grid-row: auto;
+  height: auto;
+  width: 100%;
+}
+
+.wallpaper-slideshow-strip .wallpaper-preview.is-current {
+  outline: 2px solid var(--active);
+  outline-offset: 2px;
+}
+
+.wallpaper-slideshow-more {
+  color: var(--muted);
+  font-size: 0.75rem;
 }
 
 .settings-wallpaper-note {

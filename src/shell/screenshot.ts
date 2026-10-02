@@ -9,6 +9,7 @@
  * any same-origin image) is fetched from this origin and inlined as a data
  * URL, because an SVG rendered as an image may not load external resources.
  */
+import { getObjectUrlSource } from "./objectUrlSources";
 
 /**
  * The most device pixels a capture will draw. A 4K display at devicePixelRatio
@@ -73,6 +74,9 @@ export function createResourceInliner(fetchImpl: typeof fetch = fetch) {
   const cache = new Map<string, Promise<string | null>>();
   return (url: string): Promise<string | null> => {
     if (url.startsWith("data:")) return Promise.resolve(url);
+    // A picture the shell made a blob: URL for: the CSP refuses to fetch it.
+    const source = url.startsWith("blob:") ? getObjectUrlSource(url) : null;
+    if (source) return Promise.resolve(source);
     /*
      * "Same-origin" was a comment, not a rule: this fetched whatever a url()
      * named. Taking a picture of the screen must not be a reason to call

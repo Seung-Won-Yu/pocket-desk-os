@@ -12,6 +12,7 @@ import {
   inlineCssUrls,
   prepareCaptureClone,
 } from "./screenshot";
+import { forgetObjectUrlSource, registerObjectUrlSource } from "./objectUrlSources";
 
 afterEach(() => {
   document.head.innerHTML = "";
@@ -144,6 +145,23 @@ describe("createResourceInliner", () => {
       credentials: "omit",
       redirect: "error",
     });
+  });
+
+  it("pictures a blob: URL the shell made from its source, with no request", async () => {
+    // The page's CSP refuses to fetch blob: URLs, which left a picture used as
+    // the wallpaper out of every capture.
+    const fetchImpl = vi.fn(
+      async () => new Response(null, { status: 404 }),
+    ) as unknown as typeof fetch;
+    const url = `blob:${window.location.origin}/wallpaper`;
+    registerObjectUrlSource(url, "data:image/png;base64,AQID");
+    try {
+      const inline = createResourceInliner(fetchImpl);
+      expect(await inline(url)).toBe("data:image/png;base64,AQID");
+      expect(fetchImpl).not.toHaveBeenCalled();
+    } finally {
+      forgetObjectUrlSource(url);
+    }
   });
 });
 

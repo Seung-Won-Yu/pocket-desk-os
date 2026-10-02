@@ -1,6 +1,7 @@
 import { type AppId } from "../types";
 import { appsById } from "./appCatalog";
 import { normalizeStartupApps } from "./startupApps";
+import { normalizeWallpaperSlideshow, type WallpaperSlideshow } from "./wallpaperSlideshow";
 import {
   CLOCK_24H_KEY,
   DEFAULT_APPS_KEY,
@@ -11,6 +12,7 @@ import {
   STARTUP_APPS_KEY,
   TEXT_SCALE_KEY,
   USER_NAME_KEY,
+  WALLPAPER_SLIDESHOW_KEY,
 } from "./constants";
 
 /** File extensions the user is allowed to reassign, and what each may open with. */
@@ -165,5 +167,23 @@ export function persistStartupApps(startupApps: AppId[]) {
     localStorage.setItem(STARTUP_APPS_KEY, JSON.stringify(startupApps));
   } catch {
     // A private-mode storage failure must not break the setting itself.
+  }
+}
+
+export function loadWallpaperSlideshow(): WallpaperSlideshow {
+  try {
+    return normalizeWallpaperSlideshow(
+      JSON.parse(localStorage.getItem(WALLPAPER_SLIDESHOW_KEY) ?? "null"),
+    );
+  } catch {
+    return normalizeWallpaperSlideshow(null);
+  }
+}
+
+export function persistWallpaperSlideshow(slideshow: WallpaperSlideshow) {
+  try {
+    localStorage.setItem(WALLPAPER_SLIDESHOW_KEY, JSON.stringify(slideshow));
+  } catch {
+    // Storage refused: the show still runs for this session.
   }
 }

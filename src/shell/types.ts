@@ -20,6 +20,7 @@ import {
 import { type ComponentType } from "react";
 import { type LucideIcon } from "lucide-react";
 import { type DefaultAppMap, type TextScale } from "./preferences";
+import { type WallpaperSlideshow } from "./wallpaperSlideshow";
 import { type TaskbarPosition } from "./taskbarPosition";
 import { type VfsConflictChoice } from "../vfs/nameConflicts";
 import { type ClockAlarm, type ClockTimer } from "./clock";
@@ -345,6 +346,11 @@ export type AppContentProps = {
   /** A picture file of the user's used as the wallpaper; null = the preset. */
   customWallpaperItemId: string | null;
   setCustomWallpaper: (itemId: string | null) => void;
+  /** 배경 > 슬라이드 쇼: the album that takes turns as the wallpaper, and how. */
+  wallpaperSlideshow: WallpaperSlideshow;
+  updateWallpaperSlideshow: (
+    patch: Partial<Pick<WallpaperSlideshow, "album" | "enabled" | "intervalMs" | "shuffle">>,
+  ) => void;
   setTheme: (theme: ThemeName) => void;
   soundEnabled: boolean;
   clock24h: boolean;

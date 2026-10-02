@@ -24,10 +24,21 @@ import {
   TASKBAR_POSITION_LABELS,
   type TaskbarPosition,
 } from "../shell/taskbarPosition";
-import type { AppId, SoundEffectName, ThemeName, WallpaperName } from "../types";
+import type { AppId, DesktopItem, SoundEffectName, ThemeName, WallpaperName } from "../types";
 import { normalizeSearchText } from "../utils/format";
 import { SHELL_SHORTCUTS } from "../shell/shortcuts";
 import { getWallpaperPreviewStyle, wallpaperGallery } from "../wallpapers";
+import {
+  GALLERY_ALBUM,
+  getAlbumSlides,
+  getCurrentSlide,
+  getSlideshowAlbums,
+  isSameSlide,
+  SLIDESHOW_INTERVALS,
+  type WallpaperSlideshow,
+} from "../shell/wallpaperSlideshow";
+
+const WALLPAPER_PRESET_IDS = wallpaperGallery.map((option) => option.id);
 
 /** Which page 설정 shows. */
 export type SettingsSection =
@@ -72,6 +83,12 @@ type SettingsAppProps = {
   setWallpaper: (wallpaper: WallpaperName) => void;
   customWallpaperItemId: string | null;
   setCustomWallpaper: (itemId: string | null) => void;
+  /** Where 슬라이드 쇼 finds its albums: the folders holding pictures. */
+  desktopItems: DesktopItem[];
+  wallpaperSlideshow: WallpaperSlideshow;
+  updateWallpaperSlideshow: (
+    patch: Partial<Pick<WallpaperSlideshow, "album" | "enabled" | "intervalMs" | "shuffle">>,
+  ) => void;
   /** The page 설정 was asked to open at. */
   settingsLaunchRequest: SettingsLaunchRequest | null;
   consumeLaunchRequest: (requestId: string) => void;
@@ -109,6 +126,9 @@ export default function SettingsApp({
   setWallpaper,
   customWallpaperItemId,
   setCustomWallpaper,
+  desktopItems,
+  wallpaperSlideshow,
+  updateWallpaperSlideshow,
   soundEnabled,
   theme,
   consumeLaunchRequest,
@@ -286,37 +306,193 @@ export default function SettingsApp({
             </section>
             <section className="settings-section">
               <h3>배경</h3>
-              <div className="wallpaper-options">
-                {wallpaperGallery.map((option) => (
-                  <button
-                    className={
-                      !customWallpaperItemId && wallpaper === option.id ? "is-selected" : ""
-                    }
-                    key={option.id}
-                    onClick={() => setWallpaper(option.id)}
-                    type="button"
+              <div className="settings-select-row">
+                <span>
+                  <strong>배경</strong>
+                  <small>
+                    {wallpaperSlideshow.enabled
+                      ? "앨범의 그림이 정한 간격마다 바뀝니다."
+                      : "고른 그림 한 장을 계속 씁니다."}
+                  </small>
+                </span>
+                <label>
+                  <select
+                    aria-label="배경"
+                    onChange={(event) => {
+                      playSound("toggle");
+                      updateWallpaperSlideshow({ enabled: event.target.value === "slideshow" });
+                    }}
+                    value={wallpaperSlideshow.enabled ? "slideshow" : "picture"}
                   >
-                    <span
-                      className="wallpaper-preview"
-                      style={getWallpaperPreviewStyle(option.id)}
-                    />
-                    <strong>{option.label}</strong>
-                    <small>{option.detail}</small>
-                  </button>
-                ))}
+                    <option value="picture">사진</option>
+                    <option value="slideshow">슬라이드 쇼</option>
+                  </select>
+                </label>
               </div>
-              {customWallpaperItemId && (
-                <p className="settings-wallpaper-note">
-                  지금은 내 그림이 배경입니다. 그림을 삭제하거나 위에서 배경을 고르면
-                  되돌아갑니다.
-                  <button
-                    className="settings-action"
-                    onClick={() => setCustomWallpaper(null)}
-                    type="button"
-                  >
-                    기본 배경으로
-                  </button>
-                </p>
+              {wallpaperSlideshow.enabled ? (
+                (() => {
+                  const albums = getSlideshowAlbums(desktopItems);
+                  const albumListed =
+                    wallpaperSlideshow.album === GALLERY_ALBUM ||
+                    albums.some((album) => album.id === wallpaperSlideshow.album);
+                  const slides = getAlbumSlides(
+                    wallpaperSlideshow.album,
+                    desktopItems,
+                    WALLPAPER_PRESET_IDS,
+                  );
+                  const current = getCurrentSlide(wallpaper, customWallpaperItemId);
+                  return (
+                    <div className="settings-slideshow">
+                      <div className="settings-select-row">
+                        <span>
+                          <strong>슬라이드 쇼용 앨범 선택</strong>
+                          <small>그림이 든 폴더라면 어느 것이든 앨범이 됩니다.</small>
+                        </span>
+                        <label>
+                          <select
+                            aria-label="슬라이드 쇼용 앨범"
+                            onChange={(event) => {
+                              playSound("toggle");
+                              updateWallpaperSlideshow({ album: event.target.value });
+                            }}
+                            value={wallpaperSlideshow.album}
+                          >
+                            <option value={GALLERY_ALBUM}>
+                              기본 배경 ({wallpaperGallery.length}장)
+                            </option>
+                            {albums.map((album) => (
+                              <option key={album.id} value={album.id}>
+                                {album.name} ({album.count}장)
+                              </option>
+                            ))}
+                            {!albumListed && (
+                              <option value={wallpaperSlideshow.album}>그림 없는 폴더</option>
+                            )}
+                          </select>
+                        </label>
+                      </div>
+                      {slides.length > 0 ? (
+                        <div
+                          aria-label="앨범의 그림"
+                          className="wallpaper-slideshow-strip"
+                          role="list"
+                        >
+                          {slides.slice(0, 8).map((slide) => {
+                            const showing = isSameSlide(slide, current);
+                            const picture =
+                              slide.kind === "picture"
+                                ? desktopItems.find((item) => item.id === slide.itemId)
+                                : undefined;
+                            return (
+                              <span
+                                aria-current={showing ? "true" : undefined}
+                                aria-label={
+                                  slide.kind === "preset"
+                                    ? (wallpaperGallery.find((option) => option.id === slide.id)
+                                        ?.label ?? slide.id)
+                                    : (picture?.name ?? "그림")
+                                }
+                                className={`wallpaper-preview${showing ? " is-current" : ""}`}
+                                key={slide.kind === "preset" ? slide.id : slide.itemId}
+                                role="listitem"
+                                style={
+                                  slide.kind === "preset"
+                                    ? getWallpaperPreviewStyle(slide.id)
+                                    : // getAlbumSlides only lets image data URLs through.
+                                      { backgroundImage: `url("${picture?.content ?? ""}")` }
+                                }
+                              />
+                            );
+                          })}
+                          {slides.length > 8 && (
+                            <small className="wallpaper-slideshow-more">
+                              +{slides.length - 8}장
+                            </small>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="settings-wallpaper-note">
+                          이 폴더에는 그림이 없습니다. 그림이 생길 때까지 지금 배경이 그대로
+                          남습니다.
+                        </p>
+                      )}
+                      <div className="settings-select-row">
+                        <span>
+                          <strong>사진 변경 간격</strong>
+                          <small>
+                            바탕 화면 메뉴의 다음 바탕 화면 배경으로 바로 넘길 수도 있습니다.
+                          </small>
+                        </span>
+                        <label>
+                          <select
+                            aria-label="사진 변경 간격"
+                            onChange={(event) => {
+                              playSound("toggle");
+                              updateWallpaperSlideshow({
+                                intervalMs: Number(event.target.value),
+                              });
+                            }}
+                            value={wallpaperSlideshow.intervalMs}
+                          >
+                            {SLIDESHOW_INTERVALS.map((step) => (
+                              <option key={step.ms} value={step.ms}>
+                                {step.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <label className="settings-toggle">
+                        <input
+                          checked={wallpaperSlideshow.shuffle}
+                          onChange={(event) =>
+                            updateWallpaperSlideshow({ shuffle: event.target.checked })
+                          }
+                          type="checkbox"
+                        />
+                        <span>
+                          <strong>순서 섞기</strong>
+                          <small>앨범의 그림을 정해진 순서 없이 보여 줍니다.</small>
+                        </span>
+                      </label>
+                    </div>
+                  );
+                })()
+              ) : (
+                <>
+                  <div className="wallpaper-options">
+                    {wallpaperGallery.map((option) => (
+                      <button
+                        className={
+                          !customWallpaperItemId && wallpaper === option.id ? "is-selected" : ""
+                        }
+                        key={option.id}
+                        onClick={() => setWallpaper(option.id)}
+                        type="button"
+                      >
+                        <span
+                          className="wallpaper-preview"
+                          style={getWallpaperPreviewStyle(option.id)}
+                        />
+                        <strong>{option.label}</strong>
+                        <small>{option.detail}</small>
+                      </button>
+                    ))}
+                  </div>
+                  {customWallpaperItemId && (
+                    <p className="settings-wallpaper-note">
+                      지금은 내 그림이 배경입니다. 그림을 삭제하거나 위에서 배경을 고르면
+                      되돌아갑니다.
+                      <button
+                        className="settings-action"
+                        onClick={() => setCustomWallpaper(null)}
+                        type="button"
+                      >
+                        기본 배경으로
+                      </button>
+                    </p>
+                  )}
+                </>
               )}
             </section>
             <section className="settings-section">
