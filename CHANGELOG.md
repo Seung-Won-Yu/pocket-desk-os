@@ -6,6 +6,10 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **메모장 인쇄 (Ctrl+P).** 메모장 could not print — measured: 파일 held 열기, 새 탭, 저장 and 다른 이름으로 저장 and nothing more, Ctrl+P printed nothing, and the browser's own print, the only one left, pictures the page as it stands: the whole desktop, wallpaper and taskbar included. 파일 > 인쇄 and Ctrl+P print the document now — the text as it reads on screen, saved or just typed — on Notepad's page: 25mm top and bottom, 20mm either side, the file name at the head and 페이지 N at the foot, long lines wrapped at the paper's edge.
+
+  It prints from a hidden frame of its own, built with DOM calls rather than a markup string (the page's Trusted Types policy rules one out), so a tag in the text prints as the characters it is. Measured: one print, from the frame and none from the page, with the frame's text equal to the editor's; laid out by Chrome's print engine, a 160-line note came to four pages, each headed notes.txt and numbered 페이지 1 to 페이지 4.
+
 - **메모장 탭 닫기와 탭 메뉴.** 메모장's strip was every text file in the file system rather than the documents opened in it, and none could be closed — measured: opened fresh, 메모장 showed three tabs, two of them desktop files it had never opened, with no ✕ anywhere, no menu on a right-click, and a middle-click and Ctrl+W that left all five tabs of a longer session standing. A tab is a document that was opened now, and closing it puts the document away and leaves the file.
 
   Every tab carries a ✕; a middle-click, Ctrl+W, and the tab's own menu — 탭 닫기, 다른 탭 닫기, 오른쪽 탭 닫기, also on Shift+F10 — close tabs as well. The tab to the right comes forward, the left one when it was last, and the last tab closes the window, as in Notepad. Measured: 오른쪽 탭 닫기 is greyed on the last tab; from the second of three it left two; 다른 탭 닫기 left one; and with every tab closed the window went while 문서 still listed all seven of its files. Text typed inside the autosave's 850ms is written before its tab closes — "곧바로 닫은 글" was there when the file was opened again.

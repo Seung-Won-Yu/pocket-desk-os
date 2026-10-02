@@ -710,6 +710,72 @@ async function runSmoke(baseUrl) {
       JSON.stringify(await noteTabNames()) === JSON.stringify(["notes.txt*"]),
       `다른 탭 닫기 left ${(await noteTabNames()).join(" | ")}`,
     );
+
+    /*
+     * 인쇄 (Ctrl+P). The browser's own print pictured the whole desktop. The
+     * document prints from a frame of its own — the text as it reads now,
+     * under Notepad's header and footer — and the page's print is never
+     * called. Both prints are caught here: headless Chromium has no dialog.
+     */
+    await page.evaluate(() => {
+      const descriptor = Object.getOwnPropertyDescriptor(
+        HTMLIFrameElement.prototype,
+        "contentWindow",
+      );
+      const pagePrint = window.print;
+      window.__smokePrints = [];
+      window.__restorePrints = () => {
+        Object.defineProperty(HTMLIFrameElement.prototype, "contentWindow", descriptor);
+        window.print = pagePrint;
+      };
+      window.print = () => window.__smokePrints.push({ kind: "page" });
+      Object.defineProperty(HTMLIFrameElement.prototype, "contentWindow", {
+        configurable: true,
+        get() {
+          const view = descriptor.get.call(this);
+          if (view && !view.__smokeCaught) {
+            view.__smokeCaught = true;
+            view.print = () =>
+              window.__smokePrints.push({
+                css: [...view.document.querySelectorAll("style")]
+                  .map((style) => style.textContent)
+                  .join("\n"),
+                kind: "frame",
+                text: view.document.querySelector("pre")?.textContent ?? null,
+                title: view.document.title,
+              });
+          }
+          return view;
+        },
+      });
+    });
+    const printNoteEditor = desktopNotepad.getByLabel("메모 내용");
+    const textBeforePrint = await printNoteEditor.inputValue();
+    await printNoteEditor.click();
+    await printNoteEditor.evaluate((node) =>
+      node.setSelectionRange(node.value.length, node.value.length),
+    );
+    await page.keyboard.type(" 인쇄할 글");
+    await page.keyboard.press("Control+p");
+    await page.waitForTimeout(300);
+    const notePrints = await page.evaluate(() => {
+      window.__restorePrints();
+      return window.__smokePrints;
+    });
+    const printedValue = await printNoteEditor.inputValue();
+    assert(
+      notePrints.length === 1 &&
+        notePrints[0].kind === "frame" &&
+        notePrints[0].title === "notes.txt" &&
+        notePrints[0].text === printedValue &&
+        notePrints[0].css.includes('@top-center { content: "notes.txt";') &&
+        notePrints[0].css.includes('content: "페이지 " counter(page);'),
+      `Ctrl+P printed ${JSON.stringify(
+        notePrints.map(({ css, ...rest }) => ({ ...rest, css: css?.slice(0, 80) })),
+      )} for ${JSON.stringify(printedValue.slice(-40))}`,
+    );
+    // Typed for the print only: put the document back as it was.
+    await printNoteEditor.fill(textBeforePrint);
     /*
      * 찾기 및 바꾸기. 찾기 could point at every occurrence and do nothing
      * about any of them. 바꾸기 takes the one the selection is sitting on;

@@ -22,6 +22,7 @@ import {
   parseNoteGoToLine,
 } from "./noteView";
 import { clamp } from "../utils/format";
+import { printNoteText } from "./notePrint";
 import {
   closeNoteTabs,
   getNoteTabs,
@@ -628,6 +629,35 @@ export default function NotepadApp({
     if (closesActive) window.requestAnimationFrame(() => noteEditorRef.current?.focus());
   };
 
+  /**
+   * 인쇄: the document on screen as it reads now — typed text included, saved
+   * or not — at the editor's own font and 100% whatever the zoom, as Notepad
+   * prints. Printing the page instead pictured the whole desktop.
+   */
+  const printDocument = () => {
+    setNoteMenu(null);
+    setEditorMenu(null);
+    setTabMenu(null);
+    const editor = noteEditorRef.current;
+    const style = editor ? getComputedStyle(editor) : null;
+    const printed = printNoteText({
+      font: {
+        family: style?.fontFamily || "monospace",
+        size: `${getNoteFontSize(NOTE_DEFAULT_ZOOM)}px`,
+        tabSize: style?.tabSize || "8",
+      },
+      name: activeNote?.name ?? "제목 없음",
+      text,
+    });
+    if (!printed) {
+      notify({
+        detail: "인쇄할 문서를 준비하지 못했습니다.",
+        title: "인쇄할 수 없음",
+      });
+    }
+    window.requestAnimationFrame(() => noteEditorRef.current?.focus());
+  };
+
   const closeTabsFrom = (noteId: string, action: NoteTabCloseAction) =>
     closeTabs(
       getNoteTabsToClose(
@@ -937,6 +967,11 @@ export default function NotepadApp({
           event.preventDefault();
           event.stopPropagation();
           activateVfsEntry(createVfsTextFile());
+        } else if (key === "p" && !event.shiftKey) {
+          // Kept from the browser, whose own print pictures the desktop.
+          event.preventDefault();
+          event.stopPropagation();
+          printDocument();
         } else if (key === "w" && !event.shiftKey) {
           // Notepad's 탭 닫기.
           event.preventDefault();
@@ -1060,6 +1095,10 @@ export default function NotepadApp({
             type="button"
           >
             다른 이름으로 저장 <kbd>Ctrl+Shift+S</kbd>
+          </button>
+          <span aria-hidden="true" className="menu-separator" />
+          <button onClick={printDocument} role="menuitem" type="button">
+            인쇄 <kbd>Ctrl+P</kbd>
           </button>
         </div>
       )}
