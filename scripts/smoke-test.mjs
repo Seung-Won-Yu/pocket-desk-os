@@ -6779,8 +6779,34 @@ async function runSmoke(baseUrl) {
       clipboardPanel
         .locator(".clipboard-entry span")
         .evaluateAll((els) => els.map((el) => el.innerText));
-    await page.keyboard.press("Meta+v");
-    await clipboardPanel.waitFor({ state: "visible" });
+    /*
+     * On a Mac ⌘V inside a text field is the system's paste, and the shell
+     * leaves it alone — so the panel is opened with the window, not the field,
+     * focused. The field still owns the caret the pick goes to.
+     */
+    const openClipboardPanel = async () => {
+      if (process.platform === "darwin") await clipNote.focus();
+      await page.keyboard.press("Meta+v");
+      await clipboardPanel.waitFor({ state: "visible" });
+    };
+    if (process.platform === "darwin") {
+      // ⌘V and ⌘X edit the text on a Mac; they used to open the panel and the
+      // power user menu instead and leave the text as it was.
+      await clipEditor.evaluate((node) => {
+        node.focus();
+        node.setSelectionRange(node.value.length, node.value.length);
+      });
+      const beforeNativePaste = await clipEditor.inputValue();
+      await page.keyboard.press("Meta+v");
+      await page.waitForTimeout(250);
+      assert(
+        (await clipEditor.inputValue()) !== beforeNativePaste &&
+          (await clipboardPanel.count()) === 0,
+        "⌘V in a text field opened 클립보드 기록 instead of pasting",
+      );
+      await clipEditor.fill("첫 번째 복사\n두 번째 복사");
+    }
+    await openClipboardPanel();
     assert(
       JSON.stringify(await clipboardRows()) ===
         JSON.stringify(["두 번째 복사", "첫 번째 복사"]),
@@ -6795,8 +6821,7 @@ async function runSmoke(baseUrl) {
       node.focus();
       node.setSelectionRange(node.value.length, node.value.length);
     });
-    await page.keyboard.press("Meta+v");
-    await clipboardPanel.waitFor({ state: "visible" });
+    await openClipboardPanel();
     await clipboardPanel.locator(".clipboard-entry").nth(1).click();
     await clipboardPanel.waitFor({ state: "detached" });
     await page.waitForTimeout(250);
@@ -6805,8 +6830,7 @@ async function runSmoke(baseUrl) {
       `클립보드 기록 pasted: ${JSON.stringify(await clipEditor.inputValue())}`,
     );
 
-    await page.keyboard.press("Meta+v");
-    await clipboardPanel.waitFor({ state: "visible" });
+    await openClipboardPanel();
     const clipBeforeRemove = (await clipboardRows()).length;
     await clipboardPanel.locator(".clipboard-remove").first().click();
     await page.waitForTimeout(250);

@@ -426,6 +426,10 @@ function useStableList<T>(next: T[], equal: (a: T, b: T) => boolean): T[] {
   return same ? previous : next;
 }
 
+/** ⌘ doubles as the editing key on a Mac; see the Win+V and Win+X chords. */
+const IS_MAC_PLATFORM =
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+
 export default function App() {
   const [theme, setTheme] = useState<ThemeName>(() => {
     return (localStorage.getItem("pocket-desk-theme") as ThemeName | null) ?? "lagoon";
@@ -4934,14 +4938,21 @@ export default function App() {
           openApp("settings");
           return;
         }
-        if (key === "v") {
+        /*
+         * On a Mac, ⌘ is both this shell's Win key and the system's editing
+         * key. Inside a text field ⌘V must paste and ⌘X must cut: measured on
+         * macOS, they opened 클립보드 기록 and the power user menu instead and
+         * left the text untouched. Outside a field they are still Win+V/X.
+         */
+        const macEditingChord = editingText && IS_MAC_PLATFORM && (key === "v" || key === "x");
+        if (key === "v" && !macEditingChord) {
           // 클립보드 기록: the panel, not a paste. Ctrl+V is still the paste.
           event.preventDefault();
           setStartOpen(false);
           setClipboardPanelOpen((current) => !current);
           return;
         }
-        if (key === "x") {
+        if (key === "x" && !macEditingChord) {
           // Windows' power user menu, the one the Start button's right-click
           // already opened — the chord itself did nothing.
           event.preventDefault();

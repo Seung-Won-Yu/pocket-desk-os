@@ -6,6 +6,8 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **macOS: ⌘V와 ⌘X가 다시 텍스트를 편집한다.** On a Mac ⌘ is both this shell's Win key and the system's editing key, and two of this release's chords took it over inside text fields: measured, ⌘V in 메모장 opened 클립보드 기록 and pasted nothing, and ⌘X opened the power user menu and cut nothing. Inside a field on a Mac they are the system's paste and cut again — measured, the text pasted and was cut with no panel or menu opening — and outside a field they are still Win+V and Win+X. On Windows nothing changes: Ctrl+V pastes and Win+V opens the panel, over a field or not.
+
 - **연결 프로그램과 다른 앱 선택.** A file opened in its default app and nowhere else: the only way to open a .txt in 명령 프롬프트, or a picture in 사진 instead of 그림판, was to change 설정 > 기본 앱 for every file of that type. Right-clicking a file — in 파일 탐색기 or on the desktop — now offers 연결 프로그램, listing exactly the apps 기본 앱 offers for that extension with the current default marked (기본값). A folder offers none.
 
   The apps really open the file. 명령 프롬프트 shows a text file the way cmd would — `type`, in the file's own folder — where it used to come up empty with the file nowhere; measured, a file written with `echo 연결 프로그램 확인 >` came back as that line. 사진 opens a picture 그림판 owns, measured on sketch.canvas.
