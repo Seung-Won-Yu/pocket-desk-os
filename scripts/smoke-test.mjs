@@ -6420,6 +6420,104 @@ async function runSmoke(baseUrl) {
     await page.waitForTimeout(300);
 
     /*
+     * 연결 프로그램. A file opened in its default app and nowhere else; the
+     * menu offers the apps 설정 > 기본 앱 offers for the type, and 다른 앱 선택
+     * with 항상 이 앱을 사용 changes that same setting.
+     */
+    await page.keyboard.press("Control+Alt+R");
+    await runDialog.waitFor({ state: "visible" });
+    await runDialog.getByLabel("열기").fill("cmd");
+    await runDialog.getByRole("button", { name: "확인" }).click();
+    const openWithTerminal = page.locator('article[data-app-id="terminal"]').last();
+    await openWithTerminal.waitFor({ state: "visible" });
+    await page.waitForTimeout(300);
+    await page.keyboard.type("cd 문서");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("echo 연결 프로그램 확인 > 연결 테스트.txt");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(300);
+    await openWithTerminal.getByRole("button", { name: "명령 프롬프트 닫기" }).click();
+    await openWithTerminal.waitFor({ state: "detached" });
+
+    await page.keyboard.press("Meta+e");
+    const openWithFiles = page.locator('article[data-app-id="files"]').last();
+    await openWithFiles.waitFor({ state: "visible" });
+    await page.waitForTimeout(400);
+    await openWithFiles.getByRole("option", { name: /^문서/ }).first().dblclick();
+    const openWithRow = openWithFiles.getByRole("option", { name: /연결 테스트\.txt/ }).first();
+    await openWithRow.waitFor({ state: "visible" });
+    const openWithItems = async () => {
+      await openWithRow.click({ button: "right" });
+      const menu = page.locator(".file-context-menu").last();
+      await menu.waitFor({ state: "visible" });
+      await menu.locator(".desktop-menu-row", { hasText: "연결 프로그램" }).hover();
+      const submenu = menu.locator(".desktop-context-submenu[aria-label='연결 프로그램']");
+      await submenu.waitFor({ state: "visible" });
+      return {
+        items: await submenu
+          .locator("button")
+          .evaluateAll((buttons) => buttons.map((button) => button.innerText.trim())),
+        submenu,
+      };
+    };
+    const firstOpenWith = await openWithItems();
+    assert(
+      JSON.stringify(firstOpenWith.items) ===
+        JSON.stringify(["메모장 (기본값)", "명령 프롬프트", "다른 앱 선택…"]),
+      `연결 프로그램 offered ${firstOpenWith.items.join(", ")}`,
+    );
+    // 명령 프롬프트 shows the file the way cmd would: `type`, in its own folder.
+    await firstOpenWith.submenu.locator("button", { hasText: "명령 프롬프트" }).click();
+    const typedTerminal = page.locator('article[data-app-id="terminal"]').last();
+    await typedTerminal.waitFor({ state: "visible" });
+    await typedTerminal
+      .locator("text=연결 프로그램 확인")
+      .first()
+      .waitFor({ state: "visible", timeout: 5000 });
+    await typedTerminal.getByRole("button", { name: "명령 프롬프트 닫기" }).click();
+    await typedTerminal.waitFor({ state: "detached" });
+
+    // 다른 앱 선택 with 항상 이 앱을 사용 makes the pick the default.
+    const chooseOther = async (appTitle) => {
+      const { submenu } = await openWithItems();
+      await submenu.locator("button", { hasText: "다른 앱 선택" }).click();
+      const dialog = page.locator(".open-with-dialog");
+      await dialog.waitFor({ state: "visible" });
+      await dialog.locator(".open-with-choice", { hasText: appTitle }).click();
+      await dialog.locator(".open-with-remember input").check();
+      await dialog.getByRole("button", { name: "확인", exact: true }).click();
+      await dialog.waitFor({ state: "detached" });
+      await page.waitForTimeout(400);
+    };
+    await chooseOther("명령 프롬프트");
+    await page
+      .locator('article[data-app-id="terminal"]')
+      .last()
+      .getByRole("button", { name: "명령 프롬프트 닫기" })
+      .click();
+    await page.waitForTimeout(300);
+    const afterRemember = await openWithItems();
+    assert(
+      afterRemember.items[0] === "명령 프롬프트 (기본값)",
+      `항상 이 앱을 사용 left the default as ${afterRemember.items[0]}`,
+    );
+    await page.keyboard.press("Escape");
+    // Back to 메모장 for everything after this.
+    await chooseOther("메모장");
+    await page
+      .locator('article[data-app-id="notepad"]')
+      .last()
+      .getByRole("button", { name: "메모장 닫기" })
+      .click();
+    await page.waitForTimeout(300);
+    if (await page.locator(".note-close-overlay, .window-dialog").count()) {
+      await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
+      await page.waitForTimeout(250);
+    }
+    await openWithFiles.getByRole("button", { name: "파일 탐색기 닫기" }).click();
+    await page.waitForTimeout(300);
+
+    /*
      * 창 관리 단축키: Win+Home, Win+Shift+↑/↓, Alt+Esc, F11, Win+Ctrl+D/F4.
      * Windows has every one of these; here they did nothing, or — Win+Shift+↑ —
      * maximized instead of stretching.

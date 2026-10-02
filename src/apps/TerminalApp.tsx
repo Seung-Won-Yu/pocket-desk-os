@@ -11,7 +11,12 @@ import type { AppId, DesktopItem, OpenWindowInfo, SoundEffectName } from "../typ
 import { getVfsFolder, VFS_ROOT_ID } from "../vfs/model";
 
 /** "Open a prompt here" — a fresh id per request so the same folder opens twice. */
-export type TerminalLaunchRequest = { folderId: string; id: string };
+export type TerminalLaunchRequest = {
+  /** A command to run once the prompt is in the folder — 연결 프로그램 sends `type`. */
+  command?: string;
+  folderId: string;
+  id: string;
+};
 
 type TerminalAppProps = {
   /** The folder a 여기서 명령 프롬프트 열기 asked for; null when opened plainly. */
@@ -111,6 +116,10 @@ export default function TerminalApp({
   useEffect(() => {
     if (!terminalLaunchRequest) return;
     setCwdId(terminalLaunchRequest.folderId);
+    // Queued, not run here: the queue runs a tick later, once the prompt is
+    // in the folder the command's file lives in.
+    const { command } = terminalLaunchRequest;
+    if (command) setScriptQueue((current) => [...current, command]);
     consumeLaunchRequest(terminalLaunchRequest.id);
   }, [consumeLaunchRequest, terminalLaunchRequest]);
 

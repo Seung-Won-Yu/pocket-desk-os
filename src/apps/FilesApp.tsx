@@ -1,4 +1,5 @@
 import {
+  AppWindow,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
@@ -95,6 +96,14 @@ import {
 } from "../vfs/localFolder";
 import { trapDialogFocus } from "../shell/dialogFocus";
 import { ShortcutDialog } from "../shell/components/ShortcutDialog";
+import { OpenWithDialog } from "../shell/components/OpenWithDialog";
+import { type DefaultAppMap } from "../shell/preferences";
+import { appMetadata } from "./metadata";
+import {
+  canRememberOpenWith,
+  getOpenWithChoices,
+  getOpenWithExtensionLabel,
+} from "../vfs/openWith";
 import type {
   AppId,
   ClipboardMode,
@@ -206,7 +215,9 @@ type FilesAppProps = {
   notify: (toast: ToastInput) => void;
   openApp: (appId: AppId) => void;
   openNewAppWindow: (appId: AppId) => string;
-  openVfsEntry: (item: DesktopItem) => void;
+  openVfsEntry: (item: DesktopItem, appId?: AppId) => void;
+  defaultApps: DefaultAppMap;
+  setDefaultApp: (extension: string, appId: AppId) => void;
   /** False when the shell refused the name, so the box can stay open. */
   renameVfsEntry: (itemId: string, name: string) => boolean;
   /** 폴더 옵션, owned by the shell so the desktop agrees with every window. */
@@ -356,6 +367,8 @@ export default function FilesApp({
   openApp,
   openNewAppWindow,
   openVfsEntry,
+  defaultApps,
+  setDefaultApp,
   renameVfsEntry,
   showFileExtensions,
   setShowFileExtensions,
@@ -477,6 +490,12 @@ export default function FilesApp({
   const [expandedFolderIds, setExpandedFolderIds] = useState<string[]>([VFS_ROOT_ID]);
   const [treeFocusId, setTreeFocusId] = useState<string>(VFS_ROOT_ID);
   const [fileSubmenuOpen, setFileSubmenuOpen] = useState(false);
+  /** 연결 프로그램's submenu, and the 다른 앱 선택 dialog for one file. */
+  const [openWithSubmenuOpen, setOpenWithSubmenuOpen] = useState(false);
+  const [openWithItem, setOpenWithItem] = useState<DesktopItem | null>(null);
+  useEffect(() => {
+    if (!fileContextMenu) setOpenWithSubmenuOpen(false);
+  }, [fileContextMenu]);
   const [pendingRenameId, setPendingRenameId] = useState<string | null>(null);
   const [propertiesFileId, setPropertiesFileId] = useState<string | null>(null);
   /**
@@ -3257,6 +3276,76 @@ export default function FilesApp({
             <ExternalLink aria-hidden="true" size={16} />
             열기
           </button>
+          {/*
+           * 연결 프로그램 — the apps 설정 > 기본 앱 offers for this type, the
+           * default first, and 다른 앱 선택 to make another one the default.
+           */}
+          {(() => {
+            const choices =
+              selectedIds.length <= 1
+                ? getOpenWithChoices(contextFile.item, defaultApps)
+                : null;
+            if (!choices) return null;
+            return (
+              <div
+                className="desktop-menu-row"
+                onMouseEnter={() => {
+                  setFileSubmenuOpen(false);
+                  setOpenWithSubmenuOpen(true);
+                }}
+              >
+                <button
+                  aria-expanded={openWithSubmenuOpen}
+                  aria-haspopup="menu"
+                  onClick={() => setOpenWithSubmenuOpen(true)}
+                  role="menuitem"
+                  type="button"
+                >
+                  <AppWindow aria-hidden="true" size={16} />
+                  <span>연결 프로그램</span>
+                  <ChevronRight aria-hidden="true" className="menu-chevron" size={15} />
+                </button>
+                {openWithSubmenuOpen && (
+                  <div
+                    aria-label="연결 프로그램"
+                    className="desktop-context-submenu"
+                    onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+                    role="menu"
+                  >
+                    {choices.map((choice) => {
+                      const app = appMetadata[choice.appId];
+                      const AppIcon = app.icon;
+                      return (
+                        <button
+                          key={choice.appId}
+                          onClick={() => {
+                            setFileContextMenu(null);
+                            openVfsEntry(contextFile.item, choice.appId);
+                          }}
+                          role="menuitem"
+                          type="button"
+                        >
+                          <AppIcon aria-hidden="true" size={16} />
+                          {choice.isDefault ? `${app.title} (기본값)` : app.title}
+                        </button>
+                      );
+                    })}
+                    <span aria-hidden="true" className="menu-separator" />
+                    <button
+                      onClick={() => {
+                        setFileContextMenu(null);
+                        setOpenWithItem(contextFile.item);
+                      }}
+                      role="menuitem"
+                      type="button"
+                    >
+                      다른 앱 선택…
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <button
             disabled={selectedHasSystemFolder}
             onClick={() => copySelectedFiles()}
@@ -3400,7 +3489,13 @@ export default function FilesApp({
            * folder, or the archive command. Nothing is offered that would only
            * pretend to work.
            */}
-          <div className="desktop-menu-row" onMouseEnter={() => setFileSubmenuOpen(true)}>
+          <div
+            className="desktop-menu-row"
+            onMouseEnter={() => {
+              setOpenWithSubmenuOpen(false);
+              setFileSubmenuOpen(true);
+            }}
+          >
             <button
               aria-expanded={fileSubmenuOpen}
               aria-haspopup="menu"
@@ -3884,6 +3979,29 @@ export default function FilesApp({
           onCreate={createShortcut}
         />
       )}
+
+      {openWithItem &&
+        (() => {
+          const choices = getOpenWithChoices(openWithItem, defaultApps);
+          if (!choices) return null;
+          return (
+            <OpenWithDialog
+              canRemember={canRememberOpenWith(openWithItem)}
+              choices={choices}
+              extensionLabel={getOpenWithExtensionLabel(openWithItem)}
+              item={openWithItem}
+              onCancel={() => setOpenWithItem(null)}
+              onOpen={(appId, remember) => {
+                const item = openWithItem;
+                setOpenWithItem(null);
+                if (remember) {
+                  setDefaultApp(getOpenWithExtensionLabel(item).slice(1), appId);
+                }
+                openVfsEntry(item, appId);
+              }}
+            />
+          );
+        })()}
     </div>
   );
 }

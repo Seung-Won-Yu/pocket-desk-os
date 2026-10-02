@@ -326,6 +326,12 @@ import {
   formatDesktopItemTime,
 } from "./vfs/model";
 import { cropCaptureDataUrl } from "./shell/screenshot";
+import { OpenWithDialog } from "./shell/components/OpenWithDialog";
+import {
+  canRememberOpenWith,
+  getOpenWithChoices,
+  getOpenWithExtensionLabel,
+} from "./vfs/openWith";
 import { getSnapshotContentBytes, MAX_CONTENT_BYTES, persistVfsEntries } from "./vfs/storage";
 import {
   getWallpaperStyle,
@@ -712,6 +718,8 @@ export default function App() {
   /** The icon a drag is hovering, so 휴지통 lights up before the drop. */
   const [desktopDropIcon, setDesktopDropIcon] = useState<string | null>(null);
   const [emptyBinPromptOpen, setEmptyBinPromptOpen] = useState(false);
+  /** 다른 앱 선택 for a desktop icon. */
+  const [openWithDesktopItemId, setOpenWithDesktopItemId] = useState<string | null>(null);
   /** 클립보드 기록 (Win+V): what was copied, newest first. */
   const [clipboardHistory, setClipboardHistory] = useState<ClipboardHistoryEntry[]>([]);
   const [clipboardPanelOpen, setClipboardPanelOpen] = useState(false);
@@ -1923,10 +1931,15 @@ export default function App() {
     openVfsEntry(target);
   };
 
-  const openVfsEntry = (item: DesktopItem) => {
+  /**
+   * Opens an entry in the app that owns its type — or, from 연결 프로그램, in
+   * the app that was picked. One routing function either way, so a picked app
+   * gets its document exactly the way the default app would.
+   */
+  const openVfsEntry = (item: DesktopItem, appId?: AppId) => {
     const association = getVfsEntryAssociation(item);
     const override = defaultApps[getVfsEntryExtension(item)];
-    const targetAppId = override ?? association.appId;
+    const targetAppId = appId ?? override ?? association.appId;
     // Shell-level opens only, on purpose: Explorer's own in-window navigation
     // is browsing, not "opening a document", and must not churn the jump list.
     setRecentOpens((current) => recordRecentOpen(current, item.id, Date.now()));
@@ -1951,6 +1964,15 @@ export default function App() {
     }
     if (targetAppId === "browser" && item.kind === "shortcut") {
       setBrowserLaunchRequest({ id: crypto.randomUUID(), value: getVfsShortcutTarget(item) });
+    }
+    // 명령 프롬프트 opens a text file the way cmd would show one: `type`, in
+    // the file's own folder. It used to come up empty with the file nowhere.
+    if (targetAppId === "terminal" && item.kind === "note") {
+      setTerminalLaunchRequest({
+        command: `type "${item.name}"`,
+        folderId: item.parentId ?? VFS_ROOT_ID,
+        id: crypto.randomUUID(),
+      });
     }
     openApp(targetAppId);
   };
@@ -6284,6 +6306,33 @@ export default function App() {
         </div>
       )}
 
+      {(() => {
+        const item = openWithDesktopItemId
+          ? activeDesktopItems.find((entry) => entry.id === openWithDesktopItemId)
+          : undefined;
+        const choices = item ? getOpenWithChoices(item, defaultApps) : null;
+        if (!item || !choices) return null;
+        return (
+          <OpenWithDialog
+            canRemember={canRememberOpenWith(item)}
+            choices={choices}
+            extensionLabel={getOpenWithExtensionLabel(item)}
+            item={item}
+            onCancel={() => setOpenWithDesktopItemId(null)}
+            onOpen={(appId, remember) => {
+              setOpenWithDesktopItemId(null);
+              if (remember) {
+                setDefaultApps((current) => ({
+                  ...current,
+                  [getOpenWithExtensionLabel(item).slice(1)]: appId,
+                }));
+              }
+              openVfsEntry(item, appId);
+            }}
+          />
+        );
+      })()}
+
       {emptyBinPromptOpen && (
         <PermanentDeleteDialog
           confirmLabel="휴지통 비우기"
@@ -6410,6 +6459,27 @@ export default function App() {
             if (desktopContextItem) openDesktopItem(desktopContextItem);
             if (desktopContextApp) openApp(desktopContextApp.id);
           }}
+          openWithChoices={
+            desktopContextItem && getSelectedDesktopItemIds(desktopContextItem.id).length <= 1
+              ? getOpenWithChoices(desktopContextItem, defaultApps)
+              : null
+          }
+          onOpenWith={
+            desktopContextItem
+              ? (appId) => {
+                  setDesktopIconMenu(null);
+                  openVfsEntry(desktopContextItem, appId);
+                }
+              : undefined
+          }
+          onChooseOtherApp={
+            desktopContextItem
+              ? () => {
+                  setDesktopIconMenu(null);
+                  setOpenWithDesktopItemId(desktopContextItem.id);
+                }
+              : undefined
+          }
           onProperties={
             desktopContextItem
               ? () => {

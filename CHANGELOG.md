@@ -6,6 +6,12 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Added
 
+- **연결 프로그램과 다른 앱 선택.** A file opened in its default app and nowhere else: the only way to open a .txt in 명령 프롬프트, or a picture in 사진 instead of 그림판, was to change 설정 > 기본 앱 for every file of that type. Right-clicking a file — in 파일 탐색기 or on the desktop — now offers 연결 프로그램, listing exactly the apps 기본 앱 offers for that extension with the current default marked (기본값). A folder offers none.
+
+  The apps really open the file. 명령 프롬프트 shows a text file the way cmd would — `type`, in the file's own folder — where it used to come up empty with the file nowhere; measured, a file written with `echo 연결 프로그램 확인 >` came back as that line. 사진 opens a picture 그림판 owns, measured on sketch.canvas.
+
+  다른 앱 선택… asks the way Windows does, with 항상 이 앱을 사용하여 .txt 파일 열기 — the same setting 기본 앱 writes, so the two can never disagree. Measured: after picking 명령 프롬프트 with it checked, a plain double-click on the .txt opened 명령 프롬프트 and the menu led with 명령 프롬프트 (기본값).
+
 - **창 관리 단축키: Win+Home, Win+Shift+↑/↓, Alt+Esc, F11, Win+Ctrl+D/F4.** Measured before: Win+Home, Alt+Esc, F11 and Win+Ctrl+D did nothing at all, and Win+Shift+↑ maximized the window — Windows stretches it.
 
   Win+Home puts every window but the one in front on the taskbar and the second press brings them back behind it, in their old order; a window restored or closed by hand in between is left alone. Win+Shift+↑ runs the window from the top of the work area to the bottom and keeps its width and place — measured, 600×520 at y 42 became 600×852 at y 0 — and Win+Shift+↓ gives the height back.

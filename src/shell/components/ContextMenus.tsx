@@ -1,5 +1,6 @@
 import AppIconTile from "../../components/AppIconTile";
-import { type DesktopItem } from "../../types";
+import { type AppId, type DesktopItem } from "../../types";
+import { appMetadata } from "../../apps/metadata";
 import { formatVfsEntrySize, formatVfsPropertyDate } from "../../utils/format";
 import {
   getVfsEntryAssociation,
@@ -12,6 +13,7 @@ import { CONTEXT_MENU_WIDTH } from "../constants";
 import { trapDialogFocus, useReturnFocus } from "../dialogFocus";
 import { type DesktopSortKey, type DesktopViewMode } from "../types";
 import {
+  AppWindow,
   Check,
   ChevronRight,
   ClipboardPaste,
@@ -317,6 +319,9 @@ export function DesktopIconContextMenu({
   onDelete,
   onEmptyRecycleBin,
   onOpen,
+  openWithChoices,
+  onOpenWith,
+  onChooseOtherApp,
   onProperties,
   onRename,
   onSetWallpaper,
@@ -336,6 +341,10 @@ export function DesktopIconContextMenu({
   onDelete?: () => void;
   onEmptyRecycleBin?: () => void;
   onOpen: () => void;
+  /** 연결 프로그램: the apps that can open this file, default first. */
+  openWithChoices?: Array<{ appId: AppId; isDefault: boolean }> | null;
+  onOpenWith?: (appId: AppId) => void;
+  onChooseOtherApp?: () => void;
   onProperties?: () => void;
   onRename?: () => void;
   /** Present for a picture file with pixels: 바탕 화면 배경으로 설정. */
@@ -354,6 +363,7 @@ export function DesktopIconContextMenu({
 }) {
   useReturnFocus();
   const [moveOpen, setMoveOpen] = useState(false);
+  const [openWithOpen, setOpenWithOpen] = useState(false);
 
   const firstItemRef = useRef<HTMLButtonElement>(null);
 
@@ -385,6 +395,57 @@ export function DesktopIconContextMenu({
         <ExternalLink aria-hidden="true" size={16} />
         열기
       </button>
+      {openWithChoices && onOpenWith && (
+        <div
+          className="desktop-menu-row"
+          onMouseEnter={() => setOpenWithOpen(true)}
+          onMouseLeave={() => setOpenWithOpen(false)}
+        >
+          <button
+            aria-expanded={openWithOpen}
+            aria-haspopup="menu"
+            onClick={() => setOpenWithOpen((open) => !open)}
+            role="menuitem"
+            type="button"
+          >
+            <AppWindow aria-hidden="true" size={16} />
+            <span>연결 프로그램</span>
+            <ChevronRight aria-hidden="true" className="menu-chevron" size={15} />
+          </button>
+          {openWithOpen && (
+            <div
+              aria-label="연결 프로그램"
+              className="desktop-context-submenu"
+              onKeyDown={(event) => handleMenuKeyboard(event, event.currentTarget)}
+              role="menu"
+            >
+              {openWithChoices.map((choice) => {
+                const app = appMetadata[choice.appId];
+                const AppIcon = app.icon;
+                return (
+                  <button
+                    key={choice.appId}
+                    onClick={() => onOpenWith(choice.appId)}
+                    role="menuitem"
+                    type="button"
+                  >
+                    <AppIcon aria-hidden="true" size={15} />
+                    {choice.isDefault ? `${app.title} (기본값)` : app.title}
+                  </button>
+                );
+              })}
+              {onChooseOtherApp && (
+                <>
+                  <span aria-hidden="true" className="menu-separator" />
+                  <button onClick={onChooseOtherApp} role="menuitem" type="button">
+                    다른 앱 선택…
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       {onCopy && (
         <button onClick={onCopy} role="menuitem" type="button">
           <Copy aria-hidden="true" size={16} />

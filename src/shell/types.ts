@@ -310,7 +310,7 @@ export type AppContentProps = {
   /** Folders pinned to Explorer's sidebar — 빠른 액세스, shared by every window. */
   quickAccessIds: string[];
   toggleQuickAccessFolder: (folderId: string) => void;
-  openVfsEntry: (item: DesktopItem) => void;
+  openVfsEntry: (item: DesktopItem, appId?: AppId) => void;
   permanentlyDeleteVfsEntry: (itemId: string) => void;
   /** Shift+Delete: asks first, then skips the 휴지통 for good. */
   requestPermanentDelete: (itemIds: string[]) => void;

@@ -3336,9 +3336,50 @@ button {
   padding: 0 14px;
 }
 
-.run-actions button[type="submit"] {
+.run-actions button[type="submit"],
+.run-actions button.primary {
   background: color-mix(in srgb, var(--active) 46%, rgba(255, 255, 255, 0.1));
   border-color: color-mix(in srgb, var(--active) 66%, white);
+}
+
+/* 다른 앱 선택: one row per app, the picked one marked like a selection. */
+.open-with-choices {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 12px;
+}
+
+.open-with-choice {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  padding: 10px 12px;
+}
+
+.open-with-choice.is-selected {
+  background: color-mix(in srgb, var(--active) 24%, rgba(255, 255, 255, 0.06));
+  border-color: color-mix(in srgb, var(--active) 62%, transparent);
+}
+
+.open-with-choice span {
+  display: grid;
+  gap: 2px;
+}
+
+.open-with-choice small {
+  color: var(--muted);
+}
+
+.open-with-remember {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
 }
 
 .run-actions button:disabled {
