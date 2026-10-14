@@ -424,17 +424,21 @@ export default async function run(ctx) {
   await settle(page);
 
   await scaleSettings.getByLabel(/자동 숨기기/).check();
-  await page.waitForTimeout(500);
-  const hiddenMaximized = await activeWindowBox();
-  assert(
-    Math.round(hiddenMaximized.height) === viewport.height,
-    `자동 숨기기 left the window ${hiddenMaximized.height}px of ${viewport.height}; a hidden bar takes none of the work area`,
+  // The bar slides away on a delay; a slow runner reads it on the way down.
+  await assertEventually(
+    async () => Math.round((await activeWindowBox()).height) === viewport.height,
+    async () =>
+      `자동 숨기기 left the window ${(await activeWindowBox()).height}px of ${viewport.height}; a hidden bar takes none of the work area`,
+  );
+  await assertEventually(
+    async () => {
+      const bar = await barBox();
+      return Math.round(bar.y + bar.height) === viewport.height + 46;
+    },
+    async () =>
+      `The hidden bar sits at y=${(await barBox()).y}; all but a 2px sliver belongs off screen`,
   );
   const hiddenBar = await barBox();
-  assert(
-    Math.round(hiddenBar.y + hiddenBar.height) === viewport.height + 46,
-    `The hidden bar sits at y=${hiddenBar.y}; all but a 2px sliver belongs off screen`,
-  );
 
   // Pointing at the edge brings it back, and moving away puts it away.
   await page.mouse.move(viewport.width / 2, viewport.height - 1);
