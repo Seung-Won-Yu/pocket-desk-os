@@ -866,10 +866,10 @@ export default async function run(ctx) {
   );
   // Focus is on the dialog, not on a choice: every answer is one keystroke
   // away and one of them writes over a file.
-  assert(
-    await page.evaluate(() =>
-      document.activeElement?.classList.contains("name-conflict-dialog"),
-    ),
+  // Polled: under load the dialog takes focus a beat after it shows.
+  await assertEventually(
+    () =>
+      page.evaluate(() => document.activeElement?.classList.contains("name-conflict-dialog")),
     "The conflict dialog put focus on one of its answers",
   );
   await conflictDialog.getByRole("button", { name: /건너뛰기/ }).click();

@@ -1,4 +1,4 @@
-import { assert, settledBoxOf } from "../harness.mjs";
+import { assert, settle, settledBoxOf } from "../harness.mjs";
 
 export default async function run(ctx) {
   const { browser, consoleErrors, baseUrl } = ctx;
@@ -52,6 +52,9 @@ export default async function run(ctx) {
   await touchNotepad.waitFor({ state: "visible" });
   // Settled, not merely present: the open animation was still running when
   // this was read on CI, so the "before" was a rect the window never held.
+  // And settle first: with other scenarios loading the CPU, the animation can
+  // stall long enough for two reads in a row to agree mid-motion.
+  await settle(touchPage);
   const touchBefore = await settledBoxOf(touchPage, touchNotepad);
   const touchBar = await settledBoxOf(touchPage, touchNotepad.locator(".window-titlebar"));
   await touchDrag(

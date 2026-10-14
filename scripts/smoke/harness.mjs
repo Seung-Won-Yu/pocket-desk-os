@@ -41,7 +41,9 @@ export function assert(condition, message) {
 export async function assertEventually(check, message, timeoutMs = 3000) {
   const deadline = Date.now() + timeoutMs;
   while (!(await check())) {
-    if (Date.now() > deadline) throw new Error(await message());
+    if (Date.now() > deadline) {
+      throw new Error(typeof message === "function" ? await message() : message);
+    }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 }
