@@ -2882,10 +2882,16 @@ export default function FilesApp({
                   role="menu"
                 >
                   {/* Windows keeps these two on its 보기 tab, and applies them
-                      everywhere at once rather than per window. */}
+                      everywhere at once rather than per window. Picking one
+                      closes the menu, as Explorer's 표시 submenu and the 정렬
+                      menu beside this one do; it used to stay open over the
+                      list it had just changed. */}
                   <button
                     aria-checked={showFileExtensions}
-                    onClick={() => setShowFileExtensions(!showFileExtensions)}
+                    onClick={() => {
+                      setShowFileExtensions(!showFileExtensions);
+                      setOptionsOpen(false);
+                    }}
                     role="menuitemcheckbox"
                     type="button"
                   >
@@ -2894,7 +2900,10 @@ export default function FilesApp({
                   </button>
                   <button
                     aria-checked={showHiddenItems}
-                    onClick={() => setShowHiddenItems(!showHiddenItems)}
+                    onClick={() => {
+                      setShowHiddenItems(!showHiddenItems);
+                      setOptionsOpen(false);
+                    }}
                     role="menuitemcheckbox"
                     type="button"
                   >
@@ -2903,7 +2912,10 @@ export default function FilesApp({
                   </button>
                   <button
                     aria-checked={showItemCheckboxes}
-                    onClick={() => setShowItemCheckboxes((current) => !current)}
+                    onClick={() => {
+                      setShowItemCheckboxes((current) => !current);
+                      setOptionsOpen(false);
+                    }}
                     role="menuitemcheckbox"
                     type="button"
                   >

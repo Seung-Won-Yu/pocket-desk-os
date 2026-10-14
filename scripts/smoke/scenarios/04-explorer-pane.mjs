@@ -592,7 +592,6 @@ export default async function run(ctx) {
   await settle(page);
   await files.getByRole("button", { name: "보기 옵션" }).click();
   await files.getByRole("menuitemcheckbox", { name: "숨긴 항목" }).click();
-  await page.keyboard.press("Escape");
   await assertEventually(
     async () => (await explorerRows.filter({ hasText: "작업 메모.txt" }).count()) === 1,
     async () => "The note did not come back once it was unhidden",

@@ -670,16 +670,33 @@ export default async function run(ctx) {
     "Hiding an entry offered no way back to it",
   );
 
-  await files.getByRole("button", { name: "보기 옵션" }).click();
-  await files.getByRole("menuitemcheckbox", { name: "숨긴 항목" }).click();
+  // Picking a view option closes the menu, as 정렬 does, and leaves focus on
+  // the list it changed. It used to stay open over that list.
+  const viewOptionsButton = files.getByRole("button", { name: "보기 옵션" });
+  const pickViewOption = async (name) => {
+    await viewOptionsButton.click();
+    await files.getByRole("menuitemcheckbox", { name }).click();
+  };
+  await pickViewOption("숨긴 항목");
   await assertEventually(
     async () => (await explorerRows.count()) === rowsBeforeHide,
     async () => "숨긴 항목 did not bring the hidden file back",
   );
+  await files.locator(".file-options-menu").waitFor({ state: "detached" });
+  const afterViewOption = await files.evaluate((frame) => ({
+    expanded: frame
+      .querySelector('[aria-label="보기 옵션"][aria-haspopup]')
+      .getAttribute("aria-expanded"),
+    focusInList: Boolean(document.activeElement?.closest(".file-list")),
+  }));
+  assert(
+    afterViewOption.expanded === "false" && afterViewOption.focusInList,
+    `A view option left the menu or the focus behind: ${JSON.stringify(afterViewOption)}`,
+  );
 
   // 파일 확장명 changes what the list shows, not what is stored.
   const namesWithExtensions = await explorerRows.allInnerTexts();
-  await files.getByRole("menuitemcheckbox", { name: "파일 확장명" }).click();
+  await pickViewOption("파일 확장명");
   await settle(page);
   const namesWithoutExtensions = await explorerRows.allInnerTexts();
   assert(
@@ -691,7 +708,7 @@ export default async function run(ctx) {
     namesWithoutExtensions.some((row) => row.startsWith("사진")),
     "The extension toggle took a name apart that had no extension to hide",
   );
-  await files.getByRole("menuitemcheckbox", { name: "파일 확장명" }).click();
+  await pickViewOption("파일 확장명");
   await settle(page);
 
   /*

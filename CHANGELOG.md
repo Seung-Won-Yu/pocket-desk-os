@@ -276,6 +276,7 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Fixed
 
+- **파일 탐색기's 보기 옵션 menu stayed open after a pick.** Turning on 파일 확장명, 숨긴 항목 or 항목 확인란 changed the list but left the menu over it, still expanded, until a click elsewhere or Escape — the 정렬 menu beside it, and Explorer's own 표시 submenu, close on a pick. It closes now and focus goes to the list it changed.
 - **A second path typed into 파일 탐색기's address bar right after the first could vanish.** Going to a path puts focus back on the file list, once at once and once a frame later for the commit that drops the field. On a slow machine that frame came after Ctrl+L had opened the address bar again, took focus off it, and the bar closed under the half-typed path, so Enter did nothing. The later try now only puts back focus that was lost. Found by the parallel smoke on CI.
 
 ## 0.15.1
