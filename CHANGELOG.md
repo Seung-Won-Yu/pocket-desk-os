@@ -266,6 +266,10 @@ All notable changes to PocketDesk OS are documented here.
 
 ### Changed
 
+- **The smoke waits for the page, not for the clock.** Half of a smoke run was fixed sleeps — measured: 461 `waitForTimeout` calls, 126s of a 237s run. They are condition waits now: `settle` returns once the page has gone 100ms without a DOM change and every finite animation has ended (counted from the animation's end, because a window's closing keyframes run 150ms and the timer that removes it 170ms), and `assertEventually` polls a check that a step should bring about until it holds. A check that something did *not* happen still settles first and reads once — polled, it would pass before the wrong thing had its chance. Ten sleeps stay on purpose: a timer that must not tick, a toast that must not come, a write that has to land before a reload, a touch gesture's pace. The run is 199–200s over four runs in a row and passes with the CPU throttled 4× (`SMOKE_CPU_THROTTLE=4`, 216s).
+
+  Running faster showed two checks that had only held because the run was slow: both counted toasts on screen, and the stack shows four at most — with the earlier toasts not yet gone, a new one pushed the oldest out and the count stayed put, or an earlier rename's toast was counted as this one's. They compare the toasts that are new now.
+
 - **A write that does not fit is refused before it is attempted.** The save limit is a budget for the whole file system, and only screenshots measured against it; an archive or an imported folder used to fail later, at the write. Anything that adds bytes is measured first and refused out loud with the space it needed and the space that is left.
 
 ## 0.15.1

@@ -9,9 +9,11 @@ const host = "127.0.0.1";
  * 폴더 옵션, 속성, 작업 표시줄 위치·자동 숨기기·작은 단추, 야간 조명, 캘린더
  * 일정, 그림판 텍스트, 그룹화 and 보내기 on top of everything it already did —
  * measured at 153s on this machine, which left the runner nothing and timed CI
- * out. 360s is headroom for a slower runner, not permission to be slow: 59s of
- * the run is still fixed `waitForTimeout` sleeps across 203 calls, and those
- * are worth replacing with condition waits.
+ * out. 360s is headroom for a slower runner, not permission to be slow. The
+ * fixed sleeps that were half of it (461 calls, 126s of a 237s run) are now
+ * `settle` and `assertEventually`; the few `waitForTimeout` left wait on time
+ * itself — a timer that must not tick, a toast that must not come, a delay
+ * the shell keeps on purpose, a write that must land before a reload.
  */
 const smokeTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 360000);
 const viteBin = fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url));
@@ -19,6 +21,21 @@ const viteBin = fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import
 function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
+  }
+}
+
+/**
+ * An assert for something a step should bring about: it polls until `check`
+ * holds rather than reading once after a fixed sleep, so it passes the moment
+ * the page catches up and fails with `message` (read at failure) if it never
+ * does. Not for checking that something did *not* happen — that passes before
+ * the wrong thing has had its chance; those settle first and read once.
+ */
+async function assertEventually(check, message, timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!(await check())) {
+    if (Date.now() > deadline) throw new Error(await message());
+    await new Promise((resolve) => setTimeout(resolve, 25));
   }
 }
 
@@ -145,6 +162,57 @@ async function settledBoxOf(page, locator, attempts = 40) {
     await page.waitForTimeout(50);
   }
   return previous;
+}
+
+/**
+ * Waits for the page to stop changing — no DOM mutation for `quietMs` and no
+ * finite animation or transition still running — instead of sleeping a fixed
+ * time after each step. The fixed sleeps were half the run (461 calls, 126s
+ * of 237s) and still raced on a slow runner; this returns as soon as the UI
+ * is still, and waits longer when it is not. A step that waits on a timer
+ * rather than on the page (an autosave, a notification's delay) waits for
+ * what it needs by name.
+ */
+async function settle(page, { quietMs = 100, timeoutMs = 3000 } = {}) {
+  await page.evaluate(
+    ({ quietMs, timeoutMs }) =>
+      new Promise((resolve) => {
+        const start = performance.now();
+        let lastChange = start;
+        const observer = new MutationObserver(() => {
+          lastChange = performance.now();
+        });
+        observer.observe(document, {
+          attributes: true,
+          characterData: true,
+          childList: true,
+          subtree: true,
+        });
+        // A spinner or a pulsing badge loops forever; it is not a step finishing.
+        const animating = () =>
+          document
+            .getAnimations()
+            .some(
+              (animation) =>
+                animation.playState === "running" &&
+                animation.effect?.getTiming().iterations !== Infinity,
+            );
+        const check = () => {
+          const now = performance.now();
+          // The quiet counts from the end of the last animation too: a frame's
+          // closing keyframes run 150ms and the timer that removes it 170ms.
+          if (animating()) lastChange = now;
+          if (now - lastChange >= quietMs || now - start >= timeoutMs) {
+            observer.disconnect();
+            resolve();
+            return;
+          }
+          setTimeout(check, 16);
+        };
+        setTimeout(check, 16);
+      }),
+    { quietMs, timeoutMs },
+  );
 }
 
 async function runTerminalCommand(terminal, command) {
@@ -279,7 +347,7 @@ async function runSmoke(baseUrl) {
         }),
       );
     });
-    await page.waitForTimeout(100);
+    await settle(page);
     assert(
       !(await pwaUpdatePrompt.isVisible()),
       "Dismissed PWA update prompt reopened for the same worker",
@@ -323,7 +391,7 @@ async function runSmoke(baseUrl) {
       await iconsMenu.waitFor({ state: "visible" });
       await iconsMenu.getByRole("menuitem", { exact: true, name: "보기" }).hover();
       await page.getByRole("menuitemcheckbox", { name: "바탕 화면 아이콘 표시" }).click();
-      await page.waitForTimeout(300);
+      await settle(page);
     };
     await toggleDesktopIcons();
     assert(
@@ -372,10 +440,10 @@ async function runSmoke(baseUrl) {
     // Win+Shift+N is always a new window. The digit has to be read off the
     // physical key: with Shift held, 1 reports "!" and 2 reports "@".
     await page.keyboard.press(`Meta+Shift+${explorerSlot}`);
-    await page.waitForTimeout(500);
-    assert(
-      (await numberedExplorers.count()) === 2,
-      `Win+Shift+${explorerSlot} left ${await numberedExplorers.count()} Explorer window(s)`,
+    await assertEventually(
+      async () => (await numberedExplorers.count()) === 2,
+      async () =>
+        `Win+Shift+${explorerSlot} left ${await numberedExplorers.count()} Explorer window(s)`,
     );
     // With two, the same chord walks along them instead of minimizing.
     const frontmost = () =>
@@ -386,19 +454,19 @@ async function runSmoke(baseUrl) {
         );
     const beforeCycle = await frontmost();
     await page.keyboard.press(`Meta+${explorerSlot}`);
-    await page.waitForTimeout(400);
-    assert(
-      (await frontmost()) !== beforeCycle && (await numberedExplorers.count()) === 2,
-      "Win+N did not walk along the two windows",
+    await assertEventually(
+      async () =>
+        (await frontmost()) !== beforeCycle && (await numberedExplorers.count()) === 2,
+      async () => "Win+N did not walk along the two windows",
     );
     await page.keyboard.press("Alt+F4");
-    await page.waitForTimeout(300);
+    await settle(page);
     await page.keyboard.press("Alt+F4");
     await numberedExplorers.first().waitFor({ state: "detached" });
     // Past the last button the chord does nothing at all.
     const windowsBeforeNine = await page.locator(".window-frame").count();
     await page.keyboard.press("Meta+9");
-    await page.waitForTimeout(400);
+    await settle(page);
     assert(
       (await page.locator(".window-frame").count()) === windowsBeforeNine,
       "Win+9 opened something with fewer than nine buttons on the bar",
@@ -408,7 +476,7 @@ async function runSmoke(baseUrl) {
     await page.mouse.down();
     await page.mouse.move(380, 520, { steps: 10 });
     await page.mouse.up();
-    await page.waitForTimeout(100);
+    await settle(page);
     assert(
       (await page.locator(".desktop").count()) === 1,
       "Desktop selection drag crashed the shell",
@@ -549,7 +617,7 @@ async function runSmoke(baseUrl) {
     for (let attempt = 0; attempt < 20; attempt += 1) {
       shortcutAddressValue = await shortcutAddress.inputValue();
       if (shortcutAddressValue === "https://example.com") break;
-      await page.waitForTimeout(150);
+      await settle(page);
     }
     assert(
       shortcutAddressValue === "https://example.com",
@@ -646,7 +714,7 @@ async function runSmoke(baseUrl) {
     const tabsBeforeNew = await noteTabNames();
     await desktopNotepad.getByLabel("메모 내용").click();
     await page.keyboard.press("Control+n");
-    await page.waitForTimeout(250);
+    await settle(page);
     const newNoteName = (
       await desktopNotepad.locator('[role="tab"][aria-selected="true"]').innerText()
     ).trim();
@@ -656,7 +724,7 @@ async function runSmoke(baseUrl) {
     );
     await page.keyboard.type("탭을 닫기 직전에 쓴 글");
     await page.keyboard.press("Control+w");
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       JSON.stringify(await noteTabNames()) ===
         JSON.stringify(
@@ -769,7 +837,7 @@ async function runSmoke(baseUrl) {
     await desktopNotepad.getByRole("tab", { name: /notes\.txt/ }).click({ button: "right" });
     await noteTabMenu.waitFor({ state: "visible" });
     await noteTabMenu.getByRole("menuitem", { name: "다른 탭 닫기" }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       JSON.stringify(await noteTabNames()) === JSON.stringify(["notes.txt*"]),
       `다른 탭 닫기 left ${(await noteTabNames()).join(" | ")}`,
@@ -821,7 +889,7 @@ async function runSmoke(baseUrl) {
     );
     await page.keyboard.type(" 인쇄할 글");
     await page.keyboard.press("Control+p");
-    await page.waitForTimeout(300);
+    await settle(page);
     const notePrints = await page.evaluate(() => {
       window.__restorePrints();
       return window.__smokePrints;
@@ -856,7 +924,7 @@ async function runSmoke(baseUrl) {
       "Ctrl+H opened 찾기 without 바꾸기",
     );
     await desktopNotepad.getByLabel("찾을 내용").fill("회의");
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       (await findBar.locator(".note-find-count").first().innerText()).trim() === "1/3",
       `찾기 counted ${(await findBar.locator(".note-find-count").first().innerText()).trim()}`,
@@ -871,13 +939,13 @@ async function runSmoke(baseUrl) {
       "The 바꾸기 button is narrower than its own label",
     );
     await replaceOne.click();
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       (await noteEditor.inputValue()) === "발표 준비\n회의 자료\n발표 회의",
       `바꾸기 produced ${JSON.stringify(await noteEditor.inputValue())}`,
     );
     await desktopNotepad.getByRole("button", { name: "모두 바꾸기" }).click();
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       (await noteEditor.inputValue()) === "발표 준비\n발표 자료\n발표 발표",
       `모두 바꾸기 produced ${JSON.stringify(await noteEditor.inputValue())}`,
@@ -891,16 +959,15 @@ async function runSmoke(baseUrl) {
     // One undo takes the whole 모두 바꾸기 back, not one occurrence of it.
     await noteEditor.click();
     await page.keyboard.press("Control+z");
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       (await noteEditor.inputValue()) === "발표 준비\n회의 자료\n발표 회의",
       `One undo after 모두 바꾸기 left ${JSON.stringify(await noteEditor.inputValue())}`,
     );
     await page.keyboard.press("Control+z");
-    await page.waitForTimeout(300);
-    assert(
-      (await noteEditor.inputValue()) === "회의 준비\n회의 자료\n발표 회의",
-      "A second undo did not take back the single 바꾸기",
+    await assertEventually(
+      async () => (await noteEditor.inputValue()) === "회의 준비\n회의 자료\n발표 회의",
+      async () => "A second undo did not take back the single 바꾸기",
     );
     await page.keyboard.press("Control+h");
     await findBar.waitFor({ state: "visible" });
@@ -928,7 +995,7 @@ async function runSmoke(baseUrl) {
     await page.keyboard.down("Control");
     await page.mouse.wheel(0, -120);
     await page.keyboard.up("Control");
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       (await noteZoomLabel.innerText()) === "110%",
       `Ctrl+휠 left the zoom at ${await noteZoomLabel.innerText()}`,
@@ -938,7 +1005,7 @@ async function runSmoke(baseUrl) {
       `The text stayed at ${await noteFontSize()} while the bar said 110%`,
     );
     await page.keyboard.press("Control+0");
-    await page.waitForTimeout(200);
+    await settle(page);
     assert(
       (await noteZoomLabel.innerText()) === "100%" && (await noteFontSize()) === noteFontAt100,
       `Ctrl+0 left the zoom at ${await noteZoomLabel.innerText()} / ${await noteFontSize()}`,
@@ -954,10 +1021,10 @@ async function runSmoke(baseUrl) {
     // A line past the end is refused, and the number typed stays on screen.
     await goToDialog.locator("input").fill("99");
     await goToDialog.getByRole("button", { name: "이동" }).click();
-    await page.waitForTimeout(200);
-    assert(
-      (await goToDialog.locator(".note-goto-error").innerText()).includes("1에서 40"),
-      "줄 이동 accepted a line the document does not have",
+    await assertEventually(
+      async () =>
+        (await goToDialog.locator(".note-goto-error").innerText()).includes("1에서 40"),
+      async () => "줄 이동 accepted a line the document does not have",
     );
     assert(
       (await goToDialog.locator("input").inputValue()) === "99",
@@ -981,7 +1048,7 @@ async function runSmoke(baseUrl) {
     await goToDialog.locator("input").fill("1");
     await goToDialog.locator("input").press("Enter");
     await goToDialog.waitFor({ state: "detached" });
-    await page.waitForTimeout(200);
+    await settle(page);
     assert(
       (await noteEditor.evaluate((node) => node.scrollTop)) < noteScrollAtLine30,
       "줄 이동 moved the caret to line 1 without scrolling there",
@@ -997,7 +1064,7 @@ async function runSmoke(baseUrl) {
     await noteEditor.click();
     await noteEditor.fill(noteTextBefore);
     await page.keyboard.press("Control+s");
-    await page.waitForTimeout(250);
+    await settle(page);
     const restoredTitle = await desktopNotepad.getAttribute("aria-label");
     assert(
       !restoredTitle.startsWith("*"),
@@ -1041,7 +1108,7 @@ async function runSmoke(baseUrl) {
     await paintTextField.waitFor({ state: "visible" });
     await paintTextField.fill("취소할 글");
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       (await canvasBytes()) === beforeText,
       "Escape left the cancelled text on the drawing",
@@ -1051,7 +1118,7 @@ async function runSmoke(baseUrl) {
     await paintTextField.waitFor({ state: "visible" });
     await paintTextField.fill("PocketDesk");
     await paintTextField.press("Enter");
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       (await paint.getByLabel("캔버스에 넣을 텍스트").count()) === 0,
       "The text field stayed open after Enter committed it",
@@ -1059,10 +1126,9 @@ async function runSmoke(baseUrl) {
     assert((await canvasBytes()) !== beforeText, "The text never reached the drawing");
     // One undo step for the whole word, not one per keystroke.
     await paint.getByRole("button", { name: /실행 취소/ }).click();
-    await page.waitForTimeout(300);
-    assert(
-      (await canvasBytes()) === beforeText,
-      "실행 취소 did not take the text back off in one step",
+    await assertEventually(
+      async () => (await canvasBytes()) === beforeText,
+      async () => "실행 취소 did not take the text back off in one step",
     );
     await paint.getByRole("button", { name: "브러시" }).click();
 
@@ -1146,7 +1212,7 @@ async function runSmoke(baseUrl) {
     await startMenu.getByRole("menuitem", { name: "다시 시작" }).click();
     await page.locator('[aria-label="부팅 화면"]').waitFor({ state: "visible" });
     await unlockPocketDesk(page);
-    await page.waitForTimeout(250);
+    await settle(page);
     // Windows closes every app on restart; this used to bring the whole
     // session back as if nothing had happened.
     assert((await page.locator(".window-frame").count()) === 0, "Restart left windows running");
@@ -1186,7 +1252,7 @@ async function runSmoke(baseUrl) {
       .filter({ hasText: "작업 표시줄에 고정" })
       .first()
       .click();
-    await page.waitForTimeout(400);
+    await settle(page);
     const taskbarAfterPin = await taskbarAppNames();
     assert(
       taskbarAfterPin.length === taskbarBeforePin.length + 1 &&
@@ -1205,7 +1271,7 @@ async function runSmoke(baseUrl) {
       .filter({ hasText: "작업 표시줄에서 제거" })
       .first()
       .click();
-    await page.waitForTimeout(400);
+    await settle(page);
     assert(
       JSON.stringify(await taskbarAppNames()) === JSON.stringify(taskbarBeforePin),
       `작업 표시줄에서 제거 left the bar as ${(await taskbarAppNames()).join(", ")}`,
@@ -1266,7 +1332,7 @@ async function runSmoke(baseUrl) {
       );
     const beforeSort = await readOrder();
     await nameHeader.click();
-    await page.waitForTimeout(200);
+    await settle(page);
     const afterSort = await readOrder();
     // The sort state rides on the accessible name now (aria-sort is only
     // valid inside a real table, and this header is a group of buttons).
@@ -1279,7 +1345,7 @@ async function runSmoke(baseUrl) {
       "Clicking the name header did not reorder the list",
     );
     await nameHeader.click();
-    await page.waitForTimeout(200);
+    await settle(page);
 
     // Home/End and type-ahead are how a Windows list is walked; neither did
     // anything here, so a long folder could only be crossed one arrow at a time.
@@ -1293,17 +1359,17 @@ async function runSmoke(baseUrl) {
       );
     await files.locator('[role="option"]').first().click();
     await page.keyboard.press("End");
-    await page.waitForTimeout(150);
+    await settle(page);
     const endName = await selectedName();
     await page.keyboard.press("Home");
-    await page.waitForTimeout(150);
+    await settle(page);
     const homeName = await selectedName();
     assert(
       endName !== null && homeName !== null && endName !== homeName,
       `Home and End both selected ${homeName}`,
     );
     await page.keyboard.press("Shift+ArrowDown");
-    await page.waitForTimeout(150);
+    await settle(page);
     assert(
       (await files.locator('[role="option"][aria-selected="true"]').count()) === 2,
       "Shift+ArrowDown replaced the selection instead of extending it",
@@ -1311,7 +1377,7 @@ async function runSmoke(baseUrl) {
 
     // Typing a letter jumps to the next item that starts with it.
     await page.keyboard.press("Home");
-    await page.waitForTimeout(120);
+    await settle(page);
     const beforeTypeAhead = await selectedName();
     const typeAheadLetter = (
       await files.evaluate((node) => {
@@ -1329,7 +1395,7 @@ async function runSmoke(baseUrl) {
     ).toLowerCase();
     assert(typeAheadLetter !== "", "No distinct first letter to test type-ahead with");
     await page.keyboard.press(typeAheadLetter);
-    await page.waitForTimeout(200);
+    await settle(page);
     const afterTypeAhead = await selectedName();
     assert(
       afterTypeAhead !== beforeTypeAhead &&
@@ -1490,7 +1556,7 @@ async function runSmoke(baseUrl) {
       "The file list has no empty space under its rows to drag from",
     );
     await page.mouse.click(marqueeListBox.x + marqueeListBox.width / 2, marqueeBlankY);
-    await page.waitForTimeout(150);
+    await settle(page);
     assert(
       (await selectedRowNames()).length === 0,
       `A click on the list's empty space kept ${(await selectedRowNames()).length} rows selected`,
@@ -1500,14 +1566,14 @@ async function runSmoke(baseUrl) {
     await page.mouse.move(marqueeListBox.x + marqueeListBox.width - 40, marqueeBlankY);
     await page.mouse.down();
     await page.mouse.move(marqueeListBox.x + 30, marqueeSecondLast.y + 6, { steps: 12 });
-    await page.waitForTimeout(120);
+    await settle(page);
     const marqueeBandBox = await files.locator(".file-marquee").boundingBox();
     assert(
       marqueeBandBox && marqueeBandBox.height > 10 && marqueeBandBox.width > 10,
       `끌어서 선택 drew no band: ${JSON.stringify(marqueeBandBox)}`,
     );
     await page.mouse.up();
-    await page.waitForTimeout(200);
+    await settle(page);
     const bandedNames = await selectedRowNames();
     assert(
       bandedNames.length === 2,
@@ -1573,7 +1639,7 @@ async function runSmoke(baseUrl) {
     await page.mouse.move(additiveListBox.x + additiveListBox.width - 40, additiveBlankY);
     await page.mouse.down();
     await page.mouse.move(additiveListBox.x + 30, additiveSecondLast.y + 6, { steps: 10 });
-    await page.waitForTimeout(120);
+    await settle(page);
     // Kept for the failure message: a band that never appeared and a band that
     // appeared but added nothing are different bugs.
     const additiveBandCount = await files.locator(".file-marquee").count();
@@ -1584,7 +1650,7 @@ async function runSmoke(baseUrl) {
     );
     await page.mouse.up();
     await page.keyboard.up(multiSelectModifier);
-    await page.waitForTimeout(200);
+    await settle(page);
     const additiveNames = await selectedRowNames();
     assert(
       beforeAdditive.every((name) => additiveNames.includes(name)) &&
@@ -1602,7 +1668,7 @@ async function runSmoke(baseUrl) {
     await page.mouse.move(marqueeFirstRow.x + 60, marqueeFirstRow.y + 90, { steps: 8 });
     const bandFromRow = await files.locator(".file-marquee").count();
     await page.mouse.up();
-    await page.waitForTimeout(150);
+    await settle(page);
     assert(bandFromRow === 0, "A drag that started on a row drew a selection band");
 
     /*
@@ -1611,7 +1677,7 @@ async function runSmoke(baseUrl) {
      */
     await explorerRowButtons.first().click();
     await page.keyboard.press("Control+f");
-    await page.waitForTimeout(200);
+    await settle(page);
     assert(
       (await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))) ===
         "파일 검색",
@@ -1619,16 +1685,16 @@ async function runSmoke(baseUrl) {
     );
     await explorerList.click({ position: { x: 300, y: 300 } });
     await page.keyboard.press("F3");
-    await page.waitForTimeout(200);
-    assert(
-      (await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))) ===
+    await assertEventually(
+      async () =>
+        (await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))) ===
         "파일 검색",
-      "F3 did not reach 파일 검색",
+      async () => "F3 did not reach 파일 검색",
     );
 
     const statusViewButtons = files.locator(".file-statusbar-views button");
     await statusViewButtons.nth(1).click();
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       (await explorerList.getAttribute("class")).includes("file-view-icons"),
       `The status bar's 큰 아이콘 button left the list as ${await explorerList.getAttribute("class")}`,
@@ -1638,10 +1704,9 @@ async function runSmoke(baseUrl) {
       "The status bar's view buttons do not say which view is on",
     );
     await statusViewButtons.nth(0).click();
-    await page.waitForTimeout(300);
-    assert(
-      (await explorerList.getAttribute("class")).includes("file-view-details"),
-      "The status bar's 자세히 button did not switch back",
+    await assertEventually(
+      async () => (await explorerList.getAttribute("class")).includes("file-view-details"),
+      async () => "The status bar's 자세히 button did not switch back",
     );
 
     await files.getByRole("button", { name: "새로 만들기" }).click();
@@ -1664,7 +1729,7 @@ async function runSmoke(baseUrl) {
       "The new shortcut was not the selection after it was made",
     );
     await page.keyboard.press("Delete");
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       (await files
         .locator(".file-list button", { hasText: "스모크 탐색기 바로 가기" })
@@ -1745,7 +1810,7 @@ async function runSmoke(baseUrl) {
       "Explorer Properties does not offer the 숨김 attribute",
     );
     await propertiesDialog.getByRole("button", { name: "확인" }).click();
-    await page.waitForTimeout(200);
+    await settle(page);
 
     const explorerRows = files.locator('.file-list button[role="option"]');
     const readProperties = async (rowText) => {
@@ -1776,7 +1841,7 @@ async function runSmoke(baseUrl) {
       "속성 offered to hide a system folder",
     );
     await propertiesDialog.getByRole("button", { name: "확인" }).click();
-    await page.waitForTimeout(200);
+    await settle(page);
 
     /*
      * 속성 on more than one row describes the selection, not the first of
@@ -1822,7 +1887,7 @@ async function runSmoke(baseUrl) {
       "Ticking 숨김 closed the dialog it was ticked in",
     );
     await propertiesDialog.getByRole("button", { name: "확인" }).click();
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       (await explorerRows.count()) === rowsBeforeHide - 1,
       "A hidden file stayed in the list",
@@ -1836,16 +1901,15 @@ async function runSmoke(baseUrl) {
 
     await files.getByRole("button", { name: "보기 옵션" }).click();
     await files.getByRole("menuitemcheckbox", { name: "숨긴 항목" }).click();
-    await page.waitForTimeout(300);
-    assert(
-      (await explorerRows.count()) === rowsBeforeHide,
-      "숨긴 항목 did not bring the hidden file back",
+    await assertEventually(
+      async () => (await explorerRows.count()) === rowsBeforeHide,
+      async () => "숨긴 항목 did not bring the hidden file back",
     );
 
     // 파일 확장명 changes what the list shows, not what is stored.
     const namesWithExtensions = await explorerRows.allInnerTexts();
     await files.getByRole("menuitemcheckbox", { name: "파일 확장명" }).click();
-    await page.waitForTimeout(300);
+    await settle(page);
     const namesWithoutExtensions = await explorerRows.allInnerTexts();
     assert(
       namesWithExtensions.some((row) => row.startsWith("작업 메모.txt")) &&
@@ -1857,7 +1921,7 @@ async function runSmoke(baseUrl) {
       "The extension toggle took a name apart that had no extension to hide",
     );
     await files.getByRole("menuitemcheckbox", { name: "파일 확장명" }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
 
     /*
      * 그룹화 and 보내기. Grouping is a second sort applied first, so the check
@@ -1873,7 +1937,7 @@ async function runSmoke(baseUrl) {
     const rowsBeforeGrouping = await explorerRows.count();
     await files.getByRole("button", { name: "정렬", exact: true }).click();
     await files.getByRole("menuitemradio", { name: "유형", exact: true }).click();
-    await page.waitForTimeout(300);
+    await settle(page);
     const headerLabels = await groupHeaders.allInnerTexts();
     assert(
       headerLabels.length >= 2 && headerLabels.includes("파일 폴더"),
@@ -1891,40 +1955,40 @@ async function runSmoke(baseUrl) {
     );
     await files.getByRole("button", { name: "정렬", exact: true }).click();
     await files.getByRole("menuitemradio", { name: "없음", exact: true }).click();
-    await page.waitForTimeout(300);
+    await settle(page);
     assert((await groupHeaders.count()) === 0, "그룹화 없음 left the headings behind");
 
     // 보내기 copies: the original stays where it is, and one toast names where
     // the copy went — the generic paste toast beside it was two for one action.
     await explorerRows.filter({ hasText: "web-surf.url" }).first().click({ button: "right" });
     await fileContextMenu.getByRole("menuitem", { name: "보내기" }).click();
-    await page.waitForTimeout(200);
+    await settle(page);
     const sendMenu = page.locator('[aria-label="보내기"]');
     await sendMenu.waitFor({ state: "visible" });
-    // Counted against what was already on screen: earlier steps leave toasts of
+    // Compared with what was already on screen: earlier steps leave toasts of
     // their own, and the claim is that this action adds one, not that the
-    // screen holds one.
-    const toastsBeforeSend = await page.locator(".toast").count();
+    // screen holds one. By text, not by count — the stack shows four at most,
+    // so a fifth pushes the oldest out and the count stays put.
+    const toastsBeforeSend = await page.locator(".toast").allInnerTexts();
     await sendMenu.getByRole("menuitem", { name: "문서", exact: true }).click();
-    await page.waitForTimeout(400);
+    await settle(page);
     const sendToasts = await page.locator(".toast").allInnerTexts();
+    const addedToasts = sendToasts.filter((toast) => !toastsBeforeSend.includes(toast));
     assert(
-      sendToasts.length === toastsBeforeSend + 1 &&
-        sendToasts.some((toast) => toast.includes("문서(으)로 보냄")),
-      `보내기 went from ${toastsBeforeSend} to ${sendToasts.length} toast(s): ${sendToasts.join(" | ").replace(/\n/g, " ")}`,
+      addedToasts.length === 1 && addedToasts[0].includes("문서(으)로 보냄"),
+      `보내기 added ${addedToasts.length} toast(s): ${addedToasts.join(" | ").replace(/\n/g, " ")}`,
     );
     assert(
       (await explorerRows.filter({ hasText: "web-surf.url" }).count()) === 1,
       "보내기 moved the original instead of copying it",
     );
     await explorerSidebar.getByRole("treeitem", { name: "문서", exact: true }).click();
-    await page.waitForTimeout(350);
-    assert(
-      (await explorerRows.filter({ hasText: "web-surf" }).count()) === 1,
-      "The copy 보내기 made never arrived in 문서",
+    await assertEventually(
+      async () => (await explorerRows.filter({ hasText: "web-surf" }).count()) === 1,
+      async () => "The copy 보내기 made never arrived in 문서",
     );
     await explorerSidebar.getByRole("treeitem", { name: "바탕 화면", exact: true }).click();
-    await page.waitForTimeout(300);
+    await settle(page);
 
     /*
      * 실행 취소. The stack belongs to the shell, so a rename made in Explorer
@@ -1937,11 +2001,14 @@ async function runSmoke(baseUrl) {
     await fileContextMenu.getByRole("menuitem", { name: "이름 바꾸기", exact: true }).click();
     const renameBox = files.locator(".file-inline-rename input");
     await renameBox.waitFor({ state: "visible" });
+    // An earlier rename's toast can still be standing; only this one's count.
+    const toastsBeforeRename = await page.locator(".toast").allInnerTexts();
     await renameBox.fill("발표자료.url");
     await renameBox.press("Enter");
     await explorerRows.filter({ hasText: "발표자료.url" }).first().waitFor();
-    const renameToasts = (await page.locator(".toast").allInnerTexts()).filter((toast) =>
-      toast.includes("이름 변경됨"),
+    await settle(page);
+    const renameToasts = (await page.locator(".toast").allInnerTexts()).filter(
+      (toast) => toast.includes("이름 변경됨") && !toastsBeforeRename.includes(toast),
     );
     assert(
       renameToasts.length === 1,
@@ -2002,7 +2069,7 @@ async function runSmoke(baseUrl) {
      */
     const focusFileList = async () => {
       await files.locator(".file-list").click({ position: { x: 320, y: 320 } });
-      await page.waitForTimeout(120);
+      await settle(page);
     };
     const copyDesktopShortcutInto = async (folder) => {
       await explorerSidebar.getByRole("treeitem", { name: "바탕 화면", exact: true }).click();
@@ -2010,7 +2077,7 @@ async function runSmoke(baseUrl) {
       await explorerRows.filter({ hasText: "web-surf.url" }).first().click();
       await page.keyboard.press("Control+c");
       await explorerSidebar.getByRole("treeitem", { name: folder, exact: true }).click();
-      await page.waitForTimeout(250);
+      await settle(page);
       await focusFileList();
       await page.keyboard.press("Control+v");
     };
@@ -2044,7 +2111,7 @@ async function runSmoke(baseUrl) {
     );
     await conflictDialog.getByRole("button", { name: /건너뛰기/ }).click();
     await conflictDialog.waitFor({ state: "hidden" });
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       (await explorerRows.count()) === 1,
       `건너뛰기 still copied — 다운로드 holds ${await explorerRows.count()} rows`,
@@ -2064,7 +2131,7 @@ async function runSmoke(baseUrl) {
     await conflictDialog.waitFor({ state: "visible" });
     await conflictDialog.getByRole("button", { name: "대상 폴더의 파일 바꾸기" }).click();
     await conflictDialog.waitFor({ state: "hidden" });
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       (await explorerRows.count()) === 2,
       `바꾸기 added a row instead of replacing one — 다운로드 holds ${await explorerRows.count()}`,
@@ -2075,23 +2142,22 @@ async function runSmoke(baseUrl) {
     );
     await explorerRows.first().click();
     await page.keyboard.press("Control+z");
-    await page.waitForTimeout(400);
-    assert(
-      (await rowIdOf("web-surf.url")) === replacedRowId,
-      "실행 취소 did not bring back the row 바꾸기 wrote over",
+    await assertEventually(
+      async () => (await rowIdOf("web-surf.url")) === replacedRowId,
+      async () => "실행 취소 did not bring back the row 바꾸기 wrote over",
     );
 
     // Leave 다운로드 as it was found.
     await focusFileList();
     await page.keyboard.press("Control+a");
     await page.keyboard.press("Delete");
-    await page.waitForTimeout(350);
+    await settle(page);
     assert(
       (await explorerRows.count()) === 0,
       "The conflict checks left rows behind in 다운로드",
     );
     await explorerSidebar.getByRole("treeitem", { name: "바탕 화면", exact: true }).click();
-    await page.waitForTimeout(300);
+    await settle(page);
 
     /*
      * 탐색 창. The pane was five fixed shortcuts side by side, so a folder you
@@ -2137,10 +2203,9 @@ async function runSmoke(baseUrl) {
 
     // The pane follows the window, and the single tab stop goes with the mark.
     await projectRow.click();
-    await page.waitForTimeout(300);
-    assert(
-      (await projectRow.getAttribute("aria-selected")) === "true",
-      "탐색 창 did not mark the folder it had just opened",
+    await assertEventually(
+      async () => (await projectRow.getAttribute("aria-selected")) === "true",
+      async () => "탐색 창 did not mark the folder it had just opened",
     );
     assert(
       (await folderTree.locator('[tabindex="0"]').count()) === 1,
@@ -2152,7 +2217,7 @@ async function runSmoke(baseUrl) {
     await folderTree.locator('[tabindex="0"]').first().focus();
     await page.keyboard.press("Home");
     await page.keyboard.press("ArrowLeft");
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       (await treeRows.count()) === 1,
       `Left did not collapse 바탕 화면 — ${await treeRows.count()} rows left`,
@@ -2160,7 +2225,7 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("ArrowRight");
     await documentsRow.waitFor();
     await explorerSidebar.getByRole("treeitem", { name: "바탕 화면", exact: true }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
 
     /*
      * 주소 표시줄의 ">" — Windows turns each separator into a way sideways.
@@ -2169,7 +2234,7 @@ async function runSmoke(baseUrl) {
      */
     const crumbBar = files.locator(".file-address");
     await explorerRows.filter({ hasText: "문서" }).first().dblclick();
-    await page.waitForTimeout(300);
+    await settle(page);
     await crumbBar.getByRole("button", { name: "바탕 화면 하위 폴더" }).click();
     const crumbMenu = files.locator(".file-breadcrumb-menu");
     await crumbMenu.waitFor({ state: "visible" });
@@ -2198,14 +2263,15 @@ async function runSmoke(baseUrl) {
     await crumbMenu.waitFor({ state: "visible" });
     await crumbMenu.getByRole("menuitem", { name: "사진", exact: true }).click();
     await crumbMenu.waitFor({ state: "detached" });
-    await page.waitForTimeout(300);
-    assert(
-      (await crumbBar.innerText()).includes("사진") &&
+    await assertEventually(
+      async () =>
+        (await crumbBar.innerText()).includes("사진") &&
         !(await crumbBar.innerText()).includes("문서"),
-      `The crumb menu did not move the window: ${(await crumbBar.innerText()).replace(/\n/g, " > ")}`,
+      async () =>
+        `The crumb menu did not move the window: ${(await crumbBar.innerText()).replace(/\n/g, " > ")}`,
     );
     await explorerSidebar.getByRole("treeitem", { name: "바탕 화면", exact: true }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
 
     /*
      * 열 너비. The three trailing columns were hard-coded, so 유형 showed
@@ -2243,7 +2309,7 @@ async function runSmoke(baseUrl) {
       steps: 10,
     });
     await page.mouse.up();
-    await page.waitForTimeout(300);
+    await settle(page);
     const typeAfter = await typeCellWidth();
     assert(
       typeAfter <= typeBefore - 30,
@@ -2262,16 +2328,15 @@ async function runSmoke(baseUrl) {
     // The keyboard drives the same separator, and Home puts it back.
     await typeGrip.focus();
     await page.keyboard.press("Shift+ArrowRight");
-    await page.waitForTimeout(200);
+    await settle(page);
     assert(
       (await typeCellWidth()) === typeAfter + 32,
       `Shift+Right moved 유형 from ${typeAfter} to ${await typeCellWidth()}`,
     );
     await page.keyboard.press("Home");
-    await page.waitForTimeout(200);
-    assert(
-      (await typeCellWidth()) === typeBefore,
-      `Home did not put 유형 back (${await typeCellWidth()} vs ${typeBefore})`,
+    await assertEventually(
+      async () => (await typeCellWidth()) === typeBefore,
+      async () => `Home did not put 유형 back (${await typeCellWidth()} vs ${typeBefore})`,
     );
 
     /*
@@ -2294,7 +2359,7 @@ async function runSmoke(baseUrl) {
       "이름 could be taken off the heading",
     );
     await columnMenu.getByRole("menuitemcheckbox", { name: "유형" }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(!(await columnMenu.isVisible()), "The column menu stayed open after a pick");
     assert(
       !(await headingLabels()).some((label) => label.includes("유형")),
@@ -2320,13 +2385,13 @@ async function runSmoke(baseUrl) {
         .locator(".file-options-menu")
         .getByRole("menuitemcheckbox", { name: "항목 확인란" })
         .click();
-      await page.waitForTimeout(250);
+      await settle(page);
     };
     await toggleItemCheckboxes();
     const selectedRows = files.locator('[role="option"][aria-selected="true"]');
     await explorerRows.nth(0).locator(".file-row-check").click();
     await explorerRows.nth(2).locator(".file-row-check").click();
-    await page.waitForTimeout(200);
+    await settle(page);
     assert(
       (await selectedRows.count()) === 2,
       `Two box clicks left ${await selectedRows.count()} rows selected`,
@@ -2353,13 +2418,13 @@ async function runSmoke(baseUrl) {
       `The boxes or the headings sit off their column: ${JSON.stringify(boxEdges)}`,
     );
     await selectAll.check();
-    await page.waitForTimeout(200);
+    await settle(page);
     assert(
       (await selectedRows.count()) === (await explorerRows.count()),
       `모두 선택 selected ${await selectedRows.count()} of ${await explorerRows.count()}`,
     );
     await selectAll.uncheck();
-    await page.waitForTimeout(200);
+    await settle(page);
     assert((await selectedRows.count()) === 0, "Clearing 모두 선택 left rows selected");
     await toggleItemCheckboxes();
     assert(
@@ -2368,10 +2433,9 @@ async function runSmoke(baseUrl) {
     );
     columnMenu = await openColumnMenu();
     await columnMenu.getByRole("menuitemcheckbox", { name: "유형" }).click();
-    await page.waitForTimeout(250);
-    assert(
-      (await headingLabels()).some((label) => label.includes("유형")),
-      "유형 did not come back",
+    await assertEventually(
+      async () => (await headingLabels()).some((label) => label.includes("유형")),
+      async () => "유형 did not come back",
     );
 
     /*
@@ -2396,7 +2460,7 @@ async function runSmoke(baseUrl) {
       await page.mouse.move(to.x + to.width / 2 + 1, to.y + to.height / 2, { steps: 2 });
       await page.mouse.up();
       if (modifier) await page.keyboard.up(modifier);
-      await page.waitForTimeout(400);
+      await settle(page);
     };
 
     const copyDragSource = explorerRows.filter({ hasText: "web-surf.url" }).first();
@@ -2404,7 +2468,7 @@ async function runSmoke(baseUrl) {
     await dragFileOnto(copyDragSource, explorerRows.filter({ hasText: "사진" }).first(), null);
     await copyDragSource.waitFor({ state: "detached" });
     await explorerSidebar.getByRole("treeitem", { name: "사진", exact: true }).click();
-    await page.waitForTimeout(300);
+    await settle(page);
     const movedShortcut = explorerRows.filter({ hasText: "web-surf.url" }).first();
     await movedShortcut.waitFor();
     // Now copy it back to 바탕 화면 with the modifier held: it stays here too.
@@ -2418,14 +2482,13 @@ async function runSmoke(baseUrl) {
       "A copy drag took the original with it",
     );
     await explorerSidebar.getByRole("treeitem", { name: "바탕 화면", exact: true }).click();
-    await page.waitForTimeout(300);
-    assert(
-      (await explorerRows.filter({ hasText: "web-surf.url" }).count()) === 1,
-      "The copy never arrived on 바탕 화면",
+    await assertEventually(
+      async () => (await explorerRows.filter({ hasText: "web-surf.url" }).count()) === 1,
+      async () => "The copy never arrived on 바탕 화면",
     );
     // Put it back where the later steps expect it: one copy, on 바탕 화면.
     await explorerSidebar.getByRole("treeitem", { name: "사진", exact: true }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
     await explorerRows.filter({ hasText: "web-surf.url" }).first().click();
     await page.keyboard.press("Delete");
     await explorerRows
@@ -2433,18 +2496,18 @@ async function runSmoke(baseUrl) {
       .first()
       .waitFor({ state: "detached" });
     await explorerSidebar.getByRole("treeitem", { name: "바탕 화면", exact: true }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
 
     // Windows' own chords: Ctrl+Shift+N makes a folder, Alt+Enter opens 속성.
     const rowsBeforeChord = await explorerRows.count();
     await files.locator(".file-list").click({ position: { x: 320, y: 320 } });
     await page.keyboard.press("Control+Shift+KeyN");
-    await page.waitForTimeout(500);
+    await settle(page);
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(200);
-    assert(
-      (await explorerRows.count()) === rowsBeforeChord + 1,
-      `Ctrl+Shift+N did not make a folder (${rowsBeforeChord} -> ${await explorerRows.count()})`,
+    await assertEventually(
+      async () => (await explorerRows.count()) === rowsBeforeChord + 1,
+      async () =>
+        `Ctrl+Shift+N did not make a folder (${rowsBeforeChord} -> ${await explorerRows.count()})`,
     );
     await explorerRows.filter({ hasText: "새 폴더" }).first().click();
     await page.keyboard.press("Alt+Enter");
@@ -2473,7 +2536,7 @@ async function runSmoke(baseUrl) {
     await clashBox.waitFor({ state: "visible" });
     await clashBox.fill("web-surf.url");
     await clashBox.press("Enter");
-    await page.waitForTimeout(400);
+    await settle(page);
     assert(
       (await explorerRows.filter({ hasText: "web-surf 2" }).count()) === 0,
       "The rename invented a name of its own",
@@ -2553,19 +2616,19 @@ async function runSmoke(baseUrl) {
     await habitList.hover();
     await page.keyboard.down("Control");
     await page.mouse.wheel(0, -240);
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       (await habitViewClass()).includes("file-view-list"),
       `Ctrl+wheel up gave ${await habitViewClass()}`,
     );
     await page.mouse.wheel(0, -240);
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       (await habitViewClass()).includes("file-view-icons"),
       `A second notch gave ${await habitViewClass()}`,
     );
     await page.mouse.wheel(0, -240);
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       (await habitViewClass()).includes("file-view-icons"),
       "Ctrl+wheel wrapped round instead of holding at the largest size",
@@ -2573,33 +2636,31 @@ async function runSmoke(baseUrl) {
     await page.mouse.wheel(0, 240);
     await page.mouse.wheel(0, 240);
     await page.keyboard.up("Control");
-    await page.waitForTimeout(250);
-    assert(
-      (await habitViewClass()).includes("file-view-details"),
-      `Ctrl+wheel down did not come back to 자세히: ${await habitViewClass()}`,
+    await assertEventually(
+      async () => (await habitViewClass()).includes("file-view-details"),
+      async () => `Ctrl+wheel down did not come back to 자세히: ${await habitViewClass()}`,
     );
 
     const habitTabs = files.locator('[role="tab"]');
     const tabsBeforeMiddleClick = await habitTabs.count();
     await explorerRows.filter({ hasText: "문서" }).first().click({ button: "middle" });
-    await page.waitForTimeout(400);
-    assert(
-      (await habitTabs.count()) === tabsBeforeMiddleClick + 1,
-      "A middle click on a folder did not open a tab",
+    await assertEventually(
+      async () => (await habitTabs.count()) === tabsBeforeMiddleClick + 1,
+      async () => "A middle click on a folder did not open a tab",
     );
     // On a file it does nothing, as in Explorer.
     await habitTabs.first().click();
-    await page.waitForTimeout(300);
+    await settle(page);
     await explorerRows.filter({ hasText: "web-surf.url" }).first().click({ button: "middle" });
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       (await habitTabs.count()) === tabsBeforeMiddleClick + 1,
       "A middle click on a file opened a tab",
     );
     await habitTabs.last().click();
-    await page.waitForTimeout(200);
+    await settle(page);
     await page.keyboard.press("Control+w");
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       (await habitTabs.count()) === tabsBeforeMiddleClick,
       "The tab the middle click opened did not close again",
@@ -2664,7 +2725,7 @@ async function runSmoke(baseUrl) {
     // And nothing on the undo stack claims it can bring that back.
     await explorerRows.first().click();
     await page.keyboard.press("Control+z");
-    await page.waitForTimeout(400);
+    await settle(page);
     assert(
       (await files.locator(`[data-file-id="${doomedId}"]`).count()) === 0,
       "실행 취소 resurrected a permanently deleted folder",
@@ -2672,20 +2733,19 @@ async function runSmoke(baseUrl) {
     // That Ctrl+Z took back the step under it — a real one, from earlier —
     // so put it back before the next step counts these rows.
     await page.keyboard.press("Control+y");
-    await page.waitForTimeout(400);
+    await settle(page);
 
     // Put the note back on show for the steps that follow.
     await readProperties("작업 메모.txt");
     await propertiesDialog.getByLabel("숨김").uncheck();
     await propertiesDialog.getByRole("button", { name: "확인" }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
     await files.getByRole("button", { name: "보기 옵션" }).click();
     await files.getByRole("menuitemcheckbox", { name: "숨긴 항목" }).click();
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(250);
-    assert(
-      (await explorerRows.count()) === rowsBeforeHide,
-      "The note did not come back once it was unhidden",
+    await assertEventually(
+      async () => (await explorerRows.count()) === rowsBeforeHide,
+      async () => "The note did not come back once it was unhidden",
     );
 
     await workNote.click();
@@ -2699,7 +2759,7 @@ async function runSmoke(baseUrl) {
       (await copiedWorkNote.count()) === 1,
       "Explorer copy/paste did not create one persisted copy",
     );
-    await page.waitForTimeout(180);
+    await settle(page);
     const copiedFilePersisted = await page.evaluate(
       () =>
         new Promise((resolve) => {
@@ -2933,14 +2993,14 @@ async function runSmoke(baseUrl) {
     });
     assert(bareDesktopSpot, "No bare desktop pixel to press");
     await page.mouse.click(bareDesktopSpot.x, bareDesktopSpot.y);
-    await page.waitForTimeout(150);
-    assert(
-      !(await focusNotepad.getAttribute("class"))?.includes("is-active") &&
+    await assertEventually(
+      async () =>
+        !(await focusNotepad.getAttribute("class"))?.includes("is-active") &&
         (await focusTaskbarButton.getAttribute("aria-current")) === null,
-      "Pressing the desktop did not take focus off the window",
+      async () => "Pressing the desktop did not take focus off the window",
     );
     await focusTaskbarButton.click();
-    await page.waitForTimeout(150);
+    await settle(page);
     assert(
       (await focusNotepad.getAttribute("class"))?.includes("is-active") &&
         (await focusNotepad.isVisible()),
@@ -3225,7 +3285,7 @@ async function runSmoke(baseUrl) {
       .locator("aside")
       .getByRole("treeitem", { name: "문서", exact: true })
       .click();
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       (await explorerFrames.nth(1).getAttribute("aria-label"))?.startsWith(
         "문서 - 파일 탐색기",
@@ -3263,7 +3323,7 @@ async function runSmoke(baseUrl) {
     // Put Edge back on top — the sections below were written with the
     // Explorer window underneath, and a raised Explorer intercepts their clicks.
     await page.locator(".taskbar-app", { hasText: "Microsoft Edge" }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
 
     // Edge 다운로드: outside reader view the honest download is the address —
     // a .url shortcut written into the real 다운로드 system folder, which the
@@ -3375,7 +3435,7 @@ async function runSmoke(baseUrl) {
       "Recycle Bin did not show deleted file",
     );
     await recycle.getByRole("button", { name: "복원" }).click();
-    await page.waitForTimeout(180);
+    await settle(page);
     assert(
       !(await recycle.innerText()).includes(trashedFileName),
       "Recycle Bin still shows restored file",
@@ -3394,10 +3454,9 @@ async function runSmoke(baseUrl) {
     await page.locator(".taskbar-app", { hasText: "휴지통" }).click();
     await recycle.getByRole("button", { name: "휴지통 비우기" }).click();
     await recycle.getByRole("button", { name: "모두 삭제" }).click();
-    await page.waitForTimeout(180);
-    assert(
-      (await recycle.innerText()).includes("휴지통이 비어 있습니다"),
-      "Recycle Bin did not empty",
+    await assertEventually(
+      async () => (await recycle.innerText()).includes("휴지통이 비어 있습니다"),
+      async () => "Recycle Bin did not empty",
     );
 
     /*
@@ -3425,7 +3484,7 @@ async function runSmoke(baseUrl) {
       .locator(".taskbar-app", { hasText: "파일 탐색기" })
       .dispatchEvent("contextmenu", { bubbles: true, cancelable: true });
     await page.getByRole("menuitem", { name: "작업 표시줄에서 제거" }).click();
-    await page.waitForTimeout(180);
+    await settle(page);
     const pinnedAfterUnpin = await page.evaluate(() =>
       localStorage.getItem("pocket-desk-taskbar-pinned-v2"),
     );
@@ -3460,7 +3519,7 @@ async function runSmoke(baseUrl) {
       "The snap preview showed no picture of the dragged window",
     );
     await page.mouse.up();
-    await page.waitForTimeout(220);
+    await settle(page);
     const snapped = await frame.boundingBox();
     assert(
       snapped && snapped.x <= 20 && snapped.width >= 560 && snapped.width <= 680,
@@ -3490,7 +3549,7 @@ async function runSmoke(baseUrl) {
     await page.getByRole("button", { name: "전원 켜기" }).click();
     await page.locator('[aria-label="부팅 화면"]').waitFor({ state: "visible" });
     await unlockPocketDesk(page);
-    await page.waitForTimeout(250);
+    await settle(page);
 
     await page.keyboard.press("Control+Alt+R");
     await runDialog.waitFor({ state: "visible" });
@@ -3551,7 +3610,7 @@ async function runSmoke(baseUrl) {
       .locator(".window-frame", { has: page.locator(".files-app") })
       .first();
     await searchExplorer.waitFor({ state: "visible" });
-    await page.waitForTimeout(400);
+    await settle(page);
     const searchRows = searchExplorer.locator('.file-list button[role="option"]');
     await searchExplorer.getByLabel("파일 검색").fill("둘째");
     await searchRows.filter({ hasText: "스모크.txt" }).first().waitFor();
@@ -3579,7 +3638,7 @@ async function runSmoke(baseUrl) {
     // 세부 정보 line, and it used to answer the search through the same field
     // the note's text came from.
     await searchExplorer.getByLabel("파일 검색").fill("하위 폴더를 보관");
-    await page.waitForTimeout(400);
+    await settle(page);
     assert(
       (await searchRows.count()) === 0,
       `A folder's own description still answers the search (${await searchRows.count()} rows)`,
@@ -3678,11 +3737,11 @@ async function runSmoke(baseUrl) {
     // with a 10px gutter, so the same gesture produced two different geometries.
     await page.keyboard.press("Meta+ArrowLeft");
     if (await page.locator(".snap-assist").count()) await page.keyboard.press("Escape");
-    await page.waitForTimeout(300);
+    await settle(page);
     const snappedLeft = await page.locator(".window-frame.is-active").boundingBox();
     await page.keyboard.press("Meta+ArrowRight");
     if (await page.locator(".snap-assist").count()) await page.keyboard.press("Escape");
-    await page.waitForTimeout(300);
+    await settle(page);
     const snappedRight = await page.locator(".window-frame.is-active").boundingBox();
     const seam = Math.round(snappedRight.x - (snappedLeft.x + snappedLeft.width));
     assert(seam === 0, `Snapped halves left a ${seam}px seam`);
@@ -3715,10 +3774,10 @@ async function runSmoke(baseUrl) {
     await page.locator(".taskbar-app").first().focus();
     const taskbarBefore = await page.evaluate(() => document.activeElement?.textContent);
     await page.keyboard.press("ArrowRight");
-    await page.waitForTimeout(120);
-    assert(
-      (await page.evaluate(() => document.activeElement?.textContent)) !== taskbarBefore,
-      "ArrowRight did not move along the taskbar",
+    await assertEventually(
+      async () =>
+        (await page.evaluate(() => document.activeElement?.textContent)) !== taskbarBefore,
+      async () => "ArrowRight did not move along the taskbar",
     );
 
     // Alt+Space opens the system menu on the first item that can take focus.
@@ -3758,7 +3817,7 @@ async function runSmoke(baseUrl) {
     await runDialog.getByRole("button", { name: "확인" }).click();
     const dragTarget = page.locator('article[data-app-id="calculator"]').first();
     await dragTarget.waitFor({ state: "visible" });
-    await page.waitForTimeout(250);
+    await settle(page);
     const beforeKeyboardMove = await dragTarget.boundingBox();
     await page.keyboard.press("Alt+ ");
     await page.locator(".window-system-menu").waitFor({ state: "visible" });
@@ -3772,7 +3831,7 @@ async function runSmoke(baseUrl) {
     );
     await page.keyboard.press("ArrowLeft");
     await page.keyboard.press("ArrowUp");
-    await page.waitForTimeout(150);
+    await settle(page);
     const afterKeyboardMove = await dragTarget.boundingBox();
     assert(
       Math.round(afterKeyboardMove.x - beforeKeyboardMove.x) === -10 &&
@@ -3797,7 +3856,7 @@ async function runSmoke(baseUrl) {
     // The first arrow picks the edge; the ones after it move that edge only.
     await page.keyboard.press("ArrowLeft");
     await page.keyboard.press("ArrowLeft");
-    await page.waitForTimeout(150);
+    await settle(page);
     const afterKeyboardResize = await dragTarget.boundingBox();
     assert(
       Math.round(afterKeyboardResize.width - afterKeyboardCancel.width) === 10 &&
@@ -3807,7 +3866,7 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("Enter");
     await page.locator(".window-keyboard-drag-hint").waitFor({ state: "hidden" });
     await dragTarget.getByRole("button", { name: "계산기 닫기" }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
 
     // Alt+Tab walks every window in one hold and switches on release. Focusing
     // on each press instead raised the selection to the top of the z-order, so
@@ -3819,7 +3878,7 @@ async function runSmoke(baseUrl) {
       await runDialog.waitFor({ state: "visible" });
       await runDialog.getByLabel("열기").fill(command);
       await runDialog.getByRole("button", { name: "확인" }).click();
-      await page.waitForTimeout(300);
+      await settle(page);
     }
     // Window pictures on a lingering taskbar card are frames too, by class.
     const openWindowCount = await page
@@ -3830,7 +3889,7 @@ async function runSmoke(baseUrl) {
     const altTabSeen = [];
     for (let tap = 0; tap < 3; tap += 1) {
       await page.keyboard.press("Tab");
-      await page.waitForTimeout(90);
+      await settle(page);
       altTabSeen.push(
         await page
           .locator(".alt-tab-item.is-selected > strong")
@@ -3855,7 +3914,7 @@ async function runSmoke(baseUrl) {
       "Alt+Tab picture is not scaled down",
     );
     await page.keyboard.up("Alt");
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       new Set(altTabSeen).size === 3,
       `Alt+Tab reached ${new Set(altTabSeen).size} windows in three presses: ${altTabSeen.join(", ")}`,
@@ -3867,10 +3926,10 @@ async function runSmoke(baseUrl) {
       .getAttribute("aria-label");
     await page.keyboard.down("Alt");
     await page.keyboard.press("Tab");
-    await page.waitForTimeout(90);
+    await settle(page);
     await page.keyboard.press("Escape");
     await page.keyboard.up("Alt");
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       (await page.locator(".window-frame.is-active").getAttribute("aria-label")) ===
         beforeEscape,
@@ -3879,18 +3938,18 @@ async function runSmoke(baseUrl) {
     // Clicking a picture in the switcher switches to that window.
     await page.keyboard.down("Alt");
     await page.keyboard.press("Tab");
-    await page.waitForTimeout(90);
+    await settle(page);
     const clickedItem = page.locator(".alt-tab-item").last();
     const clickedTitle = await clickedItem.locator("> strong").innerText();
     await clickedItem.click();
     await page.keyboard.up("Alt");
-    await page.waitForTimeout(300);
-    assert(
-      (await page.locator(".alt-tab-switcher").count()) === 0 &&
+    await assertEventually(
+      async () =>
+        (await page.locator(".alt-tab-switcher").count()) === 0 &&
         (await page.locator(".window-frame.is-active").getAttribute("aria-label"))?.startsWith(
           clickedTitle,
         ),
-      `Clicking ${clickedTitle} in Alt+Tab did not switch to it`,
+      async () => `Clicking ${clickedTitle} in Alt+Tab did not switch to it`,
     );
 
     // Restoring a maximized window puts it back exactly where it was. The
@@ -3899,12 +3958,12 @@ async function runSmoke(baseUrl) {
     const restoreTarget = page.locator(".window-frame.is-active");
     const beforeMaximize = await restoreTarget.boundingBox();
     await restoreTarget.getByRole("button", { name: /최대화$/ }).click();
-    await page.waitForTimeout(350);
+    await settle(page);
     await restoreTarget
       .getByRole("button", { name: /이전 크기로|최대화$/ })
       .first()
       .click();
-    await page.waitForTimeout(400);
+    await settle(page);
     const afterRestore = await restoreTarget.boundingBox();
     assert(
       Math.round(afterRestore.x) === Math.round(beforeMaximize.x) &&
@@ -3915,11 +3974,11 @@ async function runSmoke(baseUrl) {
     // A snapped window re-tiles on a resize instead of being nudged into the
     // 8px float margin, which used to overlap two halves by 16px.
     await page.keyboard.press("Meta+ArrowLeft");
-    await page.waitForTimeout(350);
+    await settle(page);
     await page.setViewportSize({ height: 820, width: 1281 });
-    await page.waitForTimeout(350);
+    await settle(page);
     await page.setViewportSize({ height: 820, width: 1280 });
-    await page.waitForTimeout(350);
+    await settle(page);
     // Window motion animations translate the frame while they run, so a box
     // read mid-flight is a couple of pixels off its committed position.
     await restoreTarget.evaluate(async (node) => {
@@ -4034,16 +4093,16 @@ async function runSmoke(baseUrl) {
     // Win+M, then bring back only the window this drags from: by now several
     // windows are open and between them they cover every pixel of desktop.
     await page.keyboard.press("Meta+m");
-    await page.waitForTimeout(500);
+    await settle(page);
     await page.locator(".taskbar-app", { hasText: "파일 탐색기" }).first().click();
     await dragExplorer.waitFor({ state: "visible" });
-    await page.waitForTimeout(400);
+    await settle(page);
     const restoreDragExplorer = dragExplorer.getByRole("button", {
       name: /이전 크기로 복원/,
     });
     if ((await restoreDragExplorer.count()) > 0) {
       await restoreDragExplorer.click();
-      await page.waitForTimeout(400);
+      await settle(page);
     }
     const dropPoint = await page.evaluate(() => {
       const taskbar = document.querySelector(".taskbar")?.getBoundingClientRect();
@@ -4083,10 +4142,10 @@ async function runSmoke(baseUrl) {
     // An earlier step may already have played this board, so restart it and pick
     // a cell that is actually still covered.
     await minesLayout.getByRole("button", { name: "새 게임" }).click();
-    await page.waitForTimeout(300);
+    await settle(page);
     assert((await cellHeights()).length === 1, "Minefield cells started at mixed heights");
     await minesLayout.locator(".mine-cell:not([disabled])").first().click();
-    await page.waitForTimeout(400);
+    await settle(page);
     const revealedHeights = await cellHeights();
     assert(
       revealedHeights.length === 1,
@@ -4163,14 +4222,13 @@ async function runSmoke(baseUrl) {
     // An earlier step may have left another section showing; 개인 설정 is the one
     // whose content exceeds the window.
     await settingsWindow.getByRole("button", { name: "개인 설정" }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
     const settingsPane = settingsWindow.locator(".settings-content");
     await settingsPane.hover();
     await page.mouse.wheel(0, 400);
-    await page.waitForTimeout(250);
-    assert(
-      (await settingsPane.evaluate((el) => el.scrollTop)) > 0,
-      "Settings content did not scroll",
+    await assertEventually(
+      async () => (await settingsPane.evaluate((el) => el.scrollTop)) > 0,
+      async () => "Settings content did not scroll",
     );
 
     /*
@@ -4214,11 +4272,12 @@ async function runSmoke(baseUrl) {
     const backgroundMode = settingsWindow.getByRole("combobox", { exact: true, name: "배경" });
     const shownBefore = (await presetShown()) ?? galleryOrder[0];
     await backgroundMode.selectOption("slideshow");
-    await page.waitForTimeout(250);
-    assert(
-      (await settingsWindow.locator('.wallpaper-slideshow-strip [role="listitem"]').count()) ===
-        8,
-      "The gallery album does not show its eight pictures",
+    await assertEventually(
+      async () =>
+        (await settingsWindow
+          .locator('.wallpaper-slideshow-strip [role="listitem"]')
+          .count()) === 8,
+      async () => "The gallery album does not show its eight pictures",
     );
     assert(
       (await presetShown()) === shownBefore,
@@ -4226,17 +4285,16 @@ async function runSmoke(baseUrl) {
     );
     let showMenu = await openDesktopMenuAt();
     await showMenu.getByRole("menuitem", { name: "다음 바탕 화면 배경" }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
     const expectedNext = galleryOrder[(galleryOrder.indexOf(shownBefore) + 1) % 8];
     assert(
       (await presetShown()) === expectedNext,
       `다음 바탕 화면 배경 went from ${shownBefore} to ${await presetShown()}, not ${expectedNext}`,
     );
     await backgroundMode.selectOption("picture");
-    await page.waitForTimeout(250);
-    assert(
-      (await settingsWindow.locator(".wallpaper-options button").count()) === 8,
-      "사진 did not bring the gallery back",
+    await assertEventually(
+      async () => (await settingsWindow.locator(".wallpaper-options button").count()) === 8,
+      async () => "사진 did not bring the gallery back",
     );
     showMenu = await openDesktopMenuAt();
     assert(
@@ -4246,7 +4304,7 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("Escape");
     await showMenu.waitFor({ state: "detached" });
     await settingsWindow.getByRole("button", { name: "설정 닫기" }).click();
-    await page.waitForTimeout(200);
+    await settle(page);
 
     // Hiding a window must not throw away what the app holds. Minimizing used to
     // unmount it, so an unsaved draft, the calculator display, terminal
@@ -4264,7 +4322,7 @@ async function runSmoke(baseUrl) {
     // Windows marks an unsaved document with a leading asterisk and drops it
     // once the save lands. The title bar carried no dirty signal at all before.
     const draftTitle = draftNotepad.locator(".window-titlebar").first();
-    await page.waitForTimeout(120);
+    await settle(page);
     const dirtyTitle = await draftTitle.innerText();
     assert(
       dirtyTitle.startsWith("*") && dirtyTitle.endsWith("- 메모장"),
@@ -4277,13 +4335,13 @@ async function runSmoke(baseUrl) {
       } else {
         await page.keyboard.press(hide);
       }
-      await page.waitForTimeout(350);
+      await settle(page);
       if (hide === "Meta+d") {
         await page.keyboard.press("Meta+d");
       } else {
         await page.locator(".taskbar-app", { hasText: "메모장" }).first().click();
       }
-      await page.waitForTimeout(350);
+      await settle(page);
       assert(
         (await draftEditor.inputValue()) === "SMOKE UNSAVED DRAFT",
         `Hiding the window with ${hide} discarded the unsaved draft`,
@@ -4296,7 +4354,7 @@ async function runSmoke(baseUrl) {
     );
 
     await draftNotepad.getByRole("button", { name: "메모장 닫기" }).click();
-    await page.waitForTimeout(200);
+    await settle(page);
 
     // A window shrunk to its own minimum must leave every control reachable —
     // either inside the content box, or scrollable into view. The calculator
@@ -4319,7 +4377,7 @@ async function runSmoke(baseUrl) {
       await page.mouse.down();
       await page.mouse.move(startBox.x + 40, startBox.y + 40, { steps: 8 });
       await page.mouse.up();
-      await page.waitForTimeout(250);
+      await settle(page);
 
       const unreachable = await shrinkTarget.evaluate((frame) => {
         const content = frame.querySelector(".window-content");
@@ -4361,7 +4419,7 @@ async function runSmoke(baseUrl) {
         `${label} at its minimum size hides ${unreachable.length} control(s): ${unreachable.slice(0, 4).join(", ")}`,
       );
       await shrinkTarget.getByRole("button", { name: `${label} 닫기` }).click();
-      await page.waitForTimeout(150);
+      await settle(page);
     }
 
     await page.keyboard.press("Control+Shift+Escape");
@@ -4436,12 +4494,13 @@ async function runSmoke(baseUrl) {
     await desktopNameField.waitFor({ state: "visible" });
     await desktopNameField.fill("게임");
     await desktopNameField.press("Enter");
-    await page.waitForTimeout(300);
-    assert(
-      (await taskView.locator(".task-view-desktop-label").nth(1).innerText()).startsWith(
-        "게임",
-      ),
-      `이름 바꾸기 did not rename the desktop: ${await taskView.locator(".task-view-desktop-label").nth(1).innerText()}`,
+    await assertEventually(
+      async () =>
+        (await taskView.locator(".task-view-desktop-label").nth(1).innerText()).startsWith(
+          "게임",
+        ),
+      async () =>
+        `이름 바꾸기 did not rename the desktop: ${await taskView.locator(".task-view-desktop-label").nth(1).innerText()}`,
     );
     assert(
       await taskView.getByRole("button", { name: "게임 닫기" }).count(),
@@ -4481,7 +4540,7 @@ async function runSmoke(baseUrl) {
     const draggedCard = taskView.locator(".task-view-card").first();
     const draggedTitle = await draggedCard.locator(".task-view-card-title strong").innerText();
     await draggedCard.dragTo(taskView.locator(".task-view-desktop").nth(1));
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       (await taskView.locator(".task-view-card").count()) === cardsOnDesktopOne - 1,
       `Dragging ${draggedTitle} onto desktop 2 left it listed on desktop 1`,
@@ -4496,7 +4555,7 @@ async function runSmoke(baseUrl) {
       .nth(1)
       .locator(".task-view-desktop-close")
       .click();
-    await page.waitForTimeout(300);
+    await settle(page);
     // The names move up with their desktops. 게임 was desktop 2 and is gone, so
     // nothing may be called 게임 any more — the name must not slide onto
     // whichever desktop took its place.
@@ -4515,7 +4574,7 @@ async function runSmoke(baseUrl) {
     await taskView.waitFor({ state: "hidden" });
 
     await page.setViewportSize({ width: 390, height: 780 });
-    await page.waitForTimeout(250);
+    await settle(page);
     const mobileExplorerSidebar = await files.locator("aside").boundingBox();
     assert(
       mobileExplorerSidebar && mobileExplorerSidebar.height >= 54,
@@ -4542,7 +4601,7 @@ async function runSmoke(baseUrl) {
     // window it opens itself, so it cannot pull a window out from under a
     // later step.
     await page.setViewportSize({ height: 820, width: 1280 });
-    await page.waitForTimeout(300);
+    await settle(page);
     await page.keyboard.press("Control+Alt+R");
     await runDialog.waitFor({ state: "visible" });
     await runDialog.getByLabel("열기").fill("calc");
@@ -4561,10 +4620,9 @@ async function runSmoke(baseUrl) {
       .getByRole("button", { name: "계산기 닫기" })
       .first()
       .click();
-    await page.waitForTimeout(450);
-    assert(
-      (await page.locator(".task-view-card").count()) === cardsBefore - 1,
-      "Closing a Task View card did not remove the window",
+    await assertEventually(
+      async () => (await page.locator(".task-view-card").count()) === cardsBefore - 1,
+      async () => "Closing a Task View card did not remove the window",
     );
     assert(
       await page.locator(".task-view").isVisible(),
@@ -4581,7 +4639,7 @@ async function runSmoke(baseUrl) {
     await runDialog.getByRole("button", { name: "확인" }).click();
     const edgeTabs = page.locator('article[data-app-id="browser"]').first();
     await edgeTabs.waitFor({ state: "visible" });
-    await page.waitForTimeout(300);
+    await settle(page);
     const addressBar = edgeTabs.locator(".browser-toolbar input").first();
     const firstTabAddress = await addressBar.inputValue();
     assert(
@@ -4590,10 +4648,9 @@ async function runSmoke(baseUrl) {
     );
 
     await edgeTabs.locator(".browser-tab-strip > button").click();
-    await page.waitForTimeout(250);
-    assert(
-      (await edgeTabs.locator(".browser-tab").count()) === 2,
-      "The new tab button did not open a tab",
+    await assertEventually(
+      async () => (await edgeTabs.locator(".browser-tab").count()) === 2,
+      async () => "The new tab button did not open a tab",
     );
     assert(
       (await addressBar.inputValue()) === "",
@@ -4602,9 +4659,9 @@ async function runSmoke(baseUrl) {
 
     await addressBar.fill("example.com");
     await addressBar.press("Enter");
-    await page.waitForTimeout(500);
+    await settle(page);
     await edgeTabs.locator(".browser-tab").first().click();
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       (await addressBar.inputValue()) === firstTabAddress,
       `Switching back showed ${await addressBar.inputValue()} instead of the first tab's own address`,
@@ -4620,29 +4677,27 @@ async function runSmoke(baseUrl) {
     };
     assert((await currentBrowserTab()) === 0, "Clicking the first tab did not select it");
     await page.keyboard.press("ArrowRight");
-    await page.waitForTimeout(350);
-    assert(
-      (await currentBrowserTab()) === 1,
-      `ArrowRight did not move Edge's tab (selected ${await currentBrowserTab()})`,
+    await assertEventually(
+      async () => (await currentBrowserTab()) === 1,
+      async () => `ArrowRight did not move Edge's tab (selected ${await currentBrowserTab()})`,
     );
 
     await edgeTabs.locator(".browser-tab-close").last().click();
-    await page.waitForTimeout(300);
-    assert(
-      (await edgeTabs.locator(".browser-tab").count()) === 1,
-      "Closing a tab did not remove it",
+    await assertEventually(
+      async () => (await edgeTabs.locator(".browser-tab").count()) === 1,
+      async () => "Closing a tab did not remove it",
     );
     // Middle-click closes a tab; on the last one Edge goes home instead.
     await edgeTabs.locator(".browser-tab-strip > button").click();
-    await page.waitForTimeout(250);
+    await settle(page);
     await edgeTabs.locator(".browser-tab").last().click({ button: "middle" });
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       (await edgeTabs.locator(".browser-tab").count()) === 1,
       `Middle-clicking a tab did not close it (${await edgeTabs.locator(".browser-tab").count()} left)`,
     );
     await edgeTabs.getByRole("button", { name: "Microsoft Edge 닫기" }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
 
     // 작업 표시줄 창 배열: 창 나란히 정렬 tiles the visible windows edge to
     // edge without overlap; 창 계단식 배열 stairs them one title bar apart.
@@ -4651,7 +4706,7 @@ async function runSmoke(baseUrl) {
       await runDialog.waitFor({ state: "visible" });
       await runDialog.getByLabel("열기").fill(command);
       await runDialog.getByRole("button", { name: "확인" }).click();
-      await page.waitForTimeout(250);
+      await settle(page);
     }
     const arrangeFrames = page.locator(".window-frame:not(.window-thumbnail-clone):visible");
     const arrangeCount = await arrangeFrames.count();
@@ -4676,7 +4731,7 @@ async function runSmoke(baseUrl) {
       return shellMenu;
     };
     await (await openShellMenu()).getByRole("menuitem", { name: "창 나란히 정렬" }).click();
-    await page.waitForTimeout(350);
+    await settle(page);
     const tiled = await readFrameBoxes();
     const overlapping = tiled.some((first, index) =>
       tiled.some(
@@ -4694,7 +4749,7 @@ async function runSmoke(baseUrl) {
       `창 나란히 정렬 did not reach the right edge: ${JSON.stringify(tiled)}`,
     );
     await (await openShellMenu()).getByRole("menuitem", { name: "창 계단식 배열" }).click();
-    await page.waitForTimeout(350);
+    await settle(page);
     const stairs = (await readFrameBoxes()).sort((first, second) => first.z - second.z);
     for (let index = 1; index < stairs.length; index += 1) {
       assert(
@@ -4725,7 +4780,7 @@ async function runSmoke(baseUrl) {
       await page.mouse.move(moveTitle.x + 120 + step * 5, moveTitle.y + 12 + step * 3);
     }
     await page.mouse.up();
-    await page.waitForTimeout(250);
+    await settle(page);
     const generationAfterMove = await sharedPropsGeneration();
     assert(
       Number.isFinite(generationBeforeMove) && generationAfterMove === generationBeforeMove,
@@ -4748,7 +4803,7 @@ async function runSmoke(baseUrl) {
     const middleThird = snapFlyout.getByRole("menuitem", { name: /가운데 3분의 1/ });
     assert(await middleThird.count(), "The thirds layout is missing its middle column");
     await middleThird.click();
-    await page.waitForTimeout(450);
+    await settle(page);
     const thirdBox = await page.locator(".window-frame.is-active").boundingBox();
     const workAreaWidth = 1280;
     assert(
@@ -4784,7 +4839,7 @@ async function runSmoke(baseUrl) {
       }
       await page.mouse.move(shakeFrom.x, shakeFrom.y, { steps: 2 });
       await page.mouse.up();
-      await page.waitForTimeout(350);
+      await settle(page);
     };
     const minimizedFrames = page.locator(
       ".window-frame:not(.window-thumbnail-clone).is-minimized",
@@ -4814,7 +4869,7 @@ async function runSmoke(baseUrl) {
     const peekCard = page.locator(".taskbar-preview-card");
     await peekCard.waitFor({ state: "visible" });
     await peekCard.locator(".taskbar-preview-select").first().hover();
-    await page.waitForTimeout(400);
+    await settle(page);
     // The card must survive the pointer entering it — its close and switch
     // buttons were unreachable by mouse when the hide timer outlived the enter.
     assert(await peekCard.isVisible(), "Moving the pointer into the preview card closed it");
@@ -4832,26 +4887,25 @@ async function runSmoke(baseUrl) {
       `Peek left other windows at filter ${dimmedFilter}`,
     );
     await page.mouse.move(640, 300);
-    await page.waitForTimeout(400);
+    await settle(page);
     assert(
       (await page.locator(".window-layer.is-peeking").count()) === 0,
       "Peek stayed on after the pointer left the thumbnail",
     );
     await page.locator(".show-desktop-button").hover();
-    await page.waitForTimeout(650);
-    assert(
-      (await page.locator(".window-layer.is-peeking-desktop").count()) === 1,
-      "Resting on the show-desktop strip did not peek at the desktop",
+    await assertEventually(
+      async () => (await page.locator(".window-layer.is-peeking-desktop").count()) === 1,
+      async () => "Resting on the show-desktop strip did not peek at the desktop",
     );
     await page.mouse.move(640, 300);
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       (await page.locator(".window-layer.is-peeking-desktop").count()) === 0,
       "Desktop peek stayed on after the pointer left the strip",
     );
     for (const name of ["계산기 닫기", "메모장 닫기"]) {
       await page.getByRole("button", { name }).last().click();
-      await page.waitForTimeout(200);
+      await settle(page);
     }
 
     // 주소 표시줄: Ctrl+L turns the breadcrumbs into a path you can type.
@@ -4870,10 +4924,10 @@ async function runSmoke(baseUrl) {
     await pathInput.waitFor({ state: "visible" });
     await pathInput.fill("바탕 화면\\문서");
     await page.keyboard.press("Enter");
-    await page.waitForTimeout(300);
-    assert(
-      (await pathExplorer.getAttribute("aria-label"))?.startsWith("문서 - "),
-      `Typing a path did not navigate: ${await pathExplorer.getAttribute("aria-label")}`,
+    await assertEventually(
+      async () => (await pathExplorer.getAttribute("aria-label"))?.startsWith("문서 - "),
+      async () =>
+        `Typing a path did not navigate: ${await pathExplorer.getAttribute("aria-label")}`,
     );
     // A path that names no folder says so and stays put.
     await page.keyboard.press("Control+l");
@@ -4893,21 +4947,21 @@ async function runSmoke(baseUrl) {
       .locator("aside")
       .getByRole("treeitem", { name: "바탕 화면", exact: true })
       .click();
-    await page.waitForTimeout(250);
+    await settle(page);
 
     // 검색: the matched text is marked in the names it matched.
     await pathExplorer.getByLabel("파일 검색").fill("문");
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       (await pathExplorer.locator(".file-list mark").count()) > 0,
       "The search marked nothing in the names it matched",
     );
     await pathExplorer.getByLabel("파일 검색").fill("");
-    await page.waitForTimeout(200);
+    await settle(page);
 
     // 상태 표시줄: selecting a file shows what it weighs.
     await pathExplorer.locator(".file-list button").first().click();
-    await page.waitForTimeout(200);
+    await settle(page);
     const statusText = await pathExplorer.locator(".file-statusbar").innerText();
     assert(
       /1개 선택됨( · [\d.]+ ?(B|KB|MB))?/.test(statusText.replace(/\s+/g, " ")),
@@ -4927,62 +4981,69 @@ async function runSmoke(baseUrl) {
     const explorerTabs = tabExplorer.locator(".file-tab");
     assert((await explorerTabs.count()) === 1, "Explorer started with more than one tab");
     await tabExplorer.getByRole("button", { name: "새 탭" }).click();
-    await page.waitForTimeout(250);
-    assert((await explorerTabs.count()) === 2, "새 탭 did not add a tab");
+    await assertEventually(
+      async () => (await explorerTabs.count()) === 2,
+      async () => "새 탭 did not add a tab",
+    );
     await tabExplorer
       .locator("aside")
       .getByRole("treeitem", { name: "문서", exact: true })
       .click();
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       (await explorerTabs.nth(1).innerText()).includes("문서") &&
         (await explorerTabs.nth(0).innerText()).includes("바탕 화면"),
       `Navigating one tab moved the other: ${await explorerTabs.allInnerTexts()}`,
     );
     await explorerTabs.nth(0).click();
-    await page.waitForTimeout(250);
-    assert(
-      (await tabExplorer.getAttribute("aria-label"))?.startsWith("바탕 화면"),
-      "Switching back did not return to the first tab's folder",
+    await assertEventually(
+      async () => (await tabExplorer.getAttribute("aria-label"))?.startsWith("바탕 화면"),
+      async () => "Switching back did not return to the first tab's folder",
     );
     await explorerTabs
       .nth(1)
       .getByRole("button", { name: /탭 닫기/ })
       .click();
-    await page.waitForTimeout(250);
-    assert((await explorerTabs.count()) === 1, "Closing a tab did not remove it");
+    await assertEventually(
+      async () => (await explorerTabs.count()) === 1,
+      async () => "Closing a tab did not remove it",
+    );
     // Ctrl+T adds a tab, dragging reorders, Ctrl+Tab walks them, Ctrl+W closes.
     await page.keyboard.press("Control+t");
     await page.keyboard.press("Control+t");
-    await page.waitForTimeout(250);
-    assert((await explorerTabs.count()) === 3, "Ctrl+T did not add tabs");
+    await assertEventually(
+      async () => (await explorerTabs.count()) === 3,
+      async () => "Ctrl+T did not add tabs",
+    );
     await tabExplorer
       .locator("aside")
       .getByRole("treeitem", { name: "사진", exact: true })
       .click();
-    await page.waitForTimeout(250);
+    await settle(page);
     const beforeDrag = await explorerTabs.allInnerTexts();
     await explorerTabs.nth(2).dragTo(explorerTabs.nth(0));
-    await page.waitForTimeout(300);
+    await settle(page);
     const afterDrag = await explorerTabs.allInnerTexts();
     assert(
       afterDrag[0] === beforeDrag[2] && afterDrag.length === beforeDrag.length,
       `Dragging a tab did not move it: ${JSON.stringify(beforeDrag)} → ${JSON.stringify(afterDrag)}`,
     );
     await page.keyboard.press("Control+Tab");
-    await page.waitForTimeout(200);
+    await settle(page);
     assert(
       (await tabExplorer.locator(".file-tab.is-active").count()) === 1,
       "Ctrl+Tab left more than one tab active",
     );
     await page.keyboard.press("Control+w");
-    await page.waitForTimeout(250);
-    assert((await explorerTabs.count()) === 2, "Ctrl+W did not close a tab");
+    await assertEventually(
+      async () => (await explorerTabs.count()) === 2,
+      async () => "Ctrl+W did not close a tab",
+    );
 
     // role="tablist" promises the arrow keys, and a roving tab stop has to
     // carry focus with it or the next arrow comes from a stranded element.
     await explorerTabs.nth(0).click();
-    await page.waitForTimeout(200);
+    await settle(page);
     // Compared by node, not by name: Ctrl+T opens the new tab at the folder the
     // old one showed, so every tab in the strip can carry the same name.
     const focusedTabIndex = () =>
@@ -4996,39 +5057,43 @@ async function runSmoke(baseUrl) {
       return flags.indexOf("true");
     };
     await page.keyboard.press("ArrowRight");
-    await page.waitForTimeout(200);
-    assert(
-      (await selectedTabIndex()) === 1,
-      `ArrowRight did not move to the next tab (selected ${await selectedTabIndex()})`,
+    await assertEventually(
+      async () => (await selectedTabIndex()) === 1,
+      async () =>
+        `ArrowRight did not move to the next tab (selected ${await selectedTabIndex()})`,
     );
     assert(
       (await focusedTabIndex()) === 1,
       `ArrowRight left focus on tab ${await focusedTabIndex()} instead of the one it selected`,
     );
     await page.keyboard.press("Home");
-    await page.waitForTimeout(200);
-    assert((await selectedTabIndex()) === 0, "Home did not jump to the first tab");
+    await assertEventually(
+      async () => (await selectedTabIndex()) === 0,
+      async () => "Home did not jump to the first tab",
+    );
     // Up and Down belong to whatever is around a horizontal strip.
     await page.keyboard.press("ArrowDown");
-    await page.waitForTimeout(150);
+    await settle(page);
     assert((await selectedTabIndex()) === 0, "ArrowDown moved a horizontal tab strip");
 
     // Middle-click closes a tab in Explorer and in every browser.
     await explorerTabs.nth(1).click({ button: "middle" });
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       (await explorerTabs.count()) === 1,
       `Middle-clicking a tab did not close it (${await explorerTabs.count()} left)`,
     );
     await page.keyboard.press("Control+t");
-    await page.waitForTimeout(250);
-    assert((await explorerTabs.count()) === 2, "Ctrl+T did not restore a second tab");
+    await assertEventually(
+      async () => (await explorerTabs.count()) === 2,
+      async () => "Ctrl+T did not restore a second tab",
+    );
     // 폴더를 새 탭에서 열기
     await tabExplorer
       .locator("aside")
       .getByRole("treeitem", { name: "바탕 화면", exact: true })
       .click();
-    await page.waitForTimeout(250);
+    await settle(page);
     await tabExplorer
       .locator(".file-list button", { hasText: "문서" })
       .first()
@@ -5037,15 +5102,16 @@ async function runSmoke(baseUrl) {
       .locator(".file-context-menu")
       .getByRole("menuitem", { name: "새 탭에서 열기" })
       .click();
-    await page.waitForTimeout(300);
-    assert(
-      (await explorerTabs.count()) === 3 &&
+    await assertEventually(
+      async () =>
+        (await explorerTabs.count()) === 3 &&
         (await explorerTabs.last().innerText()).includes("문서"),
-      `새 탭에서 열기 did not open a tab at 문서: ${await explorerTabs.allInnerTexts()}`,
+      async () =>
+        `새 탭에서 열기 did not open a tab at 문서: ${await explorerTabs.allInnerTexts()}`,
     );
     for (let index = 0; index < 2; index += 1) {
       await page.keyboard.press("Control+w");
-      await page.waitForTimeout(200);
+      await settle(page);
     }
     assert((await explorerTabs.count()) === 1, "Ctrl+W did not leave one tab");
 
@@ -5064,7 +5130,7 @@ async function runSmoke(baseUrl) {
       .locator("aside")
       .getByRole("treeitem", { name: "바탕 화면", exact: true })
       .click();
-    await page.waitForTimeout(300);
+    await settle(page);
     const documentRows = tabExplorer.locator(".file-list button");
     await documentRows.filter({ hasText: "문서" }).first().click({ button: "right" });
     const systemFolderMenu = tabExplorer.locator(".file-context-menu");
@@ -5076,13 +5142,13 @@ async function runSmoke(baseUrl) {
       "압축 was disabled for a system folder, which only reads it",
     );
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(150);
+    await settle(page);
 
     await tabExplorer
       .locator("aside")
       .getByRole("treeitem", { name: "문서", exact: true })
       .click();
-    await page.waitForTimeout(300);
+    await settle(page);
     const namesBeforeZip = (await documentRows.allInnerTexts()).map(
       (text) => text.split("\n")[0],
     );
@@ -5105,7 +5171,7 @@ async function runSmoke(baseUrl) {
     await extractToast.waitFor({ state: "visible", timeout: 8000 });
     // The toast opens the folder: the entries have only just reached the shell.
     await extractToast.getByRole("button", { name: "폴더 열기" }).click();
-    await page.waitForTimeout(400);
+    await settle(page);
     assert(
       (await tabExplorer.getAttribute("aria-label"))?.startsWith(
         `${namesBeforeZip[0].replace(/\.[^.]+$/, "")} `,
@@ -5129,14 +5195,14 @@ async function runSmoke(baseUrl) {
       .locator("aside")
       .getByRole("treeitem", { name: "바탕 화면", exact: true })
       .click();
-    await page.waitForTimeout(300);
+    await settle(page);
     await tabExplorer
       .locator(".file-list button", { hasText: "문서" })
       .first()
       .click({ button: "right" });
     await zipMenu.waitFor({ state: "visible" });
     await zipMenu.getByRole("menuitem", { name: "빠른 액세스에 고정" }).click();
-    await page.waitForTimeout(300);
+    await settle(page);
     const pinnedRow = tabExplorer.locator(".file-sidebar-pin");
     assert(
       (await pinnedRow.count()) === 1 && (await pinnedRow.first().innerText()).includes("문서"),
@@ -5156,7 +5222,7 @@ async function runSmoke(baseUrl) {
       .click({ button: "right" });
     await zipMenu.waitFor({ state: "visible" });
     await zipMenu.getByRole("menuitem", { name: "빠른 액세스에서 제거" }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
     assert((await pinnedRow.count()) === 0, "고정 해제 left the sidebar row behind");
 
     /*
@@ -5165,7 +5231,7 @@ async function runSmoke(baseUrl) {
      */
     const explorerSearch = tabExplorer.getByPlaceholder(/검색/).first();
     await explorerSearch.fill("notes");
-    await page.waitForTimeout(400);
+    await settle(page);
     const searchNames = (await documentRows.allInnerTexts()).map((text) => text.split("\n")[0]);
     assert(
       searchNames.some((name) => name.startsWith("notes")),
@@ -5182,7 +5248,7 @@ async function runSmoke(baseUrl) {
       "The status bar did not say the search went into subfolders and file contents",
     );
     await explorerSearch.fill("");
-    await page.waitForTimeout(300);
+    await settle(page);
 
     // 폴더 메뉴: 새 창에서 열기 and 여기서 명령 프롬프트 열기.
     // Whichever tab survived the Ctrl+W pair may be showing another folder.
@@ -5203,7 +5269,7 @@ async function runSmoke(baseUrl) {
       .locator(".file-context-menu")
       .getByRole("menuitem", { name: "새 창에서 열기" })
       .click();
-    await page.waitForTimeout(400);
+    await settle(page);
     const spawnedExplorer = page.locator('article[data-app-id="files"]').last();
     assert(
       (await page.locator('article[data-app-id="files"]').count()) === explorersBefore + 1 &&
@@ -5227,10 +5293,10 @@ async function runSmoke(baseUrl) {
       .click();
     const spawnedTerminal = page.locator('article[data-app-id="terminal"]').last();
     await spawnedTerminal.waitFor({ state: "visible" });
-    await page.waitForTimeout(300);
-    assert(
-      (await spawnedTerminal.innerText()).includes("Desktop\\문서"),
-      `The prompt did not start in 문서: ${(await spawnedTerminal.innerText()).slice(-80)}`,
+    await assertEventually(
+      async () => (await spawnedTerminal.innerText()).includes("Desktop\\문서"),
+      async () =>
+        `The prompt did not start in 문서: ${(await spawnedTerminal.innerText()).slice(-80)}`,
     );
     const spawnedTerminalId = await spawnedTerminal.getAttribute("data-window-id");
     await spawnedTerminal.getByRole("button", { name: "명령 프롬프트 닫기" }).click();
@@ -5244,7 +5310,7 @@ async function runSmoke(baseUrl) {
     await runDialog.getByRole("button", { name: "확인" }).click();
     const plainTerminal = page.locator('article[data-app-id="terminal"]').last();
     await plainTerminal.waitFor({ state: "visible" });
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       !(await plainTerminal.innerText()).includes("Desktop\\문서"),
       "A plain prompt inherited the folder from an earlier 여기서 명령 프롬프트 열기",
@@ -5292,22 +5358,23 @@ async function runSmoke(baseUrl) {
       .locator("aside")
       .getByRole("treeitem", { name: "문서", exact: true })
       .click();
-    await page.waitForTimeout(300);
-    assert(
-      (await reloadedExplorer
-        .locator(".file-list button", { hasText: "캡처 후 저장" })
-        .count()) === 1,
-      "A file saved after a screenshot did not survive the reload",
+    await assertEventually(
+      async () =>
+        (await reloadedExplorer
+          .locator(".file-list button", { hasText: "캡처 후 저장" })
+          .count()) === 1,
+      async () => "A file saved after a screenshot did not survive the reload",
     );
     await reloadedExplorer
       .locator("aside")
       .getByRole("treeitem", { name: "사진", exact: true })
       .click();
-    await page.waitForTimeout(300);
-    assert(
-      (await reloadedExplorer.locator(".file-list button", { hasText: "스크린샷 " }).count()) >=
-        1,
-      "The screenshot itself did not survive the reload",
+    await assertEventually(
+      async () =>
+        (await reloadedExplorer
+          .locator(".file-list button", { hasText: "스크린샷 " })
+          .count()) >= 1,
+      async () => "The screenshot itself did not survive the reload",
     );
     await reloadedExplorer.getByRole("button", { name: "파일 탐색기 닫기" }).click();
     await reloadedExplorer.waitFor({ state: "detached" });
@@ -5320,11 +5387,11 @@ async function runSmoke(baseUrl) {
     const shortcutSettings = page.locator('article[data-app-id="settings"]').last();
     await shortcutSettings.waitFor({ state: "visible" });
     await shortcutSettings.getByRole("button", { name: "키보드 단축키" }).click();
-    await page.waitForTimeout(250);
-    assert(
-      (await shortcutSettings.locator(".shortcut-groups kbd").count()) > 20 &&
+    await assertEventually(
+      async () =>
+        (await shortcutSettings.locator(".shortcut-groups kbd").count()) > 20 &&
         (await shortcutSettings.innerText()).includes("PrintScreen"),
-      "설정 did not list the shell's shortcuts",
+      async () => "설정 did not list the shell's shortcuts",
     );
     await shortcutSettings.getByRole("button", { name: "설정 닫기" }).click();
     await shortcutSettings.waitFor({ state: "detached" });
@@ -5343,7 +5410,7 @@ async function runSmoke(baseUrl) {
     await page.mouse.down();
     await page.mouse.move(fillCanvasBox.x + 240, fillCanvasBox.y + 180, { steps: 8 });
     await page.mouse.up();
-    await page.waitForTimeout(250);
+    await settle(page);
     const filledMiddle = await fillPaint.locator(".paint-canvas").evaluate((node) => {
       const rect = node.getBoundingClientRect();
       const context = node.getContext("2d");
@@ -5357,12 +5424,12 @@ async function runSmoke(baseUrl) {
       `도형 채우기 left the middle unpainted: ${JSON.stringify(filledMiddle)}`,
     );
     await fillPaint.getByRole("button", { name: "그림판 닫기" }).click();
-    await page.waitForTimeout(300);
+    await settle(page);
     // 그림판's own save prompt is a .note-close-overlay, not a .window-dialog;
     // left standing it swallows every later click on the desktop.
     if (await page.locator(".note-close-overlay, .window-dialog").count()) {
       await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
-      await page.waitForTimeout(250);
+      await settle(page);
     }
 
     /*
@@ -5390,12 +5457,12 @@ async function runSmoke(baseUrl) {
     await page.mouse.down();
     await page.mouse.move(pickBox.x + 190, pickBox.y + 140, { steps: 8 });
     await page.mouse.up();
-    await page.waitForTimeout(200);
+    await settle(page);
     // A different colour is loaded, so the pick has something to change.
     await pickPaint.getByRole("button", { name: "#2563eb 색상 선택" }).click();
     await pickPaint.getByRole("button", { name: "스포이드" }).click();
     await page.mouse.click(pickBox.x + 145, pickBox.y + 115);
-    await page.waitForTimeout(200);
+    await settle(page);
     assert(
       (await pickColor.inputValue()) === "#ef4444",
       `스포이드 read ${await pickColor.inputValue()} off a #ef4444 stroke`,
@@ -5407,7 +5474,7 @@ async function runSmoke(baseUrl) {
     // Blank paper is white, not the transparent black the pixels hold.
     await pickPaint.getByRole("button", { name: "스포이드" }).click();
     await page.mouse.click(pickBox.x + 60, pickBox.y + 230);
-    await page.waitForTimeout(200);
+    await settle(page);
     assert(
       (await pickColor.inputValue()) === "#ffffff",
       `스포이드 read ${await pickColor.inputValue()} off blank paper`,
@@ -5447,18 +5514,18 @@ async function runSmoke(baseUrl) {
     });
     assert(scaledStroke > 0, "크기 조정 threw the drawing away instead of rescaling it");
     await page.keyboard.press("Control+z");
-    await page.waitForTimeout(400);
+    await settle(page);
     assert(
       (await canvasPixels()) === sizeBeforeResize,
       `실행 취소 left the canvas at ${await canvasPixels()}, not ${sizeBeforeResize}`,
     );
     await pickPaint.getByRole("button", { name: "그림판 닫기" }).click();
-    await page.waitForTimeout(300);
+    await settle(page);
     // 그림판's own save prompt is a .note-close-overlay, not a .window-dialog;
     // left standing it swallows every later click on the desktop.
     if (await page.locator(".note-close-overlay, .window-dialog").count()) {
       await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
-      await page.waitForTimeout(250);
+      await settle(page);
     }
 
     /*
@@ -5513,7 +5580,7 @@ async function runSmoke(baseUrl) {
       await page.mouse.down();
       await page.mouse.move(to.x, to.y, { steps: 8 });
       await page.mouse.up();
-      await page.waitForTimeout(150);
+      await settle(page);
     };
     const red = "239,68,68";
     const paper = "255,255,255";
@@ -5531,27 +5598,27 @@ async function runSmoke(baseUrl) {
     // Moving picks the pixels up and leaves paper behind.
     await dragOnBitmap(150, 130, 450, 130);
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(150);
+    await settle(page);
     assert(
       (await selectPixel(150, 130)) === paper && (await selectPixel(450, 130)) === red,
       `A moved selection left ${await selectPixel(150, 130)} behind and ${await selectPixel(450, 130)} where it went`,
     );
     assert(!(await cropButton.isEnabled()), "Escape left the selection standing");
     await page.keyboard.press("Control+z");
-    await page.waitForTimeout(500);
-    assert(
-      (await selectPixel(150, 130)) === red && (await selectPixel(450, 130)) === paper,
-      "One 실행 취소 did not take the move back",
+    await assertEventually(
+      async () =>
+        (await selectPixel(150, 130)) === red && (await selectPixel(450, 130)) === paper,
+      async () => "One 실행 취소 did not take the move back",
     );
 
     // Copy, paste (it lands at the top-left, floating), put it down elsewhere.
     await dragOnBitmap(90, 90, 210, 170);
     await page.keyboard.press(`${multiSelectModifier}+c`);
     await page.keyboard.press(`${multiSelectModifier}+v`);
-    await page.waitForTimeout(150);
+    await settle(page);
     await dragOnBitmap(60, 40, 660, 440);
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(150);
+    await settle(page);
     assert(
       (await selectPixel(660, 440)) === red && (await selectPixel(150, 130)) === red,
       `Copy and paste left ${await selectPixel(660, 440)} at the copy and ${await selectPixel(150, 130)} at the original`,
@@ -5559,7 +5626,7 @@ async function runSmoke(baseUrl) {
     // Delete takes the selection back to paper.
     await dragOnBitmap(590, 390, 730, 490);
     await page.keyboard.press("Delete");
-    await page.waitForTimeout(150);
+    await settle(page);
     assert(
       (await selectPixel(660, 440)) === paper,
       `Delete left ${await selectPixel(660, 440)} in the selection`,
@@ -5568,17 +5635,16 @@ async function runSmoke(baseUrl) {
     // 자르기: the canvas becomes the selection; one undo puts the size back.
     await dragOnBitmap(80, 80, 240, 180);
     await cropButton.click();
-    await page.waitForTimeout(250);
+    await settle(page);
     const [croppedWidth, croppedHeight] = (await selectCanvasSize()).split("x").map(Number);
     assert(
       Math.abs(croppedWidth - 160) <= 2 && Math.abs(croppedHeight - 100) <= 2,
       `자르기 left the canvas at ${croppedWidth}×${croppedHeight}, not about 160×100`,
     );
     await page.keyboard.press("Control+z");
-    await page.waitForTimeout(500);
-    assert(
-      (await selectCanvasSize()) === "1120x720",
-      `실행 취소 after 자르기 left ${await selectCanvasSize()}`,
+    await assertEventually(
+      async () => (await selectCanvasSize()) === "1120x720",
+      async () => `실행 취소 after 자르기 left ${await selectCanvasSize()}`,
     );
 
     // 회전 with nothing selected turns the whole picture and swaps its sides.
@@ -5587,7 +5653,7 @@ async function runSmoke(baseUrl) {
       .locator(".paint-rotate-menu button")
       .filter({ hasText: "오른쪽으로 90도 회전" })
       .click();
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       (await selectCanvasSize()) === "720x1120",
       `오른쪽으로 90도 회전 left ${await selectCanvasSize()}`,
@@ -5598,27 +5664,26 @@ async function runSmoke(baseUrl) {
       `The turned block is not where a right turn puts it: ${await selectPixel(590, 150)}`,
     );
     await page.keyboard.press("Control+z");
-    await page.waitForTimeout(500);
-    assert(
-      (await selectCanvasSize()) === "1120x720",
-      `실행 취소 after 회전 left ${await selectCanvasSize()}`,
+    await assertEventually(
+      async () => (await selectCanvasSize()) === "1120x720",
+      async () => `실행 취소 after 회전 left ${await selectCanvasSize()}`,
     );
 
     // Ctrl+A selects the whole picture with the 선택 tool.
     await page.keyboard.press(`${multiSelectModifier}+a`);
-    await page.waitForTimeout(150);
-    assert(
-      (await selectPaint
-        .getByRole("button", { name: "선택", exact: true })
-        .getAttribute("aria-pressed")) === "true" && (await cropButton.isEnabled()),
-      "Ctrl+A did not select the picture",
+    await assertEventually(
+      async () =>
+        (await selectPaint
+          .getByRole("button", { name: "선택", exact: true })
+          .getAttribute("aria-pressed")) === "true" && (await cropButton.isEnabled()),
+      async () => "Ctrl+A did not select the picture",
     );
     await page.keyboard.press("Escape");
     await selectPaint.getByRole("button", { name: "그림판 닫기" }).click();
-    await page.waitForTimeout(300);
+    await settle(page);
     if (await page.locator(".note-close-overlay, .window-dialog").count()) {
       await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
-      await page.waitForTimeout(250);
+      await settle(page);
     }
 
     // 스크린샷: PrintScreen pictures the desktop for real — the DOM drawn to a
@@ -5764,7 +5829,7 @@ async function runSmoke(baseUrl) {
     await page.mouse.move(280, 180);
     await page.mouse.down();
     await page.mouse.move(600, 420, { steps: 10 });
-    await page.waitForTimeout(150);
+    await settle(page);
     const regionBandBox = await page.locator(".region-capture-band").boundingBox();
     assert(
       regionBandBox && Math.round(regionBandBox.width) === 320,
@@ -5792,7 +5857,7 @@ async function runSmoke(baseUrl) {
       attempt < 40 && screenShotSize.width === regionShot.width;
       attempt += 1
     ) {
-      await page.waitForTimeout(400);
+      await settle(page);
       screenShotSize = await snip
         .locator(".snip-preview")
         .evaluate((image) => ({ height: image.naturalHeight, width: image.naturalWidth }));
@@ -5816,7 +5881,7 @@ async function runSmoke(baseUrl) {
     await snipSubject.waitFor({ state: "visible" });
     await page.keyboard.press("Meta+Shift+S");
     await snip.waitFor({ state: "visible" });
-    await page.waitForTimeout(600);
+    await settle(page);
     await snip.getByLabel("캡처 모드").selectOption("window");
     await snip.getByRole("button", { name: "새 캡처" }).click();
     await snip.locator(".snip-preview").waitFor({ state: "visible", timeout: 15000 });
@@ -5833,19 +5898,19 @@ async function runSmoke(baseUrl) {
     await snip.getByRole("button", { name: "캡처 도구 닫기" }).click();
     await snip.waitFor({ state: "detached" });
     await snipSubject.getByRole("button", { name: "메모장 닫기" }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
     // 그림판's own save prompt is a .note-close-overlay, not a .window-dialog;
     // left standing it swallows every later click on the desktop.
     if (await page.locator(".note-close-overlay, .window-dialog").count()) {
       await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
-      await page.waitForTimeout(250);
+      await settle(page);
     }
     // Alt+PrintScreen pictures the active window alone. Closing the tool hands
     // focus back to Explorer; its title bar is clear now if it did not.
     if (!(await shotExplorer.getAttribute("class"))?.includes("is-active")) {
       await shotExplorer.locator(".window-titlebar").click();
     }
-    await page.waitForTimeout(200);
+    await settle(page);
     /*
      * Counted, not matched: an earlier window capture in this same section
      * leaves its own 창 스크린샷 저장됨 toast on screen, and waiting for "a
@@ -5885,12 +5950,12 @@ async function runSmoke(baseUrl) {
     const scaleSettings = page.locator('article[data-app-id="settings"]').last();
     await scaleSettings.waitFor({ state: "visible" });
     await scaleSettings.getByRole("button", { name: "접근성" }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
     const rootFontSize = () =>
       page.evaluate(() => getComputedStyle(document.documentElement).fontSize);
     const baseFontSize = await rootFontSize();
     await scaleSettings.getByRole("radio", { name: /150/ }).click();
-    await page.waitForTimeout(350);
+    await settle(page);
     assert(
       parseFloat(await rootFontSize()) === parseFloat(baseFontSize) * 1.5,
       `텍스트 크기 150% left the root at ${await rootFontSize()} (was ${baseFontSize})`,
@@ -5909,10 +5974,9 @@ async function runSmoke(baseUrl) {
       "The taskbar did not follow the text size",
     );
     await scaleSettings.getByRole("radio", { name: /100/ }).click();
-    await page.waitForTimeout(300);
-    assert(
-      (await rootFontSize()) === baseFontSize,
-      "100% did not put the text size back where it started",
+    await assertEventually(
+      async () => (await rootFontSize()) === baseFontSize,
+      async () => "100% did not put the text size back where it started",
     );
 
     /*
@@ -5922,7 +5986,7 @@ async function runSmoke(baseUrl) {
      * desktop icon grid all have to leave the bar its edge.
      */
     await scaleSettings.getByRole("button", { name: "개인 설정" }).click();
-    await page.waitForTimeout(200);
+    await settle(page);
     /*
      * A window that has just maximized or restored is still running its
      * transform animation, and a box read mid-animation is both fractional and
@@ -5949,7 +6013,7 @@ async function runSmoke(baseUrl) {
       );
 
     await page.keyboard.press("Meta+ArrowLeft");
-    await page.waitForTimeout(250);
+    await settle(page);
     const snappedAtBottomBar = await activeWindowBox();
     assert(
       Math.round(snappedAtBottomBar.x) === 0,
@@ -5959,7 +6023,7 @@ async function runSmoke(baseUrl) {
     await dismissSnapAssist();
 
     await scaleSettings.getByRole("radio", { name: "왼쪽" }).click();
-    await page.waitForTimeout(400);
+    await settle(page);
     const sideBar = await barBox();
     assert(
       Math.round(sideBar.x) === 0 && Math.round(sideBar.width) === 68,
@@ -5976,7 +6040,7 @@ async function runSmoke(baseUrl) {
     );
 
     await page.keyboard.press("Meta+ArrowLeft");
-    await page.waitForTimeout(250);
+    await settle(page);
     const snappedBesideBar = await activeWindowBox();
     assert(
       Math.round(snappedBesideBar.x) === 68,
@@ -5989,7 +6053,7 @@ async function runSmoke(baseUrl) {
       width: window.innerWidth,
     }));
     await scaleSettings.getByRole("button", { name: "최대화" }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
     const maximizedBesideBar = await activeWindowBox();
     assert(
       Math.round(maximizedBesideBar.x) === 68 &&
@@ -5999,7 +6063,7 @@ async function runSmoke(baseUrl) {
     );
 
     await scaleSettings.getByRole("radio", { name: "아래쪽" }).click();
-    await page.waitForTimeout(400);
+    await settle(page);
     const bottomBar = await barBox();
     assert(
       Math.round(bottomBar.y + bottomBar.height) === viewport.height &&
@@ -6015,7 +6079,7 @@ async function runSmoke(baseUrl) {
       `Back at the bottom, the maximized window is ${maximizedAgain.width}x${maximizedAgain.height} at x=${maximizedAgain.x}`,
     );
     await scaleSettings.getByRole("button", { name: "복원" }).click();
-    await page.waitForTimeout(200);
+    await settle(page);
 
     /*
      * 작은 작업 표시줄 단추 and 자동 숨기기. Both are settings about the work
@@ -6024,9 +6088,9 @@ async function runSmoke(baseUrl) {
      * them.
      */
     await scaleSettings.getByRole("button", { name: "최대화" }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
     await scaleSettings.getByLabel(/작은 작업 표시줄 단추/).check();
-    await page.waitForTimeout(400);
+    await settle(page);
     const smallBar = await barBox();
     const smallMaximized = await activeWindowBox();
     assert(
@@ -6035,7 +6099,7 @@ async function runSmoke(baseUrl) {
       `작은 단추: bar ${smallBar.height}px, maximized ${smallMaximized.height}px of ${viewport.height}`,
     );
     await scaleSettings.getByLabel(/작은 작업 표시줄 단추/).uncheck();
-    await page.waitForTimeout(400);
+    await settle(page);
 
     await scaleSettings.getByLabel(/자동 숨기기/).check();
     await page.waitForTimeout(500);
@@ -6052,13 +6116,12 @@ async function runSmoke(baseUrl) {
 
     // Pointing at the edge brings it back, and moving away puts it away.
     await page.mouse.move(viewport.width / 2, viewport.height - 1);
-    await page.waitForTimeout(450);
-    assert(
-      Math.round((await barBox()).y + hiddenBar.height) === viewport.height,
-      "The bar did not come back when the pointer reached the edge",
+    await assertEventually(
+      async () => Math.round((await barBox()).y + hiddenBar.height) === viewport.height,
+      async () => "The bar did not come back when the pointer reached the edge",
     );
     await page.mouse.move(viewport.width / 2, viewport.height / 2);
-    await page.waitForTimeout(450);
+    await settle(page);
     assert(
       Math.round((await barBox()).y + hiddenBar.height) === viewport.height + 46,
       "The bar stayed out after the pointer left it",
@@ -6066,26 +6129,25 @@ async function runSmoke(baseUrl) {
 
     // An open Start menu keeps it out, or the menu would hang over an empty edge.
     await page.mouse.move(viewport.width / 2, viewport.height - 1);
-    await page.waitForTimeout(350);
+    await settle(page);
     await page.getByRole("button", { name: "시작 메뉴" }).click();
     await page.locator(".start-menu").waitFor({ state: "visible" });
     await page.mouse.move(viewport.width / 2, viewport.height / 2);
-    await page.waitForTimeout(450);
+    await settle(page);
     assert(
       Math.round((await barBox()).y + hiddenBar.height) === viewport.height,
       "The bar slid away from under its own Start menu",
     );
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(300);
+    await settle(page);
 
     await scaleSettings.getByLabel(/자동 숨기기/).uncheck();
-    await page.waitForTimeout(400);
-    assert(
-      Math.round((await activeWindowBox()).height) === viewport.height - 48,
-      "Turning 자동 숨기기 off did not give the bar its space back",
+    await assertEventually(
+      async () => Math.round((await activeWindowBox()).height) === viewport.height - 48,
+      async () => "Turning 자동 숨기기 off did not give the bar its space back",
     );
     await scaleSettings.getByRole("button", { name: "복원" }).click();
-    await page.waitForTimeout(200);
+    await settle(page);
 
     /*
      * 야간 조명. What matters is that the warm overlay actually paints, and that
@@ -6105,39 +6167,39 @@ async function runSmoke(baseUrl) {
       "야간 조명 was already painting before it was turned on",
     );
     await scaleSettings.getByRole("button", { name: "시스템" }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
     const nightToggle = scaleSettings
       .locator(".settings-toggle", { hasText: "야간 조명" })
       .first()
       .locator("input");
     await nightToggle.check();
-    await page.waitForTimeout(300);
+    await settle(page);
     const defaultWarmth = await nightAlpha();
     assert(
       defaultWarmth > 0 && defaultWarmth < 0.5,
       `야간 조명 painted ${defaultWarmth}; it should warm the screen without hiding it`,
     );
     await scaleSettings.getByLabel("야간 조명 세기").fill("100");
-    await page.waitForTimeout(300);
+    await settle(page);
     const fullWarmth = await nightAlpha();
     assert(
       fullWarmth > defaultWarmth,
       `세기 100 painted ${fullWarmth}, no warmer than the default ${defaultWarmth}`,
     );
     await nightToggle.uncheck();
-    await page.waitForTimeout(300);
+    await settle(page);
     assert((await nightAlpha()) === 0, "야간 조명 kept painting after it was turned off");
     await nightToggle.check();
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       (await nightAlpha()) === fullWarmth,
       "야간 조명 forgot its strength when it was switched off and on",
     );
     await nightToggle.uncheck();
-    await page.waitForTimeout(250);
+    await settle(page);
 
     await scaleSettings.getByRole("button", { name: "설정 닫기" }).click();
-    await page.waitForTimeout(200);
+    await settle(page);
 
     /*
      * 집중 지원: the notification still arrives, the toast is what is held
@@ -6146,10 +6208,9 @@ async function runSmoke(baseUrl) {
     await page.getByRole("button", { name: "빠른 설정 열기" }).click();
     await page.getByRole("button", { name: /집중 지원/ }).click();
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(250);
-    assert(
-      await page.getByRole("button", { name: /집중 지원 켜짐/ }).count(),
-      "The tray does not say 집중 지원 is on",
+    await assertEventually(
+      async () => await page.getByRole("button", { name: /집중 지원 켜짐/ }).count(),
+      async () => "The tray does not say 집중 지원 is on",
     );
     await page.keyboard.press("PrintScreen");
     await page.waitForTimeout(2500);
@@ -6169,13 +6230,12 @@ async function runSmoke(baseUrl) {
       "집중 지원 dropped the notification instead of holding the toast",
     );
     await quietCentre.locator(".notification-focus-banner button").click();
-    await page.waitForTimeout(250);
-    assert(
-      (await page.getByRole("button", { name: /집중 지원 켜짐/ }).count()) === 0,
-      "끄기 in the centre did not turn 집중 지원 off",
+    await assertEventually(
+      async () => (await page.getByRole("button", { name: /집중 지원 켜짐/ }).count()) === 0,
+      async () => "끄기 in the centre did not turn 집중 지원 off",
     );
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(200);
+    await settle(page);
 
     /*
      * 캘린더 일정: the tray calendar keeps appointments and the shell reminds
@@ -6203,7 +6263,7 @@ async function runSmoke(baseUrl) {
     });
     await calendarCentre.getByLabel(/일정 제목/).fill("치과 예약");
     await calendarCentre.getByLabel(/일정 제목/).press("Enter");
-    await page.waitForTimeout(200);
+    await settle(page);
     // A minute from now, so the reminder is armed rather than already past.
     const soonTime = await page.evaluate(() => {
       const soon = new Date(Date.now() + 60000);
@@ -6212,7 +6272,7 @@ async function runSmoke(baseUrl) {
     await calendarCentre.getByLabel("일정 시간 (선택)").fill(soonTime);
     await calendarCentre.getByLabel(/일정 제목/).fill("팀 회의");
     await calendarCentre.getByLabel(/일정 제목/).press("Enter");
-    await page.waitForTimeout(250);
+    await settle(page);
 
     const agendaRows = calendarCentre.locator(".tray-agenda-list li");
     const agenda = await agendaRows.allInnerTexts();
@@ -6242,7 +6302,7 @@ async function runSmoke(baseUrl) {
     await calendarCentre.getByLabel("일정 시간 (선택)").fill("00:01");
     await calendarCentre.getByLabel(/일정 제목/).fill("지난 일정");
     await calendarCentre.getByLabel(/일정 제목/).press("Enter");
-    await page.waitForTimeout(200);
+    await settle(page);
     await page.keyboard.press("Escape");
     await calendarCentre.waitFor({ state: "hidden" });
     await page.waitForTimeout(900);
@@ -6254,13 +6314,13 @@ async function runSmoke(baseUrl) {
     await calendarCentre.waitFor({ state: "visible" });
 
     await calendarCentre.getByRole("button", { name: "일정 삭제: 치과 예약" }).click();
-    await page.waitForTimeout(200);
+    await settle(page);
     assert(
       (await agendaRows.allInnerTexts()).every((row) => !row.includes("치과 예약")),
       "일정 삭제 left the entry on the agenda",
     );
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(200);
+    await settle(page);
 
     // The reminder itself, on a clock this test drives forward.
     const reminderContext = await browser.newContext({
@@ -6277,7 +6337,7 @@ async function runSmoke(baseUrl) {
       await reminderCentre.getByLabel("일정 시간 (선택)").fill("10:05");
       await reminderCentre.getByLabel(/일정 제목/).fill("팀 회의");
       await reminderCentre.getByLabel(/일정 제목/).press("Enter");
-      await reminderPage.waitForTimeout(200);
+      await settle(reminderPage);
       assert(
         (await reminderPage.locator(".toast").count()) === 0,
         "The reminder arrived before its moment",
@@ -6289,7 +6349,7 @@ async function runSmoke(baseUrl) {
        * notification still has to land in the centre.
        */
       await reminderContext.clock.fastForward("05:30");
-      await reminderPage.waitForTimeout(400);
+      await settle(reminderPage);
       assert(
         (await reminderPage.locator(".toast").count()) === 0,
         "A banner was raised on top of the open notification centre",
@@ -6303,11 +6363,11 @@ async function runSmoke(baseUrl) {
       await reminderCentre.getByLabel("일정 시간 (선택)").fill("10:20");
       await reminderCentre.getByLabel(/일정 제목/).fill("점심 약속");
       await reminderCentre.getByLabel(/일정 제목/).press("Enter");
-      await reminderPage.waitForTimeout(200);
+      await settle(reminderPage);
       await reminderPage.keyboard.press("Escape");
       await reminderCentre.waitFor({ state: "hidden" });
       await reminderContext.clock.fastForward("15:10");
-      await reminderPage.waitForTimeout(400);
+      await settle(reminderPage);
       const reminderToasts = await reminderPage.locator(".toast").allInnerTexts();
       assert(
         reminderToasts.some((toast) => toast.includes("점심 약속") && toast.includes("10:20")),
@@ -6315,7 +6375,7 @@ async function runSmoke(baseUrl) {
       );
       const deliveredOnce = await reminderPage.locator(".toast").count();
       await reminderContext.clock.fastForward("05:00");
-      await reminderPage.waitForTimeout(400);
+      await settle(reminderPage);
       assert(
         (await reminderPage.locator(".toast").count()) <= deliveredOnce,
         "The reminder arrived a second time",
@@ -6340,10 +6400,10 @@ async function runSmoke(baseUrl) {
     const notificationsBefore = await centre.locator(".notification-item").count();
     await centre.locator(".notification-item").first().hover();
     await centre.locator(".notification-dismiss").first().click();
-    await page.waitForTimeout(250);
-    assert(
-      (await centre.locator(".notification-item").count()) === notificationsBefore - 1,
-      "Dismissing one notification did not drop exactly one",
+    await assertEventually(
+      async () =>
+        (await centre.locator(".notification-item").count()) === notificationsBefore - 1,
+      async () => "Dismissing one notification did not drop exactly one",
     );
     // The read marker pointed at the notification just dropped; counting the
     // whole history then brought the badge back.
@@ -6401,7 +6461,7 @@ async function runSmoke(baseUrl) {
       .locator(".file-context-menu")
       .getByRole("menuitem", { name: "바탕 화면 배경으로 설정" })
       .click();
-    await page.waitForTimeout(250);
+    await settle(page);
     const desktopPicture = await wallpaperPictureSize(page.locator("main.desktop"));
     assert(
       desktopPicture === "1280x820",
@@ -6423,7 +6483,7 @@ async function runSmoke(baseUrl) {
       .locator(".file-context-menu")
       .getByRole("menuitem", { name: "삭제" })
       .click();
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       /wallpapers\/[a-z-]+\.jpg/.test(await wallpaperVar()),
       `Deleting the wallpaper picture left ${(await wallpaperVar()).slice(0, 40)}`,
@@ -6437,8 +6497,8 @@ async function runSmoke(baseUrl) {
     );
     // Minimizing folds the window towards its taskbar button: the frame carries
     // the vector the animation ends on.
+    // Read mid-motion, not after it settles: the vector goes with the motion.
     await shotExplorer.getByRole("button", { name: "파일 탐색기 최소화" }).click();
-    await page.waitForTimeout(80);
     const minimizeVector = await shotExplorer.evaluate((node) => [
       node.style.getPropertyValue("--minimize-dx"),
       node.style.getPropertyValue("--minimize-dy"),
@@ -6447,9 +6507,9 @@ async function runSmoke(baseUrl) {
       minimizeVector[0].endsWith("px") && minimizeVector[1].endsWith("px"),
       `Minimize did not aim at the taskbar button: ${JSON.stringify(minimizeVector)}`,
     );
-    await page.waitForTimeout(300);
+    await settle(page);
+    // Mid-motion again: the class goes when the unfold ends.
     await page.locator('.taskbar button[data-app-id="files"]').click();
-    await page.waitForTimeout(30);
     assert(
       (await shotExplorer.getAttribute("class"))?.includes("is-restoring"),
       "Restoring from the taskbar did not play the unfold animation",
@@ -6471,7 +6531,7 @@ async function runSmoke(baseUrl) {
     await tiles
       .nth(2)
       .dragTo(tiles.nth(0), { targetPosition: { x: 4, y: tileBox.height / 2 } });
-    await page.waitForTimeout(300);
+    await settle(page);
     const tilesAfter = await tiles.evaluateAll((nodes) =>
       nodes.map((node) => node.textContent),
     );
@@ -6483,11 +6543,12 @@ async function runSmoke(baseUrl) {
     await tiles.nth(1).dragTo(tiles.nth(0), {
       targetPosition: { x: tileBox.width / 2, y: tileBox.height / 2 },
     });
-    await page.waitForTimeout(300);
-    assert(
-      (await tiles.count()) === tilesAfter.length - 1 &&
+    await assertEventually(
+      async () =>
+        (await tiles.count()) === tilesAfter.length - 1 &&
         (await dragMenu.locator(".start-tile-folder").count()) === 1,
-      `Dropping a tile on another did not make a folder (${await tiles.count()} tiles)`,
+      async () =>
+        `Dropping a tile on another did not make a folder (${await tiles.count()} tiles)`,
     );
     await dragMenu.locator(".start-tile-folder").click();
     const folderFlyout = dragMenu.locator(".start-folder-flyout");
@@ -6502,19 +6563,20 @@ async function runSmoke(baseUrl) {
     await tileFolderNameInput.waitFor({ state: "visible" });
     await tileFolderNameInput.fill("작업 도구");
     await page.keyboard.press("Enter");
-    await page.waitForTimeout(250);
-    assert(
-      (await dragMenu.locator(".start-tile-folder").innerText()).includes("작업 도구"),
-      `Renaming the folder did not take: ${await dragMenu.locator(".start-tile-folder").innerText()}`,
+    await assertEventually(
+      async () =>
+        (await dragMenu.locator(".start-tile-folder").innerText()).includes("작업 도구"),
+      async () =>
+        `Renaming the folder did not take: ${await dragMenu.locator(".start-tile-folder").innerText()}`,
     );
     await folderFlyout.getByRole("button", { name: "폴더 닫기" }).click();
     await dragMenu.locator(".start-tile-folder").click({ button: "right" });
     await page.getByRole("menuitem", { name: "그룹 해제" }).click();
-    await page.waitForTimeout(300);
-    assert(
-      (await tiles.count()) === tilesAfter.length &&
+    await assertEventually(
+      async () =>
+        (await tiles.count()) === tilesAfter.length &&
         (await dragMenu.locator(".start-tile-folder").count()) === 0,
-      "그룹 해제 did not put the tiles back",
+      async () => "그룹 해제 did not put the tiles back",
     );
     await page.keyboard.press("Escape");
     await dragMenu.waitFor({ state: "hidden" });
@@ -6534,7 +6596,7 @@ async function runSmoke(baseUrl) {
       const pinMenu = page.locator(".taskbar-context-menu");
       await pinMenu.waitFor({ state: "visible" });
       await pinMenu.getByRole("menuitem", { name: "작업 표시줄에 고정" }).click();
-      await page.waitForTimeout(200);
+      await settle(page);
     }
     const pinnedBefore = await readPinned();
     assert(
@@ -6542,7 +6604,7 @@ async function runSmoke(baseUrl) {
       `Reordering needs two pinned taskbar apps, found ${pinnedBefore.length}`,
     );
     await pinnedSlots.nth(1).dragTo(pinnedSlots.nth(0));
-    await page.waitForTimeout(300);
+    await settle(page);
     const pinnedAfter = await readPinned();
     assert(
       pinnedAfter[0] === pinnedBefore[1] && pinnedAfter.length === pinnedBefore.length,
@@ -6567,10 +6629,9 @@ async function runSmoke(baseUrl) {
     await clockMenu.getByRole("menuitem", { name: "날짜 및 시간 조정" }).click();
     const clockSettings = page.locator('article[data-app-id="settings"]').last();
     await clockSettings.waitFor({ state: "visible" });
-    await page.waitForTimeout(250);
-    assert(
-      (await clockSettings.innerText()).includes("24시간"),
-      "날짜 및 시간 조정 did not open 설정 at 시간 및 언어",
+    await assertEventually(
+      async () => (await clockSettings.innerText()).includes("24시간"),
+      async () => "날짜 및 시간 조정 did not open 설정 at 시간 및 언어",
     );
     await clockSettings.getByRole("button", { name: "설정 닫기" }).click();
     await clockSettings.waitFor({ state: "detached" });
@@ -6583,7 +6644,7 @@ async function runSmoke(baseUrl) {
     await sleepStartMenu.getByRole("menuitem", { name: "절전" }).click();
     const sleepScreen = page.locator(".sleep-screen");
     await sleepScreen.waitFor({ state: "visible" });
-    await page.waitForTimeout(150);
+    await settle(page);
     await page.keyboard.press("Space");
     await sleepScreen.waitFor({ state: "detached" });
     await unlockPocketDesk(page);
@@ -6628,7 +6689,7 @@ async function runSmoke(baseUrl) {
     );
     for (let i = 0; i < 2; i += 1) {
       await stickyFrames.last().getByRole("button", { name: "메모 삭제" }).click();
-      await page.waitForTimeout(250);
+      await settle(page);
     }
     await stickyFrames.first().waitFor({ state: "detached" });
 
@@ -6655,6 +6716,7 @@ async function runSmoke(baseUrl) {
           type: "touchMove",
           touchPoints: [{ x: x1 + ((x2 - x1) * i) / steps, y: y1 + ((y2 - y1) * i) / steps }],
         });
+        // One touch frame per display frame — the gesture's pace, not a wait.
         await touchPage.waitForTimeout(16);
       }
       await touchCdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
@@ -6737,7 +6799,7 @@ async function runSmoke(baseUrl) {
      * All three are Windows' and none of them did anything here.
      */
     await page.keyboard.press("Meta+d");
-    await page.waitForTimeout(400);
+    await settle(page);
     const desktopViewClass = async () =>
       (await page.locator("main.desktop").getAttribute("class")).match(/desktop-view-\w+/)[0];
     const desktopIconSize = async () => {
@@ -6751,7 +6813,7 @@ async function runSmoke(baseUrl) {
     // the steps before it left behind.
     await page.mouse.wheel(0, 120);
     await page.mouse.wheel(0, 120);
-    await page.waitForTimeout(400);
+    await settle(page);
     assert(
       (await desktopViewClass()) === "desktop-view-small",
       `Ctrl+휠 down left the desktop at ${await desktopViewClass()}`,
@@ -6759,13 +6821,13 @@ async function runSmoke(baseUrl) {
     const iconAtSmall = await desktopIconSize();
     // The bottom holds rather than wrapping round to 큰 아이콘.
     await page.mouse.wheel(0, 120);
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       (await desktopViewClass()) === "desktop-view-small",
       `Ctrl+휠 past 작은 아이콘 wrapped to ${await desktopViewClass()}`,
     );
     await page.mouse.wheel(0, -120);
-    await page.waitForTimeout(350);
+    await settle(page);
     const iconAtMedium = await desktopIconSize();
     assert(
       (await desktopViewClass()) === "desktop-view-medium" && iconAtMedium > iconAtSmall,
@@ -6773,7 +6835,7 @@ async function runSmoke(baseUrl) {
     );
     await page.mouse.wheel(0, -120);
     await page.mouse.wheel(0, -120);
-    await page.waitForTimeout(400);
+    await settle(page);
     assert(
       (await desktopViewClass()) === "desktop-view-large",
       `Ctrl+휠 up twice more gave ${await desktopViewClass()}`,
@@ -6786,7 +6848,7 @@ async function runSmoke(baseUrl) {
     }[viewBeforeWheel];
     for (let step = 0; step < stepsBack; step += 1) {
       await page.mouse.wheel(0, 120);
-      await page.waitForTimeout(250);
+      await settle(page);
     }
     await page.keyboard.up("Control");
     assert(
@@ -6807,7 +6869,7 @@ async function runSmoke(baseUrl) {
 
     // Shift+클릭 on a taskbar button opens another window of that app.
     await page.keyboard.press("Meta+e");
-    await page.waitForTimeout(600);
+    await settle(page);
     const filesWindows = () => page.locator('article[data-app-id="files"]').count();
     const filesBeforeShift = await filesWindows();
     await page
@@ -6815,16 +6877,16 @@ async function runSmoke(baseUrl) {
       .filter({ hasText: "파일 탐색기" })
       .first()
       .click({ modifiers: ["Shift"] });
-    await page.waitForTimeout(700);
-    assert(
-      (await filesWindows()) === filesBeforeShift + 1,
-      `Shift+클릭 left ${await filesWindows()} 파일 탐색기 windows, not ${filesBeforeShift + 1}`,
+    await assertEventually(
+      async () => (await filesWindows()) === filesBeforeShift + 1,
+      async () =>
+        `Shift+클릭 left ${await filesWindows()} 파일 탐색기 windows, not ${filesBeforeShift + 1}`,
     );
     // Put the extra windows away again; the steps after this one own the desktop.
     await page.keyboard.press("Alt+F4");
-    await page.waitForTimeout(300);
+    await settle(page);
     await page.keyboard.press("Alt+F4");
-    await page.waitForTimeout(300);
+    await settle(page);
 
     /*
      * 브라우저 단축키와 기록. The browser had no keyboard at all — no Ctrl+T,
@@ -6837,7 +6899,7 @@ async function runSmoke(baseUrl) {
     await runDialog.getByRole("button", { name: "확인" }).click();
     const keyEdge = page.locator('article[data-app-id="browser"]').last();
     await keyEdge.waitFor({ state: "visible" });
-    await page.waitForTimeout(400);
+    await settle(page);
     const keyAddress = keyEdge.getByLabel("웹 주소 또는 검색어");
     const keyTabs = () => keyEdge.locator("[role=tab]").count();
     const activeLabel = () =>
@@ -6845,23 +6907,25 @@ async function runSmoke(baseUrl) {
     for (const target of ["https://example.com/", "https://developer.mozilla.org/"]) {
       await keyAddress.fill(target);
       await keyAddress.press("Enter");
-      await page.waitForTimeout(400);
+      await settle(page);
     }
     const tabsBeforeKeys = await keyTabs();
     await keyEdge.locator("[role=tab]").first().focus();
     await page.keyboard.press("Control+t");
-    await page.waitForTimeout(300);
-    assert(
-      (await keyTabs()) === tabsBeforeKeys + 1 &&
+    await assertEventually(
+      async () =>
+        (await keyTabs()) === tabsBeforeKeys + 1 &&
         (await activeLabel()) === "웹 주소 또는 검색어",
-      "Ctrl+T did not open a tab with the caret in the address bar",
+      async () => "Ctrl+T did not open a tab with the caret in the address bar",
     );
     await page.keyboard.press("Control+w");
-    await page.waitForTimeout(300);
-    assert((await keyTabs()) === tabsBeforeKeys, "Ctrl+W did not close the tab");
+    await assertEventually(
+      async () => (await keyTabs()) === tabsBeforeKeys,
+      async () => "Ctrl+W did not close the tab",
+    );
     await keyEdge.locator("[role=tab]").first().focus();
     await page.keyboard.press("Control+l");
-    await page.waitForTimeout(150);
+    await settle(page);
     const addressSelection = await keyAddress.evaluate((node) => [
       node.selectionStart,
       node.selectionEnd,
@@ -6875,13 +6939,13 @@ async function runSmoke(baseUrl) {
     );
     await keyEdge.locator("[role=tab]").first().focus();
     await page.keyboard.press("Alt+ArrowLeft");
-    await page.waitForTimeout(300);
+    await settle(page);
     assert(
       (await keyAddress.inputValue()) === "https://example.com/",
       `Alt+← went to ${await keyAddress.inputValue()}`,
     );
     await page.keyboard.press("Alt+ArrowRight");
-    await page.waitForTimeout(300);
+    await settle(page);
 
     // Ctrl+H: newest first, searchable, a click opens the page here.
     await page.keyboard.press("Control+h");
@@ -6898,7 +6962,7 @@ async function runSmoke(baseUrl) {
       `기록 listed ${flyoutTitles.join(", ")}`,
     );
     await historyFlyout.getByLabel("기록 검색").fill("example");
-    await page.waitForTimeout(150);
+    await settle(page);
     // The search reads titles and addresses; an earlier step's visit to an
     // example-domains page on iana.org matches too, and should.
     const searchedTitles = await historyTitles();
@@ -6913,7 +6977,7 @@ async function runSmoke(baseUrl) {
       "Opening a 기록 entry did not go to it",
     );
     await keyEdge.getByRole("button", { name: "Microsoft Edge 닫기" }).click();
-    await page.waitForTimeout(300);
+    await settle(page);
 
     /*
      * 연결 프로그램. A file opened in its default app and nowhere else; the
@@ -6926,19 +6990,19 @@ async function runSmoke(baseUrl) {
     await runDialog.getByRole("button", { name: "확인" }).click();
     const openWithTerminal = page.locator('article[data-app-id="terminal"]').last();
     await openWithTerminal.waitFor({ state: "visible" });
-    await page.waitForTimeout(300);
+    await settle(page);
     await page.keyboard.type("cd 문서");
     await page.keyboard.press("Enter");
     await page.keyboard.type("echo 연결 프로그램 확인 > 연결 테스트.txt");
     await page.keyboard.press("Enter");
-    await page.waitForTimeout(300);
+    await settle(page);
     await openWithTerminal.getByRole("button", { name: "명령 프롬프트 닫기" }).click();
     await openWithTerminal.waitFor({ state: "detached" });
 
     await page.keyboard.press("Meta+e");
     const openWithFiles = page.locator('article[data-app-id="files"]').last();
     await openWithFiles.waitFor({ state: "visible" });
-    await page.waitForTimeout(400);
+    await settle(page);
     await openWithFiles.getByRole("option", { name: /^문서/ }).first().dblclick();
     const openWithRow = openWithFiles.getByRole("option", { name: /연결 테스트\.txt/ }).first();
     await openWithRow.waitFor({ state: "visible" });
@@ -6983,7 +7047,7 @@ async function runSmoke(baseUrl) {
       await dialog.locator(".open-with-remember input").check();
       await dialog.getByRole("button", { name: "확인", exact: true }).click();
       await dialog.waitFor({ state: "detached" });
-      await page.waitForTimeout(400);
+      await settle(page);
     };
     await chooseOther("명령 프롬프트");
     await page
@@ -6991,7 +7055,7 @@ async function runSmoke(baseUrl) {
       .last()
       .getByRole("button", { name: "명령 프롬프트 닫기" })
       .click();
-    await page.waitForTimeout(300);
+    await settle(page);
     const afterRemember = await openWithItems();
     assert(
       afterRemember.items[0] === "명령 프롬프트 (기본값)",
@@ -7005,13 +7069,13 @@ async function runSmoke(baseUrl) {
       .last()
       .getByRole("button", { name: "메모장 닫기" })
       .click();
-    await page.waitForTimeout(300);
+    await settle(page);
     if (await page.locator(".note-close-overlay, .window-dialog").count()) {
       await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
-      await page.waitForTimeout(250);
+      await settle(page);
     }
     await openWithFiles.getByRole("button", { name: "파일 탐색기 닫기" }).click();
-    await page.waitForTimeout(300);
+    await settle(page);
 
     /*
      * 창 관리 단축키: Win+Home, Win+Shift+↑/↓, Alt+Esc, F11, Win+Ctrl+D/F4.
@@ -7030,7 +7094,7 @@ async function runSmoke(baseUrl) {
     await runDialog.getByRole("button", { name: "확인" }).click();
     const chordCalc = page.locator('article[data-app-id="calculator"]').last();
     await chordCalc.waitFor({ state: "visible" });
-    await page.waitForTimeout(400);
+    await settle(page);
     const isMinimized = (frame) =>
       frame.evaluate((node) => node.classList.contains("is-minimized"));
     const frameBox = async (frame) => {
@@ -7045,16 +7109,14 @@ async function runSmoke(baseUrl) {
 
     // Win+Home: everything but the window in front goes; the second press brings it back.
     await page.keyboard.press("Meta+Home");
-    await page.waitForTimeout(500);
-    assert(
-      (await isMinimized(chordNote)) && !(await isMinimized(chordCalc)),
-      "Win+Home did not put away every window but the active one",
+    await assertEventually(
+      async () => (await isMinimized(chordNote)) && !(await isMinimized(chordCalc)),
+      async () => "Win+Home did not put away every window but the active one",
     );
     await page.keyboard.press("Meta+Home");
-    await page.waitForTimeout(500);
-    assert(
-      !(await isMinimized(chordNote)),
-      "The second Win+Home did not bring the windows back",
+    await assertEventually(
+      async () => !(await isMinimized(chordNote)),
+      async () => "The second Win+Home did not bring the windows back",
     );
     assert(
       (await chordCalc.getAttribute("class")).includes("is-active"),
@@ -7064,7 +7126,7 @@ async function runSmoke(baseUrl) {
     // Win+Shift+↑ stretches top to bottom and keeps the width; ↓ gives the height back.
     const calcBefore = await frameBox(chordCalc);
     await page.keyboard.press("Meta+Shift+ArrowUp");
-    await page.waitForTimeout(350);
+    await settle(page);
     const calcStretched = await frameBox(chordCalc);
     assert(
       calcStretched.y === 0 &&
@@ -7074,7 +7136,7 @@ async function runSmoke(baseUrl) {
       `Win+Shift+↑ gave ${JSON.stringify(calcStretched)} from ${JSON.stringify(calcBefore)}`,
     );
     await page.keyboard.press("Meta+Shift+ArrowDown");
-    await page.waitForTimeout(350);
+    await settle(page);
     assert(
       JSON.stringify(await frameBox(chordCalc)) === JSON.stringify(calcBefore),
       `Win+Shift+↓ left ${JSON.stringify(await frameBox(chordCalc))}`,
@@ -7082,7 +7144,7 @@ async function runSmoke(baseUrl) {
 
     // Alt+Esc: the front window goes to the back and the next comes forward.
     await page.keyboard.press("Alt+Escape");
-    await page.waitForTimeout(350);
+    await settle(page);
     assert(
       !(await chordCalc.getAttribute("class")).includes("is-active"),
       "Alt+Esc left the same window in front",
@@ -7098,11 +7160,11 @@ async function runSmoke(baseUrl) {
       .filter({ hasText: "계산기" })
       .first();
     await calcTaskbarButton.click();
-    await page.waitForTimeout(300);
+    await settle(page);
 
     // F11: the whole screen, taskbar included; F11 again restores the frame.
     await page.keyboard.press("F11");
-    await page.waitForTimeout(350);
+    await settle(page);
     const calcFull = await frameBox(chordCalc);
     const fullscreenViewport = page.viewportSize();
     assert(
@@ -7119,7 +7181,7 @@ async function runSmoke(baseUrl) {
     });
     assert(underTaskbar === "window", "F11 left the taskbar over the window");
     await page.keyboard.press("F11");
-    await page.waitForTimeout(350);
+    await settle(page);
     assert(
       JSON.stringify(await frameBox(chordCalc)) === JSON.stringify(calcBefore),
       `F11 again left ${JSON.stringify(await frameBox(chordCalc))}`,
@@ -7133,37 +7195,38 @@ async function runSmoke(baseUrl) {
         .locator(".task-view-desktop")
         .evaluateAll((els) => els.map((el) => el.classList.contains("is-active")));
       await page.keyboard.press("Escape");
-      await page.waitForTimeout(300);
+      await settle(page);
       return labels;
     };
     const desktopsBefore = await desktopLabels();
     await page.keyboard.press("Meta+Control+d");
-    await page.waitForTimeout(400);
+    await settle(page);
     const desktopsAfterAdd = await desktopLabels();
     assert(
       desktopsAfterAdd.length === desktopsBefore.length + 1 && desktopsAfterAdd.at(-1) === true,
       `Win+Ctrl+D left the desktops as ${JSON.stringify(desktopsAfterAdd)}`,
     );
     await page.keyboard.press("Meta+Control+F4");
-    await page.waitForTimeout(400);
+    await settle(page);
+    // Read once: desktopLabels opens Task View and closes it, not a thing to poll.
     assert(
       (await desktopLabels()).length === desktopsBefore.length,
       "Win+Ctrl+F4 did not close the desktop it was on",
     );
     // The two windows this opened go again.
     await chordCalc.getByRole("button", { name: "계산기 닫기" }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
     // A taskbar click on the window already in front minimizes it, so it is
     // only for bringing back one that is down.
     if (await isMinimized(chordNote)) {
       await page.locator(".taskbar-app").filter({ hasText: "메모장" }).first().click();
-      await page.waitForTimeout(300);
+      await settle(page);
     }
     await chordNote.getByRole("button", { name: "메모장 닫기" }).click();
-    await page.waitForTimeout(300);
+    await settle(page);
     if (await page.locator(".note-close-overlay, .window-dialog").count()) {
       await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
-      await page.waitForTimeout(250);
+      await settle(page);
     }
 
     /*
@@ -7177,7 +7240,7 @@ async function runSmoke(baseUrl) {
     await runDialog.getByRole("button", { name: "확인" }).click();
     const emojiNote = page.locator('article[data-app-id="notepad"]').last();
     await emojiNote.waitFor({ state: "visible" });
-    await page.waitForTimeout(400);
+    await settle(page);
     const emojiEditor = emojiNote.getByLabel("메모 내용");
     await emojiEditor.click();
     await emojiEditor.fill("오늘 기분은 ");
@@ -7188,7 +7251,7 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("Meta+.");
     const emojiPanel = page.locator(".emoji-panel");
     await emojiPanel.waitFor({ state: "visible" });
-    await page.waitForTimeout(200);
+    await settle(page);
     assert(
       (await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))) ===
         "이모지 검색",
@@ -7196,7 +7259,7 @@ async function runSmoke(baseUrl) {
     );
     // 검색 narrows to what the keyword names.
     await emojiPanel.getByLabel("이모지 검색").fill("커피");
-    await page.waitForTimeout(250);
+    await settle(page);
     const coffeeOnly = await emojiPanel
       .locator(".emoji-grid button")
       .evaluateAll((els) => els.map((el) => el.innerText));
@@ -7206,7 +7269,7 @@ async function runSmoke(baseUrl) {
     );
     await emojiPanel.locator(".emoji-grid button").first().click();
     await emojiPanel.waitFor({ state: "detached" });
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       (await emojiEditor.inputValue()) === "오늘 기분은 ☕",
       `이모지 패널 left the note as ${JSON.stringify(await emojiEditor.inputValue())}`,
@@ -7233,10 +7296,10 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("Escape");
     await emojiPanel.waitFor({ state: "detached" });
     await emojiNote.getByRole("button", { name: "메모장 닫기" }).click();
-    await page.waitForTimeout(300);
+    await settle(page);
     if (await page.locator(".note-close-overlay, .window-dialog").count()) {
       await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
-      await page.waitForTimeout(250);
+      await settle(page);
     }
 
     /*
@@ -7250,7 +7313,7 @@ async function runSmoke(baseUrl) {
     await runDialog.getByRole("button", { name: "확인" }).click();
     const clipNote = page.locator('article[data-app-id="notepad"]').last();
     await clipNote.waitFor({ state: "visible" });
-    await page.waitForTimeout(400);
+    await settle(page);
     const clipEditor = clipNote.getByLabel("메모 내용");
     await clipEditor.click();
     await clipEditor.fill("첫 번째 복사\n두 번째 복사");
@@ -7265,7 +7328,7 @@ async function runSmoke(baseUrl) {
         { end, start },
       );
       await page.keyboard.press(`${multiSelectModifier}+c`);
-      await page.waitForTimeout(200);
+      await settle(page);
     };
     await copyRange(0, 7);
     await copyRange(8, 15);
@@ -7294,7 +7357,7 @@ async function runSmoke(baseUrl) {
       });
       const beforeNativePaste = await clipEditor.inputValue();
       await page.keyboard.press("Meta+v");
-      await page.waitForTimeout(250);
+      await settle(page);
       assert(
         (await clipEditor.inputValue()) !== beforeNativePaste &&
           (await clipboardPanel.count()) === 0,
@@ -7320,7 +7383,7 @@ async function runSmoke(baseUrl) {
     await openClipboardPanel();
     await clipboardPanel.locator(".clipboard-entry").nth(1).click();
     await clipboardPanel.waitFor({ state: "detached" });
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       (await clipEditor.inputValue()) === "첫 번째 복사\n두 번째 복사첫 번째 복사",
       `클립보드 기록 pasted: ${JSON.stringify(await clipEditor.inputValue())}`,
@@ -7329,13 +7392,13 @@ async function runSmoke(baseUrl) {
     await openClipboardPanel();
     const clipBeforeRemove = (await clipboardRows()).length;
     await clipboardPanel.locator(".clipboard-remove").first().click();
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       (await clipboardRows()).length === clipBeforeRemove - 1,
       `지우기 left ${(await clipboardRows()).length} of ${clipBeforeRemove} rows`,
     );
     await clipboardPanel.getByRole("button", { name: "모두 지우기" }).click();
-    await page.waitForTimeout(250);
+    await settle(page);
     assert(
       (await clipboardPanel.innerText()).includes("복사한 내용이 여기에 표시됩니다"),
       `모두 지우기 left ${(await clipboardPanel.innerText()).replace(/\n/g, " | ")}`,
@@ -7343,10 +7406,10 @@ async function runSmoke(baseUrl) {
     await page.keyboard.press("Escape");
     await clipboardPanel.waitFor({ state: "detached" });
     await clipNote.getByRole("button", { name: "메모장 닫기" }).click();
-    await page.waitForTimeout(300);
+    await settle(page);
     if (await page.locator(".note-close-overlay, .window-dialog").count()) {
       await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
-      await page.waitForTimeout(250);
+      await settle(page);
     }
 
     /*
@@ -7362,7 +7425,7 @@ async function runSmoke(baseUrl) {
         .first()
         .getByRole("button", { name: "계산기 닫기" })
         .click();
-      await page.waitForTimeout(250);
+      await settle(page);
     }
     const setCalculatorStartup = async (wanted) => {
       await page.keyboard.press("Control+Shift+Escape");
@@ -7373,7 +7436,7 @@ async function runSmoke(baseUrl) {
       await calcRow.click();
       const toggle = startupManager.locator(".taskmgr-startup .taskmgr-actions button");
       if ((await toggle.innerText()).trim() === wanted) await toggle.click();
-      await page.waitForTimeout(150);
+      await settle(page);
       const state = (await calcRow.innerText()).includes("사용 안 함") ? "사용 안 함" : "사용";
       await startupManager.getByRole("button", { name: "작업 관리자 닫기" }).click();
       await startupManager.waitFor({ state: "detached" });
@@ -7385,7 +7448,7 @@ async function runSmoke(baseUrl) {
     );
     await page.keyboard.press("Meta+l");
     await unlockPocketDesk(page);
-    await page.waitForTimeout(600);
+    await settle(page);
     assert(
       (await calcWindows()) === 0,
       "Unlocking after Win+L ran 시작 프로그램, as if it were a new session",
@@ -7413,11 +7476,11 @@ async function runSmoke(baseUrl) {
     // Every window out of the way first: an open frame covers the icons. This
     // is the last thing the run does, so nothing needs them back.
     await page.keyboard.press("Meta+m");
-    await page.waitForTimeout(450);
+    await settle(page);
     const desktopBin = page.locator('[data-desktop-drop="trash"]');
     const binMenuItems = async () => {
       await desktopBin.click({ button: "right" });
-      await page.waitForTimeout(250);
+      await settle(page);
       const items = await page
         .locator(".desktop-icon-context-menu button")
         .evaluateAll((buttons) =>
@@ -7432,7 +7495,7 @@ async function runSmoke(baseUrl) {
     const binCount = async () => {
       const items = await binMenuItems();
       await page.keyboard.press("Escape");
-      await page.waitForTimeout(200);
+      await settle(page);
       const label = items.find((item) => item.startsWith("휴지통 비우기"));
       assert(label, `휴지통's menu offered no 비우기 at all: ${items.join(", ")}`);
       if (label.includes("(disabled)")) return 0;
@@ -7468,7 +7531,7 @@ async function runSmoke(baseUrl) {
         binBox.x + binBox.width / 2 + (step % 2),
         binBox.y + binBox.height / 2,
       );
-      await page.waitForTimeout(110);
+      await settle(page);
       const binClass = await desktopBin.getAttribute("class");
       binClasses.push(binClass);
       binLit = binLit || binClass.includes("is-drop-target");
@@ -7478,7 +7541,7 @@ async function runSmoke(baseUrl) {
       `휴지통 never lit up while ${droppableName} was held over it: from ${JSON.stringify(dropFrom)} to ${JSON.stringify(binBox)} :: ${binClasses.join(" / ")}`,
     );
     await page.mouse.up();
-    await page.waitForTimeout(400);
+    await settle(page);
     assert(
       (await page.locator(".desktop-icon", { hasText: droppableName }).count()) === 0,
       `Dropping ${droppableName} on 휴지통 left it on the desktop`,
@@ -7490,10 +7553,10 @@ async function runSmoke(baseUrl) {
 
     // The same 삭제 the menu uses, so one Ctrl+Z puts it back.
     await page.keyboard.press("Control+z");
-    await page.waitForTimeout(450);
-    assert(
-      (await page.locator(".desktop-icon", { hasText: droppableName }).count()) === 1,
-      `실행 취소 did not bring ${droppableName} back from 휴지통`,
+    await assertEventually(
+      async () =>
+        (await page.locator(".desktop-icon", { hasText: droppableName }).count()) === 1,
+      async () => `실행 취소 did not bring ${droppableName} back from 휴지통`,
     );
     assert(
       (await binCount()) === binCountBefore,
@@ -7506,7 +7569,7 @@ async function runSmoke(baseUrl) {
       steps: 18,
     });
     await page.mouse.up();
-    await page.waitForTimeout(400);
+    await settle(page);
     const filledBinItems = await binMenuItems();
     assert(
       filledBinItems.some((item) => item.startsWith("휴지통 비우기 (")),
@@ -7525,14 +7588,14 @@ async function runSmoke(baseUrl) {
       `휴지통 비우기 asked: ${(await emptyBinDialog.innerText()).replace(/\n/g, " | ")}`,
     );
     await emptyBinDialog.getByRole("button", { name: "휴지통 비우기" }).click();
-    await page.waitForTimeout(500);
+    await settle(page);
     const afterEmptyItems = await binMenuItems();
     assert(
       afterEmptyItems.some((item) => item === "휴지통 비우기(disabled)"),
       `휴지통 did not empty: ${afterEmptyItems.join(", ")}`,
     );
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(200);
+    await settle(page);
 
     assert(consoleErrors.length === 0, `Console errors found: ${consoleErrors.join(" | ")}`);
 
