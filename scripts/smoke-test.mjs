@@ -7194,7 +7194,14 @@ async function runSmoke(baseUrl) {
       const labels = await page
         .locator(".task-view-desktop")
         .evaluateAll((els) => els.map((el) => el.classList.contains("is-active")));
+      // Task View takes focus a frame after it opens and hears Escape only
+      // from inside. On CI the Escape landed first, the view stayed open, and
+      // the next Win+Tab — a toggle — closed it instead.
+      await page.waitForFunction(() =>
+        document.querySelector(".task-view")?.contains(document.activeElement),
+      );
       await page.keyboard.press("Escape");
+      await page.locator(".task-view").waitFor({ state: "detached" });
       await settle(page);
       return labels;
     };
