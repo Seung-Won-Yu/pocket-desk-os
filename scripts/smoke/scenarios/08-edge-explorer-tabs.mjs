@@ -323,7 +323,20 @@ export default async function run(ctx) {
   await page.keyboard.press("Enter");
   await page
     .locator(".toast", { hasText: "경로를 찾을 수 없음" })
-    .waitFor({ state: "visible" });
+    .waitFor({ state: "visible", timeout: 10000 })
+    .catch(async () => {
+      throw new Error(
+        `A bad path raised no 경로를 찾을 수 없음: ${JSON.stringify(
+          await page.evaluate(() => ({
+            focus:
+              document.activeElement?.getAttribute("aria-label") ??
+              document.activeElement?.tagName,
+            input: document.querySelector(".file-address input")?.value ?? null,
+            toasts: [...document.querySelectorAll(".toast strong")].map((el) => el.textContent),
+          })),
+        )}`,
+      );
+    });
   assert(
     (await pathExplorer.getAttribute("aria-label"))?.startsWith("문서 - "),
     "A bad path moved the window anyway",

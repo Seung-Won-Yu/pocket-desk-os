@@ -922,7 +922,15 @@ export default function FilesApp({
       (active ?? list).focus();
     };
     focusActive();
-    window.requestAnimationFrame(focusActive);
+    // The frame is for a commit that drops focus after this call. Only lost
+    // focus is put back: on a slow machine the frame can come after Ctrl+L
+    // has opened the address bar again, and taking focus off it closed it
+    // under the path being typed.
+    window.requestAnimationFrame(() => {
+      const current = document.activeElement;
+      if (current && current !== document.body && current !== document.documentElement) return;
+      focusActive();
+    });
   };
 
   /*

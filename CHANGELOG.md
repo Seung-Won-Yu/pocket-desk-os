@@ -274,6 +274,10 @@ All notable changes to PocketDesk OS are documented here.
 
 - **A write that does not fit is refused before it is attempted.** The save limit is a budget for the whole file system, and only screenshots measured against it; an archive or an imported folder used to fail later, at the write. Anything that adds bytes is measured first and refused out loud with the space it needed and the space that is left.
 
+### Fixed
+
+- **A second path typed into 파일 탐색기's address bar right after the first could vanish.** Going to a path puts focus back on the file list, once at once and once a frame later for the commit that drops the field. On a slow machine that frame came after Ctrl+L had opened the address bar again, took focus off it, and the bar closed under the half-typed path, so Enter did nothing. The later try now only puts back focus that was lost. Found by the parallel smoke on CI.
+
 ## 0.15.1
 
 0.15.0 confined a failed app chunk to its own window and offered 다시 시도
