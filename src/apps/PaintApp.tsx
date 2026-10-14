@@ -10,6 +10,7 @@ import {
   PaintBucket,
   Palette,
   Pipette,
+  Printer,
   Redo2,
   Save,
   RotateCw,
@@ -22,6 +23,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { trapDialogFocus } from "../shell/dialogFocus";
+import { onPrintRequest, printImage } from "./printFrame";
 import { useEffect, useRef, useState } from "react";
 import {
   getResizedDimensions,
@@ -808,6 +810,20 @@ export default function PaintApp({
     return () => registerCloseGuard(windowId, null);
   }, [dirty, registerCloseGuard, windowId]);
 
+  /**
+   * 인쇄 (Ctrl+P): the picture as it stands, saved or not, on a page of its
+   * own — the bitmap, not the window around it.
+   */
+  const printPicture = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    void printImage({
+      name: activeCanvas?.name ?? "새 그림",
+      src: canvas.toDataURL("image/png"),
+    });
+  };
+  useEffect(() => onPrintRequest(windowId, printPicture));
+
   useEffect(() => {
     const saveFromShortcut = () => save();
     window.addEventListener(PAINT_SAVE_EVENT, saveFromShortcut);
@@ -1235,6 +1251,17 @@ export default function PaintApp({
           >
             <Save aria-hidden="true" size={16} />
             다른 이름으로 저장
+          </button>
+          <button
+            onClick={() => {
+              setFileMenuOpen(false);
+              printPicture();
+            }}
+            role="menuitem"
+            type="button"
+          >
+            <Printer aria-hidden="true" size={16} />
+            인쇄
           </button>
         </div>
       )}

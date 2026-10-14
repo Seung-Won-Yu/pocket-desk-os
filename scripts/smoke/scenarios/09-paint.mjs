@@ -350,6 +350,46 @@ export default async function run(ctx) {
     async () => `실행 취소 after 회전 left ${await selectCanvasSize()}`,
   );
 
+  /*
+   * 인쇄. Ctrl+P used to go to the host browser, which printed the desktop.
+   * The picture is printed from a frame of its own — exactly the bitmap, saved
+   * or not — and focus comes back to the window, or every key after the
+   * dialog went to the invisible frame.
+   */
+  const focusBeforePrint = await page.evaluate(() => {
+    window.__printKeyPrevented = null;
+    // Not `once`: Control's own keydown comes first.
+    window.addEventListener("keydown", (event) => {
+      if (event.key.toLowerCase() === "p") window.__printKeyPrevented = event.defaultPrevented;
+    });
+    return document.activeElement?.className ?? null;
+  });
+  await page.keyboard.press("Control+p");
+  await page.waitForFunction(
+    () =>
+      document.querySelector("iframe.image-print-frame")?.contentDocument?.querySelector("img")
+        ?.complete,
+  );
+  const printed = await selectPaint.evaluate((frame) => {
+    const page = document.querySelector("iframe.image-print-frame").contentDocument;
+    const image = page.querySelector("img");
+    return {
+      focus: document.activeElement?.className ?? null,
+      prevented: window.__printKeyPrevented,
+      sameBitmap: image.src === frame.querySelector(".paint-canvas").toDataURL("image/png"),
+      size: `${image.naturalWidth}x${image.naturalHeight}`,
+      title: page.title,
+    };
+  });
+  assert(
+    printed.prevented === true &&
+      printed.sameBitmap &&
+      printed.size === "1120x720" &&
+      printed.title.endsWith(".canvas") &&
+      printed.focus === focusBeforePrint,
+    `Ctrl+P in 그림판 printed ${JSON.stringify({ ...printed, focusBeforePrint })}`,
+  );
+
   // Ctrl+A selects the whole picture with the 선택 tool.
   await page.keyboard.press(`${multiSelectModifier}+a`);
   await assertEventually(
@@ -366,4 +406,41 @@ export default async function run(ctx) {
     await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
     await settle(page);
   }
+
+  // An app with nothing to print says so, as Ctrl+S does, and the host
+  // browser still does not get the key.
+  await page.keyboard.press("Control+Alt+R");
+  await runDialog.waitFor({ state: "visible" });
+  await runDialog.getByLabel("열기").fill("calc");
+  await runDialog.getByRole("button", { name: "확인" }).click();
+  const printCalculator = page.locator('article[data-app-id="calculator"]').last();
+  await printCalculator.waitFor({ state: "visible" });
+  await printCalculator.locator(".window-titlebar").click();
+  const framesBefore = await page
+    .locator("iframe.image-print-frame, iframe.note-print-frame")
+    .count();
+  await page.keyboard.press("Control+p");
+  await page
+    .locator(".toast", { hasText: "인쇄할 수 없음" })
+    .filter({ hasText: "계산기" })
+    .waitFor({ state: "visible" });
+  assert(
+    (await page.locator("iframe.image-print-frame, iframe.note-print-frame").count()) ===
+      framesBefore,
+    "Ctrl+P in 계산기 built a print page",
+  );
+  await printCalculator.getByRole("button", { name: "계산기 닫기" }).click();
+
+  // The host browser's own print (its menu) pictured the desktop in ink. The
+  // printed page now carries one line saying where printing is instead.
+  await page.emulateMedia({ media: "print" });
+  const printedDesktop = await page.evaluate(() => ({
+    note: getComputedStyle(document.body, "::before").content,
+    root: getComputedStyle(document.getElementById("root")).display,
+  }));
+  await page.emulateMedia({ media: null });
+  assert(
+    printedDesktop.root === "none" && printedDesktop.note.includes("인쇄되지 않습니다"),
+    `A host print still pictured the desktop: ${JSON.stringify(printedDesktop)}`,
+  );
 }

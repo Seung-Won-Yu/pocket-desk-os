@@ -304,14 +304,28 @@ export default async function run(ctx) {
   await page.keyboard.type(" 인쇄할 글");
   await page.keyboard.press("Control+p");
   await settle(page);
+  // With the title bar focused rather than the editor the key used to reach
+  // the host browser, which printed the desktop. The shell routes it now.
+  await desktopNotepad.locator(".window-titlebar").click();
+  await page.keyboard.press("Control+p");
+  await settle(page);
   const notePrints = await page.evaluate(() => {
     window.__restorePrints();
     return window.__smokePrints;
   });
+  const printFocus = await page.evaluate(() => document.activeElement?.tagName);
   const printedValue = await printNoteEditor.inputValue();
   assert(
-    notePrints.length === 1 &&
-      notePrints[0].kind === "frame" &&
+    notePrints.length === 2 &&
+      notePrints[1].kind === "frame" &&
+      notePrints[1].text === printedValue &&
+      printFocus !== "IFRAME",
+    `Ctrl+P from the title bar printed ${JSON.stringify(
+      notePrints.map(({ css, ...rest }) => ({ ...rest, css: css?.slice(0, 20) })),
+    )}, focus ${printFocus}`,
+  );
+  assert(
+    notePrints[0].kind === "frame" &&
       notePrints[0].title === "notes.txt" &&
       notePrints[0].text === printedValue &&
       notePrints[0].css.includes('@top-center { content: "notes.txt";') &&

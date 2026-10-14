@@ -219,6 +219,7 @@ import { getNextDesktopViewMode } from "./shell/desktopViewMode";
 import { getStartupLaunchIds, setStartupAppEnabled } from "./shell/startupApps";
 import { useImageObjectUrl } from "./shell/useImageObjectUrl";
 import { closeNoteTabs } from "./apps/noteTabs";
+import { PRINTABLE_APP_IDS, requestPrint } from "./apps/printFrame";
 import {
   getAlbumSlides,
   getCurrentSlide,
@@ -5283,6 +5284,30 @@ export default function App() {
           window.dispatchEvent(new Event(redo ? PAINT_REDO_EVENT : PAINT_UNDO_EVENT));
           return;
         }
+      }
+
+      /*
+       * 인쇄. Left to the host browser, Ctrl+P printed the whole desktop —
+       * wallpaper, taskbar and every window. The active window prints what it
+       * holds; one with nothing to print says so, as Ctrl+S does.
+       */
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        !event.shiftKey &&
+        !event.altKey &&
+        event.key.toLowerCase() === "p"
+      ) {
+        event.preventDefault();
+        const activeWindow = windows.find((item) => item.id === activeWindowId);
+        if (activeWindow && PRINTABLE_APP_IDS.includes(activeWindow.appId)) {
+          requestPrint(activeWindow.id);
+        } else if (activeWindow) {
+          notify({
+            detail: `${getApp(activeWindow.appId).title}에는 인쇄할 문서가 없습니다.`,
+            title: "인쇄할 수 없음",
+          });
+        }
+        return;
       }
 
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "o") {

@@ -29,6 +29,31 @@ export default async function run(ctx) {
     (await shotPhotos.getAttribute("aria-label"))?.startsWith("스크린샷 "),
     `사진 opened ${await shotPhotos.getAttribute("aria-label")} instead of the screenshot`,
   );
+  // 인쇄: Ctrl+P prints the photo on screen, not the desktop around it.
+  await shotPhotos.locator(".window-titlebar").click();
+  await page.keyboard.press("Control+p");
+  await page.waitForFunction(
+    () =>
+      document.querySelector("iframe.image-print-frame")?.contentDocument?.querySelector("img")
+        ?.complete,
+  );
+  const printedPhoto = await page.evaluate(() => {
+    const printPage = document.querySelector("iframe.image-print-frame").contentDocument;
+    const image = printPage.querySelector("img");
+    return {
+      focusInFrame: document.activeElement?.tagName === "IFRAME",
+      size: `${image.naturalWidth}x${image.naturalHeight}`,
+      screen: `${window.innerWidth}x${window.innerHeight}`,
+      title: printPage.title,
+    };
+  });
+  assert(
+    printedPhoto.title.startsWith("스크린샷 ") &&
+      printedPhoto.size === printedPhoto.screen &&
+      !printedPhoto.focusInFrame,
+    `Ctrl+P in 사진 printed ${JSON.stringify(printedPhoto)}`,
+  );
+
   /*
    * 슬라이드 쇼. The viewer could step through pictures and never walk
    * through them by itself. Driven on a controlled clock — three seconds a

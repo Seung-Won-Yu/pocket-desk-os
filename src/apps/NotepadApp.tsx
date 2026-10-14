@@ -23,6 +23,7 @@ import {
 } from "./noteView";
 import { clamp } from "../utils/format";
 import { printNoteText } from "./notePrint";
+import { onPrintRequest } from "./printFrame";
 import {
   closeNoteTabs,
   getNoteTabDropSide,
@@ -325,6 +326,10 @@ export default function NotepadApp({
       saveNoteContentRef.current(noteId, pendingText);
     };
   }, []);
+
+  // Ctrl+P with the window frame focused rather than the editor: the shell
+  // takes it there and asks this window to print.
+  useEffect(() => onPrintRequest(windowId, printDocument));
 
   useEffect(() => {
     const saveFromShortcut = () => save();

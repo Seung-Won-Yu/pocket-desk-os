@@ -13002,3 +13002,32 @@ button {
   letter-spacing: 0.02em;
   padding: 6px 10px 2px;
 }
+
+/*
+ * The host browser's own print (its menu, not Ctrl+P, which the shell takes)
+ * pictured the whole desktop: wallpaper, taskbar and every window, in ink. The
+ * desktop is not a document, so that page says where printing is instead. An
+ * app's own print comes from a frame with a page of its own and is untouched.
+ */
+@media print {
+  html,
+  body {
+    background: #fff !important;
+    color: #000;
+    height: auto;
+    overflow: visible;
+  }
+
+  #root {
+    display: none !important;
+  }
+
+  body::before {
+    content: "PocketDesk 바탕 화면은 인쇄되지 않습니다. 메모장, 그림판, 사진에서 Ctrl+P를 누르면 그 문서나 그림이 인쇄됩니다.";
+    display: block;
+    font:
+      12pt/1.5 system-ui,
+      sans-serif;
+    padding: 20mm;
+  }
+}

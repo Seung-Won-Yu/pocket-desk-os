@@ -7,6 +7,7 @@ import {
   Pause,
   Pencil,
   Play,
+  Printer,
   RotateCcw,
   RotateCw,
   Trash2,
@@ -15,6 +16,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
+import { onPrintRequest, printImage } from "./printFrame";
 import { canRunSlideshow, getNextSlideIndex, SLIDESHOW_INTERVAL_MS } from "./slideshow";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
@@ -339,6 +341,22 @@ export default function PhotosApp({
     focusViewer();
   };
 
+  /** 인쇄 (Ctrl+P): the photo on its own page, fitted to the paper. */
+  const printPhoto = async () => {
+    if (!hasPhoto || !currentEntry?.content) {
+      notify({ detail: "인쇄할 사진이 없습니다.", title: "인쇄할 수 없음" });
+      return;
+    }
+    const printed = await printImage({ name: currentEntry.name, src: currentEntry.content });
+    if (!printed) {
+      notify({
+        detail: `${currentEntry.name}을(를) 인쇄하지 못했습니다.`,
+        title: "인쇄할 수 없음",
+      });
+    }
+  };
+  useEffect(() => onPrintRequest(windowId, () => void printPhoto()));
+
   const deleteCurrent = () => {
     if (!currentEntry) return;
     const nextEntry = sortedEntries[(currentIndex + 1) % total];
@@ -613,6 +631,17 @@ export default function PhotosApp({
           >
             <Wallpaper aria-hidden="true" size={15} />
             <span>배경으로 설정</span>
+          </button>
+          <button
+            aria-label="인쇄"
+            className="photos-command"
+            disabled={!hasPhoto}
+            onClick={() => void printPhoto()}
+            title="인쇄 (Ctrl+P)"
+            type="button"
+          >
+            <Printer aria-hidden="true" size={15} />
+            <span>인쇄</span>
           </button>
           <button
             aria-label="삭제"

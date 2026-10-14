@@ -5,6 +5,8 @@
  * margins, the file name at the top and 페이지 N at the foot.
  */
 
+import { openPrintFrame, printAndReturnFocus } from "./printFrame";
+
 export type NotePrintFont = { family: string; size: string; tabSize: string };
 
 /** Any text as a CSS string literal: quotes, backslashes and controls escaped. */
@@ -46,41 +48,22 @@ export function getNotePrintStyle(name: string, font: NotePrintFont) {
 }
 
 /**
- * Prints `text` from a hidden frame and hands back whether it could. The frame
- * is built with DOM calls, never a markup string: the page's CSP requires
- * Trusted Types for HTML sinks, and the text goes in as text either way. It
- * goes when the print dialog is done, or when the next print replaces it.
+ * Prints `text` from a hidden frame and hands back whether it could. The text
+ * goes in as text. The frame goes when the print dialog is done, or when the
+ * next print replaces it.
  */
 export function printNoteText(
   { font, name, text }: { font: NotePrintFont; name: string; text: string },
   doc: Document = document,
 ) {
-  doc.querySelectorAll("iframe.note-print-frame").forEach((frame) => frame.remove());
-  const frame = doc.createElement("iframe");
-  frame.className = "note-print-frame";
-  frame.title = "인쇄";
-  frame.setAttribute("aria-hidden", "true");
-  frame.tabIndex = -1;
-  frame.style.cssText =
-    "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none";
-  doc.body.append(frame);
-
-  const view = frame.contentWindow;
-  const page = frame.contentDocument;
-  if (!view || !page) {
-    frame.remove();
-    return false;
-  }
-  page.title = name;
-  const style = page.createElement("style");
-  style.textContent = getNotePrintStyle(name, font);
-  page.head.append(style);
-  const body = page.createElement("pre");
+  const opened = openPrintFrame(
+    { className: "note-print-frame", css: getNotePrintStyle(name, font), title: name },
+    doc,
+  );
+  if (!opened) return false;
+  const body = opened.page.createElement("pre");
   body.textContent = text;
-  page.body.append(body);
-
-  view.addEventListener("afterprint", () => frame.remove(), { once: true });
-  view.focus();
-  view.print();
+  opened.page.body.append(body);
+  printAndReturnFocus(opened, doc);
   return true;
 }
