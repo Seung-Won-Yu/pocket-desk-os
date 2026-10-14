@@ -13,7 +13,8 @@ export default async function run(ctx) {
   // canvas — and saves a PNG into 사진. The pixels must be a picture, not a
   // blank: sampled colours have to vary.
   await page.keyboard.press("PrintScreen");
-  const shotToast = page.locator(".toast", { hasText: "스크린샷 저장됨" });
+  // The newest — it is the last — when the shot before still has its toast up.
+  const shotToast = page.locator(".toast", { hasText: "스크린샷 저장됨" }).last();
   await shotToast.waitFor({ state: "visible", timeout: 15000 });
   // The toast carries the picture it is about.
   assert(
@@ -815,21 +816,28 @@ export default async function run(ctx) {
   );
   // Minimizing folds the window towards its taskbar button: the frame carries
   // the vector the animation ends on.
-  // Read mid-motion, not after it settles: the vector goes with the motion.
-  await shotExplorer.getByRole("button", { name: "파일 탐색기 최소화" }).click();
-  const minimizeVector = await shotExplorer.evaluate((node) => [
-    node.style.getPropertyValue("--minimize-dx"),
-    node.style.getPropertyValue("--minimize-dy"),
-  ]);
+  // Read mid-motion, in the same turn of the page as the click: the vector
+  // goes with the motion, and a loaded runner can let the motion end before
+  // a separate read arrives.
+  const minimizeVector = await shotExplorer.evaluate((node) => {
+    node.querySelector('[aria-label="파일 탐색기 최소화"]').click();
+    return [
+      node.style.getPropertyValue("--minimize-dx"),
+      node.style.getPropertyValue("--minimize-dy"),
+    ];
+  });
   assert(
     minimizeVector[0].endsWith("px") && minimizeVector[1].endsWith("px"),
     `Minimize did not aim at the taskbar button: ${JSON.stringify(minimizeVector)}`,
   );
   await settle(page);
-  // Mid-motion again: the class goes when the unfold ends.
-  await page.locator('.taskbar button[data-app-id="files"]').click();
+  // Mid-motion again, read right after React commits the click.
   assert(
-    (await shotExplorer.getAttribute("class"))?.includes("is-restoring"),
+    await shotExplorer.evaluate(async (node) => {
+      document.querySelector('.taskbar button[data-app-id="files"]').click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return node.classList.contains("is-restoring");
+    }),
     "Restoring from the taskbar did not play the unfold animation",
   );
   await shotExplorer.waitFor({ state: "visible" });

@@ -192,9 +192,14 @@ export default async function run(ctx) {
   await desktopThisPcWindow.waitFor({ state: "hidden" });
   await showDesktopButton.click();
   await desktopThisPcWindow.waitFor({ state: "visible" });
-  await desktopThisPcWindow.getByRole("button", { name: "내 PC 닫기" }).click();
+  // Click and read in one turn of the page: on a loaded runner the 170ms
+  // closing motion could end before a separate read arrived.
   assert(
-    await desktopThisPcWindow.evaluate((frame) => frame.classList.contains("is-closing")),
+    await desktopThisPcWindow.evaluate(async (frame) => {
+      frame.querySelector('[aria-label="내 PC 닫기"]').click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return frame.classList.contains("is-closing");
+    }),
     "Window close transition missing",
   );
   await desktopThisPcWindow.waitFor({ state: "hidden" });

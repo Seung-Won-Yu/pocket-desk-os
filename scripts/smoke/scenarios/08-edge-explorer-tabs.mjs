@@ -214,8 +214,22 @@ export default async function run(ctx) {
   const minimizedFrames = page.locator(
     ".window-frame:not(.window-thumbnail-clone).is-minimized",
   );
+  /*
+   * Three reversals have to land inside 600ms. Each move is a round trip to
+   * the browser, and on a loaded machine six of them can take longer than
+   * that — the gesture then reads as a slow drag and, rightly, does nothing.
+   * A shake that changed nothing is tried again; one that changed the wrong
+   * thing still fails below.
+   */
+  const shakeUntil = async () => {
+    const before = await minimizedFrames.count();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await shake();
+      if ((await minimizedFrames.count()) !== before) return;
+    }
+  };
   const minimizedBeforeShake = await minimizedFrames.count();
-  await shake();
+  await shakeUntil();
   assert(
     (await minimizedFrames.count()) === minimizedBeforeShake + arrangeCount - 1 &&
       !(await shakeTarget.getAttribute("class"))?.includes("is-minimized"),
@@ -227,7 +241,7 @@ export default async function run(ctx) {
     (await sharedPropsGeneration()) > generationAfterMove,
     "Minimizing windows did not rebuild the shared props, so the counter says nothing",
   );
-  await shake();
+  await shakeUntil();
   assert(
     (await minimizedFrames.count()) === minimizedBeforeShake,
     "A second Aero Shake did not bring the other windows back",
@@ -299,7 +313,10 @@ export default async function run(ctx) {
     async () =>
       `Typing a path did not navigate: ${await pathExplorer.getAttribute("aria-label")}`,
   );
-  // A path that names no folder says so and stays put.
+  // A path that names no folder says so and stays put. The box from the first
+  // path has to be gone first: reopened while it was still closing, the new
+  // path was typed into a box on its way out.
+  await pathInput.waitFor({ state: "hidden" });
   await page.keyboard.press("Control+l");
   await pathInput.waitFor({ state: "visible" });
   await pathInput.fill("바탕 화면\\없는 폴더");

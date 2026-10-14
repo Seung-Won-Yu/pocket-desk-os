@@ -17,14 +17,53 @@ export default async function run(ctx) {
   const guardEditor = guardNotepad.getByLabel("메모 내용");
   const closePrompt = page.getByRole("alertdialog");
 
+  /*
+   * 메모장 saves itself 850ms after the last keystroke, and then there is
+   * nothing to ask about. On a loaded runner two Playwright calls can be
+   * further apart than that, so typing, waiting for the guard and closing all
+   * happen in one go inside the page. The guard is registered by an effect of
+   * the render the text causes; the dirty dot comes from the render after it,
+   * so once the dot is there the guard is too. Page timers run in order, so
+   * the short polls always come before the 850ms autosave.
+   */
+  const typeAndClose = (text, close) =>
+    guardNotepad.evaluate(
+      async (frame, { value, close }) => {
+        const editor = frame.querySelector('[aria-label="메모 내용"]');
+        const setValue = Object.getOwnPropertyDescriptor(
+          HTMLTextAreaElement.prototype,
+          "value",
+        ).set;
+        setValue.call(editor, value);
+        editor.dispatchEvent(new Event("input", { bubbles: true }));
+        while (!frame.querySelector(".note-dirty-dot")) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+        if (close === "alt-f4") {
+          editor.dispatchEvent(
+            new KeyboardEvent("keydown", {
+              altKey: true,
+              bubbles: true,
+              cancelable: true,
+              code: "F4",
+              key: "F4",
+            }),
+          );
+        } else if (close === "system-menu") {
+          [...document.querySelectorAll('.window-system-menu [role="menuitem"]')]
+            .find((item) => item.textContent.trim() === "닫기")
+            .click();
+        } else {
+          frame.querySelector('[aria-label="메모장 닫기"]').click();
+        }
+      },
+      { value: text, close },
+    );
+
   for (const path of ["close-button", "alt-f4", "system-menu"]) {
-    await guardEditor.fill(`GUARD ${path}`);
-    if (path === "close-button") {
-      await guardNotepad.getByRole("button", { name: "메모장 닫기" }).click();
-    } else if (path === "alt-f4") {
+    if (path === "alt-f4") {
       await guardEditor.click();
-      await page.keyboard.press("Alt+F4");
-    } else {
+    } else if (path === "system-menu") {
       const titlebarBox = await guardNotepad.locator(".window-titlebar").boundingBox();
       await guardNotepad.locator(".window-titlebar").dispatchEvent("contextmenu", {
         bubbles: true,
@@ -33,9 +72,21 @@ export default async function run(ctx) {
         clientY: titlebarBox.y + 16,
       });
       await page.locator(".window-system-menu").waitFor({ state: "visible" });
-      await page.locator(".window-system-menu").getByRole("menuitem", { name: "닫기" }).click();
     }
-    await closePrompt.waitFor({ state: "visible" });
+    await typeAndClose(`GUARD ${path}`, path);
+    // Says what the window was doing when no prompt came, not only that.
+    await closePrompt.waitFor({ state: "visible", timeout: 10000 }).catch(async () => {
+      throw new Error(
+        `No save prompt after closing by ${path}: ${JSON.stringify({
+          editor: (await guardEditor.inputValue().catch(() => null))?.slice(0, 40),
+          title: await guardNotepad
+            .locator(".window-titlebar")
+            .innerText()
+            .catch(() => null),
+          windows: await guardNotepad.count(),
+        })}`,
+      );
+    });
     await closePrompt.getByRole("button", { name: "취소" }).click();
     await closePrompt.waitFor({ state: "hidden" });
     assert(
@@ -44,8 +95,7 @@ export default async function run(ctx) {
     );
   }
 
-  await guardEditor.fill("GUARD DISCARD");
-  await guardNotepad.getByRole("button", { name: "메모장 닫기" }).click();
+  await typeAndClose("GUARD DISCARD", "close-button");
   await closePrompt.waitFor({ state: "visible" });
   await closePrompt.getByRole("button", { name: "저장 안 함" }).click();
   await guardNotepad.waitFor({ state: "detached" });
@@ -165,13 +215,26 @@ export default async function run(ctx) {
   const draftNotepad = page.locator('article[data-app-id="notepad"]').first();
   await draftNotepad.waitFor({ state: "visible" });
   const draftEditor = draftNotepad.getByLabel("메모 내용");
-  await draftEditor.fill("SMOKE UNSAVED DRAFT");
 
   // Windows marks an unsaved document with a leading asterisk and drops it
   // once the save lands. The title bar carried no dirty signal at all before.
+  // The save is 850ms off, so the text goes in and the title is read inside
+  // the page, the same way the close guards above are reached.
   const draftTitle = draftNotepad.locator(".window-titlebar").first();
-  await settle(page);
-  const dirtyTitle = await draftTitle.innerText();
+  const dirtyTitle = await draftNotepad.evaluate(async (frame) => {
+    const editor = frame.querySelector('[aria-label="메모 내용"]');
+    const title = () => frame.querySelector(".window-titlebar").innerText;
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(
+      editor,
+      "SMOKE UNSAVED DRAFT",
+    );
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    const deadline = performance.now() + 2000;
+    while (!title().startsWith("*") && performance.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    return title();
+  });
   assert(
     dirtyTitle.startsWith("*") && dirtyTitle.endsWith("- 메모장"),
     `Unsaved Notepad title lacked the asterisk: ${JSON.stringify(dirtyTitle)}`,

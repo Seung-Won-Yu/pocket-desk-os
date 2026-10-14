@@ -176,8 +176,14 @@ async function runSmoke(baseUrl) {
         for (let next = queue.shift(); next; next = queue.shift()) {
           const result = await runScenario(browser, baseUrl, next);
           results.push(result);
+          // The cause goes out with the line: the run's own timeout can end
+          // the process before the stacks below are printed.
           console.log(
-            `${result.error ? "FAIL" : "ok  "} ${result.name} (${result.seconds.toFixed(1)}s)`,
+            `${result.error ? "FAIL" : "ok  "} ${result.name} (${result.seconds.toFixed(1)}s)${
+              result.error
+                ? ` ${String(result.error.message ?? result.error).split("\n")[0]}`
+                : ""
+            }`,
           );
         }
       }),

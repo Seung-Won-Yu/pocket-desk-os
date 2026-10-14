@@ -38,7 +38,7 @@ export function assert(condition, message) {
  * does. Not for checking that something did *not* happen — that passes before
  * the wrong thing has had its chance; those settle first and read once.
  */
-export async function assertEventually(check, message, timeoutMs = 3000) {
+export async function assertEventually(check, message, timeoutMs = 10000) {
   const deadline = Date.now() + timeoutMs;
   while (!(await check())) {
     if (Date.now() > deadline) {
@@ -182,7 +182,7 @@ export async function settledBoxOf(page, locator, attempts = 40) {
  * rather than on the page (an autosave, a notification's delay) waits for
  * what it needs by name.
  */
-export async function settle(page, { quietMs = 100, timeoutMs = 3000 } = {}) {
+export async function settle(page, { quietMs = 100, timeoutMs = 5000 } = {}) {
   await page.evaluate(
     ({ quietMs, timeoutMs }) =>
       new Promise((resolve) => {

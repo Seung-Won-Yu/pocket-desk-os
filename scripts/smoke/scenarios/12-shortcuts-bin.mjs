@@ -79,6 +79,7 @@ export default async function run(ctx) {
 
   // Shift+클릭 on a taskbar button opens another window of that app.
   await page.keyboard.press("Meta+e");
+  await page.locator('article[data-app-id="files"]').first().waitFor({ state: "visible" });
   await settle(page);
   const filesWindows = () => page.locator('article[data-app-id="files"]').count();
   const filesBeforeShift = await filesWindows();
@@ -560,18 +561,31 @@ export default async function run(ctx) {
   };
   if (process.platform === "darwin") {
     // ⌘V and ⌘X edit the text on a Mac; they used to open the panel and the
-    // power user menu instead and leave the text as it was.
+    // power user menu instead and leave the text as it was. What lands is
+    // whatever the system clipboard holds, and that is one for every scenario
+    // running beside this one — a screenshot elsewhere puts a picture on it —
+    // so the check is that the key reached the field untouched, not the text.
     await clipEditor.evaluate((node) => {
       node.focus();
       node.setSelectionRange(node.value.length, node.value.length);
+      window.__smokePasteKey = null;
+      window.addEventListener(
+        "keydown",
+        (event) => {
+          window.__smokePasteKey = { prevented: event.defaultPrevented };
+        },
+        { once: true },
+      );
     });
-    const beforeNativePaste = await clipEditor.inputValue();
     await page.keyboard.press("Meta+v");
     await settle(page);
+    const pasteKey = await page.evaluate(() => window.__smokePasteKey);
     assert(
-      (await clipEditor.inputValue()) !== beforeNativePaste &&
-        (await clipboardPanel.count()) === 0,
-      "⌘V in a text field opened 클립보드 기록 instead of pasting",
+      pasteKey?.prevented === false && (await clipboardPanel.count()) === 0,
+      `⌘V in a text field opened 클립보드 기록 instead of pasting: ${JSON.stringify({
+        key: pasteKey,
+        panel: await clipboardPanel.count(),
+      })}`,
     );
     await clipEditor.fill("첫 번째 복사\n두 번째 복사");
   }

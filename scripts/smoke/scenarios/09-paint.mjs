@@ -7,7 +7,10 @@ export default async function run(ctx) {
   // shell writes and the save limit is a budget for the whole snapshot; when
   // it overflowed, every later write failed and only the first said so.
   await page.keyboard.press("PrintScreen");
-  await page.locator(".toast", { hasText: "스크린샷 저장됨" }).waitFor({ state: "visible" });
+  await page
+    .locator(".toast", { hasText: "스크린샷 저장됨" })
+    .last()
+    .waitFor({ state: "visible" });
   await page.waitForTimeout(600);
   await page.keyboard.press("Control+Alt+R");
   await runDialog.waitFor({ state: "visible" });
