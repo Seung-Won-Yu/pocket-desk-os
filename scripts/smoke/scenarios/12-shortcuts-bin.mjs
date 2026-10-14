@@ -1,7 +1,7 @@
 import { assert, assertEventually, settle, unlockPocketDesk } from "../harness.mjs";
 
 export default async function run(ctx) {
-  const { page, multiSelectModifier, state } = ctx;
+  const { page, multiSelectModifier } = ctx;
   const runDialog = page.locator(".run-dialog");
   /*
    * 마우스 관례: Ctrl+휠 on the bare desktop sizes the icons, Shift+클릭 on a
@@ -711,7 +711,24 @@ export default async function run(ctx) {
   };
   const binCountBefore = await binCount();
 
-  // A file icon on the desktop to throw away — the one 보내기 put there.
+  // A file icon on the desktop to throw away, made from the desktop's own menu.
+  await page.locator(".desktop").dispatchEvent("contextmenu", {
+    bubbles: true,
+    cancelable: true,
+    clientX: 720,
+    clientY: 180,
+  });
+  await page
+    .locator(".desktop-context-menu")
+    .getByRole("menuitem", { exact: true, name: "새로 만들기" })
+    .hover();
+  await page
+    .getByRole("menu", { name: "새로 만들기" })
+    .getByRole("menuitem", { name: "텍스트 문서" })
+    .click();
+  await page.getByLabel("바탕 화면 파일 이름").fill("버릴 메모.txt");
+  await page.getByLabel("바탕 화면 파일 이름").press("Enter");
+  await page.locator(".desktop-icon", { hasText: "버릴 메모.txt" }).waitFor();
   const desktopFileNames = await page
     .locator(".desktop-icon")
     .evaluateAll((els) => els.map((el) => el.innerText.split("\n").pop()));
@@ -798,76 +815,4 @@ export default async function run(ctx) {
   );
   await page.keyboard.press("Escape");
   await settle(page);
-
-  Object.assign(state, {
-    activeLabel,
-    addressSelection,
-    afterEmptyItems,
-    afterRemember,
-    binBox,
-    binClasses,
-    binCount,
-    binCountBefore,
-    binLit,
-    binMenuItems,
-    calcBefore,
-    calcFull,
-    calcStretched,
-    calcTaskbarButton,
-    calcWindows,
-    chooseOther,
-    chordCalc,
-    chordNote,
-    clipBeforeRemove,
-    clipEditor,
-    clipNote,
-    clipboardPanel,
-    clipboardRows,
-    coffeeOnly,
-    copyRange,
-    desktopBin,
-    desktopFileNames,
-    desktopIconSize,
-    desktopLabels,
-    desktopViewClass,
-    desktopsAfterAdd,
-    desktopsBefore,
-    dropFrom,
-    dropIcon,
-    droppableName,
-    emojiEditor,
-    emojiNote,
-    emojiPanel,
-    emojiSections,
-    emptyBinDialog,
-    filesBeforeShift,
-    filesWindows,
-    filledBinItems,
-    firstOpenWith,
-    flyoutTitles,
-    frameBox,
-    fullscreenViewport,
-    historyFlyout,
-    historyTitles,
-    iconAtMedium,
-    iconAtSmall,
-    isMinimized,
-    keyAddress,
-    keyEdge,
-    keyTabs,
-    lowestZ,
-    openClipboardPanel,
-    openWithFiles,
-    openWithItems,
-    openWithRow,
-    openWithTerminal,
-    powerUserMenu,
-    searchedTitles,
-    setCalculatorStartup,
-    stepsBack,
-    tabsBeforeKeys,
-    typedTerminal,
-    underTaskbar,
-    viewBeforeWheel,
-  });
 }

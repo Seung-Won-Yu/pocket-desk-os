@@ -1,7 +1,7 @@
 import { assert, assertEventually, settle, unlockPocketDesk } from "../harness.mjs";
 
 export default async function run(ctx) {
-  const { page, multiSelectModifier, state } = ctx;
+  const { page, multiSelectModifier } = ctx;
   const desktopMenu = page.locator(".desktop-context-menu");
   // 새로 만들기 > 인터넷 바로 가기: the wizard refuses a non-http scheme,
   // writes a real .url onto the desktop, and opening it hands Edge the address.
@@ -625,62 +625,4 @@ export default async function run(ctx) {
   // Windows closes every app on restart; this used to bring the whole
   // session back as if nothing had happened.
   assert((await page.locator(".window-frame").count()) === 0, "Restart left windows running");
-
-  await page.getByRole("button", { name: "시작 메뉴" }).click();
-  await startMenu.waitFor({ state: "visible" });
-  Object.assign(state, {
-    beforeText,
-    canvasBytes,
-    desktopItemMenu,
-    desktopNewMenu,
-    desktopNote,
-    desktopNoteCopy,
-    desktopNotepad,
-    desktopProperties,
-    desktopRenameInput,
-    desktopShortcutIcon,
-    desktopShortcutMenu,
-    draggedFirst,
-    earlyRunDialog,
-    editorBeforeReorder,
-    findBar,
-    goToDialog,
-    newNoteName,
-    noteCaretLabel,
-    noteEditor,
-    noteFontAt100,
-    noteFontSize,
-    notePrints,
-    noteScrollAtLine30,
-    noteTabMenu,
-    noteTabNames,
-    noteTabs,
-    noteTextBefore,
-    noteViewMenu,
-    noteZoomLabel,
-    notepadOpenDialog,
-    notepadSaveDialog,
-    paint,
-    paintCanvas,
-    paintCanvasBox,
-    paintOpenDialog,
-    paintSaveDialog,
-    paintTextField,
-    printNoteEditor,
-    printedValue,
-    reopenedText,
-    replaceOne,
-    restoredTitle,
-    shortcutAddress,
-    shortcutAddressValue,
-    shortcutDialog,
-    shortcutEdge,
-    startButton,
-    startMenu,
-    startText,
-    tabsBeforeDrag,
-    tabsBeforeNew,
-    textBeforePrint,
-    waitForNoteTabs,
-  });
 }

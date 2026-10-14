@@ -16,7 +16,9 @@ export const host = "127.0.0.1";
  * fixed sleeps that were half of it (461 calls, 126s of a 237s run) are now
  * `settle` and `assertEventually`; the few `waitForTimeout` left wait on time
  * itself — a timer that must not tick, a toast that must not come, a delay
- * the shell keeps on purpose, a write that must land before a reload.
+ * the shell keeps on purpose, a write that must land before a reload. The
+ * scenarios now run four at a time (55–60s here, 70s at 6× CPU throttle);
+ * the budget stays for SMOKE_WORKERS=1, which runs them one after another.
  */
 export const smokeTimeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 360000);
 export const viteBin = fileURLToPath(

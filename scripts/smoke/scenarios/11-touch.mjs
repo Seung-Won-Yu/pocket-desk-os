@@ -1,7 +1,7 @@
 import { assert, settledBoxOf } from "../harness.mjs";
 
 export default async function run(ctx) {
-  const { browser, consoleErrors, baseUrl, state } = ctx;
+  const { browser, consoleErrors, baseUrl } = ctx;
   // ---------- 터치: a phone-sized, touch-only context ----------
   // Everything below is a real regression once caught by measurement: the
   // title bar ignoring touch drags, long-press not being a right click, and
@@ -101,20 +101,4 @@ export default async function run(ctx) {
     "Touch drag did not move the volume slider",
   );
   await touchContext.close();
-  Object.assign(state, {
-    touchAfter,
-    touchBar,
-    touchBefore,
-    touchCdp,
-    touchContext,
-    touchDrag,
-    touchIcon,
-    touchIconBox,
-    touchLongPress,
-    touchNotepad,
-    touchPage,
-    touchVolume,
-    touchVolumeBox,
-    volumeBefore,
-  });
 }

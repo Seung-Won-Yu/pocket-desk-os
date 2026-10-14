@@ -1,8 +1,7 @@
 import { assert, assertEventually, settle } from "../harness.mjs";
 
 export default async function run(ctx) {
-  const { page, multiSelectModifier, state } = ctx;
-  let rowsBeforeHide = state.rowsBeforeHide;
+  const { page, multiSelectModifier } = ctx;
   const files = page.locator('article[data-app-id="files"]');
   const explorerSidebar = files.locator("aside");
   const workNote = files.locator(".file-list button", { hasText: "작업 메모.txt" });
@@ -595,7 +594,7 @@ export default async function run(ctx) {
   await files.getByRole("menuitemcheckbox", { name: "숨긴 항목" }).click();
   await page.keyboard.press("Escape");
   await assertEventually(
-    async () => (await explorerRows.count()) === rowsBeforeHide,
+    async () => (await explorerRows.filter({ hasText: "작업 메모.txt" }).count()) === 1,
     async () => "The note did not come back once it was unhidden",
   );
 
@@ -708,57 +707,4 @@ export default async function run(ctx) {
     (await calculator.locator(".calc-history-panel").innerText()).includes("7+5"),
     "Calculator history is empty",
   );
-  Object.assign(state, {
-    binBefore,
-    binIcon,
-    boxEdges,
-    bulkBox,
-    bulkNames,
-    calculator,
-    cellsWithoutType,
-    chordProperties,
-    clashBox,
-    clashRow,
-    columnEdges,
-    columnMenu,
-    copiedFilePersisted,
-    copiedWorkNote,
-    copyDragSource,
-    crumbBar,
-    crumbMenu,
-    crumbNames,
-    documentsRow,
-    doomedId,
-    dragFileOnto,
-    edgesAfter,
-    edgesBefore,
-    explorerFileCountBeforeInvalidImport,
-    folderTree,
-    gripBox,
-    habitList,
-    habitRename,
-    habitTabs,
-    habitViewClass,
-    headingLabels,
-    menuBox,
-    movedShortcut,
-    openColumnMenu,
-    permanentDialog,
-    projectRow,
-    readTree,
-    rowsBeforeChord,
-    runDialog,
-    selectAll,
-    selectedRows,
-    tabsBeforeMiddleClick,
-    toggleItemCheckboxes,
-    tree,
-    treeRows,
-    typeAfter,
-    typeBefore,
-    typeCellWidth,
-    typeGrip,
-    vfsMetadata,
-    windowBox,
-  });
 }

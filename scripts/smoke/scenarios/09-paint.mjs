@@ -1,7 +1,7 @@
 import { assert, assertEventually, settle, unlockPocketDesk } from "../harness.mjs";
 
 export default async function run(ctx) {
-  const { page, multiSelectModifier, state } = ctx;
+  const { page, multiSelectModifier } = ctx;
   const runDialog = page.locator(".run-dialog");
   // 캡처 후에도 저장이 계속되어야 한다. A screenshot is the largest thing the
   // shell writes and the save limit is a budget for the whole snapshot; when
@@ -363,33 +363,4 @@ export default async function run(ctx) {
     await page.getByRole("button", { name: /저장하지 않고 닫기|저장 안 함/ }).click();
     await settle(page);
   }
-  Object.assign(state, {
-    bitmapToScreen,
-    canvasPixels,
-    cropButton,
-    dragOnBitmap,
-    fillCanvasBox,
-    fillPaint,
-    filledMiddle,
-    paper,
-    persistExplorer,
-    persistNameInput,
-    pickBox,
-    pickCanvas,
-    pickColor,
-    pickPaint,
-    pickedTool,
-    red,
-    reloadedExplorer,
-    resizeDialog,
-    resizeHeight,
-    resizeWidth,
-    scaledStroke,
-    selectCanvas,
-    selectCanvasSize,
-    selectPaint,
-    selectPixel,
-    shortcutSettings,
-    sizeBeforeResize,
-  });
 }

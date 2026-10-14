@@ -1,7 +1,7 @@
 import { assert, assertEventually, settle } from "../harness.mjs";
 
 export default async function run(ctx) {
-  const { page, state } = ctx;
+  const { page } = ctx;
   await page.evaluate(() => {
     window.__pocketDeskPwaTestRegistration = { waiting: { postMessage() {} } };
     window.dispatchEvent(
@@ -254,27 +254,4 @@ export default async function run(ctx) {
     "Desktop name sort did not form a vertical grid",
   );
   assert(sortedIconBoxes[0].top < sortedIconBoxes[1].top, "Desktop name sort order is wrong");
-  Object.assign(state, {
-    beforeCycle,
-    defaultIconBoxes,
-    desktopMenu,
-    desktopMenuText,
-    desktopThisPc,
-    desktopThisPcWindow,
-    explorerSlot,
-    frontmost,
-    iconsBefore,
-    largeIconWidth,
-    numberedExplorers,
-    numberedTaskbarOrder,
-    pwaUpdatePrompt,
-    shortcutExplorer,
-    showDesktopButton,
-    sortMenu,
-    sortedIconBoxes,
-    toggleDesktopIcons,
-    viewMenu,
-    visibleIcons,
-    windowsBeforeNine,
-  });
 }

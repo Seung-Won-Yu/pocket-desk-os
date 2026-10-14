@@ -1,7 +1,7 @@
 import { assert, assertEventually, settle } from "../harness.mjs";
 
 export default async function run(ctx) {
-  const { page, state } = ctx;
+  const { page } = ctx;
   const files = page.locator('article[data-app-id="files"]');
   const runDialog = page.locator(".run-dialog");
   const terminal = page.locator('article[data-app-id="terminal"]');
@@ -270,6 +270,12 @@ export default async function run(ctx) {
     await settle(page);
   }
 
+  // A 명령 프롬프트 for 작업 끝내기 to end.
+  await page.keyboard.press("Control+Alt+R");
+  await page.locator(".run-dialog").getByLabel("열기").fill("cmd");
+  await page.locator(".run-dialog").getByRole("button", { name: "확인" }).click();
+  await page.locator('article[data-app-id="terminal"]').waitFor({ state: "visible" });
+
   await page.keyboard.press("Control+Shift+Escape");
   const taskManager = page.locator('article[data-app-id="taskmanager"]');
   await taskManager.waitFor({ state: "visible" });
@@ -413,6 +419,11 @@ export default async function run(ctx) {
   await taskView.locator(".task-view-desktop").first().click();
   await taskView.waitFor({ state: "hidden" });
 
+  // An Explorer to measure at phone width.
+  if ((await files.count()) === 0) {
+    await page.keyboard.press("Meta+e");
+    await files.waitFor({ state: "visible" });
+  }
   await page.setViewportSize({ width: 390, height: 780 });
   await settle(page);
   const mobileExplorerSidebar = await files.locator("aside").boundingBox();
@@ -463,40 +474,4 @@ export default async function run(ctx) {
   );
   await page.keyboard.press("Escape");
   await page.locator(".task-view").waitFor({ state: "hidden" });
-  Object.assign(state, {
-    backgroundMode,
-    cardsBefore,
-    cardsOnDesktopOne,
-    closePrompt,
-    cpuGraph,
-    cpuPoints,
-    currentDesktops,
-    desktopNameField,
-    dirtyTitle,
-    draftEditor,
-    draftNotepad,
-    draftTitle,
-    draggedCard,
-    draggedTitle,
-    endTaskButton,
-    expectedNext,
-    galleryOrder,
-    guardEditor,
-    guardNotepad,
-    hasHorizontalOverflow,
-    mobileExplorerSidebar,
-    openDesktopMenuAt,
-    presetShown,
-    savedTitle,
-    settingsFit,
-    settingsPane,
-    settingsWindow,
-    showMenu,
-    shownBefore,
-    taskManager,
-    taskView,
-    taskViewButton,
-    terminalRow,
-    visibleWindowBoxes,
-  });
 }

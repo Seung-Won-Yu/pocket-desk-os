@@ -28,6 +28,7 @@ const requiredFiles = [
   "scripts/generate-social-preview.mjs",
   "scripts/pwa-test.mjs",
   "scripts/smoke-test.mjs",
+  "scripts/smoke/harness.mjs",
   "src/App.tsx",
   "src/components/PwaUpdatePrompt.tsx",
   "src/main.tsx",

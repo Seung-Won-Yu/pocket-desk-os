@@ -7,9 +7,55 @@ import {
 } from "../harness.mjs";
 
 export default async function run(ctx) {
-  const { page, state } = ctx;
+  const { page } = ctx;
   const runDialog = page.locator(".run-dialog");
+  await page.keyboard.press("Control+Alt+R");
+  await runDialog.waitFor({ state: "visible" });
+  await runDialog.getByLabel("열기").fill("cmd");
+  await runDialog.getByRole("button", { name: "확인" }).click();
   const terminal = page.locator('article[data-app-id="terminal"]');
+  await terminal.waitFor({ state: "visible" });
+  const terminalPrompt = terminal.locator(".terminal-path");
+  assert(
+    (await terminalPrompt.innerText()).startsWith("C:\\Users\\PocketDesk\\Desktop"),
+    "Command Prompt did not start at the desktop path",
+  );
+
+  const helpOutput = await runTerminalCommand(terminal, "help");
+  assert(helpOutput.includes("tasklist"), "Command Prompt help did not list commands");
+
+  const madeFolder = await runTerminalCommand(terminal, "md 스모크폴더");
+  assert(madeFolder.includes("스모크폴더"), "md did not confirm folder creation");
+  const listedFolder = await runTerminalCommand(terminal, "dir");
+  assert(listedFolder.includes("스모크폴더"), "dir did not list the new folder");
+  assert(listedFolder.includes("<DIR>"), "dir output is missing the directory column");
+
+  await runTerminalCommand(terminal, "cd 스모크폴더");
+  assert(
+    (await terminalPrompt.innerText()).endsWith("스모크폴더>"),
+    "cd did not move the prompt into the new folder",
+  );
+
+  await runTerminalCommand(terminal, "echo 첫 줄 > 스모크.txt");
+  await runTerminalCommand(terminal, "echo 둘째 줄 >> 스모크.txt");
+  const fileContent = await runTerminalCommand(terminal, "type 스모크.txt");
+  assert(fileContent.includes("첫 줄"), "type did not read back the written line");
+  assert(fileContent.includes("둘째 줄"), "Append redirection did not keep both lines");
+
+  await runTerminalCommand(terminal, "cd ..");
+  assert(
+    (await terminalPrompt.innerText()).endsWith("Desktop>"),
+    "cd .. did not return to the desktop root",
+  );
+  const foundPath = await runTerminalCommand(terminal, "find 스모크.txt");
+  assert(foundPath.includes("스모크폴더"), "find did not report the containing folder");
+
+  await terminal.getByLabel("명령 입력").press("ArrowUp");
+  assert(
+    (await terminal.getByLabel("명령 입력").inputValue()) === "find 스모크.txt",
+    "Command history did not recall the previous command",
+  );
+  await terminal.getByLabel("명령 입력").fill("");
   /*
    * 파일 내용 검색. 스모크.txt holds "둘째 줄" and its name does not, so a
    * box that only reads names cannot find it. Explorer's did search notes
@@ -559,56 +605,4 @@ export default async function run(ctx) {
     `Revealing a cell resized the minefield: heights ${revealedHeights.join(", ")}`,
   );
   await minesLayout.getByRole("button", { name: "지뢰찾기 닫기" }).click();
-  Object.assign(state, {
-    afterDelete,
-    afterKeyboardCancel,
-    afterKeyboardMove,
-    afterKeyboardResize,
-    afterRestore,
-    altTabPictures,
-    altTabSeen,
-    assistCards,
-    batchOutput,
-    beforeEscape,
-    beforeKeyboardMove,
-    beforeMaximize,
-    cardTitle,
-    cellHeights,
-    clickedItem,
-    clickedTitle,
-    contentResult,
-    dragExplorer,
-    dragSource,
-    dragTarget,
-    draggedName,
-    dropPoint,
-    expandedCwd,
-    expandedVar,
-    explorerAfterShell,
-    firstCard,
-    minesLayout,
-    openWindowCount,
-    piped,
-    resnapped,
-    restoreDragExplorer,
-    restoreTarget,
-    revealedHeights,
-    rovingCounts,
-    seam,
-    searchExplorer,
-    searchRows,
-    snapAssist,
-    snappedEdges,
-    snappedLeft,
-    snappedRight,
-    snippet,
-    taskViewBox,
-    taskViewCards,
-    taskViewPictures,
-    taskbarBefore,
-    taskbarBox,
-    taskbarTop,
-    unknownOutput,
-    wildcardList,
-  });
 }

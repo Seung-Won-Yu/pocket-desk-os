@@ -1,7 +1,7 @@
 import { assert, assertEventually, settle } from "../harness.mjs";
 
 export default async function run(ctx) {
-  const { page, state } = ctx;
+  const { page } = ctx;
   const runDialog = page.locator(".run-dialog");
   // Edge's tab strip was a single hardcoded tab; each tab now keeps its own
   // page, and none of that had a test.
@@ -689,60 +689,4 @@ export default async function run(ctx) {
     .waitFor({ state: "detached" });
   await tabExplorer.getByRole("button", { name: "파일 탐색기 닫기" }).click();
   await tabExplorer.waitFor({ state: "detached" });
-  Object.assign(state, {
-    addressBar,
-    afterDrag,
-    archiveRow,
-    arrangeCount,
-    arrangeFrames,
-    beforeDrag,
-    currentBrowserTab,
-    dimmedFilter,
-    documentRows,
-    edgeTabs,
-    explorerSearch,
-    explorerTabs,
-    explorersBefore,
-    extractToast,
-    extractedNames,
-    firstTabAddress,
-    focusedTabIndex,
-    generationAfterMove,
-    generationBeforeMove,
-    middleThird,
-    minimizedBeforeShake,
-    minimizedFrames,
-    moveTitle,
-    namesBeforeZip,
-    openShellMenu,
-    overlapping,
-    pathExplorer,
-    pathInput,
-    peekCard,
-    pinnedRow,
-    plainTerminal,
-    plainTerminalId,
-    readFrameBoxes,
-    searchNames,
-    selectedTabIndex,
-    shake,
-    shakeFrom,
-    shakeTarget,
-    shakeTitle,
-    sharedPropsGeneration,
-    snapFlyout,
-    spawnedExplorer,
-    spawnedExplorerId,
-    spawnedTerminal,
-    spawnedTerminalId,
-    stairs,
-    statusText,
-    systemFolderMenu,
-    tabExplorer,
-    thirdBox,
-    tiled,
-    windowLayer,
-    workAreaWidth,
-    zipMenu,
-  });
 }
